@@ -1,0 +1,15 @@
+[package]
+name = "cadkernel"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "Apache-2.0"
+description = "CADKernel - open-source CAD software built with Rust"
+authors = ["Kim DaeHyun <kernalix7@kodenet.io>"]
+repository = "https://github.com/kernalix7/CADKernel"
+homepage = "https://github.com/kernalix7/CADKernel"
+readme = "README.md"
+keywords = ["cad", "geometry", "3d-modeling", "brep", "nurbs"]
+categories = ["graphics", "rendering", "science"]
+
+[dependencies]

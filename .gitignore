@@ -1,0 +1,26 @@
+# Rust
+/target/
+**/*.rs.bk
+
+# Cargo
+# Keep Cargo.lock for applications; remove this line if you choose to commit it
+# /Cargo.lock
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.cursor/
+
+# Logs
+*.log
+
+# Environment
+.env
+.env.*
+
+# Coverage / profiling
+*.profraw
+*.profdata
+coverage/
