@@ -97,7 +97,7 @@ CAD work doesn't happen in isolation. Data exchange with team members, partners,
 - **Commercial CAD Import** — Read-only support for proprietary formats like SolidWorks, CATIA V5, PTC Creo, Autodesk Inventor, and Fusion 360
 - **Point Cloud & Scan Data** — Import/export LiDAR (LAS/LAZ), structured 3D scan (E57), and raw point cloud (PCD, XYZ) data
 - **Full Unicode Support** — Complete multilingual support across file paths, layer names, annotations, and all text elements
-- **Native Format** — Lossless storage of all features and metadata in the proprietary `.cadkernel` format
+- **Native Format** — Lossless storage of all features and metadata in the proprietary `.cadk` format
 
 ### Extensibility
 
@@ -126,7 +126,7 @@ CADKernel is built on a carefully selected set of Rust crates and technologies:
 | **Math** | nalgebra, glam | Linear algebra, vectors, matrices, transforms |
 | **Geometry** | Custom B-Rep / NURBS engine | Boundary representation and freeform surface modeling |
 | **Spatial Index** | bvh, rstar | BVH and R-Tree for efficient spatial queries |
-| **GUI** | egui / iced *(TBD)* | Cross-platform immediate / retained mode GUI |
+| **GUI** | egui 0.31 + winit 0.30 | Cross-platform immediate mode GUI (native desktop) |
 | **Scripting** | mlua, PyO3 | Lua and Python scripting bindings |
 | **Serialization** | serde, bincode | High-performance data serialization |
 | **File I/O** | iso-10303 *(planned)* | STEP file parsing and writing |
@@ -143,11 +143,11 @@ CADKernel is built on a carefully selected set of Rust crates and technologies:
 | 3D Modeling | 🚧 | ✅ | ✅ | ✅ | ❌ (2D only) |
 | Parametric Design | 🚧 | ✅ | ✅ (code) | ✅ | ❌ |
 | B-Rep + NURBS | 🚧 | ✅ (OCCT) | ❌ (CSG) | ✅ | ❌ |
-| GUI | 🚧 | ✅ | Minimal | ✅ | ✅ |
+| GUI | ✅ | ✅ | Minimal | ✅ | ✅ |
 | Plugin System | 🚧 | ✅ (Python) | ❌ | ❌ | ❌ |
 | STEP Support | 🚧 | ✅ | ❌ | ✅ | ❌ |
 | 60+ Formats | 🚧 | Partial | ❌ | Partial | ❌ |
-| GPU Rendering | 🚧 (wgpu) | Partial | OpenGL | OpenGL | ❌ |
+| GPU Rendering | ✅ (wgpu) | Partial | OpenGL | OpenGL | ❌ |
 | Memory Safety | ✅ (Rust) | ❌ | ❌ | ❌ | ❌ |
 | AI / MCP | 🚧 | ❌ | ❌ | ❌ | ❌ |
 | Cross-Platform | 🚧 (Target: Win/Mac/Linux) | Win/Mac/Linux | Win/Mac/Linux | Win/Mac/Linux | Win/Mac/Linux |
@@ -183,10 +183,10 @@ CADKernel adopts a layered modular architecture that ensures independence and re
 | Layer | Role | Key Crates |
 |-------|------|------------|
 | **Core Kernel** | Geometry operations, Topology, Math library | `cadkernel-core`, `cadkernel-math` |
-| **Service** | Modeling operations, Rendering, File I/O | `cadkernel-modeling`, `cadkernel-render`, `cadkernel-io` |
-| **Extension** | Plugin loading/management, API exposure | `cadkernel-extension` |
-| **Application** | GUI, CLI, Scripting, AI integration | `cadkernel-app`, `cadkernel-mcp` |
-| **Platform** | OS and hardware abstraction | `cadkernel-platform` |
+| **Service** | Modeling operations, Rendering, File I/O | `cadkernel-modeling`, `cadkernel-viewer`, `cadkernel-io` |
+| **Extension** | Plugin loading/management, API exposure | `cadkernel-extension` (planned) |
+| **Application** | GUI, CLI, Scripting, AI integration | `cadkernel-viewer`, `cadkernel-python` |
+| **Platform** | OS and hardware abstraction | `cadkernel-platform` (planned) |
 
 ---
 
@@ -196,16 +196,16 @@ CADKernel adopts a layered modular architecture that ensures independence and re
 
 | Format | Extension | Read | Write | Notes |
 |--------|-----------|:----:|:-----:|-------|
-| CADKernel | `.cadkernel` | 🔲 | 🔲 | Lossless native format |
+| CADKernel | `.cadk` | 🔲 | 🔲 | Lossless native format |
 
 ### Industry Standard (Neutral Exchange)
 
 | Format | Extension | Read | Write | Notes |
 |--------|-----------|:----:|:-----:|-------|
-| STEP AP203 | `.step`, `.stp` | 🔲 | 🔲 | Geometry exchange standard |
-| STEP AP214 | `.step`, `.stp` | 🔲 | 🔲 | Automotive industry standard |
+| STEP AP203 | `.step`, `.stp` | 🚧 | 🚧 | Geometry exchange standard |
+| STEP AP214 | `.step`, `.stp` | 🚧 | 🚧 | Automotive industry standard (subset) |
 | STEP AP242 | `.step`, `.stp` | 🔲 | 🔲 | Includes PMI/GD&T |
-| IGES | `.iges`, `.igs` | 🔲 | 🔲 | Legacy exchange format |
+| IGES | `.iges`, `.igs` | 🚧 | 🚧 | Legacy exchange format (subset) |
 | Parasolid | `.x_t`, `.x_b` | 🔲 | 🔲 | Siemens Parasolid kernel |
 | ACIS SAT/SAB | `.sat`, `.sab` | 🔲 | 🔲 | Spatial ACIS kernel |
 | JT | `.jt` | 🔲 | 🔲 | Siemens lightweight visualization |
@@ -234,7 +234,7 @@ CADKernel adopts a layered modular architecture that ensures independence and re
 
 | Format | Extension | Read | Write | Notes |
 |--------|-----------|:----:|:-----:|-------|
-| SVG | `.svg` | 🔲 | 🔲 | Scalable Vector Graphics |
+| SVG | `.svg` | 🔲 | ✅ | Scalable Vector Graphics |
 | PDF | `.pdf` | 🔲 | 🔲 | 2D drawings / 3D PDF export |
 | EPS | `.eps` | 🔲 | 🔲 | Encapsulated PostScript |
 | HPGL | `.plt`, `.hpgl` | 🔲 | 🔲 | Plotter output format |
@@ -243,9 +243,10 @@ CADKernel adopts a layered modular architecture that ensures independence and re
 
 | Format | Extension | Read | Write | Notes |
 |--------|-----------|:----:|:-----:|-------|
-| STL | `.stl` | 🔲 | 🔲 | 3D printing standard (ASCII/Binary) |
-| OBJ | `.obj` | 🔲 | 🔲 | Wavefront mesh format |
-| glTF / GLB | `.gltf`, `.glb` | 🔲 | 🔲 | Web 3D standard (Khronos) |
+| STL | `.stl` | ✅ | ✅ | 3D printing standard (ASCII/Binary) |
+| OBJ | `.obj` | ✅ | ✅ | Wavefront mesh format |
+| JSON | `.json` | ✅ | ✅ | BRepModel serialization (serde) |
+| glTF / GLB | `.gltf`, `.glb` | 🔲 | ✅ | Web 3D standard (Khronos) |
 | FBX | `.fbx` | 🔲 | 🔲 | Autodesk exchange format |
 | COLLADA | `.dae` | 🔲 | 🔲 | XML-based 3D exchange |
 | PLY | `.ply` | 🔲 | 🔲 | Polygon / Stanford format |
@@ -356,81 +357,127 @@ CADKernel supports **MCP (Model Context Protocol)** for seamless integration wit
 
 ## Roadmap
 
-### Phase 1 — Foundation
-- [ ] Project structure and build system setup (Cargo workspace)
-- [ ] Core math library (vectors, matrices, transforms)
-- [ ] Basic geometry engine (B-Rep, NURBS curves/surfaces)
-- [ ] Basic topology structures (Vertex, Edge, Face, Shell, Solid)
-- [ ] Basic rendering pipeline (wgpu)
-- [ ] Native format (`.cadkernel`) read/write
-- [ ] STL import/export (ASCII / Binary)
-- [ ] OBJ import/export
-- [ ] CLI interface
+### ~~Kernel Phase 1 — Foundation~~ ✅
+- [x] Cargo workspace (7-crate monorepo)
+- [x] Core math library (Vec2/3/4, Point2/3, Mat3/4, Transform, Quaternion, BoundingBox)
+- [x] Geometry engine (B-Rep, NURBS curves/surfaces, intersections)
+- [x] Topology structures (Half-edge, EntityStore, Handle, Wire)
+- [x] CLI version banner
+- [x] GitHub Actions CI
 
-### Phase 2 — Core Features
-- [ ] 3D solid modeling operations (Extrude, Revolve, Sweep, Loft)
-- [ ] Boolean operations (Union, Subtract, Intersect)
-- [ ] Constraint Solver
-- [ ] Undo/Redo system
-- [ ] GUI framework implementation
-- [ ] STEP AP203/AP214 import/export
-- [ ] IGES import/export
-- [ ] glTF / GLB import/export
-- [ ] 3MF import/export
-- [ ] SVG / PDF 2D drawing export
+### ~~Kernel Phase 2 — Persistent Naming + Boolean~~ ✅
+- [x] Persistent Naming (Tag, NameMap, ShapeHistory, OperationId)
+- [x] Geometry-Topology binding (feature flag)
+- [x] Boolean operations (Union, Subtract, Intersect)
+- [x] SSI (Surface-Surface Intersection) ×4 + LSI (Line-Surface) ×3
 
-### Phase 3 — Compatibility (Industry Standard)
-- [ ] STEP AP242 (PMI/GD&T) support
-- [ ] DXF/DWG import/export
-- [ ] 3DM (OpenNURBS / Rhino) import/export
-- [ ] Parasolid (`.x_t`, `.x_b`) import/export
-- [ ] ACIS SAT/SAB import/export
-- [ ] JT (Siemens) import/export
-- [ ] IFC (BIM / Architecture) import/export
-- [ ] BREP (OpenCASCADE) import/export
-- [ ] FCStd (FreeCAD) import/export
-- [ ] Cross-platform testing and stabilization (Windows / macOS / Linux)
+### ~~Kernel Phase 3 — Parametric + Sketch + I/O~~ ✅
+- [x] 2D parametric sketch (14 constraints + Newton-Raphson solver)
+- [x] Feature Ops: Extrude, Revolve (auto-tagging)
+- [x] Primitive builders: Box, Cylinder, Sphere
+- [x] Tessellation → STL (ASCII/Binary) + OBJ export
 
-### Phase 4 — Compatibility (Commercial CAD & Extended Formats)
-- [ ] SolidWorks (`.sldprt`, `.sldasm`) import
-- [ ] CATIA V5 (`.catpart`, `.catproduct`) import
-- [ ] PTC Creo (`.prt`, `.asm`) import
-- [ ] Autodesk Inventor (`.ipt`, `.iam`) import
-- [ ] Autodesk Fusion 360 (`.f3d`) import
-- [ ] SketchUp (`.skp`) import/export
-- [ ] Bentley MicroStation (`.dgn`) import/export
-- [ ] Blender (`.blend`) import
-- [ ] FBX import/export
-- [ ] COLLADA (`.dae`) import/export
-- [ ] 3DS import/export
-- [ ] VRML / X3D import/export
-- [ ] USD / USDA / USDC import/export
-- [ ] PLY / OFF mesh import/export
-- [ ] AMF import/export
-- [ ] EPS / HPGL 2D export
-- [ ] G-code / SLC manufacturing output
+### ~~Kernel Phase 4 — Core Hardening~~ ✅
+- [x] `cadkernel-core` standalone error crate
+- [x] All public API panic paths removed → KernelResult
+- [x] Send + Sync (Curve/Surface thread safety)
+- [x] Math type standard traits (Default, Display, From, operators)
+- [x] EntityStore O(1) len + safety guards
 
-### Phase 5 — Point Cloud, Scan Data & Imaging
-- [ ] PCD (Point Cloud Library) import/export
-- [ ] LAS / LAZ (LiDAR) import/export
-- [ ] E57 (3D scan) import/export
-- [ ] XYZ / PTS (ASCII point cloud) import/export
-- [ ] PNG / JPEG / BMP / TIFF render export
-- [ ] HDR / EXR environment map support
+### ~~Kernel Phase 5 — Mass Properties + Sweep~~ ✅
+- [x] MassProperties (volume, area, centroid — divergence theorem)
+- [x] Sweep operation (profile × path → solid, RMF-based)
 
-### Phase 6 — Extension Ecosystem
-- [ ] Plugin API design and implementation
-- [ ] Add-on manager and registry
-- [ ] Lua/Python scripting interface
-- [ ] Community Add-on marketplace
-- [ ] Custom file format import/export via Add-on API
+### ~~Kernel Phase 6 — Loft + Pattern~~ ✅
+- [x] Loft operation (N cross-section interpolation → solid)
+- [x] Linear Pattern (directional repeated copies)
+- [x] Circular Pattern (rotational repeated copies)
 
-### Phase 7 — AI Integration
-- [ ] MCP server implementation
-- [ ] Natural language → modeling command translation
-- [ ] AI-powered design assistant
-- [ ] Automated design validation
-- [ ] AI-driven parametric optimization
+### ~~Kernel Phase 7 — Chamfer + I/O Import~~ ✅
+- [x] Chamfer operation (edge bevel)
+- [x] STL Import (ASCII + Binary auto-detection)
+- [x] OBJ Import (v/vt/vn, N-gon triangulation)
+
+### ~~Kernel Phase 8 — Modeling Enhancements~~ ✅
+- [x] Mirror operation (plane reflection copy)
+- [x] Shell operation (thin-wall / hollow solid)
+- [x] Non-uniform Scale operation
+- [x] Shared `copy_solid_with_transform` utility
+
+### ~~Kernel Phase 9 — Math & Geometry Enhancements~~ ✅
+- [x] 11 math utility functions (distance, angle, projection, interpolation, area)
+- [x] Plane enhancements (from_three_points, signed_distance, project_point, etc.)
+- [x] BoundingBox enhancements (overlaps, expand, volume, surface_area, longest_axis, size)
+
+### ~~Kernel Phase 10 — Quality & Testing~~ ✅
+- [x] 10 E2E integration tests (full pipeline roundtrips)
+- [x] B-Rep validation: dangling reference detection, orientation consistency
+- [x] New validation API: validate_manifold(), validate_detailed()
+
+### ~~Kernel Phase 11 — I/O Format Expansion~~ ✅
+- [x] SVG 2D Export (SvgDocument, 5 element types, auto-fit viewBox)
+- [x] JSON serialization (BRepModel ↔ JSON roundtrip, file I/O)
+- [x] serde Serialize/Deserialize on all topology and math types
+
+### ~~Kernel Phase 12 — Rustdoc Documentation~~ ✅
+- [x] Public API doc comments on all `pub` items
+- [x] Crate-level documentation (`//!`)
+- [x] Example code blocks in doc comments
+- [x] Doc test compilation verification
+
+### ~~Kernel Phase 13 — High Priority Features~~ ✅
+- [x] Fillet operation (arc-approximated edge rounding)
+- [x] Split Body (plane-based solid bisection)
+- [x] Point-in-Solid query (ray-casting containment test)
+
+### ~~Kernel Phase 14 — Geometry & Manufacturing~~ ✅
+- [x] 2D Curve Offset (polyline & polygon parallel offset)
+- [x] Draft Angle (mold taper with neutral plane)
+- [x] Adaptive Tessellation (chord-error & angle-based subdivision)
+
+### ~~Kernel Phase 15 — Infrastructure~~ ✅
+- [x] Undo/Redo system (ModelHistory, snapshot-based)
+- [x] Property System (Color, Material presets, PropertyStore)
+- [x] Closest Point Query (Voronoi-region triangle projection)
+
+### ~~Kernel Phase 16 — Industry Formats~~ ✅
+- [x] STEP I/O (ISO 10303-21 AP214 subset — StepWriter, read/parse/export)
+- [x] IGES I/O (IGES 5.3 — IgesWriter, point/line entity exchange)
+
+### ~~Kernel Phase 17 — Quality & Advanced~~ ✅
+- [x] Benchmark Suite (14 criterion benchmarks)
+- [x] NURBS Advanced (Boehm knot insertion, degree elevation)
+- [x] Thread-Safety (compile-time Send+Sync assertions across all crates)
+
+### ~~Application Phase 1 — Native GUI Application~~ ✅
+- [x] wgpu rendering pipeline (Solid, Wireframe, Transparent, Flat Lines display modes)
+- [x] egui-based native desktop GUI (menu bar, model tree, properties, status bar)
+- [x] Camera system (orbit, pan, zoom, perspective/orthographic, standard view presets)
+- [x] Configurable mouse navigation (FreeCAD Gesture, Blender, SolidWorks, Inventor, OpenCascade)
+- [x] Dynamic grid overlay with auto-scaling + XYZ origin axes
+- [x] glTF 2.0 export
+- [x] Multi-threaded I/O (rayon parallelization)
+- [x] Python bindings (PyO3)
+
+### ~~Application Phase 2 — ViewCube & Camera~~ ✅
+- [x] ViewCube: truncated cube with face/edge/corner click-to-snap (26 view directions)
+- [x] ViewCube: directional lighting, drop shadow, orbit ring with compass labels
+- [x] ViewCube: CW/CCW in-plane roll buttons, screen-space arrow buttons
+- [x] Camera roll system (in-plane rotation around view axis, auto-reset on view snap)
+- [x] Camera animation system (smooth-step easing, shortest-path yaw interpolation)
+- [x] View animation settings (enable/disable toggle, duration slider)
+- [x] 45° orbit step, mini axis indicator with negative-direction faded lines
+
+### Application Phase 3 — Compatibility
+- [ ] DXF/DWG, 3DM import/export
+- [ ] Parasolid, ACIS, JT, IFC import/export
+- [ ] Commercial CAD (SolidWorks, CATIA, Creo, Inventor, Fusion 360) import
+
+### Application Phase 4 — Extension Ecosystem
+- [ ] Plugin API + Add-on manager
+- [ ] Lua/Python scripting
+- [ ] MCP (AI integration) server
+- [ ] Community marketplace
 
 ---
 
@@ -516,8 +563,21 @@ cargo +nightly fuzz run geometry_fuzz
 
 ## Demo
 
-- Demo build and screenshots are currently in preparation.
-- Until the first public alpha, this section will be updated with preview assets and usage videos.
+### Running the GUI Application
+
+```bash
+cargo run --release --bin cadkernel
+```
+
+**Features available:**
+- Open STL/OBJ files via File → Open
+- Create primitives via Create menu (Box, Cylinder, Sphere)
+- Switch display modes: D key or View → Display Mode
+- Standard views: 1/3/7 keys (Front/Right/Top), Ctrl+1/3/7 (Back/Left/Bottom), 0 (Isometric)
+- Toggle grid: G key
+- Toggle projection: 5 key
+- Fit to model: V key
+- Mouse navigation follows FreeCAD Gesture preset by default (configurable in Settings)
 
 ---
 

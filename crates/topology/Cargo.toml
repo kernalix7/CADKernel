@@ -1,0 +1,19 @@
+[package]
+name = "cadkernel-topology"
+description = "B-Rep topology for CADKernel (half-edge data structure)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[features]
+default = ["geometry-binding"]
+geometry-binding = ["dep:cadkernel-geometry"]
+
+[dependencies]
+cadkernel-core.workspace = true
+cadkernel-math.workspace = true
+cadkernel-geometry = { workspace = true, optional = true }
+serde.workspace = true
