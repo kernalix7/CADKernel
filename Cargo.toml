@@ -1,15 +1,54 @@
-[package]
-name = "cadkernel"
+[workspace]
+members = ["crates/*"]
+exclude = ["crates/python"]
+resolver = "3"
+
+[workspace.package]
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.85"
 license = "Apache-2.0"
-description = "CADKernel - open-source CAD software built with Rust"
 authors = ["Kim DaeHyun <kernalix7@kodenet.io>"]
 repository = "https://github.com/kernalix7/CADKernel"
+
+[workspace.dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+nalgebra = "0.33"
+glam = { version = "0.29", features = ["libm"] }
+rayon = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+cadkernel-core = { path = "crates/core" }
+cadkernel-math = { path = "crates/math" }
+cadkernel-geometry = { path = "crates/geometry" }
+cadkernel-topology = { path = "crates/topology" }
+cadkernel-modeling = { path = "crates/modeling" }
+cadkernel-sketch = { path = "crates/sketch" }
+cadkernel-io = { path = "crates/io" }
+cadkernel-viewer = { path = "crates/viewer" }
+cadkernel-python = { path = "crates/python" }
+
+[package]
+name = "cadkernel"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "CADKernel - open-source CAD software built with Rust"
 homepage = "https://github.com/kernalix7/CADKernel"
 readme = "README.md"
 keywords = ["cad", "geometry", "3d-modeling", "brep", "nurbs"]
 categories = ["graphics", "rendering", "science"]
 
 [dependencies]
+cadkernel-core.workspace = true
+cadkernel-math.workspace = true
+cadkernel-geometry.workspace = true
+cadkernel-topology.workspace = true
+cadkernel-modeling.workspace = true
+cadkernel-sketch.workspace = true
+cadkernel-io.workspace = true
+cadkernel-viewer.workspace = true
+clap = { version = "4", features = ["derive"] }

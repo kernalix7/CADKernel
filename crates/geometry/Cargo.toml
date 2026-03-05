@@ -1,0 +1,13 @@
+[package]
+name = "cadkernel-geometry"
+description = "Geometric primitives for CADKernel (curves, surfaces, NURBS)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+cadkernel-core.workspace = true
+cadkernel-math.workspace = true

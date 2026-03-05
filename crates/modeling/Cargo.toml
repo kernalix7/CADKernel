@@ -1,0 +1,23 @@
+[package]
+name = "cadkernel-modeling"
+description = "Modeling operations for CADKernel (primitives, boolean operations)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+cadkernel-core.workspace = true
+cadkernel-math.workspace = true
+cadkernel-geometry.workspace = true
+cadkernel-topology.workspace = true
+cadkernel-io.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
+
+[[bench]]
+name = "modeling_benchmarks"
+harness = false

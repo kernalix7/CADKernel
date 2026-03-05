@@ -1,0 +1,23 @@
+[package]
+name = "cadkernel-viewer"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+cadkernel-core.workspace = true
+cadkernel-math.workspace = true
+cadkernel-topology.workspace = true
+cadkernel-modeling.workspace = true
+cadkernel-io.workspace = true
+rayon.workspace = true
+wgpu = "24"
+winit = "0.30"
+bytemuck = { version = "1", features = ["derive"] }
+pollster = "0.4"
+egui = "0.31"
+egui-wgpu = "0.31"
+egui-winit = "0.31"
+rfd = "0.15"
