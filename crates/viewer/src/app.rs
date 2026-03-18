@@ -253,25 +253,23 @@ impl CadApp {
                                 self.model = result_model;
                                 self.current_solid = Some(result_solid);
                                 self.gui.current_file = None;
-                                self.gui.status_message =
-                                    format!("Boolean {op:?}: box {width}×{height}×{depth} at ({:.1},{:.1},{:.1})", offset[0], offset[1], offset[2]);
+                                self.log_info(format!("Boolean {op:?}: box {width}×{height}×{depth} at ({:.1},{:.1},{:.1})", offset[0], offset[1], offset[2]));
                                 self.set_mesh(mesh);
                             } else {
-                                self.gui.status_message =
-                                    "Boolean result is empty".into();
+                                self.log_warning("Boolean result is empty");
                             }
                         }
                         Err(e) => {
-                            self.gui.status_message = format!("Boolean error: {e}");
+                            self.log_error(format!("Boolean error: {e}"));
                         }
                     }
                 }
                 Err(e) => {
-                    self.gui.status_message = format!("Box creation error: {e}");
+                    self.log_error(format!("Box creation error: {e}"));
                 }
             }
         } else {
-            self.gui.status_message = "No solid for boolean operation".into();
+            self.log_warning("No solid for boolean operation");
         }
     }
 
@@ -325,6 +323,26 @@ impl CadApp {
         }
     }
 
+    // -- report helpers -----------------------------------------------------
+
+    fn log_info(&mut self, msg: impl Into<String>) {
+        let s: String = msg.into();
+        self.gui.status_message = s.clone();
+        self.gui.log(ReportLevel::Info, s);
+    }
+
+    fn log_warning(&mut self, msg: impl Into<String>) {
+        let s: String = msg.into();
+        self.gui.status_message = s.clone();
+        self.gui.log(ReportLevel::Warning, s);
+    }
+
+    fn log_error(&mut self, msg: impl Into<String>) {
+        let s: String = msg.into();
+        self.gui.status_message = s.clone();
+        self.gui.log(ReportLevel::Error, s);
+    }
+
     // -- action processing -------------------------------------------------
 
     fn process_actions(&mut self) {
@@ -345,7 +363,7 @@ impl CadApp {
                     }
                     self.gui.invalidate_cache();
                     self.gui.current_file = None;
-                    self.gui.status_message = "New model created".into();
+                    self.log_info("New model created");
                 }
 
                 GuiAction::OpenFile(path) | GuiAction::ImportFile(path) => {
@@ -366,15 +384,14 @@ impl CadApp {
                     if let Some(mesh) = &self.current_mesh {
                         match export_gltf(mesh, &path.display().to_string()) {
                             Ok(()) => {
-                                self.gui.status_message =
-                                    format!("Exported glTF → {}", path.display());
+                                self.log_info(format!("Exported glTF → {}", path.display()));
                             }
                             Err(e) => {
-                                self.gui.status_message = format!("Export error: {e}");
+                                self.log_error(format!("Export error: {e}"));
                             }
                         }
                     } else {
-                        self.gui.status_message = "No mesh to export".into();
+                        self.log_warning("No mesh to export");
                     }
                 }
 
@@ -390,12 +407,11 @@ impl CadApp {
                             self.model = model;
                             self.current_solid = Some(r.solid);
                             self.gui.current_file = None;
-                            self.gui.status_message =
-                                format!("Created box ({width} × {height} × {depth})");
+                            self.log_info(format!("Created box ({width} × {height} × {depth})"));
                             self.set_mesh(mesh);
                         }
                         Err(e) => {
-                            self.gui.status_message = format!("Error: {e}");
+                            self.log_error(format!("CreateBox error: {e}"));
                         }
                     }
                 }
@@ -408,12 +424,11 @@ impl CadApp {
                             self.model = model;
                             self.current_solid = Some(r.solid);
                             self.gui.current_file = None;
-                            self.gui.status_message =
-                                format!("Created cylinder (r={radius}, h={height})");
+                            self.log_info(format!("Created cylinder (r={radius}, h={height})"));
                             self.set_mesh(mesh);
                         }
                         Err(e) => {
-                            self.gui.status_message = format!("Error: {e}");
+                            self.log_error(format!("CreateCylinder error: {e}"));
                         }
                     }
                 }
@@ -426,11 +441,11 @@ impl CadApp {
                             self.model = model;
                             self.current_solid = Some(r.solid);
                             self.gui.current_file = None;
-                            self.gui.status_message = format!("Created sphere (r={radius})");
+                            self.log_info(format!("Created sphere (r={radius})"));
                             self.set_mesh(mesh);
                         }
                         Err(e) => {
-                            self.gui.status_message = format!("Error: {e}");
+                            self.log_error(format!("CreateSphere error: {e}"));
                         }
                     }
                 }
@@ -459,13 +474,13 @@ impl CadApp {
                             } else {
                                 "frustum"
                             };
-                            self.gui.status_message = format!(
+                            self.log_info(format!(
                                 "Created {kind} (r1={base_radius}, r2={top_radius}, h={height})"
-                            );
+                            ));
                             self.set_mesh(mesh);
                         }
                         Err(e) => {
-                            self.gui.status_message = format!("Error: {e}");
+                            self.log_error(format!("CreateCone error: {e}"));
                         }
                     }
                 }
@@ -488,12 +503,11 @@ impl CadApp {
                             self.model = model;
                             self.current_solid = Some(r.solid);
                             self.gui.current_file = None;
-                            self.gui.status_message =
-                                format!("Created torus (R={major_radius}, r={minor_radius})");
+                            self.log_info(format!("Created torus (R={major_radius}, r={minor_radius})"));
                             self.set_mesh(mesh);
                         }
                         Err(e) => {
-                            self.gui.status_message = format!("Error: {e}");
+                            self.log_error(format!("CreateTorus error: {e}"));
                         }
                     }
                 }
@@ -517,13 +531,13 @@ impl CadApp {
                             self.model = model;
                             self.current_solid = Some(r.solid);
                             self.gui.current_file = None;
-                            self.gui.status_message = format!(
+                            self.log_info(format!(
                                 "Created tube (R={outer_radius}, r={inner_radius}, h={height})"
-                            );
+                            ));
                             self.set_mesh(mesh);
                         }
                         Err(e) => {
-                            self.gui.status_message = format!("Error: {e}");
+                            self.log_error(format!("CreateTube error: {e}"));
                         }
                     }
                 }
@@ -540,12 +554,11 @@ impl CadApp {
                             self.model = model;
                             self.current_solid = Some(r.solid);
                             self.gui.current_file = None;
-                            self.gui.status_message =
-                                format!("Created {sides}-sided prism (r={radius}, h={height})");
+                            self.log_info(format!("Created {sides}-sided prism (r={radius}, h={height})"));
                             self.set_mesh(mesh);
                         }
                         Err(e) => {
-                            self.gui.status_message = format!("Error: {e}");
+                            self.log_error(format!("CreatePrism error: {e}"));
                         }
                     }
                 }
@@ -564,12 +577,11 @@ impl CadApp {
                             self.model = model;
                             self.current_solid = Some(r.solid);
                             self.gui.current_file = None;
-                            self.gui.status_message =
-                                format!("Created wedge ({dx}×{dy}×{dz}, top {dx2}×{dy2})");
+                            self.log_info(format!("Created wedge ({dx}×{dy}×{dz}, top {dx2}×{dy2})"));
                             self.set_mesh(mesh);
                         }
                         Err(e) => {
-                            self.gui.status_message = format!("Error: {e}");
+                            self.log_error(format!("CreateWedge error: {e}"));
                         }
                     }
                 }
@@ -582,12 +594,11 @@ impl CadApp {
                             self.model = model;
                             self.current_solid = Some(r.solid);
                             self.gui.current_file = None;
-                            self.gui.status_message =
-                                format!("Created ellipsoid ({rx}×{ry}×{rz})");
+                            self.log_info(format!("Created ellipsoid ({rx}×{ry}×{rz})"));
                             self.set_mesh(mesh);
                         }
                         Err(e) => {
-                            self.gui.status_message = format!("Error: {e}");
+                            self.log_error(format!("CreateEllipsoid error: {e}"));
                         }
                     }
                 }
@@ -614,13 +625,13 @@ impl CadApp {
                             self.model = model;
                             self.current_solid = Some(r.solid);
                             self.gui.current_file = None;
-                            self.gui.status_message = format!(
+                            self.log_info(format!(
                                 "Created helix (R={radius}, pitch={pitch}, turns={turns})"
-                            );
+                            ));
                             self.set_mesh(mesh);
                         }
                         Err(e) => {
-                            self.gui.status_message = format!("Error: {e}");
+                            self.log_error(format!("CreateHelix error: {e}"));
                         }
                     }
                 }
@@ -890,16 +901,14 @@ impl CadApp {
                             Ok(new_mesh) => {
                                 let count = new_mesh.indices.len();
                                 self.set_mesh(new_mesh);
-                                self.gui.status_message =
-                                    format!("Decimated to {count} triangles");
+                                self.log_info(format!("Decimated to {count} triangles"));
                             }
                             Err(e) => {
-                                self.gui.status_message =
-                                    format!("Decimate failed: {e}");
+                                self.log_error(format!("Decimate failed: {e}"));
                             }
                         }
                     } else {
-                        self.gui.status_message = "No mesh to decimate".into();
+                        self.log_warning("No mesh to decimate");
                     }
                 }
                 GuiAction::MeshSubdivide => {
@@ -908,16 +917,14 @@ impl CadApp {
                             Ok(new_mesh) => {
                                 let count = new_mesh.indices.len();
                                 self.set_mesh(new_mesh);
-                                self.gui.status_message =
-                                    format!("Subdivided to {count} triangles");
+                                self.log_info(format!("Subdivided to {count} triangles"));
                             }
                             Err(e) => {
-                                self.gui.status_message =
-                                    format!("Subdivide failed: {e}");
+                                self.log_error(format!("Subdivide failed: {e}"));
                             }
                         }
                     } else {
-                        self.gui.status_message = "No mesh to subdivide".into();
+                        self.log_warning("No mesh to subdivide");
                     }
                 }
                 GuiAction::MeshFillHoles => {
@@ -926,12 +933,10 @@ impl CadApp {
                             Ok(new_mesh) => {
                                 let count = new_mesh.indices.len();
                                 self.set_mesh(new_mesh);
-                                self.gui.status_message =
-                                    format!("Filled holes: {count} triangles");
+                                self.log_info(format!("Filled holes: {count} triangles"));
                             }
                             Err(e) => {
-                                self.gui.status_message =
-                                    format!("Fill holes failed: {e}");
+                                self.log_error(format!("Fill holes failed: {e}"));
                             }
                         }
                     } else {
@@ -942,7 +947,7 @@ impl CadApp {
                     if let Some(mesh) = &self.current_mesh {
                         let new_mesh = cadkernel_io::flip_normals(mesh);
                         self.set_mesh(new_mesh);
-                        self.gui.status_message = "Normals flipped".into();
+                        self.log_info("Normals flipped");
                     } else {
                         self.gui.status_message = "No mesh".into();
                     }
@@ -953,15 +958,14 @@ impl CadApp {
                     match export_step(&self.model) {
                         Ok(content) => match std::fs::write(&path, &content) {
                             Ok(()) => {
-                                self.gui.status_message =
-                                    format!("Exported STEP → {}", path.display());
+                                self.log_info(format!("Exported STEP → {}", path.display()));
                             }
                             Err(e) => {
-                                self.gui.status_message = format!("Write error: {e}");
+                                self.log_error(format!("Write error: {e}"));
                             }
                         },
                         Err(e) => {
-                            self.gui.status_message = format!("STEP export error: {e}");
+                            self.log_error(format!("STEP export error: {e}"));
                         }
                     }
                 }
@@ -969,15 +973,14 @@ impl CadApp {
                     match export_iges(&self.model) {
                         Ok(content) => match std::fs::write(&path, &content) {
                             Ok(()) => {
-                                self.gui.status_message =
-                                    format!("Exported IGES → {}", path.display());
+                                self.log_info(format!("Exported IGES → {}", path.display()));
                             }
                             Err(e) => {
-                                self.gui.status_message = format!("Write error: {e}");
+                                self.log_error(format!("Write error: {e}"));
                             }
                         },
                         Err(e) => {
-                            self.gui.status_message = format!("IGES export error: {e}");
+                            self.log_error(format!("IGES export error: {e}"));
                         }
                     }
                 }
@@ -988,16 +991,15 @@ impl CadApp {
                                 let path_str = path.to_str().unwrap_or("");
                                 match write_dxf(path_str, &content) {
                                     Ok(()) => {
-                                        self.gui.status_message =
-                                            format!("Exported DXF → {}", path.display());
+                                        self.log_info(format!("Exported DXF → {}", path.display()));
                                     }
                                     Err(e) => {
-                                        self.gui.status_message = format!("Write error: {e}");
+                                        self.log_error(format!("Write error: {e}"));
                                     }
                                 }
                             }
                             Err(e) => {
-                                self.gui.status_message = format!("DXF export error: {e}");
+                                self.log_error(format!("DXF export error: {e}"));
                             }
                         }
                     } else {
@@ -1011,16 +1013,15 @@ impl CadApp {
                                 let path_str = path.to_str().unwrap_or("");
                                 match write_ply(path_str, &content) {
                                     Ok(()) => {
-                                        self.gui.status_message =
-                                            format!("Exported PLY → {}", path.display());
+                                        self.log_info(format!("Exported PLY → {}", path.display()));
                                     }
                                     Err(e) => {
-                                        self.gui.status_message = format!("Write error: {e}");
+                                        self.log_error(format!("Write error: {e}"));
                                     }
                                 }
                             }
                             Err(e) => {
-                                self.gui.status_message = format!("PLY export error: {e}");
+                                self.log_error(format!("PLY export error: {e}"));
                             }
                         }
                     } else {
@@ -1034,16 +1035,15 @@ impl CadApp {
                                 let path_str = path.to_str().unwrap_or("");
                                 match write_3mf(path_str, &content) {
                                     Ok(()) => {
-                                        self.gui.status_message =
-                                            format!("Exported 3MF → {}", path.display());
+                                        self.log_info(format!("Exported 3MF → {}", path.display()));
                                     }
                                     Err(e) => {
-                                        self.gui.status_message = format!("Write error: {e}");
+                                        self.log_error(format!("Write error: {e}"));
                                     }
                                 }
                             }
                             Err(e) => {
-                                self.gui.status_message = format!("3MF export error: {e}");
+                                self.log_error(format!("3MF export error: {e}"));
                             }
                         }
                     } else {
@@ -1056,16 +1056,15 @@ impl CadApp {
                             let path_str = path.to_str().unwrap_or("");
                             match write_brep(path_str, &content) {
                                 Ok(()) => {
-                                    self.gui.status_message =
-                                        format!("Exported BREP → {}", path.display());
+                                    self.log_info(format!("Exported BREP → {}", path.display()));
                                 }
                                 Err(e) => {
-                                    self.gui.status_message = format!("Write error: {e}");
+                                    self.log_error(format!("Write error: {e}"));
                                 }
                             }
                         }
                         Err(e) => {
-                            self.gui.status_message = format!("BREP export error: {e}");
+                            self.log_error(format!("BREP export error: {e}"));
                         }
                     }
                 }
@@ -1108,16 +1107,15 @@ impl CadApp {
                             Ok(r) => {
                                 let mesh = tessellate_solid(&self.model, r.solid);
                                 self.current_solid = Some(r.solid);
-                                self.gui.status_message =
-                                    format!("Mirrored across {plane:?} plane");
+                                self.log_info(format!("Mirrored across {plane:?} plane"));
                                 self.set_mesh(mesh);
                             }
                             Err(e) => {
-                                self.gui.status_message = format!("Mirror error: {e}");
+                                self.log_error(format!("Mirror error: {e}"));
                             }
                         }
                     } else {
-                        self.gui.status_message = "No solid to mirror".into();
+                        self.log_warning("No solid to mirror");
                     }
                 }
 
@@ -1127,11 +1125,11 @@ impl CadApp {
                             Ok(r) => {
                                 let mesh = tessellate_solid(&self.model, r.solid);
                                 self.current_solid = Some(r.solid);
-                                self.gui.status_message = format!("Scaled by {factor:.2}×");
+                                self.log_info(format!("Scaled by {factor:.2}×"));
                                 self.set_mesh(mesh);
                             }
                             Err(e) => {
-                                self.gui.status_message = format!("Scale error: {e}");
+                                self.log_error(format!("Scale error: {e}"));
                             }
                         }
                     } else {
@@ -1166,12 +1164,11 @@ impl CadApp {
                             Ok(r) => {
                                 let mesh = tessellate_solid(&self.model, r.solid);
                                 self.current_solid = Some(r.solid);
-                                self.gui.status_message =
-                                    format!("Shell: thickness={thickness:.2}");
+                                self.log_info(format!("Shell: thickness={thickness:.2}"));
                                 self.set_mesh(mesh);
                             }
                             Err(e) => {
-                                self.gui.status_message = format!("Shell error: {e}");
+                                self.log_error(format!("Shell error: {e}"));
                             }
                         }
                     } else {
@@ -1188,12 +1185,11 @@ impl CadApp {
                                 Ok(r) => {
                                     let mesh = tessellate_solid(&self.model, r.solid);
                                     self.current_solid = Some(r.solid);
-                                    self.gui.status_message =
-                                        format!("Fillet: r={radius:.2} (1 edge)");
+                                    self.log_info(format!("Fillet: r={radius:.2} (1 edge)"));
                                     self.set_mesh(mesh);
                                 }
                                 Err(e) => {
-                                    self.gui.status_message = format!("Fillet error: {e}");
+                                    self.log_error(format!("Fillet error: {e}"));
                                 }
                             }
                         } else {
@@ -1212,12 +1208,11 @@ impl CadApp {
                                 Ok(r) => {
                                     let mesh = tessellate_solid(&self.model, r.solid);
                                     self.current_solid = Some(r.solid);
-                                    self.gui.status_message =
-                                        format!("Chamfer: d={distance:.2} (1 edge)");
+                                    self.log_info(format!("Chamfer: d={distance:.2} (1 edge)"));
                                     self.set_mesh(mesh);
                                 }
                                 Err(e) => {
-                                    self.gui.status_message = format!("Chamfer error: {e}");
+                                    self.log_error(format!("Chamfer error: {e}"));
                                 }
                             }
                         } else {
@@ -1245,15 +1240,15 @@ impl CadApp {
                                 if let Some(&last) = r.solids.last() {
                                     let mesh = tessellate_solid(&self.model, last);
                                     self.current_solid = Some(last);
-                                    self.gui.status_message = format!(
+                                    self.log_info(format!(
                                         "Linear pattern: {count}× along {:?}, spacing={spacing:.1}",
                                         ["X", "Y", "Z"][axis.min(2) as usize]
-                                    );
+                                    ));
                                     self.set_mesh(mesh);
                                 }
                             }
                             Err(e) => {
-                                self.gui.status_message = format!("Pattern error: {e}");
+                                self.log_error(format!("Pattern error: {e}"));
                             }
                         }
                     } else {
@@ -1267,8 +1262,7 @@ impl CadApp {
                         let new_mesh = cadkernel_io::smooth_mesh(mesh, iterations, factor);
                         let count = new_mesh.vertices.len();
                         self.set_mesh(new_mesh);
-                        self.gui.status_message =
-                            format!("Smoothed: {iterations} iters, factor={factor:.2} ({count} verts)");
+                        self.log_info(format!("Smoothed: {iterations} iters, factor={factor:.2} ({count} verts)"));
                     } else {
                         self.gui.status_message = "No mesh to smooth".into();
                     }
@@ -1277,7 +1271,7 @@ impl CadApp {
                     if let Some(mesh) = &self.current_mesh {
                         let new_mesh = cadkernel_io::harmonize_normals(mesh);
                         self.set_mesh(new_mesh);
-                        self.gui.status_message = "Normals harmonized".into();
+                        self.log_info("Normals harmonized");
                     } else {
                         self.gui.status_message = "No mesh".into();
                     }
@@ -1285,11 +1279,11 @@ impl CadApp {
                 GuiAction::MeshCheckWatertight => {
                     if let Some(mesh) = &self.current_mesh {
                         let is_wt = cadkernel_io::check_mesh_watertight(mesh);
-                        self.gui.status_message = if is_wt {
-                            "Mesh is watertight".into()
+                        if is_wt {
+                            self.log_info("Mesh is watertight");
                         } else {
-                            "Mesh is NOT watertight (has boundary edges)".into()
-                        };
+                            self.log_warning("Mesh is NOT watertight (has boundary edges)");
+                        }
                     } else {
                         self.gui.status_message = "No mesh".into();
                     }
@@ -1300,11 +1294,10 @@ impl CadApp {
                             Ok(new_mesh) => {
                                 let count = new_mesh.indices.len();
                                 self.set_mesh(new_mesh);
-                                self.gui.status_message =
-                                    format!("Remeshed: {count} triangles (edge≤{target_edge_len:.2})");
+                                self.log_info(format!("Remeshed: {count} triangles (edge≤{target_edge_len:.2})"));
                             }
                             Err(e) => {
-                                self.gui.status_message = format!("Remesh error: {e}");
+                                self.log_error(format!("Remesh error: {e}"));
                             }
                         }
                     } else {
@@ -1325,7 +1318,7 @@ impl CadApp {
                             }
                         );
                         self.set_mesh(repaired);
-                        self.gui.status_message = msg;
+                        self.log_info(msg);
                     } else {
                         self.gui.status_message = "No mesh to repair".into();
                     }
@@ -1335,16 +1328,16 @@ impl CadApp {
                 GuiAction::MeasureSolid => {
                     if let Some(mesh) = &self.current_mesh {
                         let props = compute_mass_properties(mesh);
-                        self.gui.status_message = format!(
+                        self.log_info(format!(
                             "Volume={:.3}, Area={:.3}, Center=({:.2},{:.2},{:.2})",
                             props.volume,
                             props.surface_area,
                             props.centroid.x,
                             props.centroid.y,
                             props.centroid.z,
-                        );
+                        ));
                     } else {
-                        self.gui.status_message = "No mesh to measure".into();
+                        self.log_warning("No mesh to measure");
                     }
                 }
                 GuiAction::CheckGeometry => {
@@ -1622,7 +1615,7 @@ impl CadApp {
             .to_lowercase();
 
         if ext != "stl" && ext != "obj" && ext != "cadk" {
-            self.gui.status_message = format!("Unsupported format: .{ext}");
+            self.log_error(format!("Unsupported format: .{ext}"));
             return;
         }
 
@@ -1651,21 +1644,20 @@ impl CadApp {
                     }
                     if !combined.indices.is_empty() {
                         self.gui.current_file = Some(path.display().to_string());
-                        self.gui.status_message = format!(
+                        self.log_info(format!(
                             "Loaded {} ({} solids, {} triangles)",
                             path.display(),
                             solid_count,
                             combined.triangle_count()
-                        );
+                        ));
                         self.set_mesh(combined);
                     } else {
                         self.gui.current_file = Some(path.display().to_string());
-                        self.gui.status_message =
-                            format!("Loaded {} (empty model)", path.display());
+                        self.log_info(format!("Loaded {} (empty model)", path.display()));
                     }
                 }
                 Err(e) => {
-                    self.gui.status_message = format!("Failed to load: {e}");
+                    self.log_error(format!("Failed to load: {e}"));
                 }
             }
             return;
@@ -1699,22 +1691,22 @@ impl CadApp {
                     self.model = BRepModel::new();
                     self.current_solid = None;
                     self.gui.current_file = Some(path.display().to_string());
-                    self.gui.status_message = format!(
+                    self.log_info(format!(
                         "Loaded {} ({} vertices, {} triangles)",
                         path.display(),
                         mesh.vertices.len(),
                         mesh.triangle_count()
-                    );
+                    ));
                     self.set_mesh(mesh);
                     true
                 }
                 Ok(Err(e)) => {
-                    self.gui.status_message = format!("Failed to load: {e}");
+                    self.log_error(format!("Failed to load: {e}"));
                     true
                 }
                 Err(mpsc::TryRecvError::Empty) => false,
                 Err(mpsc::TryRecvError::Disconnected) => {
-                    self.gui.status_message = "Load thread crashed".into();
+                    self.log_error("Load thread crashed");
                     true
                 }
             }
@@ -1739,17 +1731,17 @@ impl CadApp {
             match cadkernel_io::save_project(&self.model, path_str) {
                 Ok(()) => {
                     self.gui.current_file = Some(path.display().to_string());
-                    self.gui.status_message = format!("Saved → {}", path.display());
+                    self.log_info(format!("Saved → {}", path.display()));
                 }
                 Err(e) => {
-                    self.gui.status_message = format!("Save error: {e}");
+                    self.log_error(format!("Save error: {e}"));
                 }
             }
             return;
         }
 
         let Some(mesh) = &self.current_mesh else {
-            self.gui.status_message = "No mesh to export".into();
+            self.log_warning("No mesh to export");
             return;
         };
 
@@ -1761,11 +1753,11 @@ impl CadApp {
 
         match result {
             Ok(()) => {
-                self.gui.status_message = format!("Exported → {}", path.display());
+                self.log_info(format!("Exported → {}", path.display()));
             }
             Err(e) => {
                 let e: Box<dyn std::error::Error> = e;
-                self.gui.status_message = format!("Export error: {e}");
+                self.log_error(format!("Export error: {e}"));
             }
         }
     }

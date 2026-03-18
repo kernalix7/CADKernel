@@ -141,7 +141,11 @@ Tessellation (`tessellate_solid`, `tessellate_face`, `tessellate_solid_parallel`
 
 Native desktop GUI application (egui 0.31 + wgpu 24.x + winit 0.30).
 
-**Modules**: `app.rs` (state + event loop), `render.rs` (GPU + camera + math), `gui.rs` (UI panels + ViewCube), `nav.rs` (mouse navigation presets).
+**Modules**: `app.rs` (state + event loop), `render.rs` (GPU + camera + math), `gui/` (12-file module directory), `nav.rs` (mouse navigation presets).
+
+**GUI Module** (`gui/`): `mod.rs` (GuiState, GuiAction enum, draw_ui entry), `menu.rs` (File/Edit/Create/View/Tools/Help menu bar), `toolbar.rs` (common + 9 workbench toolbars), `tree.rs` (hierarchical B-Rep model tree), `properties.rs` (per-entity attribute panel), `status_bar.rs` (coordinates, FPS, mesh stats), `report.rs` (color-coded Info/Warning/Error log panel), `dialogs.rs` (11 creation dialogs + boolean + part ops), `sketch_ui.rs` (sketch overlay + grid label), `overlays.rs` (axes indicator + TechDraw overlay), `view_cube.rs` (truncated cube navigation), `context_menu.rs` (solid + viewport right-click menus).
+
+**Report System**: `log_info()`/`log_warning()`/`log_error()` helper methods on `CadApp`. All file I/O, primitive creation, boolean, part operations, mesh operations, and analysis handlers log to the report panel via `gui.log(ReportLevel, msg)`. Status bar shows the latest message, report panel preserves full history.
 
 **Camera**: Orbit (yaw/pitch/distance) + in-plane roll. View matrix applies roll rotation when non-zero. Screen-right/up methods are roll-aware. Roll snaps to nearest 90° on view transitions with direction-aware midpoint resolution (at 45°, snaps toward previous roll position via `prev_roll` tracking). Top/Bottom views preserve current yaw (only pitch changes). All roll angles normalized to (−π, π] via `wrap_angle()` — `snap_roll_90` normalizes inputs, `RollDelta` normalizes after each press, `ScreenOrbit` saves `prev_roll` after animation snap (not before).
 
@@ -238,6 +242,18 @@ DOF analysis (`analyze_dof()`) with per-constraint/joint DOF counting, iterative
 
 ### Phase V10: FEM Workbench Expansion
 6 new material presets (`FemMaterial::titanium/copper/concrete/cast_iron/custom`, `ThermalMaterial` with steel/aluminum/copper). 8 new FEM types (`ThermalMaterial`, `ThermalBoundaryCondition`, `ThermalResult`, `BeamSection`, `ModalResult`, `MeshQuality`, `PrincipalStresses`, `StrainResult`, `StressTensor`). 4 structural boundary conditions (Displacement, Gravity, DistributedLoad, Spring) + 4 thermal boundary conditions (FixedTemperature, HeatFlux, HeatGeneration, Convection). 3 new analysis functions: `modal_analysis()` (eigenfrequency via inverse power iteration), `thermal_analysis()` (steady-state heat conduction, Gauss-Seidel), `mesh_quality()` (aspect ratio, volume, degenerate detection). 3 new mesh functions: `refine_tet_mesh()` (1→8 subdivision), `extract_surface_mesh()` (boundary faces), `merge_coincident_nodes()` (tolerance-based dedup). 5 post-processing functions: `compute_stress_tensor()`, `compute_strain_tensor()`, `principal_stresses()` (Cardano eigenvalue), `safety_factor()`, `strain_energy()`, `compute_reactions()`.
+
+### Phase V11: Viewer UI Expansion
+File menu with 6 Import/Export formats (STEP, IGES, DXF, PLY, 3MF, BREP). Boolean dialogs, Part operations toolbar (Mirror/Scale/Shell/Fillet/Chamfer/Pattern), Mesh toolbar (Smooth, Harmonize, Watertight, Remesh, Repair), Analysis (Measure Solid, Check Geometry). ~20 new GuiAction variants.
+
+### Phase V13: Performance & Validation
+BVH-accelerated boolean broad-phase (O(n log n) face-pair overlap), 11 new benchmarks (25 total): primitives (cone, torus), features (mirror, scale, fillet), validation (check_geometry, check_watertight), stress (tessellate_sphere_64x32, tessellate_torus_64x32, boolean_intersection).
+
+### Phase V12: Python Bindings
+PyO3-based `cadkernel` Python module in `crates/python/` (standalone build, excluded from workspace). 6 classes (Model, SolidHandle, Mesh, MassProperties, GeometryCheck, Sketch), 10 primitive creators, 4 feature ops, 3 boolean ops, tessellation/analysis, 10 I/O functions, sketch system with 7 constraint types.
+
+### FreeCAD-Level UI Overhaul
+`gui.rs` (3605 lines) refactored into `gui/` module directory (12 files). Hierarchical model tree, property editor, full menu system, enhanced status bar, report panel with color-coded logging, solid/viewport context menus, 9 workbench toolbars (Part, PartDesign, Sketcher, Mesh, TechDraw, Assembly, Draft, Surface, FEM). Report logging added to 40+ action handlers.
 
 **Current status**: 739 tests, 0 clippy warnings, 0 fmt diff.
 

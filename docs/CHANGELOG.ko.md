@@ -388,6 +388,34 @@
 - `cadkernel-viewer`: ~20개 신규 `GuiAction` 변형 + 전체 `process_actions()` 핸들러
 - `cadkernel-viewer`: 미사용 스텁 제거 (BooleanUnion/Subtract/Intersect, TrimDemo)
 
+#### Phase V13: 성능 & 검증 (2026-03-19)
+- `cadkernel-modeling`: BVH 가속 불리언 broad-phase — O(n²) → O(n log n) 면 쌍 중첩 감지
+- `cadkernel-modeling`: 11개 신규 Criterion 벤치마크 (총 25개) — cone, torus, mirror, scale, fillet, check_geometry, check_watertight, tessellate_sphere_64x32, tessellate_torus_64x32, boolean_intersection
+
+#### Phase V12: Python 바인딩 (2026-03-18)
+- `cadkernel-python`: PyO3 기반 신규 크레이트, `cadkernel` Python 모듈 (독립 빌드, workspace에서 제외)
+- `cadkernel-python`: 6개 Python 클래스 — `Model`, `SolidHandle`, `Mesh`, `MassProperties`, `GeometryCheck`, `Sketch`
+- `cadkernel-python`: 10개 프리미티브 생성 함수 (box, cylinder, sphere, cone, torus, tube, prism, wedge, ellipsoid, helix)
+- `cadkernel-python`: 피처 연산 — `extrude_profile`, `revolve_profile`, `mirror`, `scale`
+- `cadkernel-python`: 불리언 연산 — `boolean_union`, `boolean_subtract`, `boolean_intersect`
+- `cadkernel-python`: 테셀레이션 & 분석 — `tessellate`, `mass_properties`, `geometry_check`
+- `cadkernel-python`: I/O — `export_stl`, `export_obj`, `export_gltf`, `export_step`, `export_iges`, `import_stl`, `import_obj`, `save_project`, `load_project`
+- `cadkernel-python`: 스케치 시스템 — 점, 선, 원, 7개 제약조건 타입, 솔버
+
+#### FreeCAD 수준 UI 대개편 (2026-03-18)
+- `cadkernel-viewer`: `gui.rs` (3605줄) → `gui/` 모듈 디렉토리로 리팩토링 (12개 파일)
+  - `mod.rs`, `menu.rs`, `toolbar.rs`, `tree.rs`, `properties.rs`, `status_bar.rs`, `report.rs`, `dialogs.rs`, `sketch_ui.rs`, `overlays.rs`, `view_cube.rs`, `context_menu.rs`
+- `cadkernel-viewer`: 계층형 모델 트리 — Solid→Shell→Face 구조, 생성 이력, 엔티티 선택
+- `cadkernel-viewer`: 속성 편집기 — 엔티티별 속성 (Solid/Shell/Face/Edge/Vertex), 질량 속성
+- `cadkernel-viewer`: 완전한 메뉴 시스템 — File/Edit/Create/View/Tools/Help, Import/Export 서브메뉴
+- `cadkernel-viewer`: 향상된 상태바 — 마우스 좌표, FPS, 메쉬 정보, 디스플레이 모드
+- `cadkernel-viewer`: 리포트 패널 — 색상 코드별 로그 (Info/Warning/Error), 자동 스크롤, Clear 버튼
+- `cadkernel-viewer`: 컨텍스트 메뉴 — Solid (Select/Delete/Measure/Export), Viewport (Views/Display/Select)
+- `cadkernel-viewer`: 툴바 개선 — 툴팁, 그룹 라벨, 구분선
+- `cadkernel-viewer`: 3개 신규 Workbench 툴바 (Draft, Surface, FEM)
+- `cadkernel-viewer`: `gui.log()` 리포트 로깅 40+ 액션 핸들러 (파일 I/O, 프리미티브, 불리언, Part 연산, Mesh 연산, 분석)
+- `cadkernel-viewer`: 뷰포트 우클릭 컨텍스트 메뉴 연결 (Fit All, Reset Camera, Standard Views, Display Mode, Select/Deselect)
+
 #### Phase B: 트림 서피스 & 정밀 B-Rep
 - `cadkernel-modeling`: 5개 프리미티브 지오메트리 바인딩 — Box (6 Plane + 12 LineSegment), Cylinder (2 Plane + Cylinder 서피스 + LineSegment), Sphere (Sphere 서피스 + LineSegment), Cone/Frustum (Plane 캡 + Cone 서피스 + LineSegment), Torus (Torus 서피스 + LineSegment)
 - `cadkernel-modeling`: `EdgeCache` 강화 — `Handle<EdgeData>` 저장, `all_edges()` 메서드, `bind_edge_line_segments()` 공용 헬퍼

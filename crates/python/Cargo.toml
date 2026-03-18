@@ -1,0 +1,23 @@
+[package]
+name = "cadkernel-python"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.85"
+license = "Apache-2.0"
+authors = ["Kim DaeHyun <kernalix7@kodenet.io>"]
+repository = "https://github.com/kernalix7/CADKernel"
+description = "Python bindings for CADKernel via PyO3"
+
+[lib]
+name = "cadkernel_python"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.23", features = ["extension-module"] }
+cadkernel-core = { path = "../core" }
+cadkernel-math = { path = "../math" }
+cadkernel-geometry = { path = "../geometry" }
+cadkernel-topology = { path = "../topology" }
+cadkernel-modeling = { path = "../modeling" }
+cadkernel-sketch = { path = "../sketch" }
+cadkernel-io = { path = "../io" }

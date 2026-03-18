@@ -1,8 +1,10 @@
 use criterion::{Criterion, criterion_group, criterion_main};
 
-use cadkernel_math::Point3;
+use cadkernel_math::{Point3, Vec3};
 use cadkernel_modeling::{
-    BooleanOp, boolean_op, compute_mass_properties, extrude, make_box, make_cylinder, make_sphere,
+    BooleanOp, boolean_op, check_geometry, check_watertight, compute_mass_properties, extrude,
+    fillet_edge, make_box, make_cone, make_cylinder, make_sphere, make_torus, mirror_solid,
+    scale_solid,
 };
 use cadkernel_topology::BRepModel;
 
@@ -152,7 +154,6 @@ fn bench_boolean_difference(c: &mut Criterion) {
 // ---------------------------------------------------------------------------
 
 fn bench_extrude_square(c: &mut Criterion) {
-    use cadkernel_math::Vec3;
     c.bench_function("extrude (square profile)", |b| {
         b.iter(|| {
             let mut m = BRepModel::new();
@@ -163,6 +164,117 @@ fn bench_extrude_square(c: &mut Criterion) {
                 Point3::new(0.0, 10.0, 0.0),
             ];
             extrude(&mut m, &profile, Vec3::new(0.0, 0.0, 1.0), 10.0).ok();
+        });
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Advanced primitives
+// ---------------------------------------------------------------------------
+
+fn bench_make_cone(c: &mut Criterion) {
+    c.bench_function("make_cone (64 seg)", |b| {
+        b.iter(|| {
+            let mut m = BRepModel::new();
+            make_cone(&mut m, Point3::ORIGIN, 5.0, 2.0, 10.0, 64).unwrap();
+        });
+    });
+}
+
+fn bench_make_torus(c: &mut Criterion) {
+    c.bench_function("make_torus (64x32)", |b| {
+        b.iter(|| {
+            let mut m = BRepModel::new();
+            make_torus(&mut m, Point3::ORIGIN, 10.0, 3.0, 64, 32).unwrap();
+        });
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Feature operations
+// ---------------------------------------------------------------------------
+
+fn bench_mirror_solid(c: &mut Criterion) {
+    c.bench_function("mirror_solid (box)", |b| {
+        b.iter(|| {
+            let mut m = BRepModel::new();
+            let r = make_box(&mut m, Point3::ORIGIN, 10.0, 10.0, 10.0).unwrap();
+            mirror_solid(&mut m, r.solid, Point3::ORIGIN, Vec3::X).ok();
+        });
+    });
+}
+
+fn bench_scale_solid(c: &mut Criterion) {
+    c.bench_function("scale_solid (box)", |b| {
+        b.iter(|| {
+            let mut m = BRepModel::new();
+            let r = make_box(&mut m, Point3::ORIGIN, 10.0, 10.0, 10.0).unwrap();
+            scale_solid(&mut m, r.solid, Point3::ORIGIN, 2.0).ok();
+        });
+    });
+}
+
+fn bench_fillet_edge(c: &mut Criterion) {
+    c.bench_function("fillet_edge (box)", |b| {
+        b.iter(|| {
+            let mut m = BRepModel::new();
+            let r = make_box(&mut m, Point3::ORIGIN, 10.0, 10.0, 10.0).unwrap();
+            let verts: Vec<_> = m.vertices.iter().map(|(h, _)| h).collect();
+            if verts.len() >= 2 {
+                fillet_edge(&mut m, r.solid, verts[0], verts[1], 1.0).ok();
+            }
+        });
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Validation
+// ---------------------------------------------------------------------------
+
+fn bench_check_geometry(c: &mut Criterion) {
+    let mut m = BRepModel::new();
+    let r = make_box(&mut m, Point3::ORIGIN, 10.0, 10.0, 10.0).unwrap();
+    c.bench_function("check_geometry (box)", |b| {
+        b.iter(|| check_geometry(&m, r.solid));
+    });
+}
+
+fn bench_check_watertight(c: &mut Criterion) {
+    let mut m = BRepModel::new();
+    let r = make_box(&mut m, Point3::ORIGIN, 10.0, 10.0, 10.0).unwrap();
+    c.bench_function("check_watertight (box)", |b| {
+        b.iter(|| check_watertight(&m, r.solid));
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Stress tests
+// ---------------------------------------------------------------------------
+
+fn bench_tessellate_sphere_64x32(c: &mut Criterion) {
+    let mut m = BRepModel::new();
+    let r = make_sphere(&mut m, Point3::ORIGIN, 5.0, 64, 32).unwrap();
+    c.bench_function("tessellate_sphere (64x32)", |b| {
+        b.iter(|| cadkernel_io::tessellate_solid(&m, r.solid));
+    });
+}
+
+fn bench_tessellate_torus_64x32(c: &mut Criterion) {
+    let mut m = BRepModel::new();
+    let r = make_torus(&mut m, Point3::ORIGIN, 10.0, 3.0, 64, 32).unwrap();
+    c.bench_function("tessellate_torus (64x32)", |b| {
+        b.iter(|| cadkernel_io::tessellate_solid(&m, r.solid));
+    });
+}
+
+fn bench_boolean_intersection(c: &mut Criterion) {
+    c.bench_function("boolean_intersection (box∩box)", |b| {
+        b.iter(|| {
+            let mut ma = BRepModel::new();
+            let a = make_box(&mut ma, Point3::ORIGIN, 10.0, 10.0, 10.0).unwrap();
+            let mut mb = BRepModel::new();
+            let b_res = make_box(&mut mb, Point3::new(5.0, 5.0, 5.0), 10.0, 10.0, 10.0).unwrap();
+            boolean_op(&ma, a.solid, &mb, b_res.solid, BooleanOp::Intersection).ok();
         });
     });
 }
@@ -183,5 +295,15 @@ criterion_group!(
     bench_boolean_union,
     bench_boolean_difference,
     bench_extrude_square,
+    bench_make_cone,
+    bench_make_torus,
+    bench_mirror_solid,
+    bench_scale_solid,
+    bench_fillet_edge,
+    bench_check_geometry,
+    bench_check_watertight,
+    bench_tessellate_sphere_64x32,
+    bench_tessellate_torus_64x32,
+    bench_boolean_intersection,
 );
 criterion_main!(benches);

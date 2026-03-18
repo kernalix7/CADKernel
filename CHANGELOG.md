@@ -409,6 +409,34 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - `cadkernel-viewer`: ~20 new `GuiAction` variants with full `process_actions()` handlers
 - `cadkernel-viewer`: Removed unused stubs (BooleanUnion/Subtract/Intersect, TrimDemo)
 
+#### Phase V13: Performance & Validation (2026-03-19)
+- `cadkernel-modeling`: BVH-accelerated boolean broad-phase — O(n²) → O(n log n) face-pair overlap detection
+- `cadkernel-modeling`: 11 new Criterion benchmarks (25 total) — cone, torus, mirror, scale, fillet, check_geometry, check_watertight, tessellate_sphere_64x32, tessellate_torus_64x32, boolean_intersection
+
+#### Phase V12: Python Bindings (2026-03-18)
+- `cadkernel-python`: New PyO3 crate with `cadkernel` Python module (standalone build, excluded from workspace)
+- `cadkernel-python`: 6 Python classes — `Model`, `SolidHandle`, `Mesh`, `MassProperties`, `GeometryCheck`, `Sketch`
+- `cadkernel-python`: 10 primitive creation functions (box, cylinder, sphere, cone, torus, tube, prism, wedge, ellipsoid, helix)
+- `cadkernel-python`: Feature operations — `extrude_profile`, `revolve_profile`, `mirror`, `scale`
+- `cadkernel-python`: Boolean operations — `boolean_union`, `boolean_subtract`, `boolean_intersect`
+- `cadkernel-python`: Tessellation & analysis — `tessellate`, `mass_properties`, `geometry_check`
+- `cadkernel-python`: I/O — `export_stl`, `export_obj`, `export_gltf`, `export_step`, `export_iges`, `import_stl`, `import_obj`, `save_project`, `load_project`
+- `cadkernel-python`: Sketch system — points, lines, circles, 7 constraint types, solver
+
+#### FreeCAD-Level UI Overhaul (2026-03-18)
+- `cadkernel-viewer`: `gui.rs` (3605 lines) refactored into `gui/` module directory (12 files)
+  - `mod.rs`, `menu.rs`, `toolbar.rs`, `tree.rs`, `properties.rs`, `status_bar.rs`, `report.rs`, `dialogs.rs`, `sketch_ui.rs`, `overlays.rs`, `view_cube.rs`, `context_menu.rs`
+- `cadkernel-viewer`: Hierarchical model tree — Solid→Shell→Face with construction history and entity selection
+- `cadkernel-viewer`: Property editor — per-entity attributes (Solid/Shell/Face/Edge/Vertex), mass properties
+- `cadkernel-viewer`: Full menu system — File/Edit/Create/View/Tools/Help with Import/Export submenus
+- `cadkernel-viewer`: Enhanced status bar — mouse coordinates, FPS, mesh info, display mode
+- `cadkernel-viewer`: Report panel — color-coded log (Info/Warning/Error), auto-scroll, Clear button
+- `cadkernel-viewer`: Context menus — Solid (Select/Delete/Measure/Export), Viewport (Views/Display/Select)
+- `cadkernel-viewer`: Toolbar improvements — tooltips, group labels, separators
+- `cadkernel-viewer`: 3 new workbench toolbars (Draft, Surface, FEM)
+- `cadkernel-viewer`: `gui.log()` report logging for 40+ action handlers (file I/O, primitives, boolean, part ops, mesh ops, analysis)
+- `cadkernel-viewer`: Viewport right-click context menu connected (Fit All, Reset Camera, Standard Views, Display Mode, Select/Deselect)
+
 #### Phase C: STEP I/O (Full Implementation)
 - `cadkernel-io`: Full STEP tokenizer — ISO 10303-21 lexer with proper sign-digit validation
 - `cadkernel-io`: STEP parser — entity resolution, nested parameter parsing

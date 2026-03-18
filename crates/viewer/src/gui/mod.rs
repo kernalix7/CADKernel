@@ -118,7 +118,6 @@ pub(crate) enum SelectedEntity {
 // ---------------------------------------------------------------------------
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[allow(dead_code)]
 pub(crate) enum ReportLevel {
     Info,
     Warning,
@@ -524,4 +523,14 @@ pub(crate) fn draw_ui(
     if vp.show_grid {
         sketch_ui::draw_grid_scale_label(ctx, vp.grid_config);
     }
+
+    // Viewport right-click context menu (transparent CentralPanel overlay)
+    egui::CentralPanel::default()
+        .frame(egui::Frame::NONE)
+        .show(ctx, |ui| {
+            let resp = ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::click());
+            resp.context_menu(|ui| {
+                context_menu::viewport_context_menu(ui, gui);
+            });
+        });
 }

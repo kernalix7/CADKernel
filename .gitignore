@@ -9,7 +9,6 @@
 # OS / Editor
 .DS_Store
 Thumbs.db
-.vscode/
 .idea/
 
 # Logs
@@ -23,3 +22,11 @@ Thumbs.db
 *.profraw
 *.profdata
 coverage/
+
+# AI config (실제 파일은 .priv-storage/, 루트는 심볼릭 링크)
+.priv-storage/
+CLAUDE.md
+.cursorrules
+.claude
+.vscode
+WORK_STATUS.md
