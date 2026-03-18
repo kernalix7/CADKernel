@@ -20,7 +20,7 @@ pub enum Orientation {
 /// A topological face bounded by one outer loop and zero or more inner loops (holes).
 ///
 /// When `geometry-binding` is enabled (default), the face can carry the
-/// underlying surface and an orientation flag.
+/// underlying surface, orientation flag, and UV trim boundaries.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct FaceData {
     /// The outer boundary loop.
@@ -36,6 +36,14 @@ pub struct FaceData {
     pub surface: Option<Arc<dyn Surface + Send + Sync>>,
     /// Whether the face normal agrees with the surface normal.
     pub orientation: Orientation,
+    /// Outer trim loop in UV parameter space (not serialized).
+    #[cfg(feature = "geometry-binding")]
+    #[serde(skip)]
+    pub outer_trim: Option<cadkernel_geometry::ParametricWire2D>,
+    /// Inner trim loops (holes) in UV parameter space (not serialized).
+    #[cfg(feature = "geometry-binding")]
+    #[serde(skip)]
+    pub inner_trims: Vec<cadkernel_geometry::ParametricWire2D>,
 }
 
 impl std::fmt::Debug for FaceData {
@@ -46,7 +54,9 @@ impl std::fmt::Debug for FaceData {
             .field("shell", &self.shell)
             .field("tag", &self.tag);
         #[cfg(feature = "geometry-binding")]
-        s.field("has_surface", &self.surface.is_some());
+        s.field("has_surface", &self.surface.is_some())
+            .field("has_outer_trim", &self.outer_trim.is_some())
+            .field("inner_trims_count", &self.inner_trims.len());
         s.field("orientation", &self.orientation).finish()
     }
 }
@@ -62,6 +72,10 @@ impl FaceData {
             #[cfg(feature = "geometry-binding")]
             surface: None,
             orientation: Orientation::Forward,
+            #[cfg(feature = "geometry-binding")]
+            outer_trim: None,
+            #[cfg(feature = "geometry-binding")]
+            inner_trims: Vec::new(),
         }
     }
 }

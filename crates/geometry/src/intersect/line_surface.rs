@@ -122,7 +122,7 @@ mod tests {
 
     #[test]
     fn test_line_sphere_two_hits() {
-        let sphere = Sphere::new(Point3::ORIGIN, 1.0);
+        let sphere = Sphere::new(Point3::ORIGIN, 1.0).unwrap();
         let hits = intersect_line_sphere(Point3::new(-2.0, 0.0, 0.0), Vec3::X, &sphere);
         assert_eq!(hits.len(), 2);
         assert!((hits[0].point.x - (-1.0)).abs() < EPSILON);
@@ -131,7 +131,7 @@ mod tests {
 
     #[test]
     fn test_line_sphere_miss() {
-        let sphere = Sphere::new(Point3::ORIGIN, 1.0);
+        let sphere = Sphere::new(Point3::ORIGIN, 1.0).unwrap();
         let hits = intersect_line_sphere(Point3::new(0.0, 5.0, 0.0), Vec3::X, &sphere);
         assert!(hits.is_empty());
     }

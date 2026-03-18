@@ -576,9 +576,11 @@ version = "0.1.0"
 dependencies = [
  "bytemuck",
  "cadkernel-core",
+ "cadkernel-geometry",
  "cadkernel-io",
  "cadkernel-math",
  "cadkernel-modeling",
+ "cadkernel-sketch",
  "cadkernel-topology",
  "egui",
  "egui-wgpu",

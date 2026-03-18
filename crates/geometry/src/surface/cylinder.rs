@@ -50,7 +50,7 @@ impl Cylinder {
 
 fn arbitrary_perpendicular(n: Vec3) -> Vec3 {
     let candidate = if n.x.abs() < 0.9 { Vec3::X } else { Vec3::Y };
-    n.cross(candidate).normalized().unwrap()
+    n.cross(candidate).normalized().unwrap_or(Vec3::X)
 }
 
 impl Surface for Cylinder {

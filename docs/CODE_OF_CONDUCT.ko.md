@@ -1,6 +1,6 @@
 # Contributor Covenant 행동 강령
 
-[English](CODE_OF_CONDUCT.md) | **한국어**
+[English](../CODE_OF_CONDUCT.md) | **한국어**
 
 ## 우리의 약속
 

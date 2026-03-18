@@ -10,6 +10,8 @@ pub struct SvgStyle {
     pub stroke: String,
     pub stroke_width: f64,
     pub fill: String,
+    /// Optional SVG `stroke-dasharray` attribute (e.g. `"4,2"` for dashed lines).
+    pub stroke_dasharray: Option<String>,
 }
 
 impl SvgStyle {
@@ -19,6 +21,7 @@ impl SvgStyle {
             stroke: "black".into(),
             stroke_width: 1.0,
             fill: "none".into(),
+            stroke_dasharray: None,
         }
     }
 }
@@ -47,6 +50,16 @@ pub enum SvgElement {
     },
     Polyline {
         points: Vec<(f64, f64)>,
+        style: SvgStyle,
+    },
+    /// SVG `<text>` element.
+    Text {
+        x: f64,
+        y: f64,
+        text: String,
+        font_size: f64,
+        /// `text-anchor`: `"start"`, `"middle"`, or `"end"`.
+        anchor: String,
         style: SvgStyle,
     },
 }
@@ -80,6 +93,21 @@ impl SvgDocument {
     }
 }
 
+fn xml_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&apos;")
+}
+
+fn write_dasharray(f: &mut fmt::Formatter<'_>, style: &SvgStyle) -> fmt::Result {
+    if let Some(ref da) = style.stroke_dasharray {
+        write!(f, r#" stroke-dasharray="{da}""#)?;
+    }
+    Ok(())
+}
+
 impl fmt::Display for SvgDocument {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
@@ -97,28 +125,54 @@ impl fmt::Display for SvgDocument {
                     y2,
                     style,
                 } => {
-                    writeln!(
+                    write!(
                         f,
-                        r#"  <line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="{}" stroke-width="{}" fill="{}"/>"#,
-                        style.stroke, style.stroke_width, style.fill
+                        r#"  <line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="{}" stroke-width="{}" fill="{}""#,
+                        xml_escape(&style.stroke),
+                        style.stroke_width,
+                        xml_escape(&style.fill)
                     )?;
+                    write_dasharray(f, style)?;
+                    writeln!(f, "/>")?;
                 }
                 SvgElement::Circle { cx, cy, r, style } => {
-                    writeln!(
+                    write!(
                         f,
-                        r#"  <circle cx="{cx}" cy="{cy}" r="{r}" stroke="{}" stroke-width="{}" fill="{}"/>"#,
-                        style.stroke, style.stroke_width, style.fill
+                        r#"  <circle cx="{cx}" cy="{cy}" r="{r}" stroke="{}" stroke-width="{}" fill="{}""#,
+                        xml_escape(&style.stroke),
+                        style.stroke_width,
+                        xml_escape(&style.fill)
                     )?;
+                    write_dasharray(f, style)?;
+                    writeln!(f, "/>")?;
                 }
                 SvgElement::Polyline { points, style } => {
                     let pts: Vec<String> = points.iter().map(|(x, y)| format!("{x},{y}")).collect();
+                    write!(
+                        f,
+                        r#"  <polyline points="{}" stroke="{}" stroke-width="{}" fill="{}""#,
+                        pts.join(" "),
+                        xml_escape(&style.stroke),
+                        style.stroke_width,
+                        xml_escape(&style.fill)
+                    )?;
+                    write_dasharray(f, style)?;
+                    writeln!(f, "/>")?;
+                }
+                SvgElement::Text {
+                    x,
+                    y,
+                    text,
+                    font_size,
+                    anchor,
+                    style,
+                } => {
                     writeln!(
                         f,
-                        r#"  <polyline points="{}" stroke="{}" stroke-width="{}" fill="{}"/>"#,
-                        pts.join(" "),
-                        style.stroke,
-                        style.stroke_width,
-                        style.fill
+                        r#"  <text x="{x}" y="{y}" font-size="{font_size}" text-anchor="{}" fill="{}">{}</text>"#,
+                        xml_escape(anchor),
+                        xml_escape(&style.fill),
+                        xml_escape(text),
                     )?;
                 }
             }

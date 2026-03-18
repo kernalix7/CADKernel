@@ -59,8 +59,8 @@ mod tests {
 
     #[test]
     fn test_unit_spheres_offset() {
-        let a = Sphere::new(Point3::ORIGIN, 1.0);
-        let b = Sphere::new(Point3::new(1.0, 0.0, 0.0), 1.0);
+        let a = Sphere::new(Point3::ORIGIN, 1.0).unwrap();
+        let b = Sphere::new(Point3::new(1.0, 0.0, 0.0), 1.0).unwrap();
         match intersect_sphere_sphere(&a, &b) {
             SsiResult::Circle { center, radius, .. } => {
                 assert!((center.x - 0.5).abs() < EPSILON);
@@ -72,8 +72,8 @@ mod tests {
 
     #[test]
     fn test_tangent_spheres() {
-        let a = Sphere::new(Point3::ORIGIN, 1.0);
-        let b = Sphere::new(Point3::new(2.0, 0.0, 0.0), 1.0);
+        let a = Sphere::new(Point3::ORIGIN, 1.0).unwrap();
+        let b = Sphere::new(Point3::new(2.0, 0.0, 0.0), 1.0).unwrap();
         assert!(matches!(
             intersect_sphere_sphere(&a, &b),
             SsiResult::Point(_)
@@ -82,8 +82,8 @@ mod tests {
 
     #[test]
     fn test_no_intersection() {
-        let a = Sphere::new(Point3::ORIGIN, 1.0);
-        let b = Sphere::new(Point3::new(5.0, 0.0, 0.0), 1.0);
+        let a = Sphere::new(Point3::ORIGIN, 1.0).unwrap();
+        let b = Sphere::new(Point3::new(5.0, 0.0, 0.0), 1.0).unwrap();
         assert!(matches!(intersect_sphere_sphere(&a, &b), SsiResult::Empty));
     }
 }

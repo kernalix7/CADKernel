@@ -329,9 +329,13 @@ impl BRepModel {
 
     /// Collects half-edge handles by walking the `next` chain from `start`.
     pub fn loop_half_edges(&self, start: Handle<HalfEdgeData>) -> Vec<Handle<HalfEdgeData>> {
+        const MAX_LOOP: usize = 100_000;
         let mut result = vec![start];
         let mut current = start;
         loop {
+            if result.len() >= MAX_LOOP {
+                break;
+            }
             let Some(he) = self.half_edges.get(current) else {
                 break;
             };
@@ -555,7 +559,12 @@ impl BRepModel {
             }
             let v = vert_set.len() as i64;
             let e = edge_set.len() as i64;
-            let _euler = v - e + f;
+            let euler = v - e + f;
+            if euler != 2 {
+                return Err(KernelError::ValidationFailed(format!(
+                    "Euler characteristic V-E+F = {euler} (expected 2, V={v} E={e} F={f})"
+                )));
+            }
         }
 
         // -- Check 4: Dangling reference detection --
@@ -909,6 +918,92 @@ impl BRepModel {
                 }
             }
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Geometry binding
+    // -----------------------------------------------------------------------
+
+    /// Binds a 3D curve to an edge, storing the parametric domain `[t_start, t_end]`.
+    ///
+    /// Requires the `geometry-binding` feature (enabled by default).
+    #[cfg(feature = "geometry-binding")]
+    pub fn bind_edge_curve(
+        &mut self,
+        edge: Handle<EdgeData>,
+        curve: std::sync::Arc<dyn cadkernel_geometry::Curve + Send + Sync>,
+        domain: (f64, f64),
+    ) {
+        if let Some(ed) = self.edges.get_mut(edge) {
+            ed.curve = Some(curve);
+            ed.curve_domain = Some(domain);
+        }
+    }
+
+    /// Binds a surface to a face with the given orientation.
+    ///
+    /// Requires the `geometry-binding` feature (enabled by default).
+    #[cfg(feature = "geometry-binding")]
+    pub fn bind_face_surface(
+        &mut self,
+        face: Handle<FaceData>,
+        surface: std::sync::Arc<dyn cadkernel_geometry::Surface + Send + Sync>,
+        orientation: Orientation,
+    ) {
+        if let Some(fd) = self.faces.get_mut(face) {
+            fd.surface = Some(surface);
+            fd.orientation = orientation;
+        }
+    }
+
+    /// Binds UV trim loops to a face.
+    ///
+    /// Requires the `geometry-binding` feature (enabled by default).
+    #[cfg(feature = "geometry-binding")]
+    pub fn bind_face_trim(
+        &mut self,
+        face: Handle<FaceData>,
+        outer: cadkernel_geometry::ParametricWire2D,
+        inners: Vec<cadkernel_geometry::ParametricWire2D>,
+    ) {
+        if let Some(fd) = self.faces.get_mut(face) {
+            fd.outer_trim = Some(outer);
+            fd.inner_trims = inners;
+        }
+    }
+
+    /// Returns `true` if the face has a bound surface geometry.
+    #[cfg(feature = "geometry-binding")]
+    pub fn face_has_surface(&self, face: Handle<FaceData>) -> bool {
+        self.faces
+            .get(face)
+            .is_some_and(|fd| fd.surface.is_some())
+    }
+
+    /// Binds a UV pcurve to an edge for a given side (left or right).
+    ///
+    /// `left = true` sets `pcurve_left`, `left = false` sets `pcurve_right`.
+    /// Requires the `geometry-binding` feature (enabled by default).
+    #[cfg(feature = "geometry-binding")]
+    pub fn bind_edge_pcurve(
+        &mut self,
+        edge: Handle<EdgeData>,
+        pcurve: std::sync::Arc<dyn cadkernel_geometry::curve::curve2d::Curve2D>,
+        left: bool,
+    ) {
+        if let Some(ed) = self.edges.get_mut(edge) {
+            if left {
+                ed.pcurve_left = Some(pcurve);
+            } else {
+                ed.pcurve_right = Some(pcurve);
+            }
+        }
+    }
+
+    /// Returns `true` if the edge has a bound curve geometry.
+    #[cfg(feature = "geometry-binding")]
+    pub fn edge_has_curve(&self, edge: Handle<EdgeData>) -> bool {
+        self.edges.get(edge).is_some_and(|ed| ed.curve.is_some())
     }
 
     fn collect_orientation_issues(&self, issues: &mut Vec<ValidationIssue>) {

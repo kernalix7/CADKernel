@@ -8,7 +8,7 @@ use crate::handle::Handle;
 #[serde(bound(serialize = "T: Serialize", deserialize = "T: Deserialize<'de>"))]
 struct Entry<T> {
     value: Option<T>,
-    generation: u32,
+    generation: u64,
 }
 
 /// An arena-style store that allocates entities and returns [`Handle`]s.

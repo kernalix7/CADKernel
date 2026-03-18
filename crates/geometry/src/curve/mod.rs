@@ -1,8 +1,15 @@
 pub mod arc;
+pub mod blend;
+pub mod bspline_basis;
 pub mod circle;
+pub mod curve2d;
 pub mod ellipse;
 pub mod line;
 pub mod nurbs;
+pub mod nurbs_fitting;
+pub mod offset_curve;
+pub mod to_nurbs;
+pub mod trimmed;
 
 use cadkernel_math::{BoundingBox, Point3, Vec3};
 

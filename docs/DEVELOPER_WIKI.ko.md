@@ -1,7 +1,7 @@
 # CADKernel Developer Wiki
 
 > **버전**: 0.1.0 (pre-alpha)  
-> **최종 업데이트**: 2026-02-26  
+> **최종 업데이트**: 2026-03-16  
 > **대상 독자**: CADKernel 커널 개발자, 기여자
 
 ---
@@ -29,6 +29,7 @@
 - [8. 빌드 및 CI](#8-빌드-및-ci)
 - [9. 다음 단계 (Phase 5+)](#9-다음-단계-phase-5)
 - [10. 용어 사전](#10-용어-사전)
+- [12. 정확한 불리언 연산 (Phase B06-B14)](#12-정확한-불리언-연산-phase-b06-b14)
 
 ---
 
@@ -343,7 +344,33 @@ let a  = sketch.add_arc(center, start, end);
 let c  = sketch.add_circle(center, radius_pt);
 ```
 
-#### 14가지 제약 조건
+#### 엔티티 타입 (9개)
+
+Point, Line, Arc, Circle, Ellipse, BSpline, EllipticalArc, HyperbolicArc, ParabolicArc
+
+#### 기하 헬퍼
+
+`add_polyline`, `add_regular_polygon`, `add_arc_3pt`, `add_circle_3pt`, `add_ellipse_3pt`, `add_centered_rectangle`, `add_rounded_rectangle`, `add_arc_slot`
+
+#### 스케치 편집 도구 (`tools.rs`)
+
+| 함수 | 설명 |
+|------|------|
+| `fillet_sketch_corner` | 코너 필렛 (호 삽입) |
+| `chamfer_sketch_corner` | 코너 챔퍼 (직선 삽입) |
+| `trim_edge` | 교차점에서 엣지 트리밍 |
+| `split_edge` | 지정 점에서 엣지 분할 |
+| `extend_edge` | 엣지를 대상까지 연장 |
+
+#### 스케치 유효성 검증 (`validate.rs`)
+
+`validate_sketch` — 7가지 이슈 타입 (열린 프로파일, 중복 점, 길이 0 엣지 등)
+
+#### 보조선 기하
+
+`toggle_construction_mode`, `mark_construction_point`, `mark_construction_line`
+
+#### 24가지 제약 조건
 
 | 제약 | 파라미터 |
 |------|----------|
@@ -363,6 +390,14 @@ let c  = sketch.add_circle(center, radius_pt);
 | `Radius(circle, radius)` | 원 반지름 |
 | `Tangent(line, circle)` | 선-원 접선 |
 | `MidPoint(point, l)` | 선의 중점 |
+| `Collinear(l1, l2)` | 동일 직선 위 |
+| `EqualRadius(c1, c2)` | 동일 반지름 |
+| `Concentric(c1, c2)` | 동심원 |
+| `Diameter(p, c, d)` | 지름 |
+| `Block(p, x, y)` | 위치 잠금 |
+| `HorizontalDistance(p1, p2, d)` | 수평 거리 |
+| `VerticalDistance(p1, p2, d)` | 수직 거리 |
+| `PointOnObject(p, l)` | 객체 위 점 |
 
 #### 솔버
 
@@ -393,13 +428,131 @@ let profile_3d: Vec<Point3> = extract_profile(&sketch, &wp);
 | `make_box(dx, dy, dz)` | `KernelResult<BoxResult>` | 8 vertices, 6 faces |
 | `make_cylinder(radius, height, segments)` | `KernelResult<CylinderResult>` | N-gon 상하면 + N 측면 |
 | `make_sphere(radius, segments, rings)` | `KernelResult<SphereResult>` | UV 구면 |
+| `make_spiral(center, r, growth, turns, tube_r)` | `KernelResult<SpiralResult>` | 아르키메데스 나선 |
+| `make_polygon(center, r, sides, height)` | `KernelResult<PolygonResult>` | 정다각형 프리즘 |
+| `make_plane_face(origin, w, h)` | `KernelResult<PlaneFaceResult>` | 평면 직사각형 |
+| `make_involute_gear(module, teeth, angle, width)` | `KernelResult<GearResult>` | 인볼류트 기어 |
 
 #### Feature Operations
 
 | 함수 | 파라미터 | 반환 |
 |------|----------|------|
-| `extrude(&mut model, &profile, direction, distance)` | 3D 점 배열 + 방향 + 거리 | `KernelResult<ExtrudeResult>` |
-| `revolve(&mut model, &profile, axis_origin, axis_dir, angle, segments)` | 3D 점 배열 + 회전축 | `KernelResult<RevolveResult>` |
+| `extrude`, `revolve`, `pad`, `pocket`, `groove` | 프로파일 + 방향/축 | `KernelResult<*Result>` |
+| `fillet_edge`, `chamfer_edge`, `draft_faces` | 엣지/면 + 파라미터 | `KernelResult<*Result>` |
+| `sweep`, `loft`, `mirror_solid`, `scale_solid` | 프로파일/솔리드 + 경로/인수 | `KernelResult<*Result>` |
+| `shell_solid`, `split_solid`, `section_solid` | 솔리드 + 파라미터 | `KernelResult<*Result>` |
+| `offset_solid`, `thickness_solid` | 솔리드 + 거리/두께 | `KernelResult<*Result>` |
+| `linear_pattern`, `circular_pattern` | 솔리드 + 방향/축 + 개수 | `KernelResult<PatternResult>` |
+| `hole`, `countersunk_hole` | 솔리드 + 위치/방향/반지름 | `KernelResult<HoleResult>` |
+
+#### 추가적/감산적 연산 (20개, `additive.rs`)
+
+| 추가적 | 감산적 | 설명 |
+|--------|--------|------|
+| `additive_box` | `subtractive_box` | 박스 |
+| `additive_cylinder` | `subtractive_cylinder` | 실린더 |
+| `additive_sphere` | `subtractive_sphere` | 구 |
+| `additive_cone` | `subtractive_cone` | 원뿔 |
+| `additive_torus` | `subtractive_torus` | 토러스 |
+| `additive_helix` | `subtractive_helix` | 나선 |
+| `additive_ellipsoid` | `subtractive_ellipsoid` | 타원체 |
+| `additive_prism` | `subtractive_prism` | 프리즘 |
+| `additive_wedge` | `subtractive_wedge` | 웨지 |
+| — | `subtractive_loft` | 감산적 로프트 |
+| — | `subtractive_pipe` | 감산적 파이프 |
+
+#### 어셈블리
+
+| 구조체/함수 | 설명 |
+|------------|------|
+| `Assembly` | 컴포넌트 트리 + 구속조건 시스템 |
+| `Component` | 솔리드 + 배치 변환 (Mat4) + 가시성 |
+| `AssemblyConstraint` | Fixed, Coincident, Concentric, Distance, Angle |
+| `JointType` | 13개 조인트 (RackAndPinion, ScrewJoint, BeltJoint 포함) |
+| `check_interference()` | 바운딩박스 기반 간섭 검출 |
+| `analyze_dof()` | 구속조건/조인트별 자유도(DOF) 분석 |
+| `solve()` | 반복 구속조건 솔버 (거리 구속 지원) |
+| `rotation()` | 배치 변환 헬퍼 |
+
+#### Draft 연산 (37개, `draft_ops.rs`)
+
+| 함수 | 설명 |
+|------|------|
+| `make_wire()` | 3D 폴리라인 와이어 |
+| `make_bspline_wire()` | B-spline 와이어 |
+| `clone_solid()` | 솔리드 깊은 복사 |
+| `rectangular_array()` | 2D 그리드 패턴 |
+| `path_array()` | 경로를 따른 복사 |
+| `make_fillet_wire()` | 필렛 와이어 |
+| `make_circle_wire()` | 원형 와이어 |
+| `make_arc_wire()` | 호 와이어 |
+| `make_ellipse_wire()` | 타원 와이어 |
+| `make_rectangle_wire()` | 직사각형 와이어 |
+| `make_polygon_wire()` | 다각형 와이어 |
+| `make_bezier_wire()` | 베지어 와이어 |
+| `make_arc_3pt_wire()` | 3점 호 와이어 |
+| `make_chamfer_wire()` | 챔퍼 와이어 |
+| `make_point()` | 점 생성 |
+| `offset_wire()` | 와이어 오프셋 |
+| `join_wires()` | 와이어 결합 |
+| `split_wire()` | 와이어 분할 |
+| `upgrade_wire()` | 와이어 업그레이드 |
+| `downgrade_solid()` | 솔리드 다운그레이드 |
+| `wire_to_bspline()` | 와이어→B-spline 변환 |
+| `bspline_to_wire()` | B-spline→와이어 변환 |
+| `stretch_wire()` | 와이어 늘이기 |
+| `move_solid()` | 솔리드 이동 |
+| `rotate_solid()` | 솔리드 회전 |
+| `scale_solid_draft()` | 솔리드 스케일 (Draft) |
+| `mirror_solid_draft()` | 솔리드 미러 (Draft) |
+| `polar_array()` | 극좌표 배열 |
+| `point_array()` | 점 배열 |
+| `make_draft_dimension()` | Draft 치수 생성 |
+| `make_label()` | 라벨 생성 |
+| `make_dimension_text()` | 치수 텍스트 생성 |
+| `snap_to_endpoint()` | 끝점 스냅 |
+| `snap_to_midpoint()` | 중점 스냅 |
+| `snap_to_nearest()` | 최근접점 스냅 |
+| `wire_length()` | 와이어 길이 |
+| `wire_area()` | 와이어 면적 |
+
+신규 타입: `DraftDimension`, `DraftLabel`, `SnapResult`, `WireResult`, `BSplineWireResult`, `ArrayResult`, `CloneResult`
+
+#### Surface 연산
+
+| 함수 | 설명 |
+|------|------|
+| `ruled_surface()` | 두 곡선 사이 선형 보간 서피스 |
+| `surface_from_curves()` | 프로파일 곡선 네트워크 서피스 |
+| `extend_surface()` | 법선 방향 서피스 확장 |
+| `pipe_surface()` | 경로를 따른 관형 솔리드 |
+| `filling()` | N면 경계 패치 |
+| `sections()` | 프로파일을 통한 서피스 스키닝 |
+| `curve_on_mesh()` | 메시 위에 폴리라인 투영 |
+
+#### 결합 연산 (`join.rs`)
+
+| 함수 | 설명 |
+|------|------|
+| `connect_shapes()` | 형상 연결 |
+| `embed_shapes()` | 형상 임베딩 |
+| `cutout_shapes()` | 형상 커트아웃 |
+
+#### 컴파운드 연산 (`compound_ops.rs`)
+
+| 함수 | 설명 |
+|------|------|
+| `boolean_fragments()` | 불리언 프래그먼트 |
+| `slice_to_compound()` | 슬라이스 → 컴파운드 |
+| `compound_filter()` | 컴파운드 필터 |
+| `explode_compound()` | 컴파운드 분해 |
+
+#### 형상 연산 (`face_from_wires.rs`)
+
+| 함수 | 설명 |
+|------|------|
+| `face_from_wires()` | 와이어로부터 면 생성 |
+| `points_from_shape()` | 형상에서 점 추출 |
 
 > 모든 함수는 Persistent Naming 태그를 자동 생성합니다.
 
@@ -418,26 +571,45 @@ let result_model = boolean_op(&model_a, solid_a, &model_b, solid_b, BooleanOp::U
 
 **역할**: B-Rep 모델의 메시 테셀레이션 및 파일 내보내기.
 
-#### 테셀레이션
+#### 테셀레이션 & 내보내기
 
-```rust
-let mesh = tessellate_solid(&model, solid_handle);
-let mesh = tessellate_face(&model, face_handle);
-// Mesh { vertices: Vec<Point3>, triangles: Vec<Triangle> }
-```
+테셀레이션 (`tessellate_solid`, `tessellate_face`), 내보내기 (`write_stl_ascii`, `write_stl_binary`, `write_obj`, `export_*`), TechDraw (`project_solid`, `three_view_drawing`, `section_view`, `detail_view`, `drawing_to_svg`, 6개 기본 치수 타입 + 10개 고급 주석: ArcLengthDimension, ExtentDimension, ChamferDimension, WeldSymbol, BalloonAnnotation, Centerline, BoltCircleCenterlines, CosmeticLine, BreakLine).
 
-#### 내보내기
+#### 메시 연산 (29개)
 
-```rust
-// STL
-let ascii = write_stl_ascii(&mesh, "name");
-let binary: Vec<u8> = write_stl_binary(&mesh);
-export_stl_ascii(&mesh, "output.stl", "name")?;  // 파일로 직접
+| 함수 | 설명 |
+|------|------|
+| `decimate_mesh()` | 엣지 붕괴 메시 간소화 |
+| `fill_holes()` | 경계 루프 감지 + 팬 삼각화 |
+| `compute_curvature()` | 코탄젠트 가중 평균 곡률 |
+| `subdivide_mesh()` | 중점 분할 (1→4 삼각형) |
+| `flip_normals()` | 와인딩 반전 + 법선 부정 |
+| `smooth_mesh()` | 라플라시안 스무딩 |
+| `mesh_boolean_union()` | 메시 불리언 합집합 |
+| `mesh_boolean_intersection()` | AABB 필터링 메시 불리언 교집합 |
+| `mesh_boolean_difference()` | AABB 필터링 메시 불리언 차집합 |
+| `cut_mesh_with_plane()` | 평면 클리핑 |
+| `mesh_section_from_plane()` | 단면 윤곽선 추출 |
+| `mesh_cross_sections()` | 축 방향 다중 병렬 단면 |
+| `split_mesh_by_components()` | 컴포넌트 분리 |
+| `harmonize_normals()` | BFS 와인딩 전파 |
+| `check_mesh_watertight()` | 수밀성 검사 |
+| `regular_solid()` | 5개 정다면체 (정사면체~정이십면체) |
+| `face_info()` | 면별 면적, 법선, 무게중심 |
+| `bounding_box_info()` | 메시 AABB (중심, 크기, 대각선) |
+| `curvature_plot()` | 곡률→RGB 색상 매핑 |
+| `add_triangle()` | 단일 삼각형 추가 |
+| `unwrap_mesh()` | 주축 투영 UV 언래핑 |
+| `unwrap_face()` | 단일 면 UV 좌표 계산 |
+| `remove_components_by_size()` | 소규모 컴포넌트 제거 |
+| `remove_component()` | 특정 컴포넌트 제거 |
+| `trim_mesh()` | 바운딩 박스 기반 메시 트리밍 |
+| `segment_mesh()` | 법선 기반 영역 성장 세그먼테이션 |
+| `remesh()` | 적응형 엣지 길이 리파인먼트 |
+| `evaluate_and_repair()` | 퇴화 제거 + 정점 병합 + 법선 조화 |
+| `scale_mesh()` | 축별 메시 스케일링 |
 
-// OBJ
-let obj = write_obj(&mesh);
-export_obj(&mesh, "output.obj")?;
-```
+내보내기 타입: `FaceInfo`, `MeshBoundingBox`, `MeshRepairReport`, `MeshSegment`, `RegularSolidType`, `UnwrapResult`, `UvCoord`
 
 ### 3.8 cadkernel-viewer
 
@@ -489,7 +661,7 @@ export_obj(&mesh, "output.obj")?;
 
 | 항목 | 상태 | 내용 |
 |------|:----:|------|
-| 2D Sketch system | ✅ | Point, Line, Arc, Circle + 14 constraints |
+| 2D Sketch system | ✅ | Point, Line, Arc, Circle + 19 constraints |
 | Newton-Raphson solver | ✅ | Armijo backtracking, nalgebra 기반 |
 | Extrude operation | ✅ | Profile → Solid (auto-tagging) |
 | Revolve operation | ✅ | Profile → Solid (N-segment rotation) |
@@ -516,6 +688,74 @@ export_obj(&mesh, "output.obj")?;
 | Topology validation | ✅ | twin 대칭, 루프 순환, 오일러 특성 검사 |
 | Wire entity | ✅ | 독립 반변 체인, Naming 시스템 연동 |
 | Prelude 모듈 | ✅ | 모든 크레이트 + 루트에 통합 재수출 |
+
+### Phase 5–9: Application (GUI + Workbenches)
+
+egui+wgpu 뷰어, 8개 디스플레이 모드, ViewCube, Part/PartDesign/Sketcher 워크벤치, 인터랙티브 2D 스케치 편집, 피처 구현 (mirror, scale, sweep, loft, shell, pattern).
+
+### Phase 10: TechDraw 워크벤치
+
+직교 투영 (7개 표준 뷰), 은선 제거 (HLR), 3면도, 치수 주석 (선형/각도/반지름), SVG 내보내기, 뷰포트 오버레이.
+
+### Phase 11: NURBS 커널 강화
+
+적응형 커브/서피스 테셀레이션 (`TessellationOptions`), 커브-커브 교차 (분할 + Newton-Raphson), 2D 폴리곤/폴리라인 오프셋 (마이터 조인), 지오메트리 바인딩 헬퍼 (`bind_edge_curve`, `bind_face_surface`), io 크레이트의 NURBS 인식 테셀레이션.
+
+### Phase A: NURBS 커널 완성
+
+FreeCAD 패리티를 위한 NURBS 커널 전면 완성. 해석적 미분 (곡선: 유리 몫 법칙, 서피스: 동차 미분)으로 유한차분 대체. 완전한 knot 연산: 삽입, 정제, 제거, Bezier 분해. 곡선/서피스 피팅: 보간 (A9.1) + 최소자승 근사 (A9.7). 모든 해석적 기하 타입의 NURBS 변환 (Line, Circle, Arc, Ellipse, Plane, Cylinder, Sphere). NurbsCurve/NurbsSurface에 Newton-Raphson `project_point()` 오버라이드. UV 공간 매개변수 곡선 (Curve2D 시스템). TrimmedCurve/TrimmedSurface (트림 경계). 곡선-서피스/서피스-서피스 교차 (예측자-보정자 마칭). 볼록 껍질 속성 기반 바운딩 박스 오버라이드.
+
+**주요 추가 모듈**: `bspline_basis.rs`, `curve/to_nurbs.rs`, `curve/curve2d.rs`, `curve/trimmed.rs`, `curve/nurbs_fitting.rs`, `surface/to_nurbs.rs`, `surface/trimmed.rs`, `surface/nurbs_fitting.rs`, `intersect/curve_surface.rs`, `intersect/surface_surface.rs`.
+
+### Phase B–E: 트림 B-Rep + STEP + 고급 프리미티브
+5개 프리미티브 지오메트리 바인딩, ParametricWire2D, 트림 테셀레이션, 완전한 STEP I/O, fillet/draft/split, 5개 새 프리미티브 (tube, prism, wedge, ellipsoid, helix).
+
+### Phase F–K: Part 고급 + TechDraw + Assembly + Sketcher
+Section/offset/thickness 연산, TechDraw 단면/상세 뷰, 어셈블리 모듈 (구속조건 + 간섭 검출), 5개 새 스케치 구속조건, PartDesign 피처 (pad/pocket/groove/hole).
+
+### Phase L–O: Draft + Mesh + Surface 워크벤치
+Draft 연산 (37개 함수: 와이어 생성/조작, 솔리드 변환, 배열, 주석, 스냅, 쿼리), 메시 연산 (decimate, fill holes, curvature, subdivide, flip normals), 서피스 연산 (ruled surface, surface from curves, extend, pipe surface).
+
+### Phase N–P: FEM + IGES
+FEM 모듈 (TetMesh 생성, Gauss-Seidel 정적 해석, von Mises 응력, 모달 해석, 열 해석, 메시 품질), 6개 재료 프리셋 (강철, 알루미늄, 티타늄, 구리, 콘크리트, 주철), 열 재료, 8개 경계조건 타입 (구조 4개 + 열 4개), 후처리 (응력/변형률 텐서, 주응력, 안전 계수, 변형 에너지, 반력), 메시 유틸리티 (리파인, 표면 추출, 노드 병합). IGES I/O (80열 고정 포맷, Point/Line/Arc/NURBS 엔터티).
+
+### Phase Q–S: 성능 최적화 + 지오메트리 확장 + 모델링 확장
+BVH 공간 인덱스, 병렬 테셀레이션, 등매개변수 곡선, 서피스 곡률, 오프셋/회전/돌출 서피스, 블렌드 곡선, 서피스 연속성 분석, 나선, 다각형, 평면 면, Boolean XOR, Compound, 기하/수밀 검사, multi_transform, Body, 인볼류트 기어.
+
+### Phase T–U: 스케처 확장 + 파일 포맷 + 메시 연산
+5개 새 구속 타입 (Diameter, Block, HorizontalDistance, VerticalDistance, PointOnObject), Ellipse/BSpline 엔티티, polyline/polygon/arc_3pt 헬퍼. DXF/PLY/3MF/BREP I/O, 7개 메시 연산 (smooth, boolean, cut, section, split, harmonize, watertight check), TechDraw 치수.
+
+### Phase V1: 스케처 완성
+3개 원뿔 곡선 호 엔티티 (EllipticalArc, HyperbolicArc, ParabolicArc), `tools.rs`에 5개 스케치 편집 도구 (fillet/chamfer corner, trim/split/extend edge), `validate.rs` 스케치 유효성 검증 모듈 (7가지 이슈 타입), 보조선 기하 지원, 5개 기하 헬퍼 (circle_3pt, ellipse_3pt, centered_rectangle, rounded_rectangle, arc_slot).
+
+### Phase V2: PartDesign 완성
+`additive.rs`에 8개 새 추가적/감산적 프리미티브 쌍 (helix, ellipsoid, prism, wedge), 2개 새 감산적 연산 (loft, pipe). 총 추가적/감산적 연산 10개 → 20개로 확장.
+
+### Phase V3: Part 워크벤치 완성
+`join.rs`에 결합 연산 (connect_shapes, embed_shapes, cutout_shapes), `compound_ops.rs`에 컴파운드 연산 (boolean_fragments, slice_to_compound, compound_filter, explode_compound), `face_from_wires.rs`에 형상 연산 (face_from_wires, points_from_shape).
+
+### Phase V4: TechDraw 확장
+10개 신규 주석 타입: ArcLengthDimension, ExtentDimension, ChamferDimension, WeldSymbol (6개 용접 타입), BalloonAnnotation, Centerline, BoltCircleCenterlines, CosmeticLine (4개 스타일), BreakLine. 모든 타입에 SVG 렌더링.
+
+### Phase V5: 어셈블리 솔버
+DOF 분석 (`analyze_dof()`) 구속조건/조인트별 자유도 카운팅, 반복 구속조건 솔버 (`solve()`) 거리 구속 지원, 3개 신규 조인트 (RackAndPinion, ScrewJoint, BeltJoint, 총 13개), `rotation()` 배치 헬퍼.
+
+### Phase V6: Surface 워크벤치 완성
+`filling()` (N면 경계 패치), `sections()` (프로파일 스키닝), `curve_on_mesh()` (메시 위 폴리라인 투영).
+
+### Phase V8: 메시 완성
+`mesh_ops.rs`에 17개 신규 메시 연산: `mesh_boolean_intersection`, `mesh_boolean_difference`, `regular_solid` (5개 정다면체), `face_info`, `bounding_box_info`, `curvature_plot`, `add_triangle`, `unwrap_mesh`, `unwrap_face`, `remove_components_by_size`, `remove_component`, `trim_mesh`, `mesh_cross_sections`, `segment_mesh`, `remesh`, `evaluate_and_repair`, `scale_mesh`. 신규 타입: `FaceInfo`, `MeshBoundingBox`, `MeshRepairReport`, `MeshSegment`, `RegularSolidType`, `UnwrapResult`, `UvCoord`.
+
+### Phase V9: Draft 워크벤치 완성
+`draft_ops.rs`에 37개 Draft 연산 (32개 신규 + 기존 5개). 와이어 생성 (fillet, circle, arc, ellipse, rectangle, polygon, bezier, arc_3pt, chamfer, point), 와이어 조작 (offset, join, split, upgrade, downgrade, to/from bspline, stretch), 솔리드 변환 (move, rotate, scale, mirror), 배열 패턴 (polar, point), 주석 (dimension, label, text), 스냅 (endpoint, midpoint, nearest), 쿼리 (length, area). 신규 타입: `DraftDimension`, `DraftLabel`, `SnapResult`, `WireResult`, `BSplineWireResult`, `ArrayResult`, `CloneResult`.
+
+### Phase V10: FEM 워크벤치 확장
+6개 신규 재료 프리셋 (`FemMaterial::titanium/copper/concrete/cast_iron/custom`, `ThermalMaterial` steel/aluminum/copper). 8개 신규 FEM 타입 (`ThermalMaterial`, `ThermalBoundaryCondition`, `ThermalResult`, `BeamSection`, `ModalResult`, `MeshQuality`, `PrincipalStresses`, `StrainResult`, `StressTensor`). 4개 구조 경계조건 (Displacement, Gravity, DistributedLoad, Spring) + 4개 열 경계조건 (FixedTemperature, HeatFlux, HeatGeneration, Convection). 3개 신규 해석 함수: `modal_analysis()` (역멱법 고유진동수), `thermal_analysis()` (정상 상태 열전도, Gauss-Seidel), `mesh_quality()` (종횡비, 체적, 퇴화 검출). 3개 신규 메시 함수: `refine_tet_mesh()` (1→8 분할), `extract_surface_mesh()` (경계면), `merge_coincident_nodes()` (허용 오차 중복 제거). 5개 후처리 함수: `compute_stress_tensor()`, `compute_strain_tensor()`, `principal_stresses()` (Cardano 고유값), `safety_factor()`, `strain_energy()`, `compute_reactions()`.
+
+### Phase V11: 뷰어 UI 확장
+파일 메뉴에 STEP/IGES/DXF/PLY/3MF/BREP Import/Export 추가. 불리언 연산 다이얼로그 (두 번째 박스 프리미티브로 Union/Subtract/Intersect). Part 연산 (Mirror XY/XZ/YZ, Scale, Shell, Fillet, Chamfer, Linear Pattern). Mesh 툴바 (Smooth, Harmonize Normals, Check Watertight, Remesh, Repair). 분석 도구 (Measure Solid 체적/면적/무게중심, Check Geometry 유효성). PartDesign 툴바 전체 백엔드 연결. ~20개 신규 `GuiAction` 변형 + 전체 `process_actions()` 핸들러. 미사용 스텁 제거 (BooleanUnion/Subtract/Intersect, TrimDemo).
+
+**현재 상태**: 739 tests, 0 clippy warnings, 0 fmt diff.
 
 ---
 
@@ -624,13 +864,13 @@ cargo fmt --all -- --check                                   # 포맷 검사
 | cadkernel (E2E + banner) | 4 |
 | cadkernel-core | 1 |
 | cadkernel-math | 44 |
-| cadkernel-geometry | 56 |
+| cadkernel-geometry | 138 |
 | cadkernel-topology | 29 |
-| cadkernel-modeling | 28 |
+| cadkernel-modeling | 49 |
 | cadkernel-sketch | 10 |
 | cadkernel-io | 34 |
 | Doctests | 3 |
-| **합계** | **209** |
+| **합계** | **320** |
 
 ---
 
@@ -663,40 +903,108 @@ cargo fmt --all && cargo clippy --workspace --all-targets --all-features -- -D w
 
 ---
 
-## 9. 다음 단계 (Phase 5+)
+## 9. 워크벤치 툴바 아키텍처
 
-### Phase 5: Advanced Geometry
+뷰어는 FreeCAD 스타일의 워크벤치 시스템을 사용합니다:
 
-| 항목 | 우선순위 | 설명 |
-|------|:--------:|------|
-| Fillet / Chamfer | 높음 | 모서리 라운딩/면취 |
-| Shell (offset) | 높음 | 서피스 오프셋 |
-| Mass properties | 중간 | 부피, 면적, 무게중심, 관성 모멘트 |
-| Curved tessellation | 중간 | NURBS 서피스 기반 적응형 테셀레이션 |
-| Sweep / Loft | 중간 | 경로 따라 스윕, 단면 간 로프트 |
+- **`Workbench` 열거형**: `Part`, `PartDesign`, `Sketcher`, `Mesh`, `TechDraw`, `Assembly`
+- **공통 툴바**: New, Open, Save, Undo, Redo, Fit All, Reset View
+- **워크벤치 탭바**: 활성 워크벤치 컨텍스트 전환
+- **컨텍스트 툴바**: 활성 워크벤치에 따라 변경
+  - Part: 10개 프리미티브, Boolean Union/Subtract/Intersect (두 번째 박스 다이얼로그), Mirror/Scale/Shell/Fillet/Chamfer/Linear Pattern, Measure/Check
+  - Part Design: Pad/Pocket/Revolve/Fillet/Chamfer/Draft/Shell/Mirror/Scale/Pattern/Union/Subtract
+  - Sketcher: 인터랙티브 모드 — Line, Rectangle, Circle, Arc 도구, 제약조건 (H/V/Length), Close→Extrude
+  - Mesh: STL/OBJ/glTF Import/Export, Decimate/Subdivide/Fill Holes/Flip Normals, Smooth/Harmonize Normals/Check Watertight/Remesh/Repair
+  - TechDraw: Front/Top/Right/Iso, 3-View, Export SVG, Clear
+  - Assembly: Insert Component, Fixed, Coincident, Concentric, Distance
+- **파일 메뉴**: STEP, IGES, DXF, PLY, 3MF, BREP, STL, OBJ, glTF, CADK Import/Export
+- **다이얼로그 패턴**: `GuiAction` 열거형 → `gui.actions` 벡터 → `app.rs`의 `process_actions()`
+- **불리언 다이얼로그**: 두 번째 박스 크기/오프셋용 DragValue가 있는 플로팅 `egui::Window`
 
-### Phase 6: File I/O 확장
+## 10. 지오메트리 바인딩 (Phase B05)
 
-| 항목 | 우선순위 |
-|------|:--------:|
-| STEP AP203 import/export | 높음 |
-| IGES import/export | 중간 |
-| glTF/GLB export | 중간 |
-| 3MF export | 낮음 |
-| Native `.cadk` 형식 | 중간 |
+5개 프리미티브 모두 이상적 지오메트리를 토폴로지에 바인딩:
 
-### Phase 7: Framework Layer
+| 프리미티브 | 면 서피스 | 엣지 커브 |
+|-----------|----------|----------|
+| **Box** | 6 `Plane` (면별 하나, u×v = 외향 법선) | 12 `LineSegment` |
+| **Cylinder** | 2 `Plane` (캡) + 1 공유 `Cylinder` (측면) | 3N `LineSegment` |
+| **Sphere** | 1 공유 `Sphere` (전체 면) | `LineSegment` (다각형 근사) |
+| **Cone** | `Plane` (하단) + 선택적 `Plane` (상단, 절두체) + `Cone` (측면) | `LineSegment` |
+| **Torus** | 1 공유 `Torus` (전체 면) | `LineSegment` |
 
-| 항목 | 설명 |
+핵심 인프라:
+- **`EdgeCache`**: 엣지 중복 제거용 `Handle<EdgeData>` 추적 + `all_edges()` 검색
+- **`bind_edge_line_segments()`**: 캐시된 모든 엣지에 `LineSegment` 커브 바인딩하는 공용 헬퍼
+- **`bind_face_surface(face, Arc<dyn Surface>, Orientation)`**: 면에 이상적 서피스 연결
+- **`bind_edge_curve(edge, Arc<dyn Curve>, domain)`**: 엣지에 이상적 커브 연결
+
+## 11. 트림 인프라 (Phase B01–B04)
+
+UV 매개변수 공간 트림 경계를 통한 정밀 B-Rep 면 표현.
+
+| 구성 요소 | 위치 | 설명 |
+|-----------|------|------|
+| **ParametricWire2D** | `geometry/surface/parametric_wire.rs` | 닫힌 2D 곡선 체인 (와인딩 넘버 포함 판정, 호 길이 샘플링, 폴리라인) |
+| **FaceData 트림** | `topology/face.rs` | `outer_trim: Option<ParametricWire2D>`, `inner_trims: Vec<ParametricWire2D>` |
+| **EdgeData pcurve** | `topology/edge.rs` | `pcurve_left/right: Option<Arc<dyn Curve2D>>` — 인접 면별 UV 표현 |
+| **bind_face_trim()** | `topology/lib.rs` | 면에 트림 와이어 바인딩 |
+| **bind_edge_pcurve()** | `topology/lib.rs` | 엣지 측면에 UV pcurve 바인딩 |
+| **트림 테셀레이션** | `io/tessellate.rs` | UV 중심점 필터링 — outer_trim 밖이거나 홀 내부인 삼각형 제외 |
+| **Trim Demo** | `viewer/app.rs` | Part 워크벤치 액션 — 상단면에 원형 홀 트림된 박스 |
+
+## 12. 정확한 불리언 연산 (Phase B06-B14)
+
+불리언 모듈 (`crates/modeling/src/boolean/`)에 면 분할을 통한 정확한 불리언 연산이 추가되었습니다.
+
+### 모듈 구조
+
+| 모듈 | 목적 |
 |------|------|
-| Undo/Redo | 명령 패턴 기반 히스토리 |
-| Parametric rebuild | Tag 기반 모델 재구축 엔진 |
-| Assembly | 부품 참조 + 메이트 제약 |
-| Material system | 재질 속성 + 밀도 |
+| `face_split.rs` | SSI 교차 곡선을 따른 면 분할 |
+| `trim_validate.rs` | 트림 루프 유효성 검증 (감김, 폐합, 포함) |
+| `evaluate.rs` | 면 분류 기반 불리언 연산 |
+| `broad_phase.rs` | AABB 겹침 탐지 |
+| `classify.rs` | 레이 캐스팅을 통한 면 내/외부 분류 |
+
+### 주요 함수
+
+- `boolean_op_exact()` — 면 분할 전처리를 포함한 불리언 연산
+- `split_solids_at_intersection()` — SSI 곡선을 따른 면 분할
+- `fit_ssi_to_nurbs()` — SSI 점 구름을 NURBS 곡선으로 피팅
+- `fit_ssi_to_pcurve()` — UV 파라미터를 2D pcurve로 피팅
+- `validate_trim()` — 트림 루프 일관성 검증
+- `ensure_correct_winding()` — 감김 방향 수정 (외곽=CCW, 홀=CW)
+
+### 알고리즘 파이프라인
+
+1. **광역 단계**: AABB 교차를 통해 겹치는 면 쌍 탐색
+2. **SSI 계산**: 서피스 바인딩이 있는 겹치는 쌍에 대해 마칭으로 교차 곡선 계산
+3. **평면 교차**: 서피스 바인딩 없는 면에 대해 엣지-평면 교차 계산
+4. **곡선 피팅**: SSI 점 구름을 NURBS 곡선으로 피팅 (보간 또는 근사)
+5. **면 분할**: 교차 곡선을 면 경계에 클리핑, 진입/이탈 점에서 폴리곤 분할
+6. **분류**: 분할된 하위 면을 상대 솔리드의 내/외부로 분류
+7. **조립**: 연산 유형(합/교/차)에 따라 적절한 면 선택
+
+### 지오메트리 보존
+
+`copy_face_with_geometry()`가 보존하는 항목:
+- 서피스 바인딩 (면 ↔ 파라메트릭 서피스)
+- 엣지 곡선 바인딩 (엣지 ↔ 3D 곡선)
+- 트림 루프 (외곽 + 내부 UV 경계)
+- 영구 태그
+
+## 13. 다음 단계
+
+| Phase | 초점 | 주요 항목 |
+|-------|------|-----------|
+| B06–B14 | 정밀 B-Rep | SSI를 통한 면 분할, 불리언 정밀 교차, 트림 루프 검증 |
+| C | STEP I/O | AP203/AP214 import/export |
+| D | 필렛/드래프트/분할 | 롤링볼 필렛, 면 드래프트, 솔리드 분할 |
 
 ---
 
-## 10. 용어 사전
+## 14. 용어 사전
 
 | 용어 | 설명 |
 |------|------|

@@ -11,7 +11,7 @@
 | 1.1 | 워크스페이스 빌드 | `cargo build --workspace` | 에러 0건 |
 | 1.2 | Clippy 린트 | `cargo clippy --workspace --all-targets --all-features -- -D warnings` | 경고 0건 |
 | 1.3 | 포맷 검사 | `cargo fmt --all -- --check` | 차이 0건 |
-| 1.4 | 전체 테스트 | `cargo test --workspace` | 전체 통과 (현재 209개) |
+| 1.4 | 전체 테스트 | `cargo test --workspace` | 전체 통과 (현재 230개) |
 | 1.5 | 벤치마크 컴파일 | `cargo bench --no-run -p cadkernel-modeling` | 컴파일 성공 |
 
 ---
@@ -110,30 +110,32 @@ cargo fmt --all && cargo clippy --workspace --all-targets --all-features -- -D w
 
 ## 알려진 이슈 (향후 수정 예정)
 
-### CRITICAL (치명적)
-- [ ] `arbitrary_perpendicular`에서 `.unwrap()` 사용 — 패닉 가능 (circle.rs, cylinder.rs)
-- [ ] 바이너리 STL: 삼각형 수 상한 없음 — 메모리 고갈 위험
-- [ ] STEP/IGES 공개 API에 `todo!()` 패닉
-- [ ] `point_in_solid()` 레이캐스팅 부정확한 평면 기반 테스트
-- [ ] `classify_face()` 테스트 포인트 오프셋 방향 오류
-- [ ] `compute_mass_properties` 근사 0 볼륨으로 나누기
-- [ ] EntityStore 세대 카운터 u32 오버플로 → 핸들 충돌
+### CRITICAL (치명적) — 전부 수정됨
+- [x] `arbitrary_perpendicular` `.unwrap()` — **수정**: `.unwrap_or(Vec3::X)`
+- [x] 바이너리 STL 삼각형 수 상한 — **수정**: MAX_STL_TRIANGLES = 5000만
+- [x] STEP/IGES `todo!()` — **수정**: `Err(IoError)`
+- [x] `point_in_solid()` 레이캐스팅 부정확 — **수정**: 2D 점-다각형 판별 테스트
+- [x] `classify_face()` 오프셋 방향 — **수정**
+- [x] `compute_mass_properties` 0 볼륨 — **수정**: 조기 반환 가드
+- [x] EntityStore u32 오버플로 — **수정**: u64
 
-### HIGH (높음)
-- [ ] 무한 도메인이 Plane/Line의 `bounding_box`/`project_point` 파괴
-- [ ] Sphere, Circle, Cylinder, Cone, Torus 생성자 반지름 유효성 검증 없음
-- [ ] `NurbsCurve::de_boor` 0 가중치 나누기 가능
-- [ ] `loop_half_edges()` 손상된 토폴로지에서 무한 루프 가능
-- [ ] 모든 프리미티브에서 중복 엣지 — 하프엣지 공유 파손
-- [ ] 바이너리 STL 쓰기 u32 삼각형 수 오버플로
-- [ ] ScreenOrbit Rodrigues 회전에서 `asin` NaN 가능
-- [ ] 스케치 솔버 각도 제약 `tan()` 90° 특이점
-- [ ] 스케치 제약에서 PointId/LineId 인덱스 범위 검사 없음
-- [ ] 간단 뷰어 궤도 방향이 전체 GUI와 반대 (lib.rs)
+### HIGH (높음) — 전부 수정됨
+- [x] 무한 도메인 Plane/Line — **수정**: 해석적 오버라이드 + 유한 폴백
+- [x] Sphere/Torus/Cone 반지름 검증 — **수정**: `KernelResult` + 유효성 검사
+- [x] `NurbsCurve::de_boor` 0 가중치 — **수정**: w < 1e-14 가드
+- [x] `loop_half_edges()` 무한 루프 — **수정**: MAX_LOOP = 10만
+- [x] 프리미티브 중복 엣지 — **수정**: EdgeCache 중복 제거 (하프엣지 공유)
+- [x] STL 쓰기 u32 오버플로 — **수정**: `KernelResult<Vec<u8>>`
+- [x] ScreenOrbit `asin` NaN — **수정**: clamp(-1, 1)
+- [x] 각도 제약 `tan()` 특이점 — **수정**: `atan2(cross, dot)`
+- [x] PointId 범위 검사 — **수정**: `.get()` 폴백
+- [x] 간단 뷰어 궤도 방향 — **수정**: dx/dy 부호 반전
 
-### MEDIUM (중간)
-- [ ] `nav.cube_size`, `nav.cube_opacity`, `nav.orbit_steps` 설정 미사용
-- [ ] `validate()` 오일러 특성 계산 후 미검증
-- [ ] SVG 출력 XML 엔티티 이스케이핑 없음
-- [ ] `WorkPlane::new` x_axis 직교화 없음
-- [ ] 고인접 메시에서 BFS 스무스그룹 정점당 O(n²)
+### MEDIUM (중간) — 전부 수정됨
+- [x] NavConfig 설정 미사용 — **수정**: cube_size, cube_opacity, orbit_steps 적용
+- [x] `validate()` 오일러 특성 — **수정**: V-E+F=2 검증 추가
+- [x] SVG XML 이스케이핑 — **수정**: `xml_escape()` 헬퍼
+- [x] `WorkPlane::new` 직교화 — **수정**: Gram-Schmidt
+- [x] BFS 스무스그룹 O(n²) — **수정**: 엣지 기반 로컬 인접 리스트
+
+22개 알려진 이슈 전부 해결 완료.

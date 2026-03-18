@@ -1,6 +1,11 @@
+use std::sync::Arc;
+
 use cadkernel_core::KernelResult;
-use cadkernel_math::Point3;
-use cadkernel_topology::{BRepModel, EntityKind, Handle, Tag, VertexData};
+use cadkernel_geometry::Plane;
+use cadkernel_math::{Point3, Vec3};
+use cadkernel_topology::{BRepModel, EntityKind, Handle, Orientation, Tag, VertexData};
+
+use super::{EdgeCache, bind_edge_line_segments, next_edge_tag};
 
 /// Creates a box (rectangular cuboid) as a fully connected B-Rep solid.
 ///
@@ -9,6 +14,7 @@ use cadkernel_topology::{BRepModel, EntityKind, Handle, Tag, VertexData};
 ///
 /// Produces: 8 vertices, 12 edges, 6 quad faces, 1 shell, 1 solid.
 /// All entities are tagged for persistent naming.
+/// All faces are bound to `Plane` surfaces; all edges to `LineSegment` curves.
 pub fn make_box(
     model: &mut BRepModel,
     origin: Point3,
@@ -49,6 +55,7 @@ pub fn make_box(
 
     let mut face_handles = Vec::new();
     let mut edge_idx = 0u32;
+    let mut edge_cache = EdgeCache::new();
 
     for &(face_local_idx, ref verts) in &face_defs {
         let n = verts.len();
@@ -57,10 +64,9 @@ pub fn make_box(
         for i in 0..n {
             let vs = v[verts[i]];
             let ve = v[verts[(i + 1) % n]];
-            let edge_tag = Tag::generated(EntityKind::Edge, op, edge_idx);
-            let (_, he_a, _) = model.add_edge_tagged(vs, ve, edge_tag);
-            half_edges.push(he_a);
-            edge_idx += 1;
+            let tag = next_edge_tag(op, &mut edge_idx);
+            let he = edge_cache.get_or_create(model, vs, ve, tag);
+            half_edges.push(he);
         }
 
         let loop_h = model.make_loop(&half_edges)?;
@@ -74,6 +80,22 @@ pub fn make_box(
 
     let solid_tag = Tag::generated(EntityKind::Solid, op, 0);
     let solid = model.make_solid_tagged(&[shell], solid_tag);
+
+    // --- Geometry binding ---
+    // Plane u_axis × v_axis = outward face normal
+    let face_plane_defs: [(Point3, Vec3, Vec3); 6] = [
+        (o, Vec3::X, -Vec3::Y),                       // bottom: normal -Z
+        (o + Vec3::Z * dz, Vec3::X, Vec3::Y),         // top:    normal +Z
+        (o, Vec3::X, Vec3::Z),                         // front:  normal -Y
+        (o + Vec3::Y * dy, Vec3::X, -Vec3::Z),        // back:   normal +Y
+        (o, Vec3::Y, -Vec3::Z),                        // left:   normal -X
+        (o + Vec3::X * dx, Vec3::Y, Vec3::Z),         // right:  normal +X
+    ];
+    for (face_h, &(fo, u_ax, v_ax)) in face_handles.iter().zip(face_plane_defs.iter()) {
+        let plane = Plane::new(fo, u_ax, v_ax)?;
+        model.bind_face_surface(*face_h, Arc::new(plane), Orientation::Forward);
+    }
+    bind_edge_line_segments(model, &edge_cache);
 
     Ok(BoxResult {
         vertices: v,
@@ -100,6 +122,7 @@ mod tests {
         let mut model = BRepModel::new();
         let _r = make_box(&mut model, Point3::ORIGIN, 1.0, 1.0, 1.0).unwrap();
         assert_eq!(model.vertices.len(), 8);
+        assert_eq!(model.edges.len(), 12); // 12 unique edges (shared between faces)
         assert_eq!(model.faces.len(), 6);
         assert_eq!(model.shells.len(), 1);
         assert_eq!(model.solids.len(), 1);
@@ -128,5 +151,20 @@ mod tests {
         assert!(first.point.approx_eq(Point3::new(1.0, 2.0, 3.0)));
         let last = model.vertices.get(r.vertices[7]).unwrap();
         assert!(last.point.approx_eq(Point3::new(1.0, 7.0, 9.0)));
+    }
+
+    #[test]
+    fn test_box_geometry_binding() {
+        let mut model = BRepModel::new();
+        let r = make_box(&mut model, Point3::ORIGIN, 2.0, 3.0, 4.0).unwrap();
+
+        // All 6 faces should have bound surfaces
+        for &face_h in &r.faces {
+            assert!(model.face_has_surface(face_h), "face should have surface");
+        }
+        // All 12 edges should have bound curves
+        for (edge_h, _) in model.edges.iter() {
+            assert!(model.edge_has_curve(edge_h), "edge should have curve");
+        }
     }
 }

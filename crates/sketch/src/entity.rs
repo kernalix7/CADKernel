@@ -59,6 +59,85 @@ pub struct SketchCircle {
     pub radius: f64,
 }
 
+/// Index into the sketch's ellipse storage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct EllipseId(pub usize);
+
+/// A sketch ellipse defined by center, semi-major axis endpoint, and semi-minor radius.
+#[derive(Debug, Clone, Copy)]
+pub struct SketchEllipse {
+    pub center: PointId,
+    pub major_end: PointId,
+    pub minor_radius: f64,
+}
+
+/// Index into the sketch's B-spline storage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct BSplineId(pub usize);
+
+/// A sketch B-spline curve defined by control points.
+#[derive(Debug, Clone)]
+pub struct SketchBSpline {
+    pub control_points: Vec<PointId>,
+    pub degree: usize,
+    pub closed: bool,
+}
+
+/// Index into the sketch's elliptical arc storage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct EllipticalArcId(pub usize);
+
+/// An elliptical arc defined by center, semi-major axis endpoint,
+/// semi-minor radius, and angular span.
+#[derive(Debug, Clone, Copy)]
+pub struct SketchEllipticalArc {
+    pub center: PointId,
+    pub major_end: PointId,
+    pub minor_radius: f64,
+    pub start_point: PointId,
+    pub end_point: PointId,
+    pub start_param: f64,
+    pub end_param: f64,
+}
+
+/// Index into the sketch's hyperbolic arc storage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct HyperbolicArcId(pub usize);
+
+/// A hyperbolic arc defined by center, vertex, and angular span.
+/// The hyperbola is parameterized as:
+///   x = center.x + a * cosh(t)
+///   y = center.y + b * sinh(t)
+/// where a = dist(center, vertex) along major axis.
+#[derive(Debug, Clone, Copy)]
+pub struct SketchHyperbolicArc {
+    pub center: PointId,
+    pub vertex: PointId,
+    pub semi_minor: f64,
+    pub start_point: PointId,
+    pub end_point: PointId,
+    pub start_param: f64,
+    pub end_param: f64,
+}
+
+/// Index into the sketch's parabolic arc storage.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ParabolicArcId(pub usize);
+
+/// A parabolic arc defined by vertex and focal length.
+/// Parameterized as: x = vertex.x + t², y = vertex.y + 2*f*t
+/// (rotated by the direction from vertex to focus).
+#[derive(Debug, Clone, Copy)]
+pub struct SketchParabolicArc {
+    pub vertex: PointId,
+    pub focal_length: f64,
+    pub focus_angle: f64,
+    pub start_point: PointId,
+    pub end_point: PointId,
+    pub start_param: f64,
+    pub end_param: f64,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

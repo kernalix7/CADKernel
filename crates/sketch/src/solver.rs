@@ -221,4 +221,115 @@ mod tests {
         let dy = (sketch.points[p1.0].position.y - sketch.points[p0.0].position.y).abs();
         assert!(dy < 1e-6, "dy = {dy}");
     }
+
+    #[test]
+    fn test_equal_length_constraint() {
+        let mut sketch = Sketch::new();
+        let p0 = sketch.add_point(0.0, 0.0);
+        let p1 = sketch.add_point(3.0, 0.0);
+        let p2 = sketch.add_point(0.0, 1.0);
+        let p3 = sketch.add_point(0.0, 5.0);
+        sketch.add_constraint(Constraint::Fixed(p0, 0.0, 0.0));
+        sketch.add_constraint(Constraint::Fixed(p2, 0.0, 1.0));
+        let l1 = sketch.add_line(p0, p1);
+        let l2 = sketch.add_line(p2, p3);
+        sketch.add_constraint(Constraint::Horizontal(l1));
+        sketch.add_constraint(Constraint::Vertical(l2));
+        sketch.add_constraint(Constraint::Length(l1, 4.0));
+        sketch.add_constraint(Constraint::EqualLength(l1, l2));
+
+        let result = solve(&mut sketch, 100, 1e-10);
+        assert!(result.converged);
+        let dx1 = sketch.points[p1.0].position.x - sketch.points[p0.0].position.x;
+        let dy2 = sketch.points[p3.0].position.y - sketch.points[p2.0].position.y;
+        assert!((dx1.abs() - 4.0).abs() < 1e-6);
+        assert!((dy2.abs() - 4.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_midpoint_constraint() {
+        let mut sketch = Sketch::new();
+        let p0 = sketch.add_point(0.0, 0.0);
+        let p1 = sketch.add_point(6.0, 4.0);
+        let pm = sketch.add_point(1.0, 1.0);
+        sketch.add_constraint(Constraint::Fixed(p0, 0.0, 0.0));
+        sketch.add_constraint(Constraint::Fixed(p1, 6.0, 4.0));
+        let l = sketch.add_line(p0, p1);
+        sketch.add_constraint(Constraint::Midpoint(pm, l));
+
+        let result = solve(&mut sketch, 100, 1e-10);
+        assert!(result.converged);
+        assert!((sketch.points[pm.0].position.x - 3.0).abs() < 1e-6);
+        assert!((sketch.points[pm.0].position.y - 2.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_collinear_constraint() {
+        let mut sketch = Sketch::new();
+        let p0 = sketch.add_point(0.0, 0.0);
+        let p1 = sketch.add_point(2.0, 2.0);
+        let p2 = sketch.add_point(3.0, 3.5);
+        let p3 = sketch.add_point(5.0, 4.5);
+        sketch.add_constraint(Constraint::Fixed(p0, 0.0, 0.0));
+        sketch.add_constraint(Constraint::Fixed(p1, 2.0, 2.0));
+        // Fix p2.x to fully constrain the system (collinear=2eq + length=1eq + fixed_x=1eq = 4eq for 4 vars)
+        sketch.add_constraint(Constraint::Fixed(p2, 3.0, 3.0));
+        let l1 = sketch.add_line(p0, p1);
+        let l2 = sketch.add_line(p2, p3);
+        sketch.add_constraint(Constraint::Collinear(l1, l2));
+        sketch.add_constraint(Constraint::Length(l2, 2.0));
+
+        let result = solve(&mut sketch, 100, 1e-10);
+        assert!(result.converged);
+        // l2 should be parallel to l1 (slope = 1) and s2 on y=x
+        let e2 = &sketch.points[p3.0].position;
+        let s2 = &sketch.points[p2.0].position;
+        let dx = e2.x - s2.x;
+        let dy = e2.y - s2.y;
+        assert!((dy - dx).abs() < 1e-6, "l2 not parallel to y=x: dx={dx}, dy={dy}");
+    }
+
+    #[test]
+    fn test_equal_radius_constraint() {
+        let mut sketch = Sketch::new();
+        // Circle 1: center c1, point on circle p1
+        let c1 = sketch.add_point(0.0, 0.0);
+        let p1 = sketch.add_point(3.0, 0.0);
+        // Circle 2: center c2, point on circle p2
+        let c2 = sketch.add_point(5.0, 5.0);
+        let p2 = sketch.add_point(5.0, 7.0);
+        sketch.add_constraint(Constraint::Fixed(c1, 0.0, 0.0));
+        sketch.add_constraint(Constraint::Fixed(c2, 5.0, 5.0));
+        sketch.add_constraint(Constraint::Radius(p1, c1, 3.0));
+        sketch.add_constraint(Constraint::EqualRadius(p1, c1, p2, c2));
+
+        let result = solve(&mut sketch, 100, 1e-10);
+        assert!(result.converged);
+        let r1 = {
+            let dx = sketch.points[p1.0].position.x - sketch.points[c1.0].position.x;
+            let dy = sketch.points[p1.0].position.y - sketch.points[c1.0].position.y;
+            (dx * dx + dy * dy).sqrt()
+        };
+        let r2 = {
+            let dx = sketch.points[p2.0].position.x - sketch.points[c2.0].position.x;
+            let dy = sketch.points[p2.0].position.y - sketch.points[c2.0].position.y;
+            (dx * dx + dy * dy).sqrt()
+        };
+        assert!((r1 - r2).abs() < 1e-6, "r1={r1}, r2={r2}");
+        assert!((r1 - 3.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_concentric_constraint() {
+        let mut sketch = Sketch::new();
+        let c1 = sketch.add_point(1.0, 2.0);
+        let c2 = sketch.add_point(3.0, 4.0);
+        sketch.add_constraint(Constraint::Fixed(c1, 1.0, 2.0));
+        sketch.add_constraint(Constraint::Concentric(c1, c2));
+
+        let result = solve(&mut sketch, 100, 1e-10);
+        assert!(result.converged);
+        assert!((sketch.points[c2.0].position.x - 1.0).abs() < 1e-6);
+        assert!((sketch.points[c2.0].position.y - 2.0).abs() < 1e-6);
+    }
 }

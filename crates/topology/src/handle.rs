@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 #[serde(bound = "")]
 pub struct Handle<T> {
     pub(crate) index: u32,
-    pub(crate) generation: u32,
+    pub(crate) generation: u64,
     #[serde(skip)]
     pub(crate) _marker: PhantomData<T>,
 }
@@ -45,7 +45,7 @@ impl<T> Handle<T> {
 
     /// Returns the generation counter used for dangling-handle detection.
     #[inline]
-    pub fn generation(&self) -> u32 {
+    pub fn generation(&self) -> u64 {
         self.generation
     }
 
@@ -58,7 +58,7 @@ impl<T> Handle<T> {
     /// or fabricated values will not cause UB but will make subsequent lookups
     /// return `None`.
     #[inline]
-    pub fn from_raw_parts(index: u32, generation: u32) -> Self {
+    pub fn from_raw_parts(index: u32, generation: u64) -> Self {
         Self {
             index,
             generation,

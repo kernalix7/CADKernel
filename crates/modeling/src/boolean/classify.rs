@@ -96,9 +96,66 @@ pub fn face_normal_approx(model: &BRepModel, face: Handle<FaceData>) -> KernelRe
     Ok(e1.cross(e2).normalized().unwrap_or(Vec3::Z))
 }
 
-/// Simple ray-casting point-in-solid test.
+/// Collects the 3D polygon vertices of a face's outer loop.
+fn face_polygon(model: &BRepModel, face: Handle<FaceData>) -> KernelResult<Vec<Point3>> {
+    let face_data = model
+        .faces
+        .get(face)
+        .ok_or(KernelError::InvalidHandle("face"))?;
+    let loop_data = model
+        .loops
+        .get(face_data.outer_loop)
+        .ok_or(KernelError::InvalidHandle("loop"))?;
+    let hes = model.loop_half_edges(loop_data.half_edge);
+
+    let mut pts = Vec::with_capacity(hes.len());
+    for he_h in hes {
+        let he = model
+            .half_edges
+            .get(he_h)
+            .ok_or(KernelError::InvalidHandle("half_edge"))?;
+        let v = model
+            .vertices
+            .get(he.origin)
+            .ok_or(KernelError::InvalidHandle("vertex"))?;
+        pts.push(v.point);
+    }
+    Ok(pts)
+}
+
+/// 2D point-in-polygon test using the crossing number (ray-casting) algorithm.
+/// Projects the polygon and test point onto the 2D plane that drops `drop_axis`.
+fn point_in_polygon_2d(hit: Point3, polygon: &[Point3], drop_axis: usize) -> bool {
+    // Project to 2D by dropping the axis with the largest normal component.
+    let proj = |p: Point3| -> (f64, f64) {
+        match drop_axis {
+            0 => (p.y, p.z),
+            1 => (p.x, p.z),
+            _ => (p.x, p.y),
+        }
+    };
+    let (hx, hy) = proj(hit);
+    let n = polygon.len();
+    let mut crossings = 0u32;
+    for i in 0..n {
+        let (ax, ay) = proj(polygon[i]);
+        let (bx, by) = proj(polygon[(i + 1) % n]);
+        // Check if edge crosses the horizontal ray from (hx, hy) to +∞
+        if (ay <= hy && by > hy) || (by <= hy && ay > hy) {
+            let t = (hy - ay) / (by - ay);
+            let ix = ax + t * (bx - ax);
+            if hx < ix {
+                crossings += 1;
+            }
+        }
+    }
+    crossings % 2 == 1
+}
+
+/// Ray-casting point-in-solid test.
 ///
-/// Casts a ray from `point` along +X and counts how many face planes it crosses.
+/// Casts a ray from `point` along +X and counts how many face polygons it
+/// crosses using proper ray-polygon intersection.
 /// Odd count → inside, even count → outside.
 pub fn point_in_solid(
     point: Point3,
@@ -111,30 +168,44 @@ pub fn point_in_solid(
     let mut crossings = 0u32;
 
     for &face_h in &faces {
-        let centroid = face_centroid(model, face_h)?;
-        let normal = face_normal_approx(model, face_h)?;
+        let polygon = face_polygon(model, face_h)?;
+        if polygon.len() < 3 {
+            continue;
+        }
 
+        // Compute face plane from first 3 vertices.
+        let e1 = polygon[1] - polygon[0];
+        let e2 = polygon[2] - polygon[0];
+        let normal = e1.cross(e2);
+        let n_len = normal.length();
+        if n_len < 1e-14 {
+            continue;
+        }
+        let normal = normal / n_len;
+
+        // Ray-plane intersection.
         let denom = normal.dot(ray_dir);
         if denom.abs() < 1e-10 {
             continue;
         }
 
-        let t = normal.dot(centroid - point) / denom;
+        let t = normal.dot(polygon[0] - point) / denom;
         if t <= 0.0 {
             continue;
         }
 
         let hit = point + ray_dir * t;
 
-        let bb = super::broad_phase::face_bbox(model, face_h)?;
-        let margin = 1e-6;
-        if hit.x >= bb.min.x - margin
-            && hit.x <= bb.max.x + margin
-            && hit.y >= bb.min.y - margin
-            && hit.y <= bb.max.y + margin
-            && hit.z >= bb.min.z - margin
-            && hit.z <= bb.max.z + margin
-        {
+        // Determine which axis to drop for 2D projection (largest normal component).
+        let drop_axis = if normal.x.abs() >= normal.y.abs() && normal.x.abs() >= normal.z.abs() {
+            0
+        } else if normal.y.abs() >= normal.z.abs() {
+            1
+        } else {
+            2
+        };
+
+        if point_in_polygon_2d(hit, &polygon, drop_axis) {
             crossings += 1;
         }
     }
@@ -155,7 +226,7 @@ pub fn classify_face(
 ) -> KernelResult<FacePosition> {
     let centroid = face_centroid(model_a, face)?;
     let normal = face_normal_approx(model_a, face)?;
-    let test_point = centroid + normal * (-1e-6);
+    let test_point = centroid + normal * 1e-6;
     point_in_solid(test_point, model_b, solid_b)
 }
 
