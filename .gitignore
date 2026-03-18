@@ -1,5 +1,5 @@
 # Rust
-/target/
+**/target/
 **/*.rs.bk
 
 # Cargo
@@ -30,3 +30,4 @@ CLAUDE.md
 .claude
 .vscode
 WORK_STATUS.md
+crates/python/Cargo.lock
