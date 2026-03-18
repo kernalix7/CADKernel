@@ -41,8 +41,14 @@ pub fn write_stl_ascii(mesh: &Mesh, name: &str) -> String {
 }
 
 /// Renders the mesh as a binary STL byte buffer.
-pub fn write_stl_binary(mesh: &Mesh) -> Vec<u8> {
+pub fn write_stl_binary(mesh: &Mesh) -> KernelResult<Vec<u8>> {
     let tris = mesh.to_triangles();
+    if tris.len() > u32::MAX as usize {
+        return Err(KernelError::IoError(format!(
+            "triangle count {} exceeds u32::MAX for binary STL",
+            tris.len()
+        )));
+    }
     let n_tris = tris.len() as u32;
     let total = 84 + n_tris as usize * 50;
 
@@ -75,7 +81,7 @@ pub fn write_stl_binary(mesh: &Mesh) -> Vec<u8> {
     for chunk in &tri_bytes {
         buf.extend_from_slice(chunk);
     }
-    buf
+    Ok(buf)
 }
 
 /// Writes an ASCII STL file to disk.
@@ -85,10 +91,11 @@ pub fn export_stl_ascii(mesh: &Mesh, path: &Path, name: &str) -> io::Result<()> 
 }
 
 /// Writes a binary STL file to disk.
-pub fn export_stl_binary(mesh: &Mesh, path: &Path) -> io::Result<()> {
-    let data = write_stl_binary(mesh);
+pub fn export_stl_binary(mesh: &Mesh, path: &Path) -> KernelResult<()> {
+    let data = write_stl_binary(mesh)?;
     let mut file = std::fs::File::create(path)?;
-    file.write_all(&data)
+    file.write_all(&data)?;
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -252,6 +259,12 @@ pub fn read_stl_binary(data: &[u8]) -> KernelResult<Mesh> {
     }
 
     let tri_count = u32::from_le_bytes([data[80], data[81], data[82], data[83]]) as usize;
+    const MAX_STL_TRIANGLES: usize = 50_000_000;
+    if tri_count > MAX_STL_TRIANGLES {
+        return Err(KernelError::IoError(format!(
+            "binary STL triangle count {tri_count} exceeds limit {MAX_STL_TRIANGLES}"
+        )));
+    }
     let expected = 84 + tri_count * 50;
     if data.len() < expected {
         return Err(KernelError::IoError(format!(
@@ -344,7 +357,7 @@ mod tests {
     #[test]
     fn test_binary_stl_size() {
         let mesh = make_single_triangle_mesh();
-        let data = write_stl_binary(&mesh);
+        let data = write_stl_binary(&mesh).unwrap();
         // 80 header + 4 count + 1 * 50 = 134
         assert_eq!(data.len(), 134);
     }
@@ -352,7 +365,7 @@ mod tests {
     #[test]
     fn test_binary_stl_triangle_count() {
         let mesh = make_single_triangle_mesh();
-        let data = write_stl_binary(&mesh);
+        let data = write_stl_binary(&mesh).unwrap();
         let count = u32::from_le_bytes([data[80], data[81], data[82], data[83]]);
         assert_eq!(count, 1);
     }
@@ -389,7 +402,7 @@ mod tests {
     #[test]
     fn test_roundtrip_binary_stl() {
         let original = make_single_triangle_mesh();
-        let stl_bin = write_stl_binary(&original);
+        let stl_bin = write_stl_binary(&original).unwrap();
         let parsed = read_stl_binary(&stl_bin).unwrap();
         assert_eq!(parsed.triangle_count(), original.triangle_count());
     }
@@ -425,7 +438,7 @@ mod tests {
             normals: vec![Vec3::Z, Vec3::Z],
             indices: vec![[0, 1, 2], [0, 2, 3]],
         };
-        let stl_bin = write_stl_binary(&original);
+        let stl_bin = write_stl_binary(&original).unwrap();
         let parsed = read_stl_binary(&stl_bin).unwrap();
         assert_eq!(parsed.triangle_count(), 2);
     }
@@ -445,7 +458,7 @@ mod tests {
     #[test]
     fn test_import_stl_binary_auto() {
         let mesh = make_single_triangle_mesh();
-        let stl_bin = write_stl_binary(&mesh);
+        let stl_bin = write_stl_binary(&mesh).unwrap();
         let dir = std::env::temp_dir();
         let path = dir.join("cadkernel_test_import_binary.stl");
         std::fs::write(&path, &stl_bin).unwrap();

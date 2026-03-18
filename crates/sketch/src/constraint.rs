@@ -44,6 +44,36 @@ pub enum Constraint {
 
     /// A line is tangent to a circle (center + radius).
     Tangent(LineId, PointId, f64),
+
+    /// Two lines have equal length.
+    EqualLength(LineId, LineId),
+
+    /// A point is the midpoint of a line segment.
+    Midpoint(PointId, LineId),
+
+    /// Two lines are collinear (lie on the same infinite line).
+    Collinear(LineId, LineId),
+
+    /// Two circles/arcs have equal radius.
+    EqualRadius(PointId, PointId, PointId, PointId),
+
+    /// Two circles/arcs share the same center point.
+    Concentric(PointId, PointId),
+
+    /// Circle/arc diameter equals d (diameter = 2 * radius).
+    Diameter(PointId, PointId, f64),
+
+    /// Lock all DOFs of a point (equivalent to Fixed but conceptually different).
+    Block(PointId, f64, f64),
+
+    /// Horizontal distance between two points equals d.
+    HorizontalDistance(PointId, PointId, f64),
+
+    /// Vertical distance between two points equals d.
+    VerticalDistance(PointId, PointId, f64),
+
+    /// A point lies on an edge/line (same as PointOnLine but conceptually for any curve).
+    PointOnObject(PointId, LineId),
 }
 
 /// Trait implemented by each constraint variant so the solver can evaluate
@@ -89,6 +119,16 @@ impl ConstraintEval for ConstraintWithCtx<'_> {
             Constraint::Length(..) => 1,
             Constraint::Fixed(..) => 2,
             Constraint::Tangent(..) => 1,
+            Constraint::EqualLength(..) => 1,
+            Constraint::Midpoint(..) => 2,
+            Constraint::Collinear(..) => 2,
+            Constraint::EqualRadius(..) => 1,
+            Constraint::Concentric(..) => 2,
+            Constraint::Diameter(..) => 1,
+            Constraint::Block(..) => 2,
+            Constraint::HorizontalDistance(..) => 1,
+            Constraint::VerticalDistance(..) => 1,
+            Constraint::PointOnObject(..) => 1,
         }
     }
 
@@ -166,7 +206,7 @@ impl ConstraintEval for ConstraintWithCtx<'_> {
                 let dy2 = vars[py(e2)] - vars[py(s2)];
                 let dot = dx1 * dx2 + dy1 * dy2;
                 let cross = dx1 * dy2 - dy1 * dx2;
-                out[0] = cross - dot * theta.tan();
+                out[0] = cross.atan2(dot) - theta;
             }
             Constraint::Radius(p, center, r) => {
                 let dx = vars[px(p)] - vars[px(center)];
@@ -192,6 +232,70 @@ impl ConstraintEval for ConstraintWithCtx<'_> {
                 let cross = cpx * ldy - cpy * ldx;
                 let len_sq = ldx * ldx + ldy * ldy;
                 out[0] = cross * cross - radius * radius * len_sq;
+            }
+            Constraint::EqualLength(l1, l2) => {
+                let (s1, e1) = self.lines[l1.0];
+                let (s2, e2) = self.lines[l2.0];
+                let dx1 = vars[px(e1)] - vars[px(s1)];
+                let dy1 = vars[py(e1)] - vars[py(s1)];
+                let dx2 = vars[px(e2)] - vars[px(s2)];
+                let dy2 = vars[py(e2)] - vars[py(s2)];
+                out[0] = (dx1 * dx1 + dy1 * dy1) - (dx2 * dx2 + dy2 * dy2);
+            }
+            Constraint::Midpoint(p, lid) => {
+                let (s, e) = self.lines[lid.0];
+                out[0] = vars[px(p)] - (vars[px(s)] + vars[px(e)]) * 0.5;
+                out[1] = vars[py(p)] - (vars[py(s)] + vars[py(e)]) * 0.5;
+            }
+            Constraint::Collinear(l1, l2) => {
+                let (s1, e1) = self.lines[l1.0];
+                let (s2, _e2) = self.lines[l2.0];
+                let dx1 = vars[px(e1)] - vars[px(s1)];
+                let dy1 = vars[py(e1)] - vars[py(s1)];
+                // s2 on line through s1-e1
+                let dpx = vars[px(s2)] - vars[px(s1)];
+                let dpy = vars[py(s2)] - vars[py(s1)];
+                out[0] = dpx * dy1 - dpy * dx1;
+                // l1 parallel to l2
+                let (s2b, e2b) = self.lines[l2.0];
+                let dx2 = vars[px(e2b)] - vars[px(s2b)];
+                let dy2 = vars[py(e2b)] - vars[py(s2b)];
+                out[1] = dx1 * dy2 - dy1 * dx2;
+            }
+            Constraint::EqualRadius(p1, c1, p2, c2) => {
+                let dx1 = vars[px(p1)] - vars[px(c1)];
+                let dy1 = vars[py(p1)] - vars[py(c1)];
+                let dx2 = vars[px(p2)] - vars[px(c2)];
+                let dy2 = vars[py(p2)] - vars[py(c2)];
+                out[0] = (dx1 * dx1 + dy1 * dy1) - (dx2 * dx2 + dy2 * dy2);
+            }
+            Constraint::Concentric(c1, c2) => {
+                out[0] = vars[px(c1)] - vars[px(c2)];
+                out[1] = vars[py(c1)] - vars[py(c2)];
+            }
+            Constraint::Diameter(p, center, d) => {
+                let dx = vars[px(p)] - vars[px(center)];
+                let dy = vars[py(p)] - vars[py(center)];
+                let r = d / 2.0;
+                out[0] = dx * dx + dy * dy - r * r;
+            }
+            Constraint::Block(p, fx, fy) => {
+                out[0] = vars[px(p)] - fx;
+                out[1] = vars[py(p)] - fy;
+            }
+            Constraint::HorizontalDistance(p1, p2, d) => {
+                out[0] = vars[px(p1)] - vars[px(p2)] - d;
+            }
+            Constraint::VerticalDistance(p1, p2, d) => {
+                out[0] = vars[py(p1)] - vars[py(p2)] - d;
+            }
+            Constraint::PointOnObject(p, lid) => {
+                let (s, e) = self.lines[lid.0];
+                let dx = vars[px(e)] - vars[px(s)];
+                let dy = vars[py(e)] - vars[py(s)];
+                let dpx = vars[px(p)] - vars[px(s)];
+                let dpy = vars[py(p)] - vars[py(s)];
+                out[0] = dpx * dy - dpy * dx;
             }
         }
     }
@@ -354,7 +458,6 @@ impl ConstraintEval for ConstraintWithCtx<'_> {
                 let cpy = vars[py(center)] - vars[py(s)];
                 let cross = cpx * ldy - cpy * ldx;
                 let r2 = radius * radius;
-                // f = cross^2 - r^2 * len_sq
                 out.push((row, px(center), 2.0 * cross * ldy));
                 out.push((row, py(center), -2.0 * cross * ldx));
                 out.push((
@@ -369,6 +472,110 @@ impl ConstraintEval for ConstraintWithCtx<'_> {
                 ));
                 out.push((row, px(e), -2.0 * cross * cpy - 2.0 * r2 * ldx));
                 out.push((row, py(e), 2.0 * cross * cpx - 2.0 * r2 * ldy));
+            }
+            Constraint::EqualLength(l1, l2) => {
+                let (s1, e1) = self.lines[l1.0];
+                let (s2, e2) = self.lines[l2.0];
+                let dx1 = vars[px(e1)] - vars[px(s1)];
+                let dy1 = vars[py(e1)] - vars[py(s1)];
+                let dx2 = vars[px(e2)] - vars[px(s2)];
+                let dy2 = vars[py(e2)] - vars[py(s2)];
+                out.push((row, px(s1), -2.0 * dx1));
+                out.push((row, py(s1), -2.0 * dy1));
+                out.push((row, px(e1), 2.0 * dx1));
+                out.push((row, py(e1), 2.0 * dy1));
+                out.push((row, px(s2), 2.0 * dx2));
+                out.push((row, py(s2), 2.0 * dy2));
+                out.push((row, px(e2), -2.0 * dx2));
+                out.push((row, py(e2), -2.0 * dy2));
+            }
+            Constraint::Midpoint(p, lid) => {
+                let (s, e) = self.lines[lid.0];
+                out.push((row, px(p), 1.0));
+                out.push((row, px(s), -0.5));
+                out.push((row, px(e), -0.5));
+                out.push((row + 1, py(p), 1.0));
+                out.push((row + 1, py(s), -0.5));
+                out.push((row + 1, py(e), -0.5));
+            }
+            Constraint::Collinear(l1, l2) => {
+                let (s1, e1) = self.lines[l1.0];
+                let (s2, e2) = self.lines[l2.0];
+                let dx1 = vars[px(e1)] - vars[px(s1)];
+                let dy1 = vars[py(e1)] - vars[py(s1)];
+                let dpx = vars[px(s2)] - vars[px(s1)];
+                let dpy = vars[py(s2)] - vars[py(s1)];
+                // Row 0: s2 on line s1-e1
+                out.push((row, px(s2), dy1));
+                out.push((row, py(s2), -dx1));
+                out.push((row, px(s1), -dy1 + dpy));
+                out.push((row, py(s1), dx1 - dpx));
+                out.push((row, px(e1), -dpy));
+                out.push((row, py(e1), dpx));
+                // Row 1: parallel (same as Parallel)
+                let dx2 = vars[px(e2)] - vars[px(s2)];
+                let dy2 = vars[py(e2)] - vars[py(s2)];
+                out.push((row + 1, px(s1), -dy2));
+                out.push((row + 1, px(e1), dy2));
+                out.push((row + 1, py(s1), dx2));
+                out.push((row + 1, py(e1), -dx2));
+                out.push((row + 1, px(s2), dy1));
+                out.push((row + 1, px(e2), -dy1));
+                out.push((row + 1, py(s2), -dx1));
+                out.push((row + 1, py(e2), dx1));
+            }
+            Constraint::EqualRadius(p1, c1, p2, c2) => {
+                let dx1 = vars[px(p1)] - vars[px(c1)];
+                let dy1 = vars[py(p1)] - vars[py(c1)];
+                let dx2 = vars[px(p2)] - vars[px(c2)];
+                let dy2 = vars[py(p2)] - vars[py(c2)];
+                out.push((row, px(p1), 2.0 * dx1));
+                out.push((row, py(p1), 2.0 * dy1));
+                out.push((row, px(c1), -2.0 * dx1));
+                out.push((row, py(c1), -2.0 * dy1));
+                out.push((row, px(p2), -2.0 * dx2));
+                out.push((row, py(p2), -2.0 * dy2));
+                out.push((row, px(c2), 2.0 * dx2));
+                out.push((row, py(c2), 2.0 * dy2));
+            }
+            Constraint::Concentric(c1, c2) => {
+                out.push((row, px(c1), 1.0));
+                out.push((row, px(c2), -1.0));
+                out.push((row + 1, py(c1), 1.0));
+                out.push((row + 1, py(c2), -1.0));
+            }
+            Constraint::Diameter(p, center, _) => {
+                let dx = vars[px(p)] - vars[px(center)];
+                let dy = vars[py(p)] - vars[py(center)];
+                out.push((row, px(p), 2.0 * dx));
+                out.push((row, py(p), 2.0 * dy));
+                out.push((row, px(center), -2.0 * dx));
+                out.push((row, py(center), -2.0 * dy));
+            }
+            Constraint::Block(p, _, _) => {
+                out.push((row, px(p), 1.0));
+                out.push((row + 1, py(p), 1.0));
+            }
+            Constraint::HorizontalDistance(p1, p2, _) => {
+                out.push((row, px(p1), 1.0));
+                out.push((row, px(p2), -1.0));
+            }
+            Constraint::VerticalDistance(p1, p2, _) => {
+                out.push((row, py(p1), 1.0));
+                out.push((row, py(p2), -1.0));
+            }
+            Constraint::PointOnObject(p, lid) => {
+                let (s, e) = self.lines[lid.0];
+                let dx = vars[px(e)] - vars[px(s)];
+                let dy = vars[py(e)] - vars[py(s)];
+                let dpx = vars[px(p)] - vars[px(s)];
+                let dpy = vars[py(p)] - vars[py(s)];
+                out.push((row, px(p), dy));
+                out.push((row, py(p), -dx));
+                out.push((row, px(s), -dy + dpy));
+                out.push((row, py(s), dx - dpx));
+                out.push((row, px(e), -dpy));
+                out.push((row, py(e), dpx));
             }
         }
     }

@@ -1,3 +1,4 @@
+use cadkernel_core::{KernelError, KernelResult};
 use cadkernel_math::{Point3, Vec3};
 
 use super::Surface;
@@ -16,7 +17,12 @@ pub struct Cone {
 
 impl Cone {
     /// Creates a cone with the given apex, axis direction, and half-angle (radians).
-    pub fn new(apex: Point3, axis: Vec3, half_angle: f64) -> Self {
+    pub fn new(apex: Point3, axis: Vec3, half_angle: f64) -> KernelResult<Self> {
+        if half_angle <= 0.0 || half_angle >= std::f64::consts::FRAC_PI_2 {
+            return Err(KernelError::InvalidArgument(
+                "cone half_angle must be in (0, π/2)".into(),
+            ));
+        }
         let a = axis.normalized().unwrap_or(Vec3::Z);
         let x = if a.cross(Vec3::X).length() > 1e-6 {
             a.cross(Vec3::X).normalized().unwrap_or(Vec3::Y)
@@ -24,13 +30,13 @@ impl Cone {
             a.cross(Vec3::Y).normalized().unwrap_or(Vec3::X)
         };
         let y = a.cross(x);
-        Self {
+        Ok(Self {
             apex,
             axis: a,
             half_angle,
             x_axis: x,
             y_axis: y,
-        }
+        })
     }
 }
 
@@ -64,14 +70,14 @@ mod tests {
 
     #[test]
     fn test_cone_apex() {
-        let c = Cone::new(Point3::ORIGIN, Vec3::Z, std::f64::consts::FRAC_PI_4);
+        let c = Cone::new(Point3::ORIGIN, Vec3::Z, std::f64::consts::FRAC_PI_4).unwrap();
         let p = c.point_at(0.0, 0.0);
         assert!(p.approx_eq(Point3::ORIGIN));
     }
 
     #[test]
     fn test_cone_radius_at_v1() {
-        let c = Cone::new(Point3::ORIGIN, Vec3::Z, std::f64::consts::FRAC_PI_4);
+        let c = Cone::new(Point3::ORIGIN, Vec3::Z, std::f64::consts::FRAC_PI_4).unwrap();
         let p = c.point_at(0.0, 1.0);
         // At v=1, z=1, radius = tan(45°) = 1
         assert!((p.z - 1.0).abs() < EPSILON);

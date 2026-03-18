@@ -143,7 +143,7 @@ mod tests {
         assert_eq!(facet_count, 12);
 
         // 7. Export to binary STL
-        let stl_bin = write_stl_binary(&mesh);
+        let stl_bin = write_stl_binary(&mesh).unwrap();
         let tri_count = u32::from_le_bytes([stl_bin[80], stl_bin[81], stl_bin[82], stl_bin[83]]);
         assert_eq!(tri_count, 12);
         assert_eq!(stl_bin.len(), 84 + 12 * 50);

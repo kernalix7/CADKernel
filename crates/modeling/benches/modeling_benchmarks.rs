@@ -115,7 +115,7 @@ fn bench_stl_write_binary(c: &mut Criterion) {
     let r = make_sphere(&mut m, Point3::ORIGIN, 5.0, 32, 16).unwrap();
     let mesh = cadkernel_io::tessellate_solid(&m, r.solid);
     c.bench_function("stl_write_binary (sphere)", |b| {
-        b.iter(|| cadkernel_io::write_stl_binary(&mesh));
+        b.iter(|| cadkernel_io::write_stl_binary(&mesh).unwrap());
     });
 }
 

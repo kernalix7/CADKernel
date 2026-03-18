@@ -44,10 +44,20 @@ impl Circle {
         }
     }
 
+    /// Returns the local X-axis of the circle's coordinate frame.
+    pub fn x_axis(&self) -> Vec3 {
+        self.x_axis
+    }
+
+    /// Returns the local Y-axis of the circle's coordinate frame.
+    pub fn y_axis(&self) -> Vec3 {
+        self.y_axis
+    }
+
     fn arbitrary_perpendicular(n: Vec3) -> Vec3 {
         let candidate = if n.x.abs() < 0.9 { Vec3::X } else { Vec3::Y };
         let perp = n.cross(candidate);
-        perp.normalized().unwrap()
+        perp.normalized().unwrap_or(Vec3::X)
     }
 }
 

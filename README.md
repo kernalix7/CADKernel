@@ -10,7 +10,7 @@
 
 *Stable, fast, compatible, and extensible — the next-generation open-source CAD software*
 
-**English** | [한국어](README.ko.md)
+**English** | [한국어](docs/README.ko.md)
 
 </div>
 
@@ -571,7 +571,7 @@ cargo run --release --bin cadkernel
 
 **Features available:**
 - Open STL/OBJ files via File → Open
-- Create primitives via Create menu (Box, Cylinder, Sphere)
+- Create primitives via Create menu (Box, Cylinder, Sphere, Cone, Torus)
 - Switch display modes: D key or View → Display Mode
 - Standard views: 1/3/7 keys (Front/Right/Top), Ctrl+1/3/7 (Back/Left/Bottom), 0 (Isometric)
 - Toggle grid: G key

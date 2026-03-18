@@ -14,7 +14,9 @@ impl WorkPlane {
     /// The Y-axis is computed to form a right-handed frame.
     pub fn new(origin: Point3, normal: Vec3, x_axis: Vec3) -> Self {
         let n = normal.normalized().unwrap_or(Vec3::Z);
-        let x = x_axis.normalized().unwrap_or(Vec3::X);
+        let mut x = x_axis.normalized().unwrap_or(Vec3::X);
+        // Gram-Schmidt: ensure x_axis is perpendicular to normal.
+        x = (x - n * n.dot(x)).normalized().unwrap_or(Vec3::X);
         let y = n.cross(x);
         Self {
             origin,
@@ -108,7 +110,7 @@ pub fn extract_profile(sketch: &Sketch, plane: &WorkPlane) -> Vec<Point3> {
     ordered_points
         .iter()
         .map(|pid| {
-            let p = &sketch.points[pid.0];
+            let p = sketch.points.get(pid.0).unwrap_or(&sketch.points[0]);
             plane.to_world(p.position.x, p.position.y)
         })
         .collect()

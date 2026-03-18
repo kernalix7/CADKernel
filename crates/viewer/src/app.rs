@@ -1,20 +1,31 @@
 //! Full GUI application with egui panels rendered on top of the wgpu 3D
 //! viewport.
 
-use crate::gui::{self, GuiAction, GuiState, ViewportInfo};
+use crate::gui::{
+    self, GuiAction, GuiState, MirrorPlane, ReportLevel, SelectedEntity, SketchMode, SketchTool,
+    ViewportInfo,
+};
 use crate::nav::{NavAction, NavConfig};
 use crate::render::{
     AXIS_X_COLOR, AXIS_Y_COLOR, AXIS_Z_COLOR, Camera, DisplayMode, EDGE_OVERLAY_COLOR,
     GRID_MAJOR_COLOR, GRID_MINOR_COLOR, GpuState, GridConfig, HIDDEN_LINE_COLOR, MouseState,
     NO_SHADE_COLOR, POINT_COLOR, SOLID_COLOR, StandardView, TRANSPARENT_COLOR, Uniforms, Vertex,
-    WIRE_COLOR, compute_bounds, cross3, dot3, mesh_to_vertices, normalize3,
+    WIRE_COLOR, compute_bounds, cross3, dot3, mesh_to_vertices, normalize3, sub3,
 };
 use cadkernel_io::{
-    Mesh, export_gltf, import_obj, import_stl, tessellate_solid, write_obj, write_stl_ascii,
+    Mesh, export_3mf, export_brep, export_dxf, export_gltf, export_iges, export_ply, export_step,
+    import_obj, import_stl, tessellate_solid, write_3mf, write_brep, write_dxf, write_obj,
+    write_ply, write_stl_ascii,
 };
-use cadkernel_math::Point3;
-use cadkernel_modeling::{make_box, make_cylinder, make_sphere};
-use cadkernel_topology::{BRepModel, Handle, SolidData};
+use cadkernel_math::{Point3, Vec3};
+use cadkernel_modeling::{
+    BooleanOp, boolean_op, chamfer_edge, check_geometry, compute_mass_properties,
+    extrude, fillet_edge, linear_pattern, make_box, make_cone, make_cylinder, make_ellipsoid,
+    make_helix, make_prism, make_sphere, make_torus, make_tube, make_wedge, mirror_solid,
+    scale_solid, shell_solid,
+};
+use cadkernel_sketch::{Constraint, extract_profile, solve};
+use cadkernel_topology::{BRepModel, FaceData, Handle, SolidData, VertexData};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::mpsc;
@@ -124,6 +135,12 @@ pub(crate) struct CadApp {
     /// Roll value before the most recent roll-changing action (RollDelta / ScreenOrbit).
     /// Used to resolve the 45° midpoint tie in snap_roll_90.
     prev_roll: f32,
+    /// FPS counter: frames since last update.
+    fps_frames: u32,
+    /// FPS counter: elapsed time since last update.
+    fps_elapsed: f32,
+    /// FPS display value (updated every ~0.5 s for stability).
+    fps_display: f32,
 }
 
 impl CadApp {
@@ -145,6 +162,9 @@ impl CadApp {
             camera_anim: None,
             last_instant: std::time::Instant::now(),
             prev_roll: 0.0,
+            fps_frames: 0,
+            fps_elapsed: 0.0,
+            fps_display: 0.0,
         }
     }
 
@@ -172,6 +192,89 @@ impl CadApp {
         self.current_mesh = Some(mesh);
     }
 
+    fn collect_edge_pairs(
+        &self,
+        solid: Handle<SolidData>,
+    ) -> Vec<(Handle<VertexData>, Handle<VertexData>)> {
+        let mut edge_pairs: Vec<(Handle<VertexData>, Handle<VertexData>)> = Vec::new();
+        if let Some(solid_data) = self.model.solids.get(solid) {
+            for shell_h in &solid_data.shells {
+                if let Some(shell) = self.model.shells.get(*shell_h) {
+                    for face_h in &shell.faces {
+                        if let Some(face) = self.model.faces.get(*face_h) {
+                            // Collect all loops (outer + inner)
+                            let mut all_loops = vec![face.outer_loop];
+                            all_loops.extend_from_slice(&face.inner_loops);
+                            for loop_h in &all_loops {
+                                if let Some(lp) = self.model.loops.get(*loop_h) {
+                                    let hes = self.model.loop_half_edges(lp.half_edge);
+                                    for he_h in &hes {
+                                        if let Some(he) = self.model.half_edges.get(*he_h) {
+                                            if let Some(edge_h) = he.edge {
+                                                if let Some(edge) =
+                                                    self.model.edges.get(edge_h)
+                                                {
+                                                    edge_pairs.push((edge.start, edge.end));
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        edge_pairs.sort_by_key(|pair| (pair.0.index(), pair.1.index()));
+        edge_pairs.dedup();
+        edge_pairs
+    }
+
+    fn boolean_with_box(
+        &mut self,
+        width: f64,
+        height: f64,
+        depth: f64,
+        offset: [f64; 3],
+        op: BooleanOp,
+    ) {
+        if let Some(solid_a) = self.current_solid {
+            let mut model_b = BRepModel::new();
+            let origin = Point3::new(offset[0], offset[1], offset[2]);
+            match make_box(&mut model_b, origin, width, height, depth) {
+                Ok(r_b) => {
+                    match boolean_op(&self.model, solid_a, &model_b, r_b.solid, op) {
+                        Ok(result_model) => {
+                            // Extract the first solid handle before moving
+                            let first_solid = result_model.solids.iter().next().map(|(h, _)| h);
+                            if let Some(result_solid) = first_solid {
+                                let mesh = tessellate_solid(&result_model, result_solid);
+                                self.model = result_model;
+                                self.current_solid = Some(result_solid);
+                                self.gui.current_file = None;
+                                self.gui.status_message =
+                                    format!("Boolean {op:?}: box {width}×{height}×{depth} at ({:.1},{:.1},{:.1})", offset[0], offset[1], offset[2]);
+                                self.set_mesh(mesh);
+                            } else {
+                                self.gui.status_message =
+                                    "Boolean result is empty".into();
+                            }
+                        }
+                        Err(e) => {
+                            self.gui.status_message = format!("Boolean error: {e}");
+                        }
+                    }
+                }
+                Err(e) => {
+                    self.gui.status_message = format!("Box creation error: {e}");
+                }
+            }
+        } else {
+            self.gui.status_message = "No solid for boolean operation".into();
+        }
+    }
+
     fn request_redraw(&self) {
         if let Some(rt) = &self.runtime {
             rt.gpu.window.request_redraw();
@@ -197,11 +300,20 @@ impl CadApp {
         }
     }
 
-    /// Tick the running camera animation, if any.
+    /// Tick the running camera animation, if any, and update FPS counter.
     fn tick_animation(&mut self) {
         let now = std::time::Instant::now();
         let dt = now.duration_since(self.last_instant).as_secs_f32();
         self.last_instant = now;
+
+        // FPS counter — update display value every ~0.5 s.
+        self.fps_frames += 1;
+        self.fps_elapsed += dt;
+        if self.fps_elapsed >= 0.5 {
+            self.fps_display = self.fps_frames as f32 / self.fps_elapsed;
+            self.fps_frames = 0;
+            self.fps_elapsed = 0.0;
+        }
 
         if let Some(anim) = &mut self.camera_anim {
             let done = anim.tick(dt, &mut self.camera);
@@ -323,6 +435,196 @@ impl CadApp {
                     }
                 }
 
+                GuiAction::CreateCone {
+                    base_radius,
+                    top_radius,
+                    height,
+                } => {
+                    let mut model = BRepModel::new();
+                    match make_cone(
+                        &mut model,
+                        Point3::ORIGIN,
+                        base_radius,
+                        top_radius,
+                        height,
+                        64,
+                    ) {
+                        Ok(r) => {
+                            let mesh = tessellate_solid(&model, r.solid);
+                            self.model = model;
+                            self.current_solid = Some(r.solid);
+                            self.gui.current_file = None;
+                            let kind = if top_radius < 1e-14 {
+                                "cone"
+                            } else {
+                                "frustum"
+                            };
+                            self.gui.status_message = format!(
+                                "Created {kind} (r1={base_radius}, r2={top_radius}, h={height})"
+                            );
+                            self.set_mesh(mesh);
+                        }
+                        Err(e) => {
+                            self.gui.status_message = format!("Error: {e}");
+                        }
+                    }
+                }
+
+                GuiAction::CreateTorus {
+                    major_radius,
+                    minor_radius,
+                } => {
+                    let mut model = BRepModel::new();
+                    match make_torus(
+                        &mut model,
+                        Point3::ORIGIN,
+                        major_radius,
+                        minor_radius,
+                        64,
+                        32,
+                    ) {
+                        Ok(r) => {
+                            let mesh = tessellate_solid(&model, r.solid);
+                            self.model = model;
+                            self.current_solid = Some(r.solid);
+                            self.gui.current_file = None;
+                            self.gui.status_message =
+                                format!("Created torus (R={major_radius}, r={minor_radius})");
+                            self.set_mesh(mesh);
+                        }
+                        Err(e) => {
+                            self.gui.status_message = format!("Error: {e}");
+                        }
+                    }
+                }
+
+                GuiAction::CreateTube {
+                    outer_radius,
+                    inner_radius,
+                    height,
+                } => {
+                    let mut model = BRepModel::new();
+                    match make_tube(
+                        &mut model,
+                        Point3::ORIGIN,
+                        outer_radius,
+                        inner_radius,
+                        height,
+                        64,
+                    ) {
+                        Ok(r) => {
+                            let mesh = tessellate_solid(&model, r.solid);
+                            self.model = model;
+                            self.current_solid = Some(r.solid);
+                            self.gui.current_file = None;
+                            self.gui.status_message = format!(
+                                "Created tube (R={outer_radius}, r={inner_radius}, h={height})"
+                            );
+                            self.set_mesh(mesh);
+                        }
+                        Err(e) => {
+                            self.gui.status_message = format!("Error: {e}");
+                        }
+                    }
+                }
+
+                GuiAction::CreatePrism {
+                    radius,
+                    height,
+                    sides,
+                } => {
+                    let mut model = BRepModel::new();
+                    match make_prism(&mut model, Point3::ORIGIN, radius, height, sides) {
+                        Ok(r) => {
+                            let mesh = tessellate_solid(&model, r.solid);
+                            self.model = model;
+                            self.current_solid = Some(r.solid);
+                            self.gui.current_file = None;
+                            self.gui.status_message =
+                                format!("Created {sides}-sided prism (r={radius}, h={height})");
+                            self.set_mesh(mesh);
+                        }
+                        Err(e) => {
+                            self.gui.status_message = format!("Error: {e}");
+                        }
+                    }
+                }
+
+                GuiAction::CreateWedge {
+                    dx,
+                    dy,
+                    dz,
+                    dx2,
+                    dy2,
+                } => {
+                    let mut model = BRepModel::new();
+                    match make_wedge(&mut model, Point3::ORIGIN, dx, dy, dz, dx2, dy2, 0.0, 0.0) {
+                        Ok(r) => {
+                            let mesh = tessellate_solid(&model, r.solid);
+                            self.model = model;
+                            self.current_solid = Some(r.solid);
+                            self.gui.current_file = None;
+                            self.gui.status_message =
+                                format!("Created wedge ({dx}×{dy}×{dz}, top {dx2}×{dy2})");
+                            self.set_mesh(mesh);
+                        }
+                        Err(e) => {
+                            self.gui.status_message = format!("Error: {e}");
+                        }
+                    }
+                }
+
+                GuiAction::CreateEllipsoid { rx, ry, rz } => {
+                    let mut model = BRepModel::new();
+                    match make_ellipsoid(&mut model, Point3::ORIGIN, rx, ry, rz, 64, 32) {
+                        Ok(r) => {
+                            let mesh = tessellate_solid(&model, r.solid);
+                            self.model = model;
+                            self.current_solid = Some(r.solid);
+                            self.gui.current_file = None;
+                            self.gui.status_message =
+                                format!("Created ellipsoid ({rx}×{ry}×{rz})");
+                            self.set_mesh(mesh);
+                        }
+                        Err(e) => {
+                            self.gui.status_message = format!("Error: {e}");
+                        }
+                    }
+                }
+
+                GuiAction::CreateHelix {
+                    radius,
+                    pitch,
+                    turns,
+                    tube_radius,
+                } => {
+                    let mut model = BRepModel::new();
+                    match make_helix(
+                        &mut model,
+                        Point3::ORIGIN,
+                        radius,
+                        pitch,
+                        turns,
+                        tube_radius,
+                        16,
+                        8,
+                    ) {
+                        Ok(r) => {
+                            let mesh = tessellate_solid(&model, r.solid);
+                            self.model = model;
+                            self.current_solid = Some(r.solid);
+                            self.gui.current_file = None;
+                            self.gui.status_message = format!(
+                                "Created helix (R={radius}, pitch={pitch}, turns={turns})"
+                            );
+                            self.set_mesh(mesh);
+                        }
+                        Err(e) => {
+                            self.gui.status_message = format!("Error: {e}");
+                        }
+                    }
+                }
+
                 GuiAction::ResetCamera => {
                     self.camera.reset(); // roll is reset inside reset()
                     self.gui.status_message = "Camera reset".into();
@@ -417,7 +719,7 @@ impl CadApp {
                         let u2 = rod(su);
 
                         // Extract yaw / pitch from the new forward vector (Z-up).
-                        let new_pitch = (-f2[2]).asin().clamp(
+                        let new_pitch = (-f2[2]).clamp(-1.0, 1.0).asin().clamp(
                             -std::f32::consts::FRAC_PI_2 + 0.01,
                             std::f32::consts::FRAC_PI_2 - 0.01,
                         );
@@ -454,8 +756,862 @@ impl CadApp {
                     }
                     .into();
                 }
+
+                GuiAction::Undo => {
+                    self.gui.status_message = "Undo: not yet implemented".into();
+                }
+                GuiAction::Redo => {
+                    self.gui.status_message = "Redo: not yet implemented".into();
+                }
+                GuiAction::StatusMessage(msg) => {
+                    self.gui.status_message = msg;
+                }
+
+                // -- Sketch actions --
+                GuiAction::EnterSketch(plane) => {
+                    self.gui.sketch_mode = Some(SketchMode::new(plane));
+                    self.gui.active_workbench = gui::Workbench::Sketcher;
+                    self.gui.status_message =
+                        "Sketch mode: click to add points, select tool from toolbar".into();
+                }
+
+                GuiAction::SketchClick(x, y) => {
+                    self.handle_sketch_click(x, y);
+                }
+
+                GuiAction::SetSketchTool(tool) => {
+                    if let Some(sm) = &mut self.gui.sketch_mode {
+                        sm.tool = tool;
+                        sm.pending_point = None;
+                        self.gui.status_message = format!("Sketch tool: {tool:?}");
+                    }
+                }
+
+                GuiAction::SketchConstrainHorizontal => {
+                    if let Some(sm) = &mut self.gui.sketch_mode {
+                        if !sm.sketch.lines.is_empty() {
+                            let lid = cadkernel_sketch::LineId(sm.sketch.lines.len() - 1);
+                            sm.sketch.add_constraint(Constraint::Horizontal(lid));
+                            self.gui.status_message = "Added Horizontal constraint".into();
+                        }
+                    }
+                }
+
+                GuiAction::SketchConstrainVertical => {
+                    if let Some(sm) = &mut self.gui.sketch_mode {
+                        if !sm.sketch.lines.is_empty() {
+                            let lid = cadkernel_sketch::LineId(sm.sketch.lines.len() - 1);
+                            sm.sketch.add_constraint(Constraint::Vertical(lid));
+                            self.gui.status_message = "Added Vertical constraint".into();
+                        }
+                    }
+                }
+
+                GuiAction::SketchConstrainLength(len) => {
+                    if let Some(sm) = &mut self.gui.sketch_mode {
+                        if !sm.sketch.lines.is_empty() {
+                            let lid = cadkernel_sketch::LineId(sm.sketch.lines.len() - 1);
+                            sm.sketch.add_constraint(Constraint::Length(lid, len));
+                            self.gui.status_message = format!("Added Length={len:.1} constraint");
+                        }
+                    }
+                }
+
+                GuiAction::CloseSketch => {
+                    self.close_sketch();
+                }
+
+                GuiAction::CancelSketch => {
+                    self.gui.sketch_mode = None;
+                    self.gui.status_message = "Sketch cancelled".into();
+                }
+
+                // -- TechDraw actions --
+                GuiAction::TechDrawAddView(dir) => {
+                    if let Some(solid) = self.current_solid {
+                        let view =
+                            cadkernel_io::project_solid(&self.model, solid, dir);
+                        let n_edges = view.edges.len();
+                        let sheet = self
+                            .gui
+                            .techdraw_sheet
+                            .get_or_insert_with(cadkernel_io::DrawingSheet::a4_landscape);
+                        sheet.views.push(view);
+                        self.gui.status_message =
+                            format!("TechDraw: added {} view ({n_edges} edges)", dir.label());
+                    } else {
+                        self.gui.status_message =
+                            "TechDraw: no solid to project".into();
+                    }
+                }
+
+                GuiAction::TechDrawThreeView => {
+                    if let Some(solid) = self.current_solid {
+                        let sheet =
+                            cadkernel_io::three_view_drawing(&self.model, solid);
+                        let total: usize = sheet.views.iter().map(|v| v.edges.len()).sum();
+                        self.gui.techdraw_sheet = Some(sheet);
+                        self.gui.status_message =
+                            format!("TechDraw: 3-view drawing ({total} edges)");
+                    } else {
+                        self.gui.status_message =
+                            "TechDraw: no solid to project".into();
+                    }
+                }
+
+                GuiAction::TechDrawExportSvg(path) => {
+                    if let Some(sheet) = &self.gui.techdraw_sheet {
+                        let svg = cadkernel_io::drawing_to_svg(sheet);
+                        match std::fs::write(&path, svg.render()) {
+                            Ok(()) => {
+                                self.gui.status_message =
+                                    format!("Exported SVG: {}", path.display());
+                            }
+                            Err(e) => {
+                                self.gui.status_message =
+                                    format!("SVG export failed: {e}");
+                            }
+                        }
+                    } else {
+                        self.gui.status_message =
+                            "TechDraw: no drawing to export".into();
+                    }
+                }
+
+                GuiAction::TechDrawClear => {
+                    self.gui.techdraw_sheet = None;
+                    self.gui.status_message = "TechDraw: cleared".into();
+                }
+
+                // -- Mesh operations --
+                GuiAction::MeshDecimate(ratio) => {
+                    if let Some(mesh) = &self.current_mesh {
+                        match cadkernel_io::decimate_mesh(mesh, ratio) {
+                            Ok(new_mesh) => {
+                                let count = new_mesh.indices.len();
+                                self.set_mesh(new_mesh);
+                                self.gui.status_message =
+                                    format!("Decimated to {count} triangles");
+                            }
+                            Err(e) => {
+                                self.gui.status_message =
+                                    format!("Decimate failed: {e}");
+                            }
+                        }
+                    } else {
+                        self.gui.status_message = "No mesh to decimate".into();
+                    }
+                }
+                GuiAction::MeshSubdivide => {
+                    if let Some(mesh) = &self.current_mesh {
+                        match cadkernel_io::subdivide_mesh(mesh) {
+                            Ok(new_mesh) => {
+                                let count = new_mesh.indices.len();
+                                self.set_mesh(new_mesh);
+                                self.gui.status_message =
+                                    format!("Subdivided to {count} triangles");
+                            }
+                            Err(e) => {
+                                self.gui.status_message =
+                                    format!("Subdivide failed: {e}");
+                            }
+                        }
+                    } else {
+                        self.gui.status_message = "No mesh to subdivide".into();
+                    }
+                }
+                GuiAction::MeshFillHoles => {
+                    if let Some(mesh) = &self.current_mesh {
+                        match cadkernel_io::fill_holes(mesh) {
+                            Ok(new_mesh) => {
+                                let count = new_mesh.indices.len();
+                                self.set_mesh(new_mesh);
+                                self.gui.status_message =
+                                    format!("Filled holes: {count} triangles");
+                            }
+                            Err(e) => {
+                                self.gui.status_message =
+                                    format!("Fill holes failed: {e}");
+                            }
+                        }
+                    } else {
+                        self.gui.status_message = "No mesh".into();
+                    }
+                }
+                GuiAction::MeshFlipNormals => {
+                    if let Some(mesh) = &self.current_mesh {
+                        let new_mesh = cadkernel_io::flip_normals(mesh);
+                        self.set_mesh(new_mesh);
+                        self.gui.status_message = "Normals flipped".into();
+                    } else {
+                        self.gui.status_message = "No mesh".into();
+                    }
+                }
+
+                // -- Export formats --
+                GuiAction::ExportStep(path) => {
+                    match export_step(&self.model) {
+                        Ok(content) => match std::fs::write(&path, &content) {
+                            Ok(()) => {
+                                self.gui.status_message =
+                                    format!("Exported STEP → {}", path.display());
+                            }
+                            Err(e) => {
+                                self.gui.status_message = format!("Write error: {e}");
+                            }
+                        },
+                        Err(e) => {
+                            self.gui.status_message = format!("STEP export error: {e}");
+                        }
+                    }
+                }
+                GuiAction::ExportIges(path) => {
+                    match export_iges(&self.model) {
+                        Ok(content) => match std::fs::write(&path, &content) {
+                            Ok(()) => {
+                                self.gui.status_message =
+                                    format!("Exported IGES → {}", path.display());
+                            }
+                            Err(e) => {
+                                self.gui.status_message = format!("Write error: {e}");
+                            }
+                        },
+                        Err(e) => {
+                            self.gui.status_message = format!("IGES export error: {e}");
+                        }
+                    }
+                }
+                GuiAction::ExportDxf(path) => {
+                    if let Some(mesh) = &self.current_mesh {
+                        match export_dxf(mesh) {
+                            Ok(content) => {
+                                let path_str = path.to_str().unwrap_or("");
+                                match write_dxf(path_str, &content) {
+                                    Ok(()) => {
+                                        self.gui.status_message =
+                                            format!("Exported DXF → {}", path.display());
+                                    }
+                                    Err(e) => {
+                                        self.gui.status_message = format!("Write error: {e}");
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                self.gui.status_message = format!("DXF export error: {e}");
+                            }
+                        }
+                    } else {
+                        self.gui.status_message = "No mesh to export".into();
+                    }
+                }
+                GuiAction::ExportPly(path) => {
+                    if let Some(mesh) = &self.current_mesh {
+                        match export_ply(mesh) {
+                            Ok(content) => {
+                                let path_str = path.to_str().unwrap_or("");
+                                match write_ply(path_str, &content) {
+                                    Ok(()) => {
+                                        self.gui.status_message =
+                                            format!("Exported PLY → {}", path.display());
+                                    }
+                                    Err(e) => {
+                                        self.gui.status_message = format!("Write error: {e}");
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                self.gui.status_message = format!("PLY export error: {e}");
+                            }
+                        }
+                    } else {
+                        self.gui.status_message = "No mesh to export".into();
+                    }
+                }
+                GuiAction::Export3mf(path) => {
+                    if let Some(mesh) = &self.current_mesh {
+                        match export_3mf(mesh) {
+                            Ok(content) => {
+                                let path_str = path.to_str().unwrap_or("");
+                                match write_3mf(path_str, &content) {
+                                    Ok(()) => {
+                                        self.gui.status_message =
+                                            format!("Exported 3MF → {}", path.display());
+                                    }
+                                    Err(e) => {
+                                        self.gui.status_message = format!("Write error: {e}");
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                self.gui.status_message = format!("3MF export error: {e}");
+                            }
+                        }
+                    } else {
+                        self.gui.status_message = "No mesh to export".into();
+                    }
+                }
+                GuiAction::ExportBrep(path) => {
+                    match export_brep(&self.model) {
+                        Ok(content) => {
+                            let path_str = path.to_str().unwrap_or("");
+                            match write_brep(path_str, &content) {
+                                Ok(()) => {
+                                    self.gui.status_message =
+                                        format!("Exported BREP → {}", path.display());
+                                }
+                                Err(e) => {
+                                    self.gui.status_message = format!("Write error: {e}");
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            self.gui.status_message = format!("BREP export error: {e}");
+                        }
+                    }
+                }
+
+                // -- Boolean operations with second primitive --
+                GuiAction::BooleanUnionWith {
+                    width,
+                    height,
+                    depth,
+                    offset,
+                } => {
+                    self.boolean_with_box(width, height, depth, offset, BooleanOp::Union);
+                }
+                GuiAction::BooleanSubtractWith {
+                    width,
+                    height,
+                    depth,
+                    offset,
+                } => {
+                    self.boolean_with_box(width, height, depth, offset, BooleanOp::Difference);
+                }
+                GuiAction::BooleanIntersectWith {
+                    width,
+                    height,
+                    depth,
+                    offset,
+                } => {
+                    self.boolean_with_box(width, height, depth, offset, BooleanOp::Intersection);
+                }
+
+                // -- Part operations --
+                GuiAction::MirrorSolid(plane) => {
+                    if let Some(solid) = self.current_solid {
+                        let (point, normal) = match plane {
+                            MirrorPlane::XY => (Point3::ORIGIN, Vec3::new(0.0, 0.0, 1.0)),
+                            MirrorPlane::XZ => (Point3::ORIGIN, Vec3::new(0.0, 1.0, 0.0)),
+                            MirrorPlane::YZ => (Point3::ORIGIN, Vec3::new(1.0, 0.0, 0.0)),
+                        };
+                        match mirror_solid(&mut self.model, solid, point, normal) {
+                            Ok(r) => {
+                                let mesh = tessellate_solid(&self.model, r.solid);
+                                self.current_solid = Some(r.solid);
+                                self.gui.status_message =
+                                    format!("Mirrored across {plane:?} plane");
+                                self.set_mesh(mesh);
+                            }
+                            Err(e) => {
+                                self.gui.status_message = format!("Mirror error: {e}");
+                            }
+                        }
+                    } else {
+                        self.gui.status_message = "No solid to mirror".into();
+                    }
+                }
+
+                GuiAction::ScaleSolid { factor } => {
+                    if let Some(solid) = self.current_solid {
+                        match scale_solid(&mut self.model, solid, Point3::ORIGIN, factor) {
+                            Ok(r) => {
+                                let mesh = tessellate_solid(&self.model, r.solid);
+                                self.current_solid = Some(r.solid);
+                                self.gui.status_message = format!("Scaled by {factor:.2}×");
+                                self.set_mesh(mesh);
+                            }
+                            Err(e) => {
+                                self.gui.status_message = format!("Scale error: {e}");
+                            }
+                        }
+                    } else {
+                        self.gui.status_message = "No solid to scale".into();
+                    }
+                }
+
+                GuiAction::ShellSolid { thickness } => {
+                    if let Some(solid) = self.current_solid {
+                        // Remove the top face (last face in the solid's shell)
+                        let faces_to_remove: Vec<Handle<FaceData>> = {
+                            if let Some(solid_data) = self.model.solids.get(solid) {
+                                if let Some(shell_h) = solid_data.shells.first() {
+                                    if let Some(shell) = self.model.shells.get(*shell_h) {
+                                        shell.faces.last().copied().into_iter().collect()
+                                    } else {
+                                        vec![]
+                                    }
+                                } else {
+                                    vec![]
+                                }
+                            } else {
+                                vec![]
+                            }
+                        };
+                        match shell_solid(
+                            &mut self.model,
+                            solid,
+                            &faces_to_remove,
+                            thickness,
+                        ) {
+                            Ok(r) => {
+                                let mesh = tessellate_solid(&self.model, r.solid);
+                                self.current_solid = Some(r.solid);
+                                self.gui.status_message =
+                                    format!("Shell: thickness={thickness:.2}");
+                                self.set_mesh(mesh);
+                            }
+                            Err(e) => {
+                                self.gui.status_message = format!("Shell error: {e}");
+                            }
+                        }
+                    } else {
+                        self.gui.status_message = "No solid for shell".into();
+                    }
+                }
+
+                GuiAction::FilletAllEdges { radius } => {
+                    if let Some(solid) = self.current_solid {
+                        let edges = self.collect_edge_pairs(solid);
+                        // Apply fillet to first edge only (all-edges would compound errors)
+                        if let Some(&(v1, v2)) = edges.first() {
+                            match fillet_edge(&mut self.model, solid, v1, v2, radius) {
+                                Ok(r) => {
+                                    let mesh = tessellate_solid(&self.model, r.solid);
+                                    self.current_solid = Some(r.solid);
+                                    self.gui.status_message =
+                                        format!("Fillet: r={radius:.2} (1 edge)");
+                                    self.set_mesh(mesh);
+                                }
+                                Err(e) => {
+                                    self.gui.status_message = format!("Fillet error: {e}");
+                                }
+                            }
+                        } else {
+                            self.gui.status_message = "No edges found for fillet".into();
+                        }
+                    } else {
+                        self.gui.status_message = "No solid for fillet".into();
+                    }
+                }
+
+                GuiAction::ChamferAllEdges { distance } => {
+                    if let Some(solid) = self.current_solid {
+                        let edges = self.collect_edge_pairs(solid);
+                        if let Some(&(v1, v2)) = edges.first() {
+                            match chamfer_edge(&mut self.model, solid, v1, v2, distance) {
+                                Ok(r) => {
+                                    let mesh = tessellate_solid(&self.model, r.solid);
+                                    self.current_solid = Some(r.solid);
+                                    self.gui.status_message =
+                                        format!("Chamfer: d={distance:.2} (1 edge)");
+                                    self.set_mesh(mesh);
+                                }
+                                Err(e) => {
+                                    self.gui.status_message = format!("Chamfer error: {e}");
+                                }
+                            }
+                        } else {
+                            self.gui.status_message = "No edges found for chamfer".into();
+                        }
+                    } else {
+                        self.gui.status_message = "No solid for chamfer".into();
+                    }
+                }
+
+                GuiAction::LinearPattern {
+                    count,
+                    spacing,
+                    axis,
+                } => {
+                    if let Some(solid) = self.current_solid {
+                        let dir = match axis {
+                            0 => Vec3::new(1.0, 0.0, 0.0),
+                            1 => Vec3::new(0.0, 1.0, 0.0),
+                            _ => Vec3::new(0.0, 0.0, 1.0),
+                        };
+                        match linear_pattern(&mut self.model, solid, dir, spacing, count) {
+                            Ok(r) => {
+                                // Tessellate & show the last copy
+                                if let Some(&last) = r.solids.last() {
+                                    let mesh = tessellate_solid(&self.model, last);
+                                    self.current_solid = Some(last);
+                                    self.gui.status_message = format!(
+                                        "Linear pattern: {count}× along {:?}, spacing={spacing:.1}",
+                                        ["X", "Y", "Z"][axis.min(2) as usize]
+                                    );
+                                    self.set_mesh(mesh);
+                                }
+                            }
+                            Err(e) => {
+                                self.gui.status_message = format!("Pattern error: {e}");
+                            }
+                        }
+                    } else {
+                        self.gui.status_message = "No solid for pattern".into();
+                    }
+                }
+
+                // -- Mesh operations (new) --
+                GuiAction::MeshSmooth { iterations, factor } => {
+                    if let Some(mesh) = &self.current_mesh {
+                        let new_mesh = cadkernel_io::smooth_mesh(mesh, iterations, factor);
+                        let count = new_mesh.vertices.len();
+                        self.set_mesh(new_mesh);
+                        self.gui.status_message =
+                            format!("Smoothed: {iterations} iters, factor={factor:.2} ({count} verts)");
+                    } else {
+                        self.gui.status_message = "No mesh to smooth".into();
+                    }
+                }
+                GuiAction::MeshHarmonizeNormals => {
+                    if let Some(mesh) = &self.current_mesh {
+                        let new_mesh = cadkernel_io::harmonize_normals(mesh);
+                        self.set_mesh(new_mesh);
+                        self.gui.status_message = "Normals harmonized".into();
+                    } else {
+                        self.gui.status_message = "No mesh".into();
+                    }
+                }
+                GuiAction::MeshCheckWatertight => {
+                    if let Some(mesh) = &self.current_mesh {
+                        let is_wt = cadkernel_io::check_mesh_watertight(mesh);
+                        self.gui.status_message = if is_wt {
+                            "Mesh is watertight".into()
+                        } else {
+                            "Mesh is NOT watertight (has boundary edges)".into()
+                        };
+                    } else {
+                        self.gui.status_message = "No mesh".into();
+                    }
+                }
+                GuiAction::MeshRemesh { target_edge_len } => {
+                    if let Some(mesh) = &self.current_mesh {
+                        match cadkernel_io::remesh(mesh, target_edge_len) {
+                            Ok(new_mesh) => {
+                                let count = new_mesh.indices.len();
+                                self.set_mesh(new_mesh);
+                                self.gui.status_message =
+                                    format!("Remeshed: {count} triangles (edge≤{target_edge_len:.2})");
+                            }
+                            Err(e) => {
+                                self.gui.status_message = format!("Remesh error: {e}");
+                            }
+                        }
+                    } else {
+                        self.gui.status_message = "No mesh to remesh".into();
+                    }
+                }
+                GuiAction::MeshRepair => {
+                    if let Some(mesh) = &self.current_mesh {
+                        let (repaired, report) = cadkernel_io::evaluate_and_repair(mesh);
+                        let msg = format!(
+                            "Repair: {} degenerate removed, {} duplicates merged, normals {}",
+                            report.degenerate_removed,
+                            report.duplicate_vertices_merged,
+                            if report.normals_harmonized {
+                                "harmonized"
+                            } else {
+                                "OK"
+                            }
+                        );
+                        self.set_mesh(repaired);
+                        self.gui.status_message = msg;
+                    } else {
+                        self.gui.status_message = "No mesh to repair".into();
+                    }
+                }
+
+                // -- Measure / Analysis --
+                GuiAction::MeasureSolid => {
+                    if let Some(mesh) = &self.current_mesh {
+                        let props = compute_mass_properties(mesh);
+                        self.gui.status_message = format!(
+                            "Volume={:.3}, Area={:.3}, Center=({:.2},{:.2},{:.2})",
+                            props.volume,
+                            props.surface_area,
+                            props.centroid.x,
+                            props.centroid.y,
+                            props.centroid.z,
+                        );
+                    } else {
+                        self.gui.status_message = "No mesh to measure".into();
+                    }
+                }
+                GuiAction::CheckGeometry => {
+                    if let Some(solid) = self.current_solid {
+                        let result = check_geometry(&self.model, solid);
+                        if result.is_valid {
+                            self.gui.status_message =
+                                "Geometry check: VALID (no issues found)".into();
+                            self.gui.log(ReportLevel::Info, "Geometry check: VALID");
+                        } else {
+                            let msg = format!(
+                                "Geometry check: INVALID — {} issue(s): {}",
+                                result.issues.len(),
+                                result.issues.first().map_or("", |s| s.as_str()),
+                            );
+                            self.gui.status_message = msg.clone();
+                            self.gui.log(ReportLevel::Warning, msg);
+                        }
+                    } else {
+                        self.gui.status_message = "No solid to check".into();
+                    }
+                }
+
+                GuiAction::SelectAll => {
+                    if let Some((handle, _)) = self.model.solids.iter().next() {
+                        self.gui.selected_entity = Some(SelectedEntity::Solid(handle));
+                        self.gui.status_message = "Selected all".into();
+                    }
+                }
+                GuiAction::DeselectAll => {
+                    self.gui.selected_entity = None;
+                    self.gui.status_message = "Selection cleared".into();
+                }
+                GuiAction::DeleteSelected => {
+                    self.gui.status_message = "Delete: not yet implemented".into();
+                    self.gui.selected_entity = None;
+                }
             }
         }
+    }
+
+    /// Handle a click on the sketch plane.
+    fn handle_sketch_click(&mut self, x: f64, y: f64) {
+        let sm = match &mut self.gui.sketch_mode {
+            Some(sm) => sm,
+            None => return,
+        };
+
+        match sm.tool {
+            SketchTool::Select => {
+                // Select mode: nothing for now
+            }
+            SketchTool::Line => {
+                if let Some((px, py)) = sm.pending_point.take() {
+                    let p0 = sm.sketch.add_point(px, py);
+                    let p1 = sm.sketch.add_point(x, y);
+                    sm.sketch.add_line(p0, p1);
+                    // Chain: start next line from end of previous
+                    sm.pending_point = Some((x, y));
+                    self.gui.status_message = format!(
+                        "Line added ({:.1},{:.1}) -> ({:.1},{:.1})",
+                        px, py, x, y
+                    );
+                } else {
+                    sm.pending_point = Some((x, y));
+                    self.gui.status_message = format!("Line start: ({x:.1}, {y:.1})");
+                }
+            }
+            SketchTool::Rectangle => {
+                if let Some((px, py)) = sm.pending_point.take() {
+                    // Create 4 corners and 4 lines
+                    let p0 = sm.sketch.add_point(px, py);
+                    let p1 = sm.sketch.add_point(x, py);
+                    let p2 = sm.sketch.add_point(x, y);
+                    let p3 = sm.sketch.add_point(px, y);
+                    sm.sketch.add_line(p0, p1);
+                    sm.sketch.add_line(p1, p2);
+                    sm.sketch.add_line(p2, p3);
+                    sm.sketch.add_line(p3, p0);
+                    self.gui.status_message = format!(
+                        "Rectangle ({:.1},{:.1}) -> ({:.1},{:.1})",
+                        px, py, x, y
+                    );
+                } else {
+                    sm.pending_point = Some((x, y));
+                    self.gui.status_message =
+                        format!("Rectangle corner 1: ({x:.1}, {y:.1})");
+                }
+            }
+            SketchTool::Circle => {
+                if let Some((cx, cy)) = sm.pending_point.take() {
+                    let dx = x - cx;
+                    let dy = y - cy;
+                    let radius = (dx * dx + dy * dy).sqrt();
+                    let center = sm.sketch.add_point(cx, cy);
+                    sm.sketch.add_circle(center, radius);
+                    self.gui.status_message =
+                        format!("Circle center ({cx:.1},{cy:.1}) r={radius:.1}");
+                } else {
+                    sm.pending_point = Some((x, y));
+                    self.gui.status_message = format!("Circle center: ({x:.1}, {y:.1})");
+                }
+            }
+            SketchTool::Arc => {
+                // Arc needs 3 clicks: center, start, end. Simplified: 2 clicks = center + radius point
+                if let Some((cx, cy)) = sm.pending_point.take() {
+                    let dx = x - cx;
+                    let dy = y - cy;
+                    let radius = (dx * dx + dy * dy).sqrt();
+                    let start_angle = 0.0;
+                    let end_angle = std::f64::consts::PI;
+                    let center = sm.sketch.add_point(cx, cy);
+                    let sp = sm
+                        .sketch
+                        .add_point(cx + radius, cy);
+                    let ep = sm
+                        .sketch
+                        .add_point(cx - radius, cy);
+                    sm.sketch
+                        .add_arc(center, sp, ep, radius, start_angle, end_angle);
+                    self.gui.status_message =
+                        format!("Arc center ({cx:.1},{cy:.1}) r={radius:.1}");
+                } else {
+                    sm.pending_point = Some((x, y));
+                    self.gui.status_message = format!("Arc center: ({x:.1}, {y:.1})");
+                }
+            }
+        }
+    }
+
+    /// Close the sketch: solve constraints, extract profile, extrude if distance > 0.
+    fn close_sketch(&mut self) {
+        let sm = match self.gui.sketch_mode.take() {
+            Some(sm) => sm,
+            None => return,
+        };
+
+        let mut sketch = sm.sketch;
+
+        // Solve constraints
+        if !sketch.constraints.is_empty() {
+            let result = solve(&mut sketch, 200, 1e-10);
+            if !result.converged {
+                self.gui.status_message = format!(
+                    "Sketch solver: did not converge (residual={:.2e})",
+                    result.residual
+                );
+                // Put sketch back for user to fix
+                self.gui.sketch_mode = Some(SketchMode {
+                    sketch,
+                    plane: sm.plane,
+                    tool: sm.tool,
+                    pending_point: None,
+                    extrude_distance: sm.extrude_distance,
+                });
+                return;
+            }
+        }
+
+        // Extract profile
+        let profile = extract_profile(&sketch, &sm.plane);
+        if profile.len() < 3 {
+            self.gui.status_message = format!(
+                "Sketch has only {} points, need at least 3 for extrude",
+                profile.len()
+            );
+            return;
+        }
+
+        // Extrude along plane normal
+        let distance = sm.extrude_distance;
+        if distance.abs() < 1e-10 {
+            self.gui.status_message =
+                "Sketch closed (no extrude — distance is 0)".into();
+            return;
+        }
+
+        let dir = Vec3::new(
+            sm.plane.normal.x,
+            sm.plane.normal.y,
+            sm.plane.normal.z,
+        );
+        let mut model = BRepModel::new();
+        match extrude(&mut model, &profile, dir, distance) {
+            Ok(r) => {
+                let mesh = tessellate_solid(&model, r.solid);
+                self.model = model;
+                self.current_solid = Some(r.solid);
+                self.gui.current_file = None;
+                self.gui.status_message = format!(
+                    "Sketch → Extrude: {} faces, distance={distance:.1}",
+                    mesh.indices.len()
+                );
+                self.set_mesh(mesh);
+            }
+            Err(e) => {
+                self.gui.status_message = format!("Extrude error: {e}");
+            }
+        }
+    }
+
+    /// Unproject a screen pixel to the sketch work plane.
+    /// Returns 2D coordinates in the sketch plane, or None if the ray is parallel.
+    fn screen_to_sketch_plane(&self, sx: f64, sy: f64) -> Option<(f64, f64)> {
+        let sm = self.gui.sketch_mode.as_ref()?;
+        let rt = self.runtime.as_ref()?;
+        let size = rt.gpu.window.inner_size();
+        let w = size.width as f32;
+        let h = size.height as f32;
+
+        // NDC from screen pixel
+        let ndc_x = (sx as f32 / w) * 2.0 - 1.0;
+        let ndc_y = 1.0 - (sy as f32 / h) * 2.0; // invert Y
+
+        // Ray from camera through pixel
+        let eye = self.camera.eye();
+        let r = self.camera.screen_right();
+        let u = self.camera.screen_up();
+        let f = normalize3(sub3(self.camera.target, eye));
+
+        // For perspective: ray = eye + t * dir, where dir = f + ndc_x*right*tan(fov/2)*aspect + ndc_y*up*tan(fov/2)
+        let half_fov_tan = (self.camera.fovy * 0.5).tan();
+        let dir = normalize3([
+            f[0] + ndc_x * r[0] * half_fov_tan * self.camera.aspect
+                + ndc_y * u[0] * half_fov_tan,
+            f[1] + ndc_x * r[1] * half_fov_tan * self.camera.aspect
+                + ndc_y * u[1] * half_fov_tan,
+            f[2] + ndc_x * r[2] * half_fov_tan * self.camera.aspect
+                + ndc_y * u[2] * half_fov_tan,
+        ]);
+
+        // Intersect ray with sketch plane: dot(origin + t*dir - plane_point, plane_normal) = 0
+        let pn = [
+            sm.plane.normal.x as f32,
+            sm.plane.normal.y as f32,
+            sm.plane.normal.z as f32,
+        ];
+        let po = [
+            sm.plane.origin.x as f32,
+            sm.plane.origin.y as f32,
+            sm.plane.origin.z as f32,
+        ];
+        let denom = dot3(dir, pn);
+        if denom.abs() < 1e-6 {
+            return None; // ray parallel to plane
+        }
+        let t = dot3(sub3(po, eye), pn) / denom;
+        if t < 0.0 {
+            return None; // behind camera
+        }
+        let hit = [eye[0] + t * dir[0], eye[1] + t * dir[1], eye[2] + t * dir[2]];
+
+        // Project 3D hit point to sketch 2D coordinates
+        let rel = sub3(hit, po);
+        let xa = [
+            sm.plane.x_axis.x as f32,
+            sm.plane.x_axis.y as f32,
+            sm.plane.x_axis.z as f32,
+        ];
+        let ya = [
+            sm.plane.y_axis.x as f32,
+            sm.plane.y_axis.y as f32,
+            sm.plane.y_axis.z as f32,
+        ];
+        let sx2d = dot3(rel, xa) as f64;
+        let sy2d = dot3(rel, ya) as f64;
+        Some((sx2d, sy2d))
     }
 
     fn load_mesh_file(&mut self, path: &Path) {
@@ -634,6 +1790,7 @@ impl CadApp {
             display_mode,
             show_grid,
             grid_config,
+            fps_display,
             ..
         } = self;
         let Some(rt) = runtime else { return };
@@ -643,6 +1800,8 @@ impl CadApp {
             display_mode: dm,
             grid_config,
             show_grid: *show_grid,
+            fps: *fps_display,
+            show_fps: nav.show_fps,
         };
 
         // 1. Run egui ---------------------------------------------------
@@ -1173,9 +2332,27 @@ impl ApplicationHandler for CadApp {
                 WindowEvent::MouseInput { state, button, .. } => {
                     let pressed = *state == ElementState::Pressed;
                     match button {
-                        MouseButton::Left => self.mouse.left_pressed = pressed,
+                        MouseButton::Left => {
+                            // In sketch mode, left-click adds entities
+                            if pressed && self.gui.sketch_mode.is_some() {
+                                if let Some((sx, sy)) = self.mouse.last_pos {
+                                    if let Some(pt) = self.screen_to_sketch_plane(sx, sy) {
+                                        self.gui.actions.push(GuiAction::SketchClick(pt.0, pt.1));
+                                    }
+                                }
+                            }
+                            self.mouse.left_pressed = pressed;
+                        }
                         MouseButton::Middle => self.mouse.middle_pressed = pressed,
-                        MouseButton::Right => self.mouse.right_pressed = pressed,
+                        MouseButton::Right => {
+                            // Right-click in sketch mode: clear pending point
+                            if pressed {
+                                if let Some(sm) = &mut self.gui.sketch_mode {
+                                    sm.pending_point = None;
+                                }
+                            }
+                            self.mouse.right_pressed = pressed;
+                        }
                         _ => {}
                     }
                 }
@@ -1246,7 +2423,13 @@ impl ApplicationHandler for CadApp {
             } if key_event.state == ElementState::Pressed => {
                 let ctrl = self.mouse.ctrl_held;
                 match key_event.physical_key {
-                    PhysicalKey::Code(KeyCode::Escape) => event_loop.exit(),
+                    PhysicalKey::Code(KeyCode::Escape) => {
+                        if self.gui.sketch_mode.is_some() {
+                            self.gui.actions.push(GuiAction::CancelSketch);
+                        } else {
+                            event_loop.exit();
+                        }
+                    }
 
                     // Standard views (FreeCAD numpad / regular keys)
                     PhysicalKey::Code(KeyCode::Digit1 | KeyCode::Numpad1) if !ctrl => {

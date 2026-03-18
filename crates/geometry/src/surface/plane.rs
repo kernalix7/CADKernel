@@ -1,7 +1,11 @@
 use cadkernel_core::{KernelError, KernelResult};
-use cadkernel_math::{EPSILON, Point3, Vec3};
+use cadkernel_math::{BoundingBox, EPSILON, Point3, Vec3};
 
 use super::Surface;
+
+/// Fallback domain bound used when an infinite domain would produce NaN
+/// in sampling-based algorithms (bounding_box, project_point).
+const FINITE_FALLBACK: f64 = 1e6;
 
 /// An infinite plane defined by origin, u-axis, and v-axis.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -96,6 +100,30 @@ impl Surface for Plane {
 
     fn domain_v(&self) -> (f64, f64) {
         (f64::NEG_INFINITY, f64::INFINITY)
+    }
+
+    /// Analytical projection onto an infinite plane.
+    fn project_point(&self, point: Point3) -> (f64, f64, Point3) {
+        let closest = Plane::project_point(self, point);
+        let d = closest - self.origin;
+        let u = d.dot(self.u_axis) / self.u_axis.dot(self.u_axis).max(1e-14);
+        let v = d.dot(self.v_axis) / self.v_axis.dot(self.v_axis).max(1e-14);
+        (u, v, closest)
+    }
+
+    /// Bounding box for an infinite plane — uses a large finite fallback domain.
+    fn bounding_box(&self) -> BoundingBox {
+        let corners = [
+            self.point_at(-FINITE_FALLBACK, -FINITE_FALLBACK),
+            self.point_at(FINITE_FALLBACK, -FINITE_FALLBACK),
+            self.point_at(-FINITE_FALLBACK, FINITE_FALLBACK),
+            self.point_at(FINITE_FALLBACK, FINITE_FALLBACK),
+        ];
+        let mut bb = BoundingBox::new(corners[0], corners[0]);
+        for &c in &corners[1..] {
+            bb.include_point(c);
+        }
+        bb
     }
 }
 

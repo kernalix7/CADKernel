@@ -124,8 +124,8 @@ impl ApplicationHandler for ViewerApp {
 
                     match action {
                         NavAction::Orbit => {
-                            self.camera.yaw += dx as f32 * self.nav.orbit_sensitivity;
-                            self.camera.pitch += dy as f32 * self.nav.orbit_sensitivity;
+                            self.camera.yaw -= dx as f32 * self.nav.orbit_sensitivity;
+                            self.camera.pitch -= dy as f32 * self.nav.orbit_sensitivity;
                         }
                         NavAction::Pan => {
                             let speed = self.camera.distance * self.nav.pan_sensitivity;

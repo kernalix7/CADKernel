@@ -1,6 +1,10 @@
-use cadkernel_math::{Point3, Vec3};
+use cadkernel_math::{BoundingBox, Point3, Vec3};
 
 use super::Curve;
+
+/// Fallback domain bound used when an infinite domain would produce NaN
+/// in sampling-based algorithms (bounding_box, project_point).
+const FINITE_FALLBACK: f64 = 1e6;
 
 /// An infinite line defined by origin + direction.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -42,6 +46,26 @@ impl Curve for Line {
 
     fn is_closed(&self) -> bool {
         false
+    }
+
+    /// Analytical projection onto an infinite line.
+    fn project_point(&self, point: Point3) -> (f64, Point3) {
+        let d = self.direction;
+        let denom = d.dot(d);
+        if denom < 1e-14 {
+            return (0.0, self.origin);
+        }
+        let t = (point - self.origin).dot(d) / denom;
+        (t, self.origin + d * t)
+    }
+
+    /// Bounding box for an infinite line — uses a large finite fallback domain.
+    fn bounding_box(&self) -> BoundingBox {
+        let p0 = self.point_at(-FINITE_FALLBACK);
+        let p1 = self.point_at(FINITE_FALLBACK);
+        let mut bb = BoundingBox::new(p0, p0);
+        bb.include_point(p1);
+        bb
     }
 }
 

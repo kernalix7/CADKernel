@@ -1,3 +1,4 @@
+use cadkernel_core::{KernelError, KernelResult};
 use cadkernel_math::{Point3, Vec3};
 
 use super::Surface;
@@ -18,7 +19,22 @@ pub struct Torus {
 
 impl Torus {
     /// Creates a torus with the given center, axis, major radius (ring), and minor radius (tube).
-    pub fn new(center: Point3, axis: Vec3, major_radius: f64, minor_radius: f64) -> Self {
+    pub fn new(
+        center: Point3,
+        axis: Vec3,
+        major_radius: f64,
+        minor_radius: f64,
+    ) -> KernelResult<Self> {
+        if major_radius <= 0.0 {
+            return Err(KernelError::InvalidArgument(
+                "torus major_radius must be positive".into(),
+            ));
+        }
+        if minor_radius <= 0.0 {
+            return Err(KernelError::InvalidArgument(
+                "torus minor_radius must be positive".into(),
+            ));
+        }
         let a = axis.normalized().unwrap_or(Vec3::Z);
         let x = if a.cross(Vec3::X).length() > 1e-6 {
             a.cross(Vec3::X).normalized().unwrap_or(Vec3::Y)
@@ -26,14 +42,14 @@ impl Torus {
             a.cross(Vec3::Y).normalized().unwrap_or(Vec3::X)
         };
         let y = a.cross(x);
-        Self {
+        Ok(Self {
             center,
             axis: a,
             major_radius,
             minor_radius,
             x_axis: x,
             y_axis: y,
-        }
+        })
     }
 }
 
@@ -68,7 +84,7 @@ mod tests {
 
     #[test]
     fn test_torus_at_origin() {
-        let t = Torus::new(Point3::ORIGIN, Vec3::Z, 3.0, 1.0);
+        let t = Torus::new(Point3::ORIGIN, Vec3::Z, 3.0, 1.0).unwrap();
         // u=0, v=0 → on the outer equator
         let p = t.point_at(0.0, 0.0);
         let r = (p.x * p.x + p.y * p.y).sqrt();
@@ -78,7 +94,7 @@ mod tests {
 
     #[test]
     fn test_torus_inner_point() {
-        let t = Torus::new(Point3::ORIGIN, Vec3::Z, 3.0, 1.0);
+        let t = Torus::new(Point3::ORIGIN, Vec3::Z, 3.0, 1.0).unwrap();
         // u=0, v=π → on the inner equator
         let p = t.point_at(0.0, std::f64::consts::PI);
         let r = (p.x * p.x + p.y * p.y).sqrt();
@@ -87,7 +103,7 @@ mod tests {
 
     #[test]
     fn test_torus_top() {
-        let t = Torus::new(Point3::ORIGIN, Vec3::Z, 3.0, 1.0);
+        let t = Torus::new(Point3::ORIGIN, Vec3::Z, 3.0, 1.0).unwrap();
         // u=0, v=π/2 → top of the tube
         let p = t.point_at(0.0, FRAC_PI_2);
         assert!((p.z - 1.0).abs() < EPSILON);
@@ -95,7 +111,7 @@ mod tests {
 
     #[test]
     fn test_torus_closed() {
-        let t = Torus::new(Point3::ORIGIN, Vec3::Z, 5.0, 2.0);
+        let t = Torus::new(Point3::ORIGIN, Vec3::Z, 5.0, 2.0).unwrap();
         let p0 = t.point_at(0.0, 0.0);
         let p1 = t.point_at(TAU, TAU);
         assert!(p0.approx_eq(p1));

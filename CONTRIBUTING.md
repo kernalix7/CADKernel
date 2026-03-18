@@ -1,6 +1,6 @@
 # Contributing to CADKernel
 
-**English** | [한국어](CONTRIBUTING.ko.md)
+**English** | [한국어](docs/CONTRIBUTING.ko.md)
 
 Thanks for your interest in contributing to CADKernel.
 

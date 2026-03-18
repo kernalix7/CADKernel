@@ -26,6 +26,16 @@ impl Arc {
         }
     }
 
+    /// Returns the local X-axis.
+    pub fn x_axis(&self) -> Vec3 {
+        self.x_axis
+    }
+
+    /// Returns the local Y-axis.
+    pub fn y_axis(&self) -> Vec3 {
+        self.y_axis
+    }
+
     fn angle_span(&self) -> f64 {
         self.end_angle - self.start_angle
     }

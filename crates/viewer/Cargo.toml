@@ -9,9 +9,11 @@ authors.workspace = true
 [dependencies]
 cadkernel-core.workspace = true
 cadkernel-math.workspace = true
+cadkernel-geometry.workspace = true
 cadkernel-topology.workspace = true
 cadkernel-modeling.workspace = true
 cadkernel-io.workspace = true
+cadkernel-sketch.workspace = true
 rayon.workspace = true
 wgpu = "24"
 winit = "0.30"

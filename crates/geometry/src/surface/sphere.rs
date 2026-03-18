@@ -1,5 +1,6 @@
 use std::f64::consts::{PI, TAU};
 
+use cadkernel_core::{KernelError, KernelResult};
 use cadkernel_math::{Point3, Vec3};
 
 use super::Surface;
@@ -13,8 +14,13 @@ pub struct Sphere {
 
 impl Sphere {
     /// Creates a sphere with the given center and radius.
-    pub fn new(center: Point3, radius: f64) -> Self {
-        Self { center, radius }
+    pub fn new(center: Point3, radius: f64) -> KernelResult<Self> {
+        if radius <= 0.0 {
+            return Err(KernelError::InvalidArgument(
+                "sphere radius must be positive".into(),
+            ));
+        }
+        Ok(Self { center, radius })
     }
 }
 
@@ -53,21 +59,21 @@ mod tests {
 
     #[test]
     fn test_sphere_north_pole() {
-        let s = Sphere::new(Point3::ORIGIN, 1.0);
+        let s = Sphere::new(Point3::ORIGIN, 1.0).unwrap();
         let p = s.point_at(0.0, FRAC_PI_2);
         assert!(p.approx_eq(Point3::new(0.0, 0.0, 1.0)));
     }
 
     #[test]
     fn test_sphere_equator() {
-        let s = Sphere::new(Point3::ORIGIN, 2.0);
+        let s = Sphere::new(Point3::ORIGIN, 2.0).unwrap();
         let p = s.point_at(0.0, 0.0);
         assert!(p.approx_eq(Point3::new(2.0, 0.0, 0.0)));
     }
 
     #[test]
     fn test_sphere_normal_unit() {
-        let s = Sphere::new(Point3::ORIGIN, 5.0);
+        let s = Sphere::new(Point3::ORIGIN, 5.0).unwrap();
         let n = s.normal_at(0.5, 0.3);
         assert!((n.length() - 1.0).abs() < EPSILON);
     }

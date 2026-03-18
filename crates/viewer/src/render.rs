@@ -455,13 +455,28 @@ pub fn mesh_to_vertices(mesh: &Mesh) -> Vec<Vertex> {
             }
 
             // BFS: group faces connected by smooth angle at this vertex.
+            // Build local adjacency: two faces at this vertex are neighbors
+            // if they share another vertex (i.e. share an edge through v).
+            let mut local_adj: Vec<Vec<usize>> = vec![Vec::new(); n];
+            for a in 0..n {
+                let fa = &mesh.indices[faces[a]];
+                for b in (a + 1)..n {
+                    let fb = &mesh.indices[faces[b]];
+                    let shared = fa.iter().any(|&va| va as usize != v && fb.contains(&va));
+                    if shared {
+                        local_adj[a].push(b);
+                        local_adj[b].push(a);
+                    }
+                }
+            }
+
             let mut group = vec![start];
             visited[start] = true;
             let mut qi = 0;
             while qi < group.len() {
                 let fn_c = face_data[faces[group[qi]]].0;
                 qi += 1;
-                for next in 0..n {
+                for &next in &local_adj[group[qi - 1]] {
                     if visited[next] {
                         continue;
                     }

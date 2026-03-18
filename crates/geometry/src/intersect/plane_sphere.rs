@@ -42,7 +42,7 @@ mod tests {
     #[test]
     fn test_equator_intersection() {
         let plane = Plane::xy().unwrap();
-        let sphere = Sphere::new(Point3::ORIGIN, 1.0);
+        let sphere = Sphere::new(Point3::ORIGIN, 1.0).unwrap();
         match intersect_plane_sphere(&plane, &sphere) {
             SsiResult::Circle {
                 center,
@@ -59,7 +59,7 @@ mod tests {
     #[test]
     fn test_tangent() {
         let plane = Plane::new(Point3::new(0.0, 0.0, 1.0), Vec3::X, Vec3::Y).unwrap();
-        let sphere = Sphere::new(Point3::ORIGIN, 1.0);
+        let sphere = Sphere::new(Point3::ORIGIN, 1.0).unwrap();
         assert!(matches!(
             intersect_plane_sphere(&plane, &sphere),
             SsiResult::Point(_)
@@ -69,7 +69,7 @@ mod tests {
     #[test]
     fn test_no_intersection() {
         let plane = Plane::new(Point3::new(0.0, 0.0, 5.0), Vec3::X, Vec3::Y).unwrap();
-        let sphere = Sphere::new(Point3::ORIGIN, 1.0);
+        let sphere = Sphere::new(Point3::ORIGIN, 1.0).unwrap();
         assert!(matches!(
             intersect_plane_sphere(&plane, &sphere),
             SsiResult::Empty

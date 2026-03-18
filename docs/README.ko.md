@@ -10,7 +10,7 @@
 
 *안정적이고, 빠르고, 호환성 높고, 확장 가능한 차세대 오픈소스 CAD 소프트웨어*
 
-[English](README.md) | **한국어**
+[English](../README.md) | **한국어**
 
 </div>
 
@@ -571,7 +571,7 @@ cargo run --release --bin cadkernel
 
 **사용 가능한 기능:**
 - File → Open으로 STL/OBJ 파일 열기
-- Create 메뉴로 프리미티브 생성 (Box, Cylinder, Sphere)
+- Create 메뉴로 프리미티브 생성 (Box, Cylinder, Sphere, Cone, Torus)
 - 디스플레이 모드 전환: D 키 또는 View → Display Mode
 - 표준 뷰: 1/3/7 키 (Front/Right/Top), Ctrl+1/3/7 (Back/Left/Bottom), 0 (Isometric)
 - 그리드 토글: G 키

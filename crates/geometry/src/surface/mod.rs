@@ -1,9 +1,20 @@
 pub mod cone;
+pub mod continuity;
+pub mod curvature;
 pub mod cylinder;
+pub mod extrusion;
+pub mod filling;
+pub mod isocurve;
 pub mod nurbs;
+pub mod pipe;
+pub mod nurbs_fitting;
+pub mod parametric_wire;
 pub mod plane;
+pub mod revolution;
 pub mod sphere;
+pub mod to_nurbs;
 pub mod torus;
+pub mod trimmed;
 
 use cadkernel_math::{BoundingBox, Point3, Vec3};
 

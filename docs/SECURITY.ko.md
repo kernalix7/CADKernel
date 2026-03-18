@@ -1,6 +1,6 @@
 # 보안 정책
 
-[English](SECURITY.md) | **한국어**
+[English](../SECURITY.md) | **한국어**
 
 ## 지원 버전
 

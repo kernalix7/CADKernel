@@ -1,6 +1,6 @@
 # Security Policy
 
-**English** | [한국어](SECURITY.ko.md)
+**English** | [한국어](docs/SECURITY.ko.md)
 
 ## Supported Versions
 

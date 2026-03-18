@@ -1,8 +1,12 @@
 use std::f64::consts::{FRAC_PI_2, TAU};
+use std::sync::Arc;
 
 use cadkernel_core::{KernelError, KernelResult};
+use cadkernel_geometry::Sphere as SphSurface;
 use cadkernel_math::Point3;
-use cadkernel_topology::{BRepModel, EntityKind, Handle, Tag};
+use cadkernel_topology::{BRepModel, EntityKind, Handle, Orientation, Tag};
+
+use super::{EdgeCache, bind_edge_line_segments, next_edge_tag};
 
 /// Creates a UV-sphere as a B-Rep solid.
 ///
@@ -11,6 +15,9 @@ use cadkernel_topology::{BRepModel, EntityKind, Handle, Tag};
 ///
 /// Produces: 2 pole vertices + `(rings-1)*segments` ring vertices,
 /// `rings*segments` quad/tri faces, 1 shell, 1 solid.
+///
+/// All faces are bound to a shared `Sphere` surface; all edges to `LineSegment`
+/// curves.
 pub fn make_sphere(
     model: &mut BRepModel,
     center: Point3,
@@ -71,19 +78,29 @@ pub fn make_sphere(
     let mut edge_idx = 0u32;
     let mut face_idx = 0u32;
     let mut all_faces = Vec::new();
+    let mut ec = EdgeCache::new();
 
-    // South cap triangles
+    // South cap triangles (reversed ring direction for correct outward normal -Z)
     for s in 0..segments {
         let next = (s + 1) % segments;
-        let e1_tag = Tag::generated(EntityKind::Edge, op, edge_idx);
-        let (_, he1, _) = model.add_edge_tagged(south_pole, ring_verts[0][s], e1_tag);
-        edge_idx += 1;
-        let e2_tag = Tag::generated(EntityKind::Edge, op, edge_idx);
-        let (_, he2, _) = model.add_edge_tagged(ring_verts[0][s], ring_verts[0][next], e2_tag);
-        edge_idx += 1;
-        let e3_tag = Tag::generated(EntityKind::Edge, op, edge_idx);
-        let (_, he3, _) = model.add_edge_tagged(ring_verts[0][next], south_pole, e3_tag);
-        edge_idx += 1;
+        let he1 = ec.get_or_create(
+            model,
+            south_pole,
+            ring_verts[0][next],
+            next_edge_tag(op, &mut edge_idx),
+        );
+        let he2 = ec.get_or_create(
+            model,
+            ring_verts[0][next],
+            ring_verts[0][s],
+            next_edge_tag(op, &mut edge_idx),
+        );
+        let he3 = ec.get_or_create(
+            model,
+            ring_verts[0][s],
+            south_pole,
+            next_edge_tag(op, &mut edge_idx),
+        );
 
         let lp = model.make_loop(&[he1, he2, he3])?;
         let ft = Tag::generated(EntityKind::Face, op, face_idx);
@@ -95,20 +112,30 @@ pub fn make_sphere(
     for r in 0..ring_verts.len() - 1 {
         for s in 0..segments {
             let next = (s + 1) % segments;
-            let e1t = Tag::generated(EntityKind::Edge, op, edge_idx);
-            let (_, he1, _) = model.add_edge_tagged(ring_verts[r][s], ring_verts[r][next], e1t);
-            edge_idx += 1;
-            let e2t = Tag::generated(EntityKind::Edge, op, edge_idx);
-            let (_, he2, _) =
-                model.add_edge_tagged(ring_verts[r][next], ring_verts[r + 1][next], e2t);
-            edge_idx += 1;
-            let e3t = Tag::generated(EntityKind::Edge, op, edge_idx);
-            let (_, he3, _) =
-                model.add_edge_tagged(ring_verts[r + 1][next], ring_verts[r + 1][s], e3t);
-            edge_idx += 1;
-            let e4t = Tag::generated(EntityKind::Edge, op, edge_idx);
-            let (_, he4, _) = model.add_edge_tagged(ring_verts[r + 1][s], ring_verts[r][s], e4t);
-            edge_idx += 1;
+            let he1 = ec.get_or_create(
+                model,
+                ring_verts[r][s],
+                ring_verts[r][next],
+                next_edge_tag(op, &mut edge_idx),
+            );
+            let he2 = ec.get_or_create(
+                model,
+                ring_verts[r][next],
+                ring_verts[r + 1][next],
+                next_edge_tag(op, &mut edge_idx),
+            );
+            let he3 = ec.get_or_create(
+                model,
+                ring_verts[r + 1][next],
+                ring_verts[r + 1][s],
+                next_edge_tag(op, &mut edge_idx),
+            );
+            let he4 = ec.get_or_create(
+                model,
+                ring_verts[r + 1][s],
+                ring_verts[r][s],
+                next_edge_tag(op, &mut edge_idx),
+            );
 
             let lp = model.make_loop(&[he1, he2, he3, he4])?;
             let ft = Tag::generated(EntityKind::Face, op, face_idx);
@@ -121,16 +148,24 @@ pub fn make_sphere(
     let last_ring = ring_verts.len() - 1;
     for s in 0..segments {
         let next = (s + 1) % segments;
-        let e1t = Tag::generated(EntityKind::Edge, op, edge_idx);
-        let (_, he1, _) =
-            model.add_edge_tagged(ring_verts[last_ring][s], ring_verts[last_ring][next], e1t);
-        edge_idx += 1;
-        let e2t = Tag::generated(EntityKind::Edge, op, edge_idx);
-        let (_, he2, _) = model.add_edge_tagged(ring_verts[last_ring][next], north_pole, e2t);
-        edge_idx += 1;
-        let e3t = Tag::generated(EntityKind::Edge, op, edge_idx);
-        let (_, he3, _) = model.add_edge_tagged(north_pole, ring_verts[last_ring][s], e3t);
-        edge_idx += 1;
+        let he1 = ec.get_or_create(
+            model,
+            ring_verts[last_ring][s],
+            ring_verts[last_ring][next],
+            next_edge_tag(op, &mut edge_idx),
+        );
+        let he2 = ec.get_or_create(
+            model,
+            ring_verts[last_ring][next],
+            north_pole,
+            next_edge_tag(op, &mut edge_idx),
+        );
+        let he3 = ec.get_or_create(
+            model,
+            north_pole,
+            ring_verts[last_ring][s],
+            next_edge_tag(op, &mut edge_idx),
+        );
 
         let lp = model.make_loop(&[he1, he2, he3])?;
         let ft = Tag::generated(EntityKind::Face, op, face_idx);
@@ -142,6 +177,14 @@ pub fn make_sphere(
     let shell = model.make_shell_tagged(&all_faces, shell_tag);
     let solid_tag = Tag::generated(EntityKind::Solid, op, 0);
     let solid = model.make_solid_tagged(&[shell], solid_tag);
+
+    // --- Geometry binding ---
+    let sph_surf: Arc<dyn cadkernel_geometry::Surface + Send + Sync> =
+        Arc::new(SphSurface::new(center, radius)?);
+    for &face_h in &all_faces {
+        model.bind_face_surface(face_h, sph_surf.clone(), Orientation::Forward);
+    }
+    bind_edge_line_segments(model, &ec);
 
     Ok(SphereResult {
         south_pole,
@@ -185,5 +228,18 @@ mod tests {
         assert!(south.point.approx_eq(Point3::new(1.0, 2.0, -2.0)));
         let north = model.vertices.get(r.north_pole).unwrap();
         assert!(north.point.approx_eq(Point3::new(1.0, 2.0, 8.0)));
+    }
+
+    #[test]
+    fn test_sphere_geometry_binding() {
+        let mut model = BRepModel::new();
+        let r = make_sphere(&mut model, Point3::ORIGIN, 1.0, 8, 4).unwrap();
+
+        for &face_h in &r.faces {
+            assert!(model.face_has_surface(face_h), "face should have surface");
+        }
+        for (edge_h, _) in model.edges.iter() {
+            assert!(model.edge_has_curve(edge_h), "edge should have curve");
+        }
     }
 }

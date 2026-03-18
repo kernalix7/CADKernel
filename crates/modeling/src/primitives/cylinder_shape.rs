@@ -1,16 +1,23 @@
 use std::f64::consts::TAU;
+use std::sync::Arc;
 
 use cadkernel_core::{KernelError, KernelResult};
+use cadkernel_geometry::{Cylinder as CylSurface, Plane};
 use cadkernel_math::{Point3, Vec3};
-use cadkernel_topology::{BRepModel, EntityKind, Handle, Tag};
+use cadkernel_topology::{BRepModel, EntityKind, Handle, Orientation, Tag};
+
+use super::{EdgeCache, bind_edge_line_segments, next_edge_tag};
 
 /// Creates a cylinder as a B-Rep solid.
 ///
 /// The cylinder is aligned along the Z-axis with its base at `base_center`.
 /// Circular edges are approximated as a polygon with `segments` sides.
 ///
-/// Produces: `2*segments` vertices, `3*segments` edges, 3 faces (top, bottom, lateral),
-/// 1 shell, 1 solid.
+/// Produces: `2*segments` vertices, `3*segments` edges, N+2 faces
+/// (top, bottom, N lateral), 1 shell, 1 solid.
+///
+/// All faces are bound to their ideal surfaces (`Plane` for caps, `Cylinder` for
+/// lateral faces); all edges to `LineSegment` curves.
 pub fn make_cylinder(
     model: &mut BRepModel,
     base_center: Point3,
@@ -45,15 +52,15 @@ pub fn make_cylinder(
     }
 
     let mut edge_idx = 0u32;
+    let mut ec = EdgeCache::new();
 
     // Bottom face (CCW when viewed from -Z)
     let mut bottom_hes = Vec::new();
     for i in 0..segments {
         let next = (i + 1) % segments;
-        let tag = Tag::generated(EntityKind::Edge, op, edge_idx);
-        let (_, he, _) = model.add_edge_tagged(bottom_verts[next], bottom_verts[i], tag);
+        let tag = next_edge_tag(op, &mut edge_idx);
+        let he = ec.get_or_create(model, bottom_verts[next], bottom_verts[i], tag);
         bottom_hes.push(he);
-        edge_idx += 1;
     }
     let bottom_loop = model.make_loop(&bottom_hes)?;
     let bottom_face_tag = Tag::generated(EntityKind::Face, op, 0);
@@ -63,10 +70,9 @@ pub fn make_cylinder(
     let mut top_hes = Vec::new();
     for i in 0..segments {
         let next = (i + 1) % segments;
-        let tag = Tag::generated(EntityKind::Edge, op, edge_idx);
-        let (_, he, _) = model.add_edge_tagged(top_verts[i], top_verts[next], tag);
+        let tag = next_edge_tag(op, &mut edge_idx);
+        let he = ec.get_or_create(model, top_verts[i], top_verts[next], tag);
         top_hes.push(he);
-        edge_idx += 1;
     }
     let top_loop = model.make_loop(&top_hes)?;
     let top_face_tag = Tag::generated(EntityKind::Face, op, 1);
@@ -77,21 +83,30 @@ pub fn make_cylinder(
     for i in 0..segments {
         let next = (i + 1) % segments;
 
-        let e1_tag = Tag::generated(EntityKind::Edge, op, edge_idx);
-        let (_, he1, _) = model.add_edge_tagged(bottom_verts[i], bottom_verts[next], e1_tag);
-        edge_idx += 1;
-
-        let e2_tag = Tag::generated(EntityKind::Edge, op, edge_idx);
-        let (_, he2, _) = model.add_edge_tagged(bottom_verts[next], top_verts[next], e2_tag);
-        edge_idx += 1;
-
-        let e3_tag = Tag::generated(EntityKind::Edge, op, edge_idx);
-        let (_, he3, _) = model.add_edge_tagged(top_verts[next], top_verts[i], e3_tag);
-        edge_idx += 1;
-
-        let e4_tag = Tag::generated(EntityKind::Edge, op, edge_idx);
-        let (_, he4, _) = model.add_edge_tagged(top_verts[i], bottom_verts[i], e4_tag);
-        edge_idx += 1;
+        let he1 = ec.get_or_create(
+            model,
+            bottom_verts[i],
+            bottom_verts[next],
+            next_edge_tag(op, &mut edge_idx),
+        );
+        let he2 = ec.get_or_create(
+            model,
+            bottom_verts[next],
+            top_verts[next],
+            next_edge_tag(op, &mut edge_idx),
+        );
+        let he3 = ec.get_or_create(
+            model,
+            top_verts[next],
+            top_verts[i],
+            next_edge_tag(op, &mut edge_idx),
+        );
+        let he4 = ec.get_or_create(
+            model,
+            top_verts[i],
+            bottom_verts[i],
+            next_edge_tag(op, &mut edge_idx),
+        );
 
         let lp = model.make_loop(&[he1, he2, he3, he4])?;
         let face_tag = Tag::generated(EntityKind::Face, op, (2 + i) as u32);
@@ -106,6 +121,19 @@ pub fn make_cylinder(
 
     let solid_tag = Tag::generated(EntityKind::Solid, op, 0);
     let solid = model.make_solid_tagged(&[shell], solid_tag);
+
+    // --- Geometry binding ---
+    let bottom_plane = Plane::new(base_center, Vec3::X, -Vec3::Y)?;
+    let top_plane = Plane::new(top_center, Vec3::X, Vec3::Y)?;
+    model.bind_face_surface(bottom_face, Arc::new(bottom_plane), Orientation::Forward);
+    model.bind_face_surface(top_face, Arc::new(top_plane), Orientation::Forward);
+
+    let cyl_surf: Arc<dyn cadkernel_geometry::Surface + Send + Sync> =
+        Arc::new(CylSurface::new(base_center, Vec3::Z, radius, height)?);
+    for &lat_face in &lateral_faces {
+        model.bind_face_surface(lat_face, cyl_surf.clone(), Orientation::Forward);
+    }
+    bind_edge_line_segments(model, &ec);
 
     Ok(CylinderResult {
         bottom_face,
@@ -134,6 +162,7 @@ mod tests {
         let mut model = BRepModel::new();
         let _r = make_cylinder(&mut model, Point3::ORIGIN, 1.0, 2.0, 16).unwrap();
         assert_eq!(model.vertices.len(), 32); // 16 bottom + 16 top
+        assert_eq!(model.edges.len(), 48); // 16 bottom ring + 16 top ring + 16 vertical
         assert_eq!(model.faces.len(), 18); // 1 bottom + 1 top + 16 lateral
         assert_eq!(model.shells.len(), 1);
         assert_eq!(model.solids.len(), 1);
@@ -148,6 +177,21 @@ mod tests {
         for i in 0..10 {
             let tag = Tag::generated(EntityKind::Face, op, i);
             assert!(model.find_face_by_tag(&tag).is_some());
+        }
+    }
+
+    #[test]
+    fn test_cylinder_geometry_binding() {
+        let mut model = BRepModel::new();
+        let r = make_cylinder(&mut model, Point3::ORIGIN, 1.0, 2.0, 8).unwrap();
+
+        assert!(model.face_has_surface(r.bottom_face));
+        assert!(model.face_has_surface(r.top_face));
+        for &lat in &r.lateral_faces {
+            assert!(model.face_has_surface(lat), "lateral face should have surface");
+        }
+        for (edge_h, _) in model.edges.iter() {
+            assert!(model.edge_has_curve(edge_h), "edge should have curve");
         }
     }
 }
