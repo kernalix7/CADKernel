@@ -388,6 +388,14 @@
 - `cadkernel-viewer`: ~20개 신규 `GuiAction` 변형 + 전체 `process_actions()` 핸들러
 - `cadkernel-viewer`: 미사용 스텁 제거 (BooleanUnion/Subtract/Intersect, TrimDemo)
 
+#### Phase V7: 파일 포맷 확장 (2026-03-19)
+- `cadkernel-io`: glTF 2.0 임포트 — 내장 base64 버퍼 디코딩, 위치/법선/인덱스 추출, 다중 컴포넌트 타입 지원 (u8/u16/u32)
+- `cadkernel-io`: 3MF 임포트 — XML vertex/triangle 파싱, 면 법선 계산
+- `cadkernel-io`: DWG 임포트/익스포트 — 버전 감지 (R2000–R2018+), 3DFACE 휴리스틱 추출, DXF 기반 익스포트 폴백
+- `cadkernel-io`: PDF 익스포트 — TechDraw SVG에서 최소 PDF 1.4 생성, SVG line/text→PDF 스트림 변환
+- `cadkernel-io`: DAE (Collada) 임포트/익스포트 — COLLADA 1.4.1 XML, geometry/visual_scene, float_array + 삼각형 인덱스 파싱
+- `cadkernel-io`: 10개 신규 테스트 (glTF 라운드트립, 3MF 라운드트립, DWG 버전 감지, PDF 생성, DAE 라운드트립)
+
 #### Phase V13: 성능 & 검증 (2026-03-19)
 - `cadkernel-modeling`: BVH 가속 불리언 broad-phase — O(n²) → O(n log n) 면 쌍 중첩 감지
 - `cadkernel-modeling`: 11개 신규 Criterion 벤치마크 (총 25개) — cone, torus, mirror, scale, fillet, check_geometry, check_watertight, tessellate_sphere_64x32, tessellate_torus_64x32, boolean_intersection

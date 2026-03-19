@@ -409,6 +409,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - `cadkernel-viewer`: ~20 new `GuiAction` variants with full `process_actions()` handlers
 - `cadkernel-viewer`: Removed unused stubs (BooleanUnion/Subtract/Intersect, TrimDemo)
 
+#### Phase V7: File Format Expansion (2026-03-19)
+- `cadkernel-io`: glTF 2.0 import — embedded base64 buffer decoding, position/normal/index extraction, multi-component-type support (u8/u16/u32)
+- `cadkernel-io`: 3MF import — XML vertex/triangle parsing with face normal computation
+- `cadkernel-io`: DWG import/export — version detection (R2000–R2018+), 3DFACE heuristic extraction, DXF-based export fallback
+- `cadkernel-io`: PDF export — minimal PDF 1.4 generation from TechDraw SVG, SVG line/text→PDF stream conversion
+- `cadkernel-io`: DAE (Collada) import/export — COLLADA 1.4.1 XML with geometry/visual_scene, float_array + triangle index parsing
+- `cadkernel-io`: 10 new tests (glTF roundtrip, 3MF roundtrip, DWG version detect, PDF generation, DAE roundtrip)
+
 #### Phase V13: Performance & Validation (2026-03-19)
 - `cadkernel-modeling`: BVH-accelerated boolean broad-phase — O(n²) → O(n log n) face-pair overlap detection
 - `cadkernel-modeling`: 11 new Criterion benchmarks (25 total) — cone, torus, mirror, scale, fillet, check_geometry, check_watertight, tessellate_sphere_64x32, tessellate_torus_64x32, boolean_intersection

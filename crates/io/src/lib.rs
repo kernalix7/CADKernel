@@ -5,12 +5,15 @@
 //! into indexed triangle meshes.
 
 pub mod brep_format;
+pub mod collada;
 pub mod dxf;
+pub mod dwg;
 pub mod gltf;
 pub mod iges;
 pub mod json;
 pub mod native;
 pub mod obj;
+pub mod pdf;
 pub mod ply;
 pub mod step;
 pub mod stl;
@@ -22,7 +25,10 @@ pub mod tessellate;
 
 pub use brep_format::{export_brep, import_brep, write_brep};
 pub use dxf::{export_dxf, import_dxf, write_dxf};
-pub use gltf::{export_gltf, write_gltf};
+pub use collada::{export_dae, import_dae, write_dae};
+pub use dwg::{export_dwg, import_dwg, write_dwg};
+pub use gltf::{export_gltf, import_gltf, write_gltf};
+pub use pdf::{export_pdf, write_pdf};
 pub use iges::{
     IgesEntity, IgesEntityType, IgesWriter, export_iges, export_iges_mesh, import_iges,
     parse_iges, read_iges_lines, read_iges_points,
@@ -52,7 +58,7 @@ pub use techdraw::{
     section_view, surface_finish_to_svg, text_annotation_to_svg, three_view_drawing,
     weld_symbol_to_svg,
 };
-pub use threemf::{export_3mf, write_3mf};
+pub use threemf::{export_3mf, import_3mf, write_3mf};
 pub use mesh_ops::{
     FaceInfo, MeshBoundingBox, MeshRepairReport, MeshSegment, RegularSolidType, UnwrapResult,
     UvCoord, add_triangle, bounding_box_info, check_mesh_watertight, compute_curvature,
