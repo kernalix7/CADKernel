@@ -225,6 +225,142 @@ pub fn export_gltf(mesh: &super::Mesh, path: &str) -> KernelResult<()> {
     std::fs::write(path, content).map_err(|e| KernelError::IoError(e.to_string()))
 }
 
+// ---------------------------------------------------------------------------
+// glTF import
+// ---------------------------------------------------------------------------
+
+fn base64_decode(input: &str) -> KernelResult<Vec<u8>> {
+    const DECODE: [u8; 128] = {
+        let mut t = [255u8; 128];
+        let chars = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+        let mut i = 0;
+        while i < 64 {
+            t[chars[i] as usize] = i as u8;
+            i += 1;
+        }
+        t
+    };
+    let filtered: Vec<u8> = input.bytes().filter(|&b| b != b'=' && b != b'\n' && b != b'\r' && b != b' ').collect();
+    let mut out = Vec::with_capacity(filtered.len() * 3 / 4);
+    let chunks = filtered.chunks(4);
+    for chunk in chunks {
+        let a = *DECODE.get(chunk[0] as usize).unwrap_or(&255);
+        let b = *DECODE.get(*chunk.get(1).unwrap_or(&0) as usize).unwrap_or(&255);
+        let c = *DECODE.get(*chunk.get(2).unwrap_or(&0) as usize).unwrap_or(&0);
+        let d = *DECODE.get(*chunk.get(3).unwrap_or(&0) as usize).unwrap_or(&0);
+        if a == 255 || b == 255 {
+            return Err(KernelError::IoError("invalid base64".into()));
+        }
+        out.push((a << 2) | (b >> 4));
+        if chunk.len() > 2 { out.push((b << 4) | (c >> 2)); }
+        if chunk.len() > 3 { out.push((c << 6) | d); }
+    }
+    Ok(out)
+}
+
+/// Import a glTF 2.0 JSON file (with embedded base64 data) into a Mesh.
+pub fn import_gltf(content: &str) -> KernelResult<super::Mesh> {
+    let val: serde_json::Value = serde_json::from_str(content)
+        .map_err(|e| KernelError::IoError(format!("glTF JSON parse error: {e}")))?;
+
+    // Decode buffer
+    let uri = val["buffers"][0]["uri"].as_str()
+        .ok_or_else(|| KernelError::IoError("no buffer URI".into()))?;
+    let b64_prefix = "data:application/octet-stream;base64,";
+    let b64_data = if let Some(stripped) = uri.strip_prefix(b64_prefix) {
+        stripped
+    } else {
+        return Err(KernelError::IoError("only embedded base64 glTF supported".into()));
+    };
+    let buffer = base64_decode(b64_data)?;
+
+    // Find the first mesh primitive
+    let prim = &val["meshes"][0]["primitives"][0];
+    let pos_accessor_idx = prim["attributes"]["POSITION"].as_u64()
+        .ok_or_else(|| KernelError::IoError("no POSITION accessor".into()))? as usize;
+    let idx_accessor_idx = prim["indices"].as_u64()
+        .map(|v| v as usize);
+
+    let accessors = val["accessors"].as_array()
+        .ok_or_else(|| KernelError::IoError("no accessors".into()))?;
+    let buffer_views = val["bufferViews"].as_array()
+        .ok_or_else(|| KernelError::IoError("no bufferViews".into()))?;
+
+    // Read positions
+    let pos_acc = &accessors[pos_accessor_idx];
+    let pos_bv_idx = pos_acc["bufferView"].as_u64().unwrap_or(0) as usize;
+    let pos_count = pos_acc["count"].as_u64().unwrap_or(0) as usize;
+    let pos_bv = &buffer_views[pos_bv_idx];
+    let pos_offset = pos_bv["byteOffset"].as_u64().unwrap_or(0) as usize;
+    let pos_component = pos_acc["componentType"].as_u64().unwrap_or(5126);
+
+    let mut vertices = Vec::with_capacity(pos_count);
+    if pos_component == 5126 { // FLOAT
+        for i in 0..pos_count {
+            let base = pos_offset + i * 12;
+            if base + 12 > buffer.len() { break; }
+            let x = f32::from_le_bytes([buffer[base], buffer[base+1], buffer[base+2], buffer[base+3]]);
+            let y = f32::from_le_bytes([buffer[base+4], buffer[base+5], buffer[base+6], buffer[base+7]]);
+            let z = f32::from_le_bytes([buffer[base+8], buffer[base+9], buffer[base+10], buffer[base+11]]);
+            vertices.push(Point3::new(x as f64, y as f64, z as f64));
+        }
+    }
+
+    // Read normals (optional)
+    let norm_acc_idx = prim["attributes"]["NORMAL"].as_u64().map(|v| v as usize);
+    let mut normals = Vec::new();
+
+    // Read indices
+    let mut indices = Vec::new();
+    if let Some(idx_ai) = idx_accessor_idx {
+        let idx_acc = &accessors[idx_ai];
+        let idx_bv_idx = idx_acc["bufferView"].as_u64().unwrap_or(0) as usize;
+        let idx_count = idx_acc["count"].as_u64().unwrap_or(0) as usize;
+        let idx_bv = &buffer_views[idx_bv_idx];
+        let idx_offset = idx_bv["byteOffset"].as_u64().unwrap_or(0) as usize;
+        let idx_component = idx_acc["componentType"].as_u64().unwrap_or(5125);
+
+        let stride = match idx_component {
+            5121 => 1usize, // UNSIGNED_BYTE
+            5123 => 2,      // UNSIGNED_SHORT
+            5125 => 4,      // UNSIGNED_INT
+            _ => 4,
+        };
+
+        let read_idx = |i: usize| -> u32 {
+            let base = idx_offset + i * stride;
+            match idx_component {
+                5121 => buffer[base] as u32,
+                5123 => u16::from_le_bytes([buffer[base], buffer[base+1]]) as u32,
+                _ => u32::from_le_bytes([buffer[base], buffer[base+1], buffer[base+2], buffer[base+3]]),
+            }
+        };
+
+        for t in 0..idx_count / 3 {
+            indices.push([read_idx(t * 3), read_idx(t * 3 + 1), read_idx(t * 3 + 2)]);
+        }
+    } else {
+        // Non-indexed: every 3 vertices form a triangle
+        for t in 0..vertices.len() / 3 {
+            indices.push([t as u32 * 3, t as u32 * 3 + 1, t as u32 * 3 + 2]);
+        }
+    }
+
+    // Compute face normals if not provided
+    if norm_acc_idx.is_none() || normals.is_empty() {
+        normals = indices.iter().map(|tri| {
+            let a = vertices.get(tri[0] as usize).copied().unwrap_or(Point3::ORIGIN);
+            let b = vertices.get(tri[1] as usize).copied().unwrap_or(Point3::ORIGIN);
+            let c = vertices.get(tri[2] as usize).copied().unwrap_or(Point3::ORIGIN);
+            let ab = b - a;
+            let ac = c - a;
+            ab.cross(ac).normalized().unwrap_or(Vec3::Z)
+        }).collect();
+    }
+
+    Ok(super::Mesh { vertices, normals, indices })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -315,5 +451,14 @@ mod tests {
     fn test_gltf_empty_error() {
         let mesh = Mesh::new();
         assert!(write_gltf(&mesh).is_err());
+    }
+
+    #[test]
+    fn test_gltf_roundtrip() {
+        let mesh = make_cube_mesh();
+        let gltf = write_gltf(&mesh).unwrap();
+        let imported = import_gltf(&gltf).unwrap();
+        assert_eq!(imported.vertices.len(), mesh.vertices.len());
+        assert_eq!(imported.indices.len(), mesh.indices.len());
     }
 }
