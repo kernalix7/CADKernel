@@ -132,15 +132,14 @@ pub(crate) struct CadApp {
     mesh_rx: Option<mpsc::Receiver<Result<(Mesh, PathBuf), String>>>,
     camera_anim: Option<CameraAnimation>,
     last_instant: std::time::Instant,
-    /// Roll value before the most recent roll-changing action (RollDelta / ScreenOrbit).
-    /// Used to resolve the 45° midpoint tie in snap_roll_90.
     prev_roll: f32,
-    /// FPS counter: frames since last update.
     fps_frames: u32,
-    /// FPS counter: elapsed time since last update.
     fps_elapsed: f32,
-    /// FPS display value (updated every ~0.5 s for stability).
     fps_display: f32,
+    /// Undo/redo command stack.
+    command_stack: crate::command::CommandStack,
+    /// Whether the mouse was dragged since last press (prevents pick on drag release).
+    mouse_dragged: bool,
 }
 
 impl CadApp {
@@ -165,6 +164,8 @@ impl CadApp {
             fps_frames: 0,
             fps_elapsed: 0.0,
             fps_display: 0.0,
+            command_stack: crate::command::CommandStack::new(50),
+            mouse_dragged: false,
         }
     }
 
@@ -323,6 +324,69 @@ impl CadApp {
         }
     }
 
+    // -- 3D picking ---------------------------------------------------------
+
+    fn try_pick_entity(&mut self) {
+        let Some((sx, sy)) = self.mouse.last_pos else { return };
+        let Some(mesh) = &self.current_mesh else { return };
+        let Some(rt) = &self.runtime else { return };
+        let size = rt.gpu.window.inner_size();
+        let w = size.width as f32;
+        let h = size.height as f32;
+        if w < 1.0 || h < 1.0 { return; }
+
+        let inv_vp = self.camera.inv_view_proj();
+        let (origin, dir) = crate::picking::screen_to_ray(
+            sx as f32, sy as f32, w, h, inv_vp,
+        );
+
+        if let Some(hit) = crate::picking::pick_triangle(origin, dir, &mesh.vertices, &mesh.indices) {
+            // Select the solid that owns this triangle
+            if let Some(solid) = self.current_solid {
+                self.gui.selected_entity = Some(gui::SelectedEntity::Solid(solid));
+                self.gui.status_message = format!(
+                    "Selected: triangle {}, dist {:.2}",
+                    hit.triangle_index, hit.distance
+                );
+            }
+        } else {
+            // Click on empty space → deselect
+            self.gui.selected_entity = None;
+            self.gui.status_message = "Selection cleared".into();
+        }
+    }
+
+    // -- snapshot helper (for undo/redo) ------------------------------------
+
+    fn take_snapshot(&self) -> crate::command::ModelSnapshot {
+        crate::command::ModelSnapshot {
+            model: self.model.clone(),
+            current_solid: self.current_solid,
+            current_mesh: self.current_mesh.clone(),
+        }
+    }
+
+    fn restore_snapshot(&mut self, snap: crate::command::ModelSnapshot) {
+        self.model = snap.model;
+        self.current_solid = snap.current_solid;
+        if let Some(mesh) = snap.current_mesh {
+            self.set_mesh(mesh);
+        } else {
+            self.vertices.clear();
+            self.current_mesh = None;
+            if let Some(rt) = &mut self.runtime {
+                rt.gpu.update_mesh(&self.vertices);
+            }
+        }
+        self.gui.invalidate_cache();
+    }
+
+    /// Save snapshot before a model-modifying action.
+    fn snapshot_before(&mut self, description: &str) {
+        let snap = self.take_snapshot();
+        self.command_stack.push(description, snap);
+    }
+
     // -- report helpers -----------------------------------------------------
 
     fn log_info(&mut self, msg: impl Into<String>) {
@@ -350,6 +414,7 @@ impl CadApp {
         for action in actions {
             match action {
                 GuiAction::NewModel => {
+                    self.snapshot_before("New model");
                     self.model = BRepModel::new();
                     self.current_mesh = None;
                     self.current_solid = None;
@@ -769,10 +834,26 @@ impl CadApp {
                 }
 
                 GuiAction::Undo => {
-                    self.gui.status_message = "Undo: not yet implemented".into();
+                    let current = self.take_snapshot();
+                    if let Some(snap) = self.command_stack.undo(current) {
+                        self.restore_snapshot(snap);
+                        let desc = self.command_stack.redo_description()
+                            .unwrap_or("action").to_string();
+                        self.log_info(format!("Undo: {desc}"));
+                    } else {
+                        self.gui.status_message = "Nothing to undo".into();
+                    }
                 }
                 GuiAction::Redo => {
-                    self.gui.status_message = "Redo: not yet implemented".into();
+                    let current = self.take_snapshot();
+                    if let Some(snap) = self.command_stack.redo(current) {
+                        self.restore_snapshot(snap);
+                        let desc = self.command_stack.undo_description()
+                            .unwrap_or("action").to_string();
+                        self.log_info(format!("Redo: {desc}"));
+                    } else {
+                        self.gui.status_message = "Nothing to redo".into();
+                    }
                 }
                 GuiAction::StatusMessage(msg) => {
                     self.gui.status_message = msg;
@@ -1372,8 +1453,21 @@ impl CadApp {
                     self.gui.status_message = "Selection cleared".into();
                 }
                 GuiAction::DeleteSelected => {
-                    self.gui.status_message = "Delete: not yet implemented".into();
-                    self.gui.selected_entity = None;
+                    if self.current_solid.is_some() {
+                        self.snapshot_before("Delete solid");
+                        self.model = BRepModel::new();
+                        self.current_solid = None;
+                        self.current_mesh = None;
+                        self.vertices.clear();
+                        if let Some(rt) = &mut self.runtime {
+                            rt.gpu.update_mesh(&self.vertices);
+                        }
+                        self.gui.invalidate_cache();
+                        self.gui.selected_entity = None;
+                        self.log_info("Deleted solid");
+                    } else {
+                        self.gui.status_message = "Nothing to delete".into();
+                    }
                 }
             }
         }
@@ -2325,13 +2419,19 @@ impl ApplicationHandler for CadApp {
                     let pressed = *state == ElementState::Pressed;
                     match button {
                         MouseButton::Left => {
-                            // In sketch mode, left-click adds entities
-                            if pressed && self.gui.sketch_mode.is_some() {
-                                if let Some((sx, sy)) = self.mouse.last_pos {
-                                    if let Some(pt) = self.screen_to_sketch_plane(sx, sy) {
-                                        self.gui.actions.push(GuiAction::SketchClick(pt.0, pt.1));
+                            if pressed {
+                                self.mouse_dragged = false;
+                                // In sketch mode, left-click adds entities
+                                if self.gui.sketch_mode.is_some() {
+                                    if let Some((sx, sy)) = self.mouse.last_pos {
+                                        if let Some(pt) = self.screen_to_sketch_plane(sx, sy) {
+                                            self.gui.actions.push(GuiAction::SketchClick(pt.0, pt.1));
+                                        }
                                     }
                                 }
+                            } else if !self.mouse_dragged && self.gui.sketch_mode.is_none() {
+                                // Left-click release without drag → 3D picking
+                                self.try_pick_entity();
                             }
                             self.mouse.left_pressed = pressed;
                         }
@@ -2353,6 +2453,9 @@ impl ApplicationHandler for CadApp {
                     if let Some((lx, ly)) = self.mouse.last_pos {
                         let dx = position.x - lx;
                         let dy = position.y - ly;
+                        if (dx * dx + dy * dy) > 9.0 {
+                            self.mouse_dragged = true;
+                        }
 
                         let action = self.nav.resolve_drag(
                             self.mouse.left_pressed,
