@@ -411,6 +411,11 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 #### Deep Quality Improvements (2026-03-20)
 
+**STEP I/O:**
+- `cadkernel-io`: Surface-aware STEP export — computes actual face plane from boundary vertices (replaces dummy ORIGIN plane)
+- `cadkernel-io`: B-spline surface serialization — full B_SPLINE_SURFACE_WITH_KNOTS output (replaces empty stub)
+- `cadkernel-io`: STEP parser error recovery — `catch_unwind` on entity resolution, malformed entities stored as `Other` instead of aborting
+
 **Boolean Operations:**
 - `cadkernel-modeling`: `boolean_op` now automatically uses face-splitting when overlapping faces are detected (chains `split_solids_at_intersection` → classify → evaluate)
 - `cadkernel-modeling`: Multi-sample face classification — majority voting with centroid + 6 edge midpoints (replaces single-centroid test)
