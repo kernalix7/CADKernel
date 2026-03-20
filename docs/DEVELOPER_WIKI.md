@@ -246,6 +246,9 @@ DOF analysis (`analyze_dof()`) with per-constraint/joint DOF counting, iterative
 ### Phase V11: Viewer UI Expansion
 File menu with 6 Import/Export formats (STEP, IGES, DXF, PLY, 3MF, BREP). Boolean dialogs, Part operations toolbar (Mirror/Scale/Shell/Fillet/Chamfer/Pattern), Mesh toolbar (Smooth, Harmonize, Watertight, Remesh, Repair), Analysis (Measure Solid, Check Geometry). ~20 new GuiAction variants.
 
+### Deep Quality Improvements
+Boolean: auto face-splitting in `boolean_op` (split→classify→evaluate), multi-sample classification (7-point majority voting). Sketch: DOF analysis via Jacobian rank, `drag_solve()` interactive point dragging. Viewer: Moller-Trumbore ray picking (`picking.rs`), undo/redo command stack (`command.rs`, `ModelSnapshot`-based).
+
 ### Phase V7: File Format Expansion
 5 new format implementations: glTF import (base64 buffer decode, multi-component indices), 3MF import (XML parsing), DWG import/export (version detection R2000–2018+, 3DFACE heuristic, DXF fallback), PDF export (SVG→PDF 1.4 conversion for TechDraw), DAE Collada import/export (COLLADA 1.4.1 XML geometry). Total I/O formats: 15 (was 11). New modules: `collada.rs`, `dwg.rs`, `pdf.rs`.
 

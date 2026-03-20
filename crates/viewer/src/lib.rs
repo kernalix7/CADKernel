@@ -8,8 +8,10 @@
 //!   model tree, properties inspector, and shape creation dialogs.
 
 mod app;
+pub mod command;
 mod gui;
 pub mod nav;
+pub mod picking;
 mod render;
 
 pub use nav::{NavConfig, NavStyle};

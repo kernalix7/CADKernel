@@ -8,14 +8,9 @@ use super::csg::BooleanOp;
 
 /// Performs a boolean operation between two solids.
 ///
-/// This implementation works by classifying each face of both inputs as
-/// INSIDE or OUTSIDE relative to the other solid, then selecting the
-/// appropriate faces for the result based on the operation type.
-///
-/// Limitations: faces are not split along intersection curves. This works
-/// correctly when the two solids share no partial face overlaps (e.g.,
-/// one box fully penetrates another face). For general cases, the
-/// split/trim pipeline would need to be invoked first.
+/// Automatically detects overlapping faces and applies face-splitting
+/// when needed for correct results. Falls back to simple classification
+/// when solids are disjoint or fully contained.
 pub fn boolean_op(
     model_a: &BRepModel,
     solid_a: Handle<SolidData>,
@@ -23,8 +18,19 @@ pub fn boolean_op(
     solid_b: Handle<SolidData>,
     op: BooleanOp,
 ) -> KernelResult<BRepModel> {
-    let faces_a = collect_solid_faces(model_a, solid_a)?;
-    let faces_b = collect_solid_faces(model_b, solid_b)?;
+    // Try split path first — if faces overlap, split them for precision
+    let split_result = super::face_split::split_solids_at_intersection(
+        model_a, solid_a, model_b, solid_b, 1e-6,
+    );
+
+    // Use split models if splitting succeeded and produced splits
+    let (eff_a, eff_solid_a, eff_b, eff_solid_b) = match &split_result {
+        Ok(sr) if sr.had_splits => (&sr.model_a, sr.solid_a, &sr.model_b, sr.solid_b),
+        _ => (model_a, solid_a, model_b, solid_b),
+    };
+
+    let faces_a = collect_solid_faces(eff_a, eff_solid_a)?;
+    let faces_b = collect_solid_faces(eff_b, eff_solid_b)?;
 
     let mut result = BRepModel::new();
     let result_op = result.history.next_operation(match op {
@@ -38,14 +44,14 @@ pub fn boolean_op(
 
     // Classify and copy faces from A
     for &face_h in &faces_a {
-        let pos = classify_face(model_a, face_h, model_b, solid_b)?;
+        let pos = classify_face(eff_a, face_h, eff_b, eff_solid_b)?;
         let keep = match op {
             BooleanOp::Union => pos == FacePosition::Outside,
             BooleanOp::Intersection => pos == FacePosition::Inside,
             BooleanOp::Difference => pos == FacePosition::Outside,
         };
         if keep {
-            let new_face = copy_face(model_a, face_h, &mut result, result_op, face_counter)?;
+            let new_face = copy_face(eff_a, face_h, &mut result, result_op, face_counter)?;
             result_faces.push(new_face);
             face_counter += 1;
         }
@@ -53,14 +59,14 @@ pub fn boolean_op(
 
     // Classify and copy faces from B
     for &face_h in &faces_b {
-        let pos = classify_face(model_b, face_h, model_a, solid_a)?;
+        let pos = classify_face(eff_b, face_h, eff_a, eff_solid_a)?;
         let keep = match op {
             BooleanOp::Union => pos == FacePosition::Outside,
             BooleanOp::Intersection => pos == FacePosition::Inside,
             BooleanOp::Difference => pos == FacePosition::Inside,
         };
         if keep {
-            let new_face = copy_face(model_b, face_h, &mut result, result_op, face_counter)?;
+            let new_face = copy_face(eff_b, face_h, &mut result, result_op, face_counter)?;
             result_faces.push(new_face);
             face_counter += 1;
         }

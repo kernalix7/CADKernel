@@ -388,6 +388,21 @@
 - `cadkernel-viewer`: ~20개 신규 `GuiAction` 변형 + 전체 `process_actions()` 핸들러
 - `cadkernel-viewer`: 미사용 스텁 제거 (BooleanUnion/Subtract/Intersect, TrimDemo)
 
+#### 심화 품질 개선 (2026-03-20)
+
+**불리언 연산:**
+- `cadkernel-modeling`: `boolean_op`에 자동 면 분할 — 겹치는 면 감지 시 `split_solids_at_intersection` → 분류 → 평가 체인
+- `cadkernel-modeling`: 다중 샘플 면 분류 — 중심점 + 6개 엣지 중점의 다수결 투표 (단일 중심점 테스트 대체)
+
+**스케치 솔버:**
+- `cadkernel-sketch`: DOF 분석 — `SolverResult`에 `remaining_dof` (야코비안 대각 랭크) 및 `over_constrained` 플래그 추가
+- `cadkernel-sketch`: `drag_solve()` — 제약조건 유지하며 점 이동 (임시 Fixed 제약조건 방식)
+
+**뷰어 인프라:**
+- `cadkernel-viewer`: `picking.rs` — Moller-Trumbore CPU 레이-삼각형 교차, `screen_to_ray` 역투영, `pick_triangle` 최근접 히트 선택
+- `cadkernel-viewer`: `command.rs` — Undo/redo `CommandStack` + `ModelSnapshot` (push/undo/redo, 최대 깊이, 새 명령 시 redo 무효화)
+- 6개 신규 테스트 (picking 3 + command 3)
+
 #### Phase V7: 파일 포맷 확장 (2026-03-19)
 - `cadkernel-io`: glTF 2.0 임포트 — 내장 base64 버퍼 디코딩, 위치/법선/인덱스 추출, 다중 컴포넌트 타입 지원 (u8/u16/u32)
 - `cadkernel-io`: 3MF 임포트 — XML vertex/triangle 파싱, 면 법선 계산

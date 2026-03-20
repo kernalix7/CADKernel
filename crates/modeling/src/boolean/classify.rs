@@ -218,6 +218,10 @@ pub fn point_in_solid(
 }
 
 /// Classifies a face of model_a relative to the solid in model_b.
+///
+/// Uses multi-sample majority voting: tests the face centroid plus edge
+/// midpoints offset inward. This handles near-boundary centroids that
+/// could be misclassified by a single-point test.
 pub fn classify_face(
     model_a: &BRepModel,
     face: Handle<FaceData>,
@@ -226,8 +230,43 @@ pub fn classify_face(
 ) -> KernelResult<FacePosition> {
     let centroid = face_centroid(model_a, face)?;
     let normal = face_normal_approx(model_a, face)?;
-    let test_point = centroid + normal * 1e-6;
-    point_in_solid(test_point, model_b, solid_b)
+    let polygon = face_polygon(model_a, face)?;
+
+    // Generate sample points: centroid + edge midpoints offset toward centroid
+    let mut sample_points = vec![centroid + normal * 1e-6];
+    let n = polygon.len().min(6); // limit to 6 edge midpoints
+    for i in 0..n {
+        let a = polygon[i];
+        let b = polygon[(i + 1) % polygon.len()];
+        let mid = Point3::new(
+            (a.x + b.x) * 0.5,
+            (a.y + b.y) * 0.5,
+            (a.z + b.z) * 0.5,
+        );
+        // Offset midpoint slightly toward centroid to stay inside the face
+        let toward_center = (centroid - mid).normalized().unwrap_or(Vec3::ZERO);
+        sample_points.push(mid + toward_center * 1e-4 + normal * 1e-6);
+    }
+
+    // Majority vote
+    let mut inside_count = 0u32;
+    let mut outside_count = 0u32;
+    for pt in &sample_points {
+        match point_in_solid(*pt, model_b, solid_b)? {
+            FacePosition::Inside => inside_count += 1,
+            FacePosition::Outside => outside_count += 1,
+            FacePosition::OnBoundary => {}
+        }
+    }
+
+    if inside_count > outside_count {
+        Ok(FacePosition::Inside)
+    } else if outside_count > inside_count {
+        Ok(FacePosition::Outside)
+    } else {
+        // Tie — use centroid result as tiebreaker
+        point_in_solid(centroid + normal * 1e-6, model_b, solid_b)
+    }
 }
 
 #[cfg(test)]
