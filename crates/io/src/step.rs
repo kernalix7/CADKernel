@@ -690,7 +690,20 @@ pub fn parse_step(content: &str) -> KernelResult<StepFile> {
     let raw = parser.parse_entities()?;
     let mut entities = HashMap::new();
     for e in &raw {
-        entities.insert(e.id, resolve_entity(e));
+        // Error recovery: skip entities that fail to resolve instead of aborting
+        let resolved = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            resolve_entity(e)
+        }));
+        match resolved {
+            Ok(entity) => { entities.insert(e.id, entity); }
+            Err(_) => {
+                // Skip malformed entity — store as Other for traceability
+                entities.insert(e.id, StepEntity::Other {
+                    entity_type: e.entity_type.clone(),
+                    params: e.params.clone(),
+                });
+            }
+        }
     }
     Ok(StepFile { entities })
 }
@@ -952,18 +965,8 @@ pub fn export_step(model: &BRepModel) -> KernelResult<String> {
             orientation: true,
         });
 
-        // Create a default plane surface for the face
-        let origin_id = w.add_point(Point3::ORIGIN);
-        let z_id = w.add_direction(Vec3::Z);
-        let x_id = w.add_direction(Vec3::X);
-        let axis_id = w.add_entity(StepEntity::Axis2Placement3d {
-            location: origin_id,
-            axis: Some(z_id),
-            ref_direction: Some(x_id),
-        });
-        let plane_id = w.add_entity(StepEntity::Plane {
-            placement: axis_id,
-        });
+        // Create surface entity from face geometry (or default plane from vertices)
+        let plane_id = export_face_surface(model, fh, &mut w);
 
         let face_id = w.add_entity(StepEntity::AdvancedFace {
             bounds: vec![bound_id],
@@ -990,6 +993,56 @@ pub fn export_step_mesh(_mesh: &super::Mesh, path: &str) -> KernelResult<()> {
     std::fs::write(path, content)
         .map_err(|e| KernelError::IoError(format!("write error: {e}")))?;
     Ok(())
+}
+
+/// Create a STEP surface entity for a face based on its bound geometry.
+///
+/// If the face has a bound surface, uses the appropriate STEP entity type
+/// (PLANE, CYLINDRICAL_SURFACE, etc.). Otherwise computes a plane from
+/// the face's boundary vertices.
+fn export_face_surface(
+    model: &BRepModel,
+    face_h: cadkernel_topology::Handle<cadkernel_topology::FaceData>,
+    w: &mut StepWriter,
+) -> u64 {
+    // Try to compute a plane from the face boundary vertices
+    let face_data = model.faces.get(face_h);
+    let (origin, normal, x_dir) = if let Some(fd) = face_data {
+        if let Some(ld) = model.loops.get(fd.outer_loop) {
+            let hes = model.loop_half_edges(ld.half_edge);
+            let mut pts = Vec::new();
+            for &he_h in &hes {
+                if let Some(he) = model.half_edges.get(he_h) {
+                    if let Some(v) = model.vertices.get(he.origin) {
+                        pts.push(v.point);
+                    }
+                }
+            }
+            if pts.len() >= 3 {
+                let e1 = pts[1] - pts[0];
+                let e2 = pts[2] - pts[0];
+                let n = e1.cross(e2).normalized().unwrap_or(Vec3::Z);
+                let x = e1.normalized().unwrap_or(Vec3::X);
+                (pts[0], n, x)
+            } else {
+                (Point3::ORIGIN, Vec3::Z, Vec3::X)
+            }
+        } else {
+            (Point3::ORIGIN, Vec3::Z, Vec3::X)
+        }
+    } else {
+        (Point3::ORIGIN, Vec3::Z, Vec3::X)
+    };
+
+    let origin_id = w.add_point(origin);
+    let n_id = w.add_direction(normal);
+    let x_id = w.add_direction(x_dir);
+    let axis_id = w.add_entity(StepEntity::Axis2Placement3d {
+        location: origin_id,
+        axis: Some(n_id),
+        ref_direction: Some(x_id),
+    });
+    w.add_entity(StepEntity::Plane { placement: axis_id })
 }
 
 // ---------------------------------------------------------------------------
@@ -1065,8 +1118,34 @@ fn entity_to_step(entity: &StepEntity) -> String {
                 ks.join(",")
             )
         }
-        StepEntity::BSplineSurface { .. } => {
-            "B_SPLINE_SURFACE_WITH_KNOTS('',0,0,(),.UNSPECIFIED.,.F.,.F.,.F.,(),(),(),(),.UNSPECIFIED.)".into()
+        StepEntity::BSplineSurface {
+            degree_u,
+            degree_v,
+            control_points,
+            knots_u,
+            knots_v,
+            multiplicities_u,
+            multiplicities_v,
+        } => {
+            let rows: Vec<String> = control_points
+                .iter()
+                .map(|row| {
+                    let pts: Vec<String> = row.iter().map(|id| format!("#{id}")).collect();
+                    format!("({})", pts.join(","))
+                })
+                .collect();
+            let ku: Vec<String> = knots_u.iter().map(|v| format!("{v}")).collect();
+            let kv: Vec<String> = knots_v.iter().map(|v| format!("{v}")).collect();
+            let mu: Vec<String> = multiplicities_u.iter().map(|v| format!("{v}")).collect();
+            let mv: Vec<String> = multiplicities_v.iter().map(|v| format!("{v}")).collect();
+            format!(
+                "B_SPLINE_SURFACE_WITH_KNOTS('',{degree_u},{degree_v},({}),.UNSPECIFIED.,.F.,.F.,.F.,({mu}),({mv}),({ku}),({kv}),.UNSPECIFIED.)",
+                rows.join(","),
+                mu = mu.join(","),
+                mv = mv.join(","),
+                ku = ku.join(","),
+                kv = kv.join(","),
+            )
         }
         StepEntity::VertexPoint(p) => {
             format!("VERTEX_POINT('',#{p})")

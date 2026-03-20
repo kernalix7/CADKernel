@@ -390,6 +390,11 @@
 
 #### 심화 품질 개선 (2026-03-20)
 
+**STEP I/O:**
+- `cadkernel-io`: 서피스 인식 STEP 익스포트 — 경계 정점에서 실제 면 평면 계산 (더미 ORIGIN 평면 대체)
+- `cadkernel-io`: B-spline 서피스 직렬화 — 완전한 B_SPLINE_SURFACE_WITH_KNOTS 출력 (빈 스텁 대체)
+- `cadkernel-io`: STEP 파서 오류 복구 — 엔티티 해석 시 `catch_unwind`, 잘못된 엔티티는 중단 대신 `Other`로 저장
+
 **불리언 연산:**
 - `cadkernel-modeling`: `boolean_op`에 자동 면 분할 — 겹치는 면 감지 시 `split_solids_at_intersection` → 분류 → 평가 체인
 - `cadkernel-modeling`: 다중 샘플 면 분류 — 중심점 + 6개 엣지 중점의 다수결 투표 (단일 중심점 테스트 대체)
