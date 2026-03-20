@@ -220,6 +220,10 @@ impl Camera {
         mat4_mul(self.projection_matrix(), self.view_matrix())
     }
 
+    pub fn inv_view_proj(&self) -> [[f32; 4]; 4] {
+        mat4_inv(self.view_proj())
+    }
+
     pub fn fit_to_bounds(&mut self, min: [f32; 3], max: [f32; 3]) {
         self.target = [
             (min[0] + max[0]) * 0.5,
@@ -372,6 +376,46 @@ fn orthographic(
             1.0,
         ],
     ]
+}
+
+/// 4x4 matrix inverse via cofactor expansion.
+fn mat4_inv(m: [[f32; 4]; 4]) -> [[f32; 4]; 4] {
+    let m = |r: usize, c: usize| m[c][r]; // column-major access
+    let cf = |r0: usize, r1: usize, c0: usize, c1: usize| -> f32 {
+        m(r0, c0) * m(r1, c1) - m(r0, c1) * m(r1, c0)
+    };
+    let (s0, s1, s2, s3, s4, s5) = (
+        cf(0, 1, 0, 1), cf(0, 1, 0, 2), cf(0, 1, 0, 3),
+        cf(0, 1, 1, 2), cf(0, 1, 1, 3), cf(0, 1, 2, 3),
+    );
+    let (c5, c4, c3, c2, c1, c0) = (
+        cf(2, 3, 0, 1), cf(2, 3, 0, 2), cf(2, 3, 0, 3),
+        cf(2, 3, 1, 2), cf(2, 3, 1, 3), cf(2, 3, 2, 3),
+    );
+    let det = s0 * c5 - s1 * c4 + s2 * c3 + s3 * c2 - s4 * c1 + s5 * c0;
+    if det.abs() < 1e-10 {
+        return [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0],
+                [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]];
+    }
+    let inv_det = 1.0 / det;
+    let mut out = [[0.0f32; 4]; 4];
+    out[0][0] = ( m(1,1) * c5 - m(1,2) * c4 + m(1,3) * c3) * inv_det;
+    out[1][0] = (-m(1,0) * c5 + m(1,2) * c2 - m(1,3) * c1) * inv_det;
+    out[2][0] = ( m(1,0) * c4 - m(1,1) * c2 + m(1,3) * c0) * inv_det;
+    out[3][0] = (-m(1,0) * c3 + m(1,1) * c1 - m(1,2) * c0) * inv_det;
+    out[0][1] = (-m(0,1) * c5 + m(0,2) * c4 - m(0,3) * c3) * inv_det;
+    out[1][1] = ( m(0,0) * c5 - m(0,2) * c2 + m(0,3) * c1) * inv_det;
+    out[2][1] = (-m(0,0) * c4 + m(0,1) * c2 - m(0,3) * c0) * inv_det;
+    out[3][1] = ( m(0,0) * c3 - m(0,1) * c1 + m(0,2) * c0) * inv_det;
+    out[0][2] = ( m(0,1) * s5 - m(0,2) * s4 + m(0,3) * s3) * inv_det;
+    out[1][2] = (-m(0,0) * s5 + m(0,2) * s2 - m(0,3) * s1) * inv_det;
+    out[2][2] = ( m(0,0) * s4 - m(0,1) * s2 + m(0,3) * s0) * inv_det;
+    out[3][2] = (-m(0,0) * s3 + m(0,1) * s1 - m(0,2) * s0) * inv_det;
+    out[0][3] = (-m(3,1) * s5 + m(3,2) * s4 - m(3,3) * s3) * inv_det;
+    out[1][3] = ( m(3,0) * s5 - m(3,2) * s2 + m(3,3) * s1) * inv_det;
+    out[2][3] = (-m(3,0) * s4 + m(3,1) * s2 - m(3,3) * s0) * inv_det;
+    out[3][3] = ( m(3,0) * s3 - m(3,1) * s1 + m(3,2) * s0) * inv_det;
+    out
 }
 
 fn mat4_mul(a: [[f32; 4]; 4], b: [[f32; 4]; 4]) -> [[f32; 4]; 4] {
