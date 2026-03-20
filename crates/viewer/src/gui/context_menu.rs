@@ -1,6 +1,7 @@
 use super::{GuiAction, GuiState, SelectedEntity};
 use cadkernel_topology::{Handle, SolidData};
 
+#[allow(dead_code)]
 pub(crate) fn solid_context_menu(
     ui: &mut egui::Ui,
     gui: &mut GuiState,

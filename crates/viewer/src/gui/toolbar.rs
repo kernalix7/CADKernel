@@ -7,11 +7,10 @@ pub(crate) fn draw_toolbar(ctx: &egui::Context, gui: &mut GuiState) {
             ui.spacing_mut().item_spacing.x = 4.0;
 
             // -- File group --
-            ui.weak("File");
-            if ui.button("New").on_hover_text("Create a new empty model").clicked() {
+            if ui.button("\u{1F4C4} New").on_hover_text("New model (Ctrl+N)").clicked() {
                 gui.actions.push(GuiAction::NewModel);
             }
-            if ui.button("Open").on_hover_text("Open a project or mesh file").clicked() {
+            if ui.button("\u{1F4C2} Open").on_hover_text("Open file (Ctrl+O)").clicked() {
                 if let Some(path) = rfd::FileDialog::new()
                     .add_filter("CADKernel", &["cadk"])
                     .add_filter("STL", &["stl"])
@@ -27,7 +26,7 @@ pub(crate) fn draw_toolbar(ctx: &egui::Context, gui: &mut GuiState) {
                     }
                 }
             }
-            if ui.button("Save").on_hover_text("Save the current project").clicked() {
+            if ui.button("\u{1F4BE} Save").on_hover_text("Save project (Ctrl+S)").clicked() {
                 if let Some(path) = rfd::FileDialog::new()
                     .add_filter("CADKernel", &["cadk"])
                     .set_file_name("model.cadk")
@@ -40,23 +39,32 @@ pub(crate) fn draw_toolbar(ctx: &egui::Context, gui: &mut GuiState) {
             ui.separator();
 
             // -- Edit group --
-            ui.weak("Edit");
-            if ui.button("Undo").on_hover_text("Undo last operation (Ctrl+Z)").clicked() {
+            ui.separator();
+            if ui.button("\u{21A9} Undo").on_hover_text("Undo (Ctrl+Z)").clicked() {
                 gui.actions.push(GuiAction::Undo);
             }
-            if ui.button("Redo").on_hover_text("Redo last undone operation (Ctrl+Y)").clicked() {
+            if ui.button("\u{21AA} Redo").on_hover_text("Redo (Ctrl+Y)").clicked() {
                 gui.actions.push(GuiAction::Redo);
             }
 
             ui.separator();
 
             // -- View group --
-            ui.weak("View");
-            if ui.button("Fit All").on_hover_text("Fit all geometry in view (V)").clicked() {
+            if ui.button("\u{1F50D} Fit All").on_hover_text("Fit all (F)").clicked() {
                 gui.actions.push(GuiAction::FitAll);
             }
-            if ui.button("Reset View").on_hover_text("Reset camera to default position").clicked() {
+            if ui.button("\u{1F3E0} Reset").on_hover_text("Reset camera").clicked() {
                 gui.actions.push(GuiAction::ResetCamera);
+            }
+
+            ui.separator();
+
+            // -- Scene group --
+            if ui.button("\u{1F441} Show All").on_hover_text("Show all objects").clicked() {
+                gui.actions.push(GuiAction::ShowAll);
+            }
+            if ui.button("\u{1F6AB} Hide All").on_hover_text("Hide all objects").clicked() {
+                gui.actions.push(GuiAction::HideAll);
             }
         });
     });

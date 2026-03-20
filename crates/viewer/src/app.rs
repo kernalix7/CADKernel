@@ -118,6 +118,9 @@ impl CameraAnimation {
 
 pub(crate) struct CadApp {
     runtime: Option<RuntimeState>,
+    /// Multi-object scene (replaces single model/mesh/solid).
+    scene: crate::scene::Scene,
+    /// Legacy single-model fields (kept for compatibility during transition).
     model: BRepModel,
     current_mesh: Option<Mesh>,
     current_solid: Option<Handle<SolidData>>,
@@ -136,9 +139,7 @@ pub(crate) struct CadApp {
     fps_frames: u32,
     fps_elapsed: f32,
     fps_display: f32,
-    /// Undo/redo command stack.
     command_stack: crate::command::CommandStack,
-    /// Whether the mouse was dragged since last press (prevents pick on drag release).
     mouse_dragged: bool,
 }
 
@@ -146,6 +147,7 @@ impl CadApp {
     fn new() -> Self {
         Self {
             runtime: None,
+            scene: crate::scene::Scene::new(),
             model: BRepModel::new(),
             current_mesh: None,
             current_solid: None,
@@ -191,6 +193,48 @@ impl CadApp {
         }
         self.gui.invalidate_cache();
         self.current_mesh = Some(mesh);
+    }
+
+    /// Rebuild the GPU vertex buffer from the entire scene (all visible objects).
+    fn rebuild_scene_gpu(&mut self) {
+        let (combined, _ranges) = self.scene.build_combined_vertices();
+        if !combined.is_empty() {
+            let (min, max) = compute_bounds(&combined);
+            let dx = max[0] - min[0];
+            let dy = max[1] - min[1];
+            let dz = max[2] - min[2];
+            self.grid_config.set_object_extent(dx.max(dy).max(dz));
+        }
+        self.vertices = combined;
+        self.grid_config.force_rebuild();
+        self.grid_config.update_for_camera(self.camera.distance);
+        if let Some(rt) = &mut self.runtime {
+            rt.gpu.update_mesh(&self.vertices);
+            rt.gpu.rebuild_grid(&self.grid_config);
+        }
+        self.gui.invalidate_cache();
+    }
+
+    /// Add a newly created solid to the scene and update GPU.
+    fn add_to_scene(
+        &mut self,
+        name: &str,
+        model: BRepModel,
+        solid: Handle<SolidData>,
+        params: Option<crate::scene::CreationParams>,
+    ) {
+        let mesh = cadkernel_io::tessellate_solid(&model, solid);
+        self.current_mesh = Some(mesh);
+        self.current_solid = Some(solid);
+        self.model = model.clone();
+        let id = self.scene.add_object(name, model, solid, params);
+        self.scene.select_single(id);
+        self.rebuild_scene_gpu();
+        // Fit camera if this is the first object
+        if self.scene.len() == 1 && !self.vertices.is_empty() {
+            let (min, max) = compute_bounds(&self.vertices);
+            self.camera.fit_to_bounds(min, max);
+        }
     }
 
     fn collect_edge_pairs(
@@ -465,15 +509,16 @@ impl CadApp {
                     height,
                     depth,
                 } => {
+                    self.snapshot_before("Create Box");
                     let mut model = BRepModel::new();
                     match make_box(&mut model, Point3::ORIGIN, width, height, depth) {
                         Ok(r) => {
-                            let mesh = tessellate_solid(&model, r.solid);
-                            self.model = model;
-                            self.current_solid = Some(r.solid);
-                            self.gui.current_file = None;
+                            self.add_to_scene(
+                                &format!("Box ({width}×{height}×{depth})"),
+                                model, r.solid,
+                                Some(crate::scene::CreationParams::Box { width, height, depth }),
+                            );
                             self.log_info(format!("Created box ({width} × {height} × {depth})"));
-                            self.set_mesh(mesh);
                         }
                         Err(e) => {
                             self.log_error(format!("CreateBox error: {e}"));
@@ -482,15 +527,16 @@ impl CadApp {
                 }
 
                 GuiAction::CreateCylinder { radius, height } => {
+                    self.snapshot_before("Create Cylinder");
                     let mut model = BRepModel::new();
                     match make_cylinder(&mut model, Point3::ORIGIN, radius, height, 64) {
                         Ok(r) => {
-                            let mesh = tessellate_solid(&model, r.solid);
-                            self.model = model;
-                            self.current_solid = Some(r.solid);
-                            self.gui.current_file = None;
+                            self.add_to_scene(
+                                &format!("Cylinder (r={radius}, h={height})"),
+                                model, r.solid,
+                                Some(crate::scene::CreationParams::Cylinder { radius, height }),
+                            );
                             self.log_info(format!("Created cylinder (r={radius}, h={height})"));
-                            self.set_mesh(mesh);
                         }
                         Err(e) => {
                             self.log_error(format!("CreateCylinder error: {e}"));
@@ -499,15 +545,16 @@ impl CadApp {
                 }
 
                 GuiAction::CreateSphere { radius } => {
+                    self.snapshot_before("Create Sphere");
                     let mut model = BRepModel::new();
                     match make_sphere(&mut model, Point3::ORIGIN, radius, 64, 32) {
                         Ok(r) => {
-                            let mesh = tessellate_solid(&model, r.solid);
-                            self.model = model;
-                            self.current_solid = Some(r.solid);
-                            self.gui.current_file = None;
+                            self.add_to_scene(
+                                &format!("Sphere (r={radius})"),
+                                model, r.solid,
+                                Some(crate::scene::CreationParams::Sphere { radius }),
+                            );
                             self.log_info(format!("Created sphere (r={radius})"));
-                            self.set_mesh(mesh);
                         }
                         Err(e) => {
                             self.log_error(format!("CreateSphere error: {e}"));
@@ -520,6 +567,7 @@ impl CadApp {
                     top_radius,
                     height,
                 } => {
+                    self.snapshot_before("Create Cone");
                     let mut model = BRepModel::new();
                     match make_cone(
                         &mut model,
@@ -530,19 +578,19 @@ impl CadApp {
                         64,
                     ) {
                         Ok(r) => {
-                            let mesh = tessellate_solid(&model, r.solid);
-                            self.model = model;
-                            self.current_solid = Some(r.solid);
-                            self.gui.current_file = None;
                             let kind = if top_radius < 1e-14 {
                                 "cone"
                             } else {
                                 "frustum"
                             };
+                            self.add_to_scene(
+                                &format!("Cone (r1={base_radius}, r2={top_radius}, h={height})"),
+                                model, r.solid,
+                                Some(crate::scene::CreationParams::Cone { base_radius, top_radius, height }),
+                            );
                             self.log_info(format!(
                                 "Created {kind} (r1={base_radius}, r2={top_radius}, h={height})"
                             ));
-                            self.set_mesh(mesh);
                         }
                         Err(e) => {
                             self.log_error(format!("CreateCone error: {e}"));
@@ -554,6 +602,7 @@ impl CadApp {
                     major_radius,
                     minor_radius,
                 } => {
+                    self.snapshot_before("Create Torus");
                     let mut model = BRepModel::new();
                     match make_torus(
                         &mut model,
@@ -564,12 +613,12 @@ impl CadApp {
                         32,
                     ) {
                         Ok(r) => {
-                            let mesh = tessellate_solid(&model, r.solid);
-                            self.model = model;
-                            self.current_solid = Some(r.solid);
-                            self.gui.current_file = None;
+                            self.add_to_scene(
+                                &format!("Torus (R={major_radius}, r={minor_radius})"),
+                                model, r.solid,
+                                Some(crate::scene::CreationParams::Torus { major_radius, minor_radius }),
+                            );
                             self.log_info(format!("Created torus (R={major_radius}, r={minor_radius})"));
-                            self.set_mesh(mesh);
                         }
                         Err(e) => {
                             self.log_error(format!("CreateTorus error: {e}"));
@@ -582,6 +631,7 @@ impl CadApp {
                     inner_radius,
                     height,
                 } => {
+                    self.snapshot_before("Create Tube");
                     let mut model = BRepModel::new();
                     match make_tube(
                         &mut model,
@@ -592,14 +642,14 @@ impl CadApp {
                         64,
                     ) {
                         Ok(r) => {
-                            let mesh = tessellate_solid(&model, r.solid);
-                            self.model = model;
-                            self.current_solid = Some(r.solid);
-                            self.gui.current_file = None;
+                            self.add_to_scene(
+                                &format!("Tube (R={outer_radius}, r={inner_radius}, h={height})"),
+                                model, r.solid,
+                                Some(crate::scene::CreationParams::Tube { outer_radius, inner_radius, height }),
+                            );
                             self.log_info(format!(
                                 "Created tube (R={outer_radius}, r={inner_radius}, h={height})"
                             ));
-                            self.set_mesh(mesh);
                         }
                         Err(e) => {
                             self.log_error(format!("CreateTube error: {e}"));
@@ -612,15 +662,16 @@ impl CadApp {
                     height,
                     sides,
                 } => {
+                    self.snapshot_before("Create Prism");
                     let mut model = BRepModel::new();
                     match make_prism(&mut model, Point3::ORIGIN, radius, height, sides) {
                         Ok(r) => {
-                            let mesh = tessellate_solid(&model, r.solid);
-                            self.model = model;
-                            self.current_solid = Some(r.solid);
-                            self.gui.current_file = None;
+                            self.add_to_scene(
+                                &format!("{sides}-sided Prism"),
+                                model, r.solid,
+                                Some(crate::scene::CreationParams::Prism { radius, height, sides }),
+                            );
                             self.log_info(format!("Created {sides}-sided prism (r={radius}, h={height})"));
-                            self.set_mesh(mesh);
                         }
                         Err(e) => {
                             self.log_error(format!("CreatePrism error: {e}"));
@@ -635,15 +686,16 @@ impl CadApp {
                     dx2,
                     dy2,
                 } => {
+                    self.snapshot_before("Create Wedge");
                     let mut model = BRepModel::new();
                     match make_wedge(&mut model, Point3::ORIGIN, dx, dy, dz, dx2, dy2, 0.0, 0.0) {
                         Ok(r) => {
-                            let mesh = tessellate_solid(&model, r.solid);
-                            self.model = model;
-                            self.current_solid = Some(r.solid);
-                            self.gui.current_file = None;
+                            self.add_to_scene(
+                                &format!("Wedge ({dx}×{dy}×{dz})"),
+                                model, r.solid,
+                                Some(crate::scene::CreationParams::Wedge { dx, dy, dz, dx2, dy2 }),
+                            );
                             self.log_info(format!("Created wedge ({dx}×{dy}×{dz}, top {dx2}×{dy2})"));
-                            self.set_mesh(mesh);
                         }
                         Err(e) => {
                             self.log_error(format!("CreateWedge error: {e}"));
@@ -652,15 +704,16 @@ impl CadApp {
                 }
 
                 GuiAction::CreateEllipsoid { rx, ry, rz } => {
+                    self.snapshot_before("Create Ellipsoid");
                     let mut model = BRepModel::new();
                     match make_ellipsoid(&mut model, Point3::ORIGIN, rx, ry, rz, 64, 32) {
                         Ok(r) => {
-                            let mesh = tessellate_solid(&model, r.solid);
-                            self.model = model;
-                            self.current_solid = Some(r.solid);
-                            self.gui.current_file = None;
+                            self.add_to_scene(
+                                &format!("Ellipsoid ({rx}×{ry}×{rz})"),
+                                model, r.solid,
+                                Some(crate::scene::CreationParams::Ellipsoid { rx, ry, rz }),
+                            );
                             self.log_info(format!("Created ellipsoid ({rx}×{ry}×{rz})"));
-                            self.set_mesh(mesh);
                         }
                         Err(e) => {
                             self.log_error(format!("CreateEllipsoid error: {e}"));
@@ -674,6 +727,7 @@ impl CadApp {
                     turns,
                     tube_radius,
                 } => {
+                    self.snapshot_before("Create Helix");
                     let mut model = BRepModel::new();
                     match make_helix(
                         &mut model,
@@ -686,14 +740,14 @@ impl CadApp {
                         8,
                     ) {
                         Ok(r) => {
-                            let mesh = tessellate_solid(&model, r.solid);
-                            self.model = model;
-                            self.current_solid = Some(r.solid);
-                            self.gui.current_file = None;
+                            self.add_to_scene(
+                                &format!("Helix (R={radius})"),
+                                model, r.solid,
+                                Some(crate::scene::CreationParams::Helix { radius, pitch, turns, tube_radius }),
+                            );
                             self.log_info(format!(
                                 "Created helix (R={radius}, pitch={pitch}, turns={turns})"
                             ));
-                            self.set_mesh(mesh);
                         }
                         Err(e) => {
                             self.log_error(format!("CreateHelix error: {e}"));
@@ -1452,6 +1506,63 @@ impl CadApp {
                     self.gui.selected_entity = None;
                     self.gui.status_message = "Selection cleared".into();
                 }
+                // -- Scene management --
+                GuiAction::SelectObject(id) => {
+                    self.scene.select_single(id);
+                    if let Some(obj) = self.scene.get(id) {
+                        self.model = obj.model.clone();
+                        self.current_solid = Some(obj.solid);
+                        self.current_mesh = Some(obj.mesh.clone());
+                        self.gui.status_message = format!("Selected: {}", obj.name);
+                    }
+                }
+                GuiAction::ToggleVisibility(id) => {
+                    if let Some(obj) = self.scene.get_mut(id) {
+                        obj.visible = !obj.visible;
+                        let state = if obj.visible { "shown" } else { "hidden" };
+                        let name = obj.name.clone();
+                        self.log_info(format!("{name}: {state}"));
+                    }
+                    self.rebuild_scene_gpu();
+                }
+                GuiAction::RemoveObject(id) => {
+                    self.snapshot_before("Remove object");
+                    if let Some(obj) = self.scene.get(id) {
+                        let name = obj.name.clone();
+                        self.scene.remove_object(id);
+                        self.log_info(format!("Removed: {name}"));
+                    }
+                    self.rebuild_scene_gpu();
+                }
+                GuiAction::DuplicateObject(id) => {
+                    self.snapshot_before("Duplicate object");
+                    if let Some(obj) = self.scene.get(id).cloned() {
+                        let new_name = format!("{} (copy)", obj.name);
+                        self.scene.add_object(
+                            new_name,
+                            obj.model,
+                            obj.solid,
+                            obj.params,
+                        );
+                        self.rebuild_scene_gpu();
+                        self.log_info("Object duplicated");
+                    }
+                }
+                GuiAction::ShowAll => {
+                    for obj in &mut self.scene.objects {
+                        obj.visible = true;
+                    }
+                    self.rebuild_scene_gpu();
+                    self.log_info("All objects shown");
+                }
+                GuiAction::HideAll => {
+                    for obj in &mut self.scene.objects {
+                        obj.visible = false;
+                    }
+                    self.rebuild_scene_gpu();
+                    self.log_info("All objects hidden");
+                }
+
                 GuiAction::DeleteSelected => {
                     if self.current_solid.is_some() {
                         self.snapshot_before("Delete solid");
@@ -1868,6 +1979,7 @@ impl CadApp {
 
         let Self {
             runtime,
+            scene,
             camera,
             gui,
             nav,
@@ -1893,7 +2005,7 @@ impl CadApp {
         // 1. Run egui ---------------------------------------------------
         let raw_input = rt.egui_state.take_egui_input(&rt.gpu.window);
         let full_output = rt.egui_ctx.run(raw_input, |ctx| {
-            gui::draw_ui(ctx, gui, nav, &vp_info, model, current_mesh);
+            gui::draw_ui(ctx, gui, nav, &vp_info, model, current_mesh, scene);
         });
         rt.egui_state
             .handle_platform_output(&rt.gpu.window, full_output.platform_output);
@@ -2578,8 +2690,42 @@ impl ApplicationHandler for CadApp {
                         let next = DisplayMode::ALL[(idx + 1) % DisplayMode::ALL.len()];
                         self.gui.actions.push(GuiAction::SetDisplayMode(next));
                     }
-                    PhysicalKey::Code(KeyCode::KeyG) => {
+                    PhysicalKey::Code(KeyCode::KeyG) if !ctrl => {
                         self.gui.actions.push(GuiAction::ToggleGrid);
+                    }
+
+                    // Ctrl+Z = Undo, Ctrl+Shift+Z / Ctrl+Y = Redo
+                    PhysicalKey::Code(KeyCode::KeyZ) if ctrl && !self.mouse.shift_held => {
+                        self.gui.actions.push(GuiAction::Undo);
+                    }
+                    PhysicalKey::Code(KeyCode::KeyZ) if ctrl && self.mouse.shift_held => {
+                        self.gui.actions.push(GuiAction::Redo);
+                    }
+                    PhysicalKey::Code(KeyCode::KeyY) if ctrl => {
+                        self.gui.actions.push(GuiAction::Redo);
+                    }
+
+                    // Delete = delete selected
+                    PhysicalKey::Code(KeyCode::Delete | KeyCode::Backspace) if !ctrl => {
+                        self.gui.actions.push(GuiAction::DeleteSelected);
+                    }
+
+                    // Ctrl+N = new, Ctrl+A = select all
+                    PhysicalKey::Code(KeyCode::KeyN) if ctrl => {
+                        self.gui.actions.push(GuiAction::NewModel);
+                    }
+                    PhysicalKey::Code(KeyCode::KeyA) if ctrl => {
+                        self.gui.actions.push(GuiAction::SelectAll);
+                    }
+
+                    // F = fit all, H = toggle visibility of selected
+                    PhysicalKey::Code(KeyCode::KeyF) if !ctrl => {
+                        self.gui.actions.push(GuiAction::FitAll);
+                    }
+                    PhysicalKey::Code(KeyCode::KeyH) if !ctrl => {
+                        if let Some(id) = self.scene.selected_id() {
+                            self.gui.actions.push(GuiAction::ToggleVisibility(id));
+                        }
                     }
                     _ => {}
                 }
