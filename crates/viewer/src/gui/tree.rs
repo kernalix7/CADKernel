@@ -1,218 +1,160 @@
-use super::{GuiState, SelectedEntity};
-use cadkernel_topology::BRepModel;
+use super::{GuiAction, GuiState};
+use crate::scene::Scene;
 
-pub(crate) fn draw_model_tree(ctx: &egui::Context, gui: &mut GuiState, model: &BRepModel) {
+pub(crate) fn draw_model_tree(
+    ctx: &egui::Context,
+    gui: &mut GuiState,
+    scene: &Scene,
+) {
     if !gui.show_model_tree {
         return;
     }
     egui::SidePanel::left("model_tree")
-        .default_width(220.0)
+        .default_width(240.0)
         .show(ctx, |ui| {
             ui.horizontal(|ui| {
-                ui.heading("Model");
+                ui.heading("Scene");
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.weak(format!(
-                        "S:{} F:{} E:{} V:{}",
-                        model.solids.len(),
-                        model.faces.len(),
-                        model.edges.len(),
-                        model.vertices.len(),
-                    ));
+                    ui.weak(format!("{} object(s)", scene.len()));
                 });
             });
             ui.separator();
 
             egui::ScrollArea::vertical().show(ui, |ui| {
-                // Construction history
-                let records = model.history.records();
-                if !records.is_empty() {
-                    egui::CollapsingHeader::new("Construction History")
-                        .default_open(false)
-                        .show(ui, |ui| {
-                            for (i, record) in records.iter().enumerate() {
-                                ui.label(format!("{}. {}", i + 1, record.label));
-                            }
-                        });
-                    ui.separator();
+                if scene.is_empty() {
+                    ui.weak("(empty scene — create or import a model)");
+                    return;
                 }
 
-                // Solids hierarchy
-                if model.solids.is_empty() {
-                    ui.weak("(no geometry)");
-                } else {
-                    for (solid_handle, solid_data) in model.solids.iter() {
-                        let solid_id = format!("solid_{:?}", solid_handle);
-                        let solid_label = if let Some(tag) = &solid_data.tag {
-                            format!("Solid [{}]", tag)
-                        } else {
-                            format!("Solid #{:?}", solid_handle)
-                        };
-
-                        let is_solid_selected = gui.selected_entity
-                            == Some(SelectedEntity::Solid(solid_handle));
-
-                        let header = egui::CollapsingHeader::new(
-                            egui::RichText::new(&solid_label)
-                                .strong()
-                                .color(if is_solid_selected {
-                                    egui::Color32::from_rgb(100, 180, 255)
-                                } else {
-                                    ui.visuals().text_color()
-                                }),
-                        )
-                        .id_salt(&solid_id)
-                        .default_open(true);
-
-                        header.show(ui, |ui| {
-                            // Click to select solid
-                            let resp = ui.selectable_label(
-                                is_solid_selected,
-                                format!(
-                                    "  {} shell(s)",
-                                    solid_data.shells.len()
-                                ),
-                            );
-                            if resp.clicked() {
-                                gui.selected_entity =
-                                    Some(SelectedEntity::Solid(solid_handle));
-                            }
-                            resp.context_menu(|ui| {
-                                super::context_menu::solid_context_menu(ui, gui, solid_handle);
-                            });
-
-                            // Shells
-                            for (si, &shell_handle) in solid_data.shells.iter().enumerate() {
-                                if let Some(shell_data) = model.shells.get(shell_handle) {
-                                    let shell_id = format!("{solid_id}_shell_{si}");
-                                    let shell_label = format!("Shell #{si}");
-                                    let is_shell_selected = gui.selected_entity
-                                        == Some(SelectedEntity::Shell(shell_handle));
-
-                                    egui::CollapsingHeader::new(
-                                        egui::RichText::new(&shell_label).color(
-                                            if is_shell_selected {
-                                                egui::Color32::from_rgb(100, 180, 255)
-                                            } else {
-                                                ui.visuals().text_color()
-                                            },
-                                        ),
-                                    )
-                                    .id_salt(&shell_id)
-                                    .default_open(false)
-                                    .show(ui, |ui| {
-                                        let resp = ui.selectable_label(
-                                            is_shell_selected,
-                                            format!(
-                                                "  {} face(s)",
-                                                shell_data.faces.len()
-                                            ),
-                                        );
-                                        if resp.clicked() {
-                                            gui.selected_entity =
-                                                Some(SelectedEntity::Shell(shell_handle));
-                                        }
-
-                                        // Faces
-                                        for (fi, &face_handle) in
-                                            shell_data.faces.iter().enumerate()
-                                        {
-                                            let is_face_selected = gui.selected_entity
-                                                == Some(SelectedEntity::Face(face_handle));
-                                            let face_label = if let Some(face) =
-                                                model.faces.get(face_handle)
-                                            {
-                                                if let Some(tag) = &face.tag {
-                                                    format!("Face [{tag}]")
-                                                } else {
-                                                    format!("Face #{fi}")
-                                                }
-                                            } else {
-                                                format!("Face #{fi}")
-                                            };
-                                            let resp = ui.selectable_label(
-                                                is_face_selected,
-                                                format!("    {face_label}"),
-                                            );
-                                            if resp.clicked() {
-                                                gui.selected_entity =
-                                                    Some(SelectedEntity::Face(face_handle));
-                                            }
-                                        }
-                                    });
-                                }
-                            }
-                        });
-                    }
-                }
-
-                // Standalone faces (not in any solid)
-                let standalone_faces: Vec<_> = model
-                    .faces
-                    .iter()
-                    .filter(|(_, f)| f.shell.is_none())
-                    .collect();
-                if !standalone_faces.is_empty() {
-                    ui.separator();
-                    egui::CollapsingHeader::new("Standalone Faces")
-                        .default_open(false)
-                        .show(ui, |ui| {
-                            for (handle, _) in &standalone_faces {
-                                let is_selected = gui.selected_entity
-                                    == Some(SelectedEntity::Face(*handle));
-                                let resp = ui.selectable_label(
-                                    is_selected,
-                                    format!("Face #{:?}", handle),
-                                );
-                                if resp.clicked() {
-                                    gui.selected_entity =
-                                        Some(SelectedEntity::Face(*handle));
-                                }
-                            }
-                        });
-                }
-
-                // Edges summary
-                if !model.edges.is_empty() {
-                    egui::CollapsingHeader::new(format!("Edges ({})", model.edges.len()))
-                        .default_open(false)
-                        .show(ui, |ui| {
-                            for (handle, _) in model.edges.iter() {
-                                let is_selected = gui.selected_entity
-                                    == Some(SelectedEntity::Edge(handle));
-                                let resp = ui.selectable_label(
-                                    is_selected,
-                                    format!("  Edge #{:?}", handle),
-                                );
-                                if resp.clicked() {
-                                    gui.selected_entity =
-                                        Some(SelectedEntity::Edge(handle));
-                                }
-                            }
-                        });
-                }
-
-                // Vertices summary
-                if !model.vertices.is_empty() {
-                    egui::CollapsingHeader::new(format!("Vertices ({})", model.vertices.len()))
-                        .default_open(false)
-                        .show(ui, |ui| {
-                            for (handle, v) in model.vertices.iter() {
-                                let is_selected = gui.selected_entity
-                                    == Some(SelectedEntity::Vertex(handle));
-                                let resp = ui.selectable_label(
-                                    is_selected,
-                                    format!(
-                                        "  ({:.2}, {:.2}, {:.2})",
-                                        v.point.x, v.point.y, v.point.z
-                                    ),
-                                );
-                                if resp.clicked() {
-                                    gui.selected_entity =
-                                        Some(SelectedEntity::Vertex(handle));
-                                }
-                            }
-                        });
+                for obj in &scene.objects {
+                    draw_object_row(ui, gui, obj);
                 }
             });
         });
+}
+
+fn draw_object_row(
+    ui: &mut egui::Ui,
+    gui: &mut GuiState,
+    obj: &crate::scene::SceneObject,
+) {
+    let is_selected = obj.selected;
+    let id = obj.id;
+
+    ui.horizontal(|ui| {
+        // Visibility toggle (eye icon)
+        let eye = if obj.visible { "\u{25C9}" } else { "\u{25CB}" };
+        let eye_btn = ui.button(
+            egui::RichText::new(eye).size(14.0).color(
+                if obj.visible {
+                    egui::Color32::from_rgb(80, 180, 80)
+                } else {
+                    egui::Color32::from_rgb(120, 120, 120)
+                },
+            ),
+        );
+        if eye_btn.clicked() {
+            gui.actions.push(GuiAction::ToggleVisibility(id));
+        }
+
+        // Color swatch
+        let [r, g, b, _] = obj.color;
+        let color = egui::Color32::from_rgb(
+            (r * 255.0) as u8,
+            (g * 255.0) as u8,
+            (b * 255.0) as u8,
+        );
+        let (rect, _) = ui.allocate_exact_size(
+            egui::vec2(14.0, 14.0),
+            egui::Sense::click(),
+        );
+        ui.painter().rect_filled(rect, 2.0, color);
+
+        // Object name (selectable)
+        let label_color = if is_selected {
+            egui::Color32::from_rgb(100, 200, 255)
+        } else if !obj.visible {
+            egui::Color32::from_rgb(130, 130, 130)
+        } else {
+            ui.visuals().text_color()
+        };
+
+        let name_resp = ui.selectable_label(
+            is_selected,
+            egui::RichText::new(&obj.name).color(label_color),
+        );
+
+        if name_resp.clicked() {
+            gui.actions.push(GuiAction::SelectObject(id));
+        }
+
+        // Context menu
+        name_resp.context_menu(|ui| {
+            if ui.button("\u{1F441} Toggle Visibility").clicked() {
+                gui.actions.push(GuiAction::ToggleVisibility(id));
+                ui.close_menu();
+            }
+            if ui.button("\u{1F5D1} Delete").clicked() {
+                gui.actions.push(GuiAction::RemoveObject(id));
+                ui.close_menu();
+            }
+            if ui.button("\u{1F4CB} Duplicate").clicked() {
+                gui.actions.push(GuiAction::DuplicateObject(id));
+                ui.close_menu();
+            }
+            ui.separator();
+            if ui.button("\u{1F4CF} Measure").clicked() {
+                gui.actions.push(GuiAction::MeasureSolid);
+                ui.close_menu();
+            }
+            if ui.button("\u{2714} Check Geometry").clicked() {
+                gui.actions.push(GuiAction::CheckGeometry);
+                ui.close_menu();
+            }
+        });
+    });
+
+    // Show topology details if selected
+    if is_selected {
+        ui.indent(format!("obj_detail_{id}"), |ui| {
+            let m = &obj.model;
+            if !m.solids.is_empty() {
+                ui.weak(format!(
+                    "  {} solid, {} faces, {} edges, {} verts",
+                    m.solids.len(),
+                    m.faces.len(),
+                    m.edges.len(),
+                    m.vertices.len(),
+                ));
+            }
+            ui.weak(format!(
+                "  {} triangles, {} vertices (mesh)",
+                obj.mesh.triangle_count(),
+                obj.mesh.vertices.len(),
+            ));
+            if let Some(params) = &obj.params {
+                ui.weak(format!("  Type: {}", params_label(params)));
+            }
+        });
+    }
+}
+
+fn params_label(p: &crate::scene::CreationParams) -> &'static str {
+    use crate::scene::CreationParams;
+    match p {
+        CreationParams::Box { .. } => "Box",
+        CreationParams::Cylinder { .. } => "Cylinder",
+        CreationParams::Sphere { .. } => "Sphere",
+        CreationParams::Cone { .. } => "Cone",
+        CreationParams::Torus { .. } => "Torus",
+        CreationParams::Tube { .. } => "Tube",
+        CreationParams::Prism { .. } => "Prism",
+        CreationParams::Wedge { .. } => "Wedge",
+        CreationParams::Ellipsoid { .. } => "Ellipsoid",
+        CreationParams::Helix { .. } => "Helix",
+        CreationParams::Imported { .. } => "Imported",
+        CreationParams::Extruded => "Extruded",
+        CreationParams::Revolved => "Revolved",
+        CreationParams::Boolean { .. } => "Boolean",
+    }
 }

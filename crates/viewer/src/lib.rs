@@ -13,6 +13,7 @@ mod gui;
 pub mod nav;
 pub mod picking;
 mod render;
+pub mod scene;
 
 pub use nav::{NavConfig, NavStyle};
 pub use render::{

@@ -105,6 +105,7 @@ impl SketchMode {
 // ---------------------------------------------------------------------------
 
 #[derive(Clone, Debug, PartialEq)]
+#[allow(dead_code)]
 pub(crate) enum SelectedEntity {
     Solid(Handle<SolidData>),
     Shell(Handle<ShellData>),
@@ -277,6 +278,13 @@ pub(crate) enum GuiAction {
     SelectAll,
     DeselectAll,
     DeleteSelected,
+    // Scene management
+    SelectObject(crate::scene::ObjectId),
+    ToggleVisibility(crate::scene::ObjectId),
+    RemoveObject(crate::scene::ObjectId),
+    DuplicateObject(crate::scene::ObjectId),
+    ShowAll,
+    HideAll,
 }
 
 // ---------------------------------------------------------------------------
@@ -500,12 +508,13 @@ pub(crate) fn draw_ui(
     vp: &ViewportInfo<'_>,
     model: &BRepModel,
     mesh: &Option<Mesh>,
+    scene: &crate::scene::Scene,
 ) {
     menu::draw_menu_bar(ctx, gui, vp.camera, vp.display_mode);
     toolbar::draw_toolbar(ctx, gui);
     toolbar::draw_workbench_tabs(ctx, gui);
     toolbar::draw_context_toolbar(ctx, gui);
-    tree::draw_model_tree(ctx, gui, model);
+    tree::draw_model_tree(ctx, gui, scene);
     properties::draw_properties(ctx, gui, model, mesh);
     report::draw_report_panel(ctx, gui);
     status_bar::draw_status_bar(ctx, gui, vp, mesh);
