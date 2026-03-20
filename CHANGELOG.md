@@ -409,6 +409,22 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - `cadkernel-viewer`: ~20 new `GuiAction` variants with full `process_actions()` handlers
 - `cadkernel-viewer`: Removed unused stubs (BooleanUnion/Subtract/Intersect, TrimDemo)
 
+#### Deep Quality Improvements (2026-03-20)
+
+**Boolean Operations:**
+- `cadkernel-modeling`: `boolean_op` now automatically uses face-splitting when overlapping faces are detected (chains `split_solids_at_intersection` → classify → evaluate)
+- `cadkernel-modeling`: Multi-sample face classification — majority voting with centroid + 6 edge midpoints (replaces single-centroid test)
+- `cadkernel-modeling`: BVH-accelerated broad-phase already in place (from V13)
+
+**Sketch Solver:**
+- `cadkernel-sketch`: DOF analysis — `SolverResult` now reports `remaining_dof` (computed via Jacobian diagonal rank) and `over_constrained` flag
+- `cadkernel-sketch`: `drag_solve()` — move a point while maintaining all constraints (temporary Fixed constraint approach)
+
+**Viewer Infrastructure:**
+- `cadkernel-viewer`: `picking.rs` — Moller-Trumbore CPU ray-triangle intersection, `screen_to_ray` unprojection, `pick_triangle` with closest-hit selection
+- `cadkernel-viewer`: `command.rs` — Undo/redo `CommandStack` with `ModelSnapshot` (push/undo/redo, max depth, redo invalidation on new command)
+- 6 new tests (picking 3 + command 3)
+
 #### Phase V7: File Format Expansion (2026-03-19)
 - `cadkernel-io`: glTF 2.0 import — embedded base64 buffer decoding, position/normal/index extraction, multi-component-type support (u8/u16/u32)
 - `cadkernel-io`: 3MF import — XML vertex/triangle parsing with face normal computation

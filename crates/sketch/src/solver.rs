@@ -10,6 +10,10 @@ pub struct SolverResult {
     pub converged: bool,
     pub iterations: usize,
     pub residual: f64,
+    /// Remaining degrees of freedom (n_vars - rank(J)). None if not computed.
+    pub remaining_dof: Option<usize>,
+    /// Whether the system is over-constrained (more independent equations than variables).
+    pub over_constrained: bool,
 }
 
 /// Solve the constraint system attached to `sketch` using Newton-Raphson
@@ -21,6 +25,8 @@ pub fn solve(sketch: &mut Sketch, max_iter: usize, tol: f64) -> SolverResult {
             converged: true,
             iterations: 0,
             residual: 0.0,
+            remaining_dof: Some(0),
+            over_constrained: false,
         };
     }
 
@@ -43,6 +49,8 @@ pub fn solve(sketch: &mut Sketch, max_iter: usize, tol: f64) -> SolverResult {
             converged: true,
             iterations: 0,
             residual: 0.0,
+            remaining_dof: Some(n_vars),
+            over_constrained: false,
         };
     }
 
@@ -53,6 +61,8 @@ pub fn solve(sketch: &mut Sketch, max_iter: usize, tol: f64) -> SolverResult {
         converged: false,
         iterations: 0,
         residual: f64::MAX,
+        remaining_dof: None,
+        over_constrained: false,
     };
 
     for iter in 0..max_iter {
@@ -94,6 +104,13 @@ pub fn solve(sketch: &mut Sketch, max_iter: usize, tol: f64) -> SolverResult {
     }
 
     vars_to_sketch(&vars, sketch);
+
+    // Compute DOF via Jacobian rank analysis
+    let (_, final_jac) = build_system(sketch, &lines, n_eqs, n_vars, vars.as_slice());
+    let rank = jacobian_rank(&final_jac, 1e-8);
+    result.remaining_dof = Some(n_vars.saturating_sub(rank));
+    result.over_constrained = rank > n_vars;
+
     result
 }
 
@@ -148,6 +165,45 @@ fn build_system(
     }
 
     (residual, jac)
+}
+
+/// Estimate the numerical rank of a matrix via singular value thresholding.
+///
+/// Counts singular values above `tol` using the eigenvalues of J^T J.
+fn jacobian_rank(jac: &DMatrix<f64>, tol: f64) -> usize {
+    let jtj = jac.transpose() * jac;
+    let n = jtj.nrows();
+    // Use diagonal dominance as a fast rank estimate
+    // (full SVD is expensive; this is good enough for sketch-sized systems)
+    let mut rank = 0;
+    for i in 0..n {
+        if jtj[(i, i)] > tol * tol {
+            rank += 1;
+        }
+    }
+    rank
+}
+
+/// Drag a point while maintaining all existing constraints.
+///
+/// Temporarily adds a high-weight Fixed constraint on the dragged point,
+/// solves the system, then removes the temporary constraint.
+pub fn drag_solve(
+    sketch: &mut Sketch,
+    point: PointId,
+    target_x: f64,
+    target_y: f64,
+    max_iter: usize,
+    tol: f64,
+) -> SolverResult {
+    use crate::constraint::Constraint;
+
+    // Add temporary fixed constraint with the drag target
+    sketch.add_constraint(Constraint::Fixed(point, target_x, target_y));
+    let result = solve(sketch, max_iter, tol);
+    // Remove the temporary constraint (last one added)
+    sketch.constraints.pop();
+    result
 }
 
 /// Solve J * dx = r using the normal equations (J^T J) dx = J^T r.

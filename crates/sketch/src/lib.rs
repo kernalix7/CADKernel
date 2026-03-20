@@ -18,7 +18,7 @@ pub use entity::{
     SketchEllipticalArc, SketchHyperbolicArc, SketchLine, SketchParabolicArc, SketchPoint,
 };
 pub use profile::{WorkPlane, extract_profile};
-pub use solver::{SolverResult, solve};
+pub use solver::{SolverResult, drag_solve, solve};
 pub use tools::{
     FilletResult, SketchChamferResult, SplitResult, TrimResult, chamfer_sketch_corner,
     extend_edge, fillet_sketch_corner, split_edge, trim_edge,
