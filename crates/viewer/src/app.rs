@@ -141,6 +141,8 @@ pub(crate) struct CadApp {
     fps_display: f32,
     command_stack: crate::command::CommandStack,
     mouse_dragged: bool,
+    /// Per-object vertex ranges in the combined GPU buffer: (id, start, count, color, selected).
+    object_ranges: Vec<(crate::scene::ObjectId, u32, u32, [f32; 4], bool)>,
 }
 
 impl CadApp {
@@ -168,6 +170,7 @@ impl CadApp {
             fps_display: 0.0,
             command_stack: crate::command::CommandStack::new(50),
             mouse_dragged: false,
+            object_ranges: Vec::new(),
         }
     }
 
@@ -197,7 +200,14 @@ impl CadApp {
 
     /// Rebuild the GPU vertex buffer from the entire scene (all visible objects).
     fn rebuild_scene_gpu(&mut self) {
-        let (combined, _ranges) = self.scene.build_combined_vertices();
+        let (combined, ranges) = self.scene.build_combined_vertices();
+        // Store per-object ranges with color and selection state
+        self.object_ranges = ranges.iter().map(|&(id, start, count)| {
+            let obj = self.scene.get(id);
+            let color = obj.map_or([0.7, 0.75, 0.8, 1.0], |o| o.color);
+            let selected = obj.is_some_and(|o| o.selected);
+            (id, start, count, color, selected)
+        }).collect();
         if !combined.is_empty() {
             let (min, max) = compute_bounds(&combined);
             let dx = max[0] - min[0];
@@ -1989,6 +1999,7 @@ impl CadApp {
             show_grid,
             grid_config,
             fps_display,
+            object_ranges,
             ..
         } = self;
         let Some(rt) = runtime else { return };
@@ -2312,18 +2323,45 @@ impl CadApp {
                 }
             }
 
-            // Mesh
+            // Mesh — per-object rendering with individual colors
             if rt.gpu.num_vertices > 0 {
                 pass.set_vertex_buffer(0, rt.gpu.vertex_buffer.slice(..));
+
+                // Write per-object uniform slots (starting after grid+mesh slots)
+                let obj_slot_base = slot + 1;
+                for (i, &(_id, _start, _count, color, selected)) in object_ranges.iter().enumerate() {
+                    let obj_slot = obj_slot_base + i as u32;
+                    if obj_slot >= 62 { break; } // leave room
+                    let obj_color = if selected {
+                        // Selection highlight: green tint
+                        [color[0] * 0.5 + 0.15, color[1] * 0.5 + 0.35, color[2] * 0.5 + 0.1, color[3]]
+                    } else {
+                        color
+                    };
+                    rt.gpu.write_slot(obj_slot, &Uniforms {
+                        view_proj: vp,
+                        light_dir: light,
+                        base_color: obj_color,
+                        params: lit_params,
+                        eye_pos,
+                    });
+                }
+
                 match dm {
                     DisplayMode::AsIs | DisplayMode::Shading => {
-                        pass.set_bind_group(
-                            0,
-                            &rt.gpu.uniform_bind_group,
-                            &[GpuState::slot_offset(mesh_slot)],
-                        );
                         pass.set_pipeline(&rt.gpu.solid_pipeline);
-                        pass.draw(0..rt.gpu.num_vertices, 0..1);
+                        if object_ranges.is_empty() {
+                            // Legacy: single mesh fallback
+                            pass.set_bind_group(0, &rt.gpu.uniform_bind_group, &[GpuState::slot_offset(mesh_slot)]);
+                            pass.draw(0..rt.gpu.num_vertices, 0..1);
+                        } else {
+                            for (i, &(_id, start, count, _color, _sel)) in object_ranges.iter().enumerate() {
+                                let obj_slot = obj_slot_base + i as u32;
+                                if obj_slot >= 62 || count == 0 { continue; }
+                                pass.set_bind_group(0, &rt.gpu.uniform_bind_group, &[GpuState::slot_offset(obj_slot)]);
+                                pass.draw(start..start + count, 0..1);
+                            }
+                        }
                     }
                     DisplayMode::Points => {
                         pass.set_bind_group(

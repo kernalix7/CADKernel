@@ -296,7 +296,7 @@ pub struct Uniforms {
 }
 
 const UNIFORM_ALIGN: u64 = 256;
-const MAX_UNIFORM_SLOTS: u64 = 16;
+const MAX_UNIFORM_SLOTS: u64 = 64;
 
 fn uniform_stride() -> u64 {
     let raw = std::mem::size_of::<Uniforms>() as u64;
