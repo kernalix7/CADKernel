@@ -1588,6 +1588,65 @@ impl CadApp {
                     self.log_info("All objects hidden");
                 }
 
+                // -- Transform operations --
+                GuiAction::MoveObject { id, dx, dy, dz } => {
+                    self.snapshot_before("Move object");
+                    if let Some(obj) = self.scene.get_mut(id) {
+                        // Move all vertices in the mesh
+                        let offset = cadkernel_math::Vec3::new(dx, dy, dz);
+                        for v in &mut obj.mesh.vertices {
+                            *v += offset;
+                        }
+                        for v in &mut obj.model.vertices.iter_mut() {
+                            v.1.point += offset;
+                        }
+                        obj.vertices = crate::render::mesh_to_vertices(&obj.mesh);
+                        let name = obj.name.clone();
+                        self.rebuild_scene_gpu();
+                        self.log_info(format!("Moved {name} by ({dx:.1}, {dy:.1}, {dz:.1})"));
+                    }
+                }
+                GuiAction::RotateObject { id, axis, angle_deg } => {
+                    self.snapshot_before("Rotate object");
+                    if let Some(obj) = self.scene.get_mut(id) {
+                        let angle = angle_deg.to_radians();
+                        let (ca, sa) = (angle.cos(), angle.sin());
+                        for v in &mut obj.mesh.vertices {
+                            let p = *v;
+                            *v = match axis {
+                                0 => cadkernel_math::Point3::new(p.x, p.y * ca - p.z * sa, p.y * sa + p.z * ca),
+                                1 => cadkernel_math::Point3::new(p.x * ca + p.z * sa, p.y, -p.x * sa + p.z * ca),
+                                _ => cadkernel_math::Point3::new(p.x * ca - p.y * sa, p.x * sa + p.y * ca, p.z),
+                            };
+                        }
+                        for n in &mut obj.mesh.normals {
+                            let v = *n;
+                            *n = match axis {
+                                0 => cadkernel_math::Vec3::new(v.x, v.y * ca - v.z * sa, v.y * sa + v.z * ca),
+                                1 => cadkernel_math::Vec3::new(v.x * ca + v.z * sa, v.y, -v.x * sa + v.z * ca),
+                                _ => cadkernel_math::Vec3::new(v.x * ca - v.y * sa, v.x * sa + v.y * ca, v.z),
+                            };
+                        }
+                        obj.vertices = crate::render::mesh_to_vertices(&obj.mesh);
+                        let axis_name = ["X", "Y", "Z"][axis.min(2) as usize];
+                        let name = obj.name.clone();
+                        self.rebuild_scene_gpu();
+                        self.log_info(format!("Rotated {name} {angle_deg:.1}° around {axis_name}"));
+                    }
+                }
+                GuiAction::ScaleObjectUniform { id, factor } => {
+                    self.snapshot_before("Scale object");
+                    if let Some(obj) = self.scene.get_mut(id) {
+                        for v in &mut obj.mesh.vertices {
+                            *v = cadkernel_math::Point3::new(v.x * factor, v.y * factor, v.z * factor);
+                        }
+                        obj.vertices = crate::render::mesh_to_vertices(&obj.mesh);
+                        let name = obj.name.clone();
+                        self.rebuild_scene_gpu();
+                        self.log_info(format!("Scaled {name} by {factor:.2}×"));
+                    }
+                }
+
                 GuiAction::DeleteSelected => {
                     if self.current_solid.is_some() {
                         self.snapshot_before("Delete solid");

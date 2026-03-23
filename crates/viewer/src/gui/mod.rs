@@ -285,6 +285,10 @@ pub(crate) enum GuiAction {
     DuplicateObject(crate::scene::ObjectId),
     ShowAll,
     HideAll,
+    // Transform operations
+    MoveObject { id: crate::scene::ObjectId, dx: f64, dy: f64, dz: f64 },
+    RotateObject { id: crate::scene::ObjectId, axis: u8, angle_deg: f64 },
+    ScaleObjectUniform { id: crate::scene::ObjectId, factor: f64 },
 }
 
 // ---------------------------------------------------------------------------
