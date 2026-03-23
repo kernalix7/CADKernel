@@ -124,15 +124,28 @@ pub(crate) fn draw_context_toolbar(ctx: &egui::Context, gui: &mut GuiState) {
 }
 
 fn draw_part_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
-    // -- Primitives --
+    use super::task_panel::ActiveTask;
+
+    // -- Primitives (task panel for main 5, legacy dialogs for rest) --
     ui.weak("Primitives");
+    if ui.button("\u{25A1} Box").on_hover_text("Create box (Task Panel)").clicked() {
+        gui.active_task = Some(ActiveTask::Box { width: 10.0, height: 10.0, depth: 10.0 });
+    }
+    if ui.button("\u{25CB} Cylinder").on_hover_text("Create cylinder (Task Panel)").clicked() {
+        gui.active_task = Some(ActiveTask::Cylinder { radius: 5.0, height: 10.0 });
+    }
+    if ui.button("\u{25CF} Sphere").on_hover_text("Create sphere (Task Panel)").clicked() {
+        gui.active_task = Some(ActiveTask::Sphere { radius: 5.0 });
+    }
+    if ui.button("\u{25B3} Cone").on_hover_text("Create cone (Task Panel)").clicked() {
+        gui.active_task = Some(ActiveTask::Cone { base_radius: 5.0, top_radius: 0.0, height: 10.0 });
+    }
+    if ui.button("\u{25CE} Torus").on_hover_text("Create torus (Task Panel)").clicked() {
+        gui.active_task = Some(ActiveTask::Torus { major_radius: 10.0, minor_radius: 3.0 });
+    }
+    // Legacy dialog primitives
     for (label, show_flag, tip) in [
-        ("Box", &mut gui.show_create_box as &mut bool, "Create a box primitive"),
-        ("Cylinder", &mut gui.show_create_cylinder, "Create a cylinder primitive"),
-        ("Sphere", &mut gui.show_create_sphere, "Create a sphere primitive"),
-        ("Cone", &mut gui.show_create_cone, "Create a cone or frustum"),
-        ("Torus", &mut gui.show_create_torus, "Create a torus primitive"),
-        ("Tube", &mut gui.show_create_tube, "Create a hollow tube"),
+        ("Tube", &mut gui.show_create_tube as &mut bool, "Create a hollow tube"),
         ("Prism", &mut gui.show_create_prism, "Create a regular polygon prism"),
         ("Wedge", &mut gui.show_create_wedge, "Create a wedge or pyramid"),
         ("Ellipsoid", &mut gui.show_create_ellipsoid, "Create an ellipsoid"),

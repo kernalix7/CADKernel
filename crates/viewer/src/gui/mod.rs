@@ -8,6 +8,7 @@ mod properties;
 mod report;
 mod sketch_ui;
 mod status_bar;
+pub(crate) mod task_panel;
 mod toolbar;
 mod tree;
 mod view_cube;
@@ -398,6 +399,7 @@ pub(crate) struct GuiState {
     // Entity selection (Block 1)
     pub selected_entity: Option<SelectedEntity>,
     pub selection_mode: SelectionMode,
+    pub active_task: Option<task_panel::ActiveTask>,
 
     // Report panel (Block 5)
     pub report_lines: Vec<(ReportLevel, String)>,
@@ -494,6 +496,7 @@ impl GuiState {
             mesh_remesh_edge_len: 1.0,
             selected_entity: None,
             selection_mode: SelectionMode::Solid,
+            active_task: None,
             report_lines: Vec::new(),
             show_report_panel: true,
             bottom_tab: report::BottomTab::Report,
@@ -543,7 +546,10 @@ pub(crate) fn draw_ui(
     toolbar::draw_workbench_tabs(ctx, gui);
     toolbar::draw_context_toolbar(ctx, gui);
     tree::draw_model_tree(ctx, gui, scene);
-    properties::draw_properties(ctx, gui, scene);
+    // Task panel replaces properties when active (FreeCAD ComboView behavior)
+    if !task_panel::draw_task_panel(ctx, gui) {
+        properties::draw_properties(ctx, gui, scene);
+    }
     report::draw_report_panel(ctx, gui);
     status_bar::draw_status_bar(ctx, gui, vp, scene);
     dialogs::draw_create_dialogs(ctx, gui);
