@@ -449,11 +449,18 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - All ops support undo via snapshot
 
 **Toolbar Icons:**
-- Unicode symbols for all File/Edit/View buttons
+- Unicode symbols for ALL ~70 buttons across 9 workbenches
 - Show All / Hide All scene controls
 
 **Enhanced Status Bar:**
 - Object count (total + visible), triangle count, selected object name
+
+**Additional:**
+- About dialog: crate info, renderer, feature count
+- Escape hierarchy: task panel → deselect → sketch → quit
+- Ctrl+O (open), Ctrl+S (save) shortcuts
+- Import STL/OBJ adds to Scene (multi-object persistence)
+- Improved About dialog with version, author, crate list
 
 #### Deep Quality Improvements (2026-03-20)
 
