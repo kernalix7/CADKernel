@@ -104,6 +104,15 @@ impl SketchMode {
 // Entity selection
 // ---------------------------------------------------------------------------
 
+/// Selection mode determines what gets picked in the 3D viewport.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum SelectionMode {
+    Solid,
+    Face,
+    Edge,
+    Vertex,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 #[allow(dead_code)]
 pub(crate) enum SelectedEntity {
@@ -285,6 +294,8 @@ pub(crate) enum GuiAction {
     DuplicateObject(crate::scene::ObjectId),
     ShowAll,
     HideAll,
+    // Parametric rebuild
+    RebuildObject { id: crate::scene::ObjectId, params: crate::scene::CreationParams },
     // Transform operations
     MoveObject { id: crate::scene::ObjectId, dx: f64, dy: f64, dz: f64 },
     RotateObject { id: crate::scene::ObjectId, axis: u8, angle_deg: f64 },
@@ -385,6 +396,7 @@ pub(crate) struct GuiState {
 
     // Entity selection (Block 1)
     pub selected_entity: Option<SelectedEntity>,
+    pub selection_mode: SelectionMode,
 
     // Report panel (Block 5)
     pub report_lines: Vec<(ReportLevel, String)>,
@@ -480,6 +492,7 @@ impl GuiState {
             show_mesh_remesh: false,
             mesh_remesh_edge_len: 1.0,
             selected_entity: None,
+            selection_mode: SelectionMode::Solid,
             report_lines: Vec::new(),
             show_report_panel: true,
             bottom_tab: report::BottomTab::Report,
