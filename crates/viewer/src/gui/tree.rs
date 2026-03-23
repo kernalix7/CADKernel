@@ -18,6 +18,11 @@ pub(crate) fn draw_model_tree(
                     ui.weak(format!("{} object(s)", scene.len()));
                 });
             });
+            // Search filter
+            ui.horizontal(|ui| {
+                ui.label("\u{1F50D}");
+                ui.text_edit_singleline(&mut gui.tree_filter);
+            });
             ui.separator();
 
             egui::ScrollArea::vertical().show(ui, |ui| {
@@ -26,7 +31,11 @@ pub(crate) fn draw_model_tree(
                     return;
                 }
 
+                let filter = gui.tree_filter.to_lowercase();
                 for obj in &scene.objects {
+                    if !filter.is_empty() && !obj.name.to_lowercase().contains(&filter) {
+                        continue;
+                    }
                     draw_object_row(ui, gui, obj);
                 }
             });
