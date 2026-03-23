@@ -117,7 +117,7 @@ impl NavConfig {
             default_projection: crate::render::Projection::Perspective,
             show_view_cube: true,
             orbit_steps: 8,
-            cube_size: 60.0,
+            cube_size: 50.0,
             cube_opacity: 0.5,
             snap_to_nearest: true,
             cube_corner: 0, // TopRight
