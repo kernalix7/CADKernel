@@ -197,42 +197,42 @@ fn draw_part_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
 
     // -- Analysis --
     ui.weak("Analysis");
-    if ui.button("Measure").on_hover_text("Compute mass properties").clicked() {
+    if ui.button("\u{1F4CF} Measure").on_hover_text("Compute mass properties").clicked() {
         gui.actions.push(GuiAction::MeasureSolid);
     }
-    if ui.button("Check").on_hover_text("Check geometry validity").clicked() {
+    if ui.button("\u{2714} Check").on_hover_text("Check geometry validity").clicked() {
         gui.actions.push(GuiAction::CheckGeometry);
     }
 }
 
 fn draw_partdesign_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
     ui.weak("Dress-up");
-    if ui.button("Fillet…").on_hover_text("Fillet all edges").clicked() {
+    if ui.button("\u{25E0} Fillet…").on_hover_text("Round edges").clicked() {
         gui.show_fillet = true;
     }
-    if ui.button("Chamfer…").on_hover_text("Chamfer all edges").clicked() {
+    if ui.button("\u{2571} Chamfer…").on_hover_text("Bevel edges").clicked() {
         gui.show_chamfer = true;
     }
-    if ui.button("Shell…").on_hover_text("Hollow out solid").clicked() {
+    if ui.button("\u{25A1} Shell…").on_hover_text("Hollow out solid").clicked() {
         gui.show_shell = true;
     }
     ui.separator();
     ui.weak("Transform");
-    if ui.button("Mirror…").on_hover_text("Mirror solid").clicked() {
+    if ui.button("\u{2194} Mirror…").on_hover_text("Mirror solid").clicked() {
         gui.show_mirror = true;
     }
-    if ui.button("Scale…").on_hover_text("Scale solid").clicked() {
+    if ui.button("\u{2922} Scale…").on_hover_text("Scale solid").clicked() {
         gui.show_scale = true;
     }
-    if ui.button("Pattern…").on_hover_text("Linear pattern").clicked() {
+    if ui.button("\u{2261} Pattern…").on_hover_text("Linear pattern").clicked() {
         gui.show_pattern = true;
     }
     ui.separator();
     ui.weak("Boolean");
-    if ui.button("Union…").on_hover_text("Boolean union").clicked() {
+    if ui.button("\u{222A} Union…").on_hover_text("Boolean union").clicked() {
         gui.show_boolean_union = true;
     }
-    if ui.button("Subtract…").on_hover_text("Boolean subtraction").clicked() {
+    if ui.button("\u{2212} Subtract…").on_hover_text("Boolean subtraction").clicked() {
         gui.show_boolean_subtract = true;
     }
 }

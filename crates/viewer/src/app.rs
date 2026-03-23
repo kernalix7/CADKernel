@@ -2815,8 +2815,13 @@ impl ApplicationHandler for CadApp {
                 let ctrl = self.mouse.ctrl_held;
                 match key_event.physical_key {
                     PhysicalKey::Code(KeyCode::Escape) => {
-                        if self.gui.sketch_mode.is_some() {
+                        if self.gui.active_task.is_some() {
+                            self.gui.active_task = None;
+                        } else if self.gui.sketch_mode.is_some() {
                             self.gui.actions.push(GuiAction::CancelSketch);
+                        } else if self.scene.selected_id().is_some() {
+                            self.scene.deselect_all();
+                            self.rebuild_scene_gpu();
                         } else {
                             event_loop.exit();
                         }
@@ -2894,12 +2899,32 @@ impl ApplicationHandler for CadApp {
                         self.gui.actions.push(GuiAction::DeleteSelected);
                     }
 
-                    // Ctrl+N = new, Ctrl+A = select all
+                    // Ctrl+N = new, Ctrl+A = select all, Ctrl+O = open, Ctrl+S = save
                     PhysicalKey::Code(KeyCode::KeyN) if ctrl => {
                         self.gui.actions.push(GuiAction::NewModel);
                     }
                     PhysicalKey::Code(KeyCode::KeyA) if ctrl => {
                         self.gui.actions.push(GuiAction::SelectAll);
+                    }
+                    PhysicalKey::Code(KeyCode::KeyO) if ctrl => {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("CADKernel", &["cadk"])
+                            .add_filter("STL", &["stl"])
+                            .add_filter("OBJ", &["obj"])
+                            .add_filter("All", &["*"])
+                            .pick_file()
+                        {
+                            self.gui.actions.push(GuiAction::OpenFile(path));
+                        }
+                    }
+                    PhysicalKey::Code(KeyCode::KeyS) if ctrl => {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("CADKernel", &["cadk"])
+                            .set_file_name("model.cadk")
+                            .save_file()
+                        {
+                            self.gui.actions.push(GuiAction::SaveFile(path));
+                        }
                     }
 
                     // F = fit all, H = toggle visibility of selected
