@@ -409,6 +409,52 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - `cadkernel-viewer`: ~20 new `GuiAction` variants with full `process_actions()` handlers
 - `cadkernel-viewer`: Removed unused stubs (BooleanUnion/Subtract/Intersect, TrimDemo)
 
+#### FreeCAD-Level UI Overhaul Phase 2 (2026-03-23)
+
+**Multi-Object Scene Architecture:**
+- `scene.rs`: Scene + SceneObject with per-object BRepModel, mesh, color, visibility
+- All Create* handlers add objects to Scene (multi-object persistence)
+- Per-object GPU rendering with individual base_color uniforms + selection highlight (green tint)
+- MAX_UNIFORM_SLOTS expanded to 64 for up to ~58 simultaneous objects
+
+**Model Tree (FreeCAD-style):**
+- Visibility toggle per object (eye icon, green/gray)
+- Color swatch per object (8-color rotating palette)
+- Selection highlight (blue text, topology details for selected)
+- Context menu: Delete, Duplicate, Transform, Measure, Check Geometry
+- Search/filter box for quick object lookup
+
+**Properties Panel (Data/View tabs):**
+- Data tab: base info, creation parameters, topology stats, mesh info, mass properties
+- View tab: color swatch, visibility, selection state
+- Scene overview when nothing selected
+- FreeCAD Part::Box/Cylinder/etc type labels
+
+**Bottom Panel (Report + Python Console):**
+- Tabbed: Report View + Python Console
+- Console: command input with history, >>> prompt (PyO3 backend placeholder)
+- Report: Unicode warning/error icons
+
+**Multi-Object Picking:**
+- Ray tests all visible scene objects
+- Selects closest hit across entire scene, updates scene selection
+
+**Keyboard Shortcuts:**
+- Ctrl+Z (Undo), Ctrl+Y/Ctrl+Shift+Z (Redo), Delete (Delete selected)
+- Ctrl+N (New), Ctrl+A (Select All), F (Fit All), H (Toggle Visibility)
+
+**Transform Tools:**
+- Move (dx/dy/dz), Rotate (X/Y/Z axis by degrees), Scale (uniform factor)
+- Context menu Transform submenu with presets
+- All ops support undo via snapshot
+
+**Toolbar Icons:**
+- Unicode symbols for all File/Edit/View buttons
+- Show All / Hide All scene controls
+
+**Enhanced Status Bar:**
+- Object count (total + visible), triangle count, selected object name
+
 #### Deep Quality Improvements (2026-03-20)
 
 **STEP I/O:**
