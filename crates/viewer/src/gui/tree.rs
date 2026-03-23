@@ -107,7 +107,11 @@ fn draw_object_row(
             );
 
             if name_resp.clicked() {
-                gui.actions.push(GuiAction::SelectObject(id));
+                if ui.input(|i| i.modifiers.ctrl) {
+                    gui.actions.push(GuiAction::ToggleSelect(id));
+                } else {
+                    gui.actions.push(GuiAction::SelectObject(id));
+                }
             }
             if name_resp.double_clicked() {
                 gui.rename_edit = Some((id, obj.name.clone()));
@@ -173,6 +177,21 @@ fn draw_object_row(
                 gui.actions.push(GuiAction::CheckGeometry);
                 ui.close_menu();
             }
+            ui.separator();
+            ui.menu_button("\u{222A} Boolean", |ui| {
+                if ui.button("\u{222A} Union (2 selected)").clicked() {
+                    gui.actions.push(GuiAction::BooleanSceneUnion);
+                    ui.close_menu();
+                }
+                if ui.button("\u{2212} Subtract (2 selected)").clicked() {
+                    gui.actions.push(GuiAction::BooleanSceneSubtract);
+                    ui.close_menu();
+                }
+                if ui.button("\u{2229} Intersect (2 selected)").clicked() {
+                    gui.actions.push(GuiAction::BooleanSceneIntersect);
+                    ui.close_menu();
+                }
+            });
             if ui.button("\u{270F} Rename").clicked() {
                 gui.rename_edit = Some((id, obj.name.clone()));
                 ui.close_menu();

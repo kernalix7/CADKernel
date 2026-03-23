@@ -304,6 +304,12 @@ pub(crate) enum GuiAction {
     MoveObject { id: crate::scene::ObjectId, dx: f64, dy: f64, dz: f64 },
     RotateObject { id: crate::scene::ObjectId, axis: u8, angle_deg: f64 },
     ScaleObjectUniform { id: crate::scene::ObjectId, factor: f64 },
+    // Multi-select
+    ToggleSelect(crate::scene::ObjectId),
+    // Scene boolean (pick two objects)
+    BooleanSceneUnion,
+    BooleanSceneSubtract,
+    BooleanSceneIntersect,
 }
 
 // ---------------------------------------------------------------------------

@@ -1767,6 +1767,52 @@ impl CadApp {
                     }
                 }
 
+                // -- Multi-select --
+                GuiAction::ToggleSelect(id) => {
+                    self.scene.toggle_select(id);
+                    self.rebuild_scene_gpu();
+                }
+
+                // -- Scene boolean operations --
+                GuiAction::BooleanSceneUnion | GuiAction::BooleanSceneSubtract | GuiAction::BooleanSceneIntersect => {
+                    let ids = self.scene.selected_ids();
+                    if ids.len() >= 2 {
+                        let op = match action {
+                            GuiAction::BooleanSceneUnion => BooleanOp::Union,
+                            GuiAction::BooleanSceneSubtract => BooleanOp::Difference,
+                            _ => BooleanOp::Intersection,
+                        };
+                        let obj_a = self.scene.get(ids[0]).cloned();
+                        let obj_b = self.scene.get(ids[1]).cloned();
+                        if let (Some(a), Some(b)) = (obj_a, obj_b) {
+                            self.snapshot_before("Boolean operation");
+                            match boolean_op(&a.model, a.solid, &b.model, b.solid, op) {
+                                Ok(result_model) => {
+                                    let first_solid = result_model.solids.iter().next().map(|(h, _)| h);
+                                    if let Some(sh) = first_solid {
+                                        let op_name = match op {
+                                            BooleanOp::Union => "Union",
+                                            BooleanOp::Difference => "Subtract",
+                                            BooleanOp::Intersection => "Intersect",
+                                        };
+                                        self.scene.remove_object(ids[0]);
+                                        self.scene.remove_object(ids[1]);
+                                        self.add_to_scene(
+                                            &format!("{op_name}({}, {})", a.name, b.name),
+                                            result_model, sh,
+                                            Some(crate::scene::CreationParams::Boolean { op: op_name.into() }),
+                                        );
+                                        self.log_info(format!("Boolean {op_name} completed"));
+                                    }
+                                }
+                                Err(e) => self.log_error(format!("Boolean error: {e}")),
+                            }
+                        }
+                    } else {
+                        self.log_warning("Select exactly 2 objects for boolean operation");
+                    }
+                }
+
                 GuiAction::DeleteSelected => {
                     if self.current_solid.is_some() {
                         self.snapshot_before("Delete solid");

@@ -191,6 +191,23 @@ impl Scene {
         }
     }
 
+    /// Toggle selection on a single object (for Ctrl+click multi-select).
+    pub fn toggle_select(&mut self, id: ObjectId) {
+        if let Some(obj) = self.get_mut(id) {
+            obj.selected = !obj.selected;
+        }
+    }
+
+    /// Get all selected objects.
+    pub fn selected_objects(&self) -> Vec<&SceneObject> {
+        self.objects.iter().filter(|o| o.selected).collect()
+    }
+
+    /// Get selected object ids.
+    pub fn selected_ids(&self) -> Vec<ObjectId> {
+        self.objects.iter().filter(|o| o.selected).map(|o| o.id).collect()
+    }
+
     /// Get the currently selected object (first selected).
     pub fn selected_object(&self) -> Option<&SceneObject> {
         self.objects.iter().find(|o| o.selected)
