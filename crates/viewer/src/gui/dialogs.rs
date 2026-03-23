@@ -731,12 +731,31 @@ pub(crate) fn draw_about_dialog(ctx: &egui::Context, gui: &mut GuiState) {
             .resizable(false)
             .open(&mut show)
             .show(ctx, |ui| {
-                ui.heading("CADKernel");
-                ui.label("A modular B-Rep CAD kernel written in Rust.");
+                ui.heading("\u{2B22} CADKernel");
+                ui.label("Open-source CAD software built with Rust");
                 ui.separator();
-                ui.label("Version: 0.1.0 (pre-alpha)");
-                ui.label("License: Apache-2.0");
-                ui.hyperlink_to("GitHub", "https://github.com/kernalix7/CADKernel");
+                egui::Grid::new("about_grid").num_columns(2).show(ui, |ui| {
+                    ui.strong("Version:");
+                    ui.label("0.1.0 (pre-alpha)");
+                    ui.end_row();
+                    ui.strong("License:");
+                    ui.label("Apache-2.0");
+                    ui.end_row();
+                    ui.strong("Author:");
+                    ui.label("Kim DaeHyun");
+                    ui.end_row();
+                    ui.strong("Renderer:");
+                    ui.label("wgpu 24 + egui 0.31");
+                    ui.end_row();
+                    ui.strong("Crates:");
+                    ui.label("core, math, geometry, topology, modeling, sketch, io, viewer, python");
+                    ui.end_row();
+                    ui.strong("Features:");
+                    ui.label("9 workbenches, 15 I/O formats, NURBS kernel");
+                    ui.end_row();
+                });
+                ui.separator();
+                ui.hyperlink_to("\u{1F517} GitHub", "https://github.com/kernalix7/CADKernel");
             });
     }
     gui.show_about = show;
