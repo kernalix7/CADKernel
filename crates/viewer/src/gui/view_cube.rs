@@ -193,7 +193,7 @@ pub(crate) fn draw_view_cube(
     let pad = ring_outer + 46.0; // 14(arrow) + 18(side offset) + 10(side radius) + 4(extra)
     let scr = ctx.screen_rect();
     // Offsets to avoid panels: top ~80px (toolbars), bottom ~170px (report+status), left ~280px (combo)
-    let top_off = 80.0;
+    let top_off = 100.0;
     let bot_off = 180.0;
     let left_off = 290.0;
     let center = match nav.cube_corner {
