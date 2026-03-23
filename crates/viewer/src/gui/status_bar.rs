@@ -1,4 +1,5 @@
 use super::{GuiState, ViewportInfo};
+use super::theme;
 use crate::render::Projection;
 use crate::scene::Scene;
 
@@ -8,17 +9,21 @@ pub(crate) fn draw_status_bar(
     vp: &ViewportInfo<'_>,
     scene: &Scene,
 ) {
-    egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
+    egui::TopBottomPanel::bottom("status_bar")
+        .frame(egui::Frame::new()
+            .fill(egui::Color32::from_rgb(35, 38, 45))
+            .inner_margin(egui::Margin::symmetric(8, 3)))
+        .show(ctx, |ui| {
         ui.horizontal(|ui| {
-            // Left: status message + mouse coords
+            // Left: mouse coords + status message
             if let Some(pos) = gui.mouse_world_pos {
-                ui.weak(format!(
-                    "X:{:.2} Y:{:.2} Z:{:.2}",
+                ui.label(egui::RichText::new(format!(
+                    "X:{:.2}  Y:{:.2}  Z:{:.2}",
                     pos[0], pos[1], pos[2]
-                ));
+                )).color(theme::COLOR_DIM).size(11.5));
                 ui.separator();
             }
-            ui.label(&gui.status_message);
+            ui.label(egui::RichText::new(&gui.status_message).color(theme::COLOR_INFO).size(12.0));
 
             // Right: scene info + display mode + projection + FPS
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {

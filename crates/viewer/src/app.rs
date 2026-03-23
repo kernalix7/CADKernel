@@ -2566,9 +2566,9 @@ impl CadApp {
                     resolve_target: Some(&view),
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.12,
-                            g: 0.12,
-                            b: 0.16,
+                            r: 0.15,
+                            g: 0.16,
+                            b: 0.20,
                             a: 1.0,
                         }),
                         store: wgpu::StoreOp::Store,
