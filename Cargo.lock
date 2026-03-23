@@ -549,6 +549,7 @@ dependencies = [
  "cadkernel-geometry",
  "cadkernel-io",
  "cadkernel-math",
+ "cadkernel-sketch",
  "cadkernel-topology",
  "criterion",
 ]
@@ -588,6 +589,8 @@ dependencies = [
  "pollster",
  "rayon",
  "rfd",
+ "serde",
+ "serde_json",
  "wgpu",
  "winit",
 ]

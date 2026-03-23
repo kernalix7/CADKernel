@@ -538,9 +538,12 @@ impl CadApp {
             match action {
                 GuiAction::NewModel => {
                     self.snapshot_before("New model");
+                    self.scene = crate::scene::Scene::new();
                     self.model = BRepModel::new();
                     self.current_mesh = None;
                     self.current_solid = None;
+                    self.object_ranges.clear();
+                    self.preselected_object = None;
                     self.vertices.clear();
                     self.grid_config.set_object_extent(0.0);
                     self.grid_config.force_rebuild();
@@ -550,16 +553,33 @@ impl CadApp {
                         rt.gpu.rebuild_grid(&self.grid_config);
                     }
                     self.gui.invalidate_cache();
+                    self.gui.selected_entity = None;
                     self.gui.current_file = None;
                     self.log_info("New model created");
                 }
 
                 GuiAction::OpenFile(path) | GuiAction::ImportFile(path) => {
-                    self.load_mesh_file(&path);
+                    let ext = path.extension()
+                        .and_then(|e| e.to_str())
+                        .unwrap_or("")
+                        .to_lowercase();
+                    if ext == "cadk" {
+                        self.load_scene_file(&path);
+                    } else {
+                        self.load_mesh_file(&path);
+                    }
                 }
 
                 GuiAction::SaveFile(path) => {
-                    self.export_mesh_to(&path);
+                    let ext = path.extension()
+                        .and_then(|e| e.to_str())
+                        .unwrap_or("")
+                        .to_lowercase();
+                    if ext == "cadk" {
+                        self.save_scene_file(&path);
+                    } else {
+                        self.export_mesh_to(&path);
+                    }
                 }
 
                 GuiAction::ExportStl(path) => {
@@ -1822,7 +1842,21 @@ impl CadApp {
                 }
 
                 GuiAction::DeleteSelected => {
-                    if self.current_solid.is_some() {
+                    let selected = self.scene.selected_ids();
+                    if !selected.is_empty() {
+                        self.snapshot_before("Delete selected");
+                        let count = selected.len();
+                        for id in selected {
+                            self.scene.remove_object(id);
+                        }
+                        self.current_solid = None;
+                        self.current_mesh = None;
+                        self.model = BRepModel::new();
+                        self.gui.selected_entity = None;
+                        self.preselected_object = None;
+                        self.rebuild_scene_gpu();
+                        self.log_info(format!("Deleted {count} object(s)"));
+                    } else if self.current_solid.is_some() {
                         self.snapshot_before("Delete solid");
                         self.model = BRepModel::new();
                         self.current_solid = None;
@@ -2070,6 +2104,74 @@ impl CadApp {
         Some((sx2d, sy2d))
     }
 
+    fn save_scene_file(&mut self, path: &Path) {
+        let path_str = path.to_str().unwrap_or("");
+        let objects: Vec<cadkernel_io::SceneObjectData> = self.scene.objects.iter().map(|obj| {
+            let params_json = obj.params.as_ref().and_then(|p| serde_json::to_string(p).ok());
+            cadkernel_io::SceneObjectData {
+                name: obj.name.clone(),
+                model: obj.model.clone(),
+                solid_index: obj.solid.index(),
+                solid_generation: obj.solid.generation(),
+                color: obj.color,
+                visible: obj.visible,
+                params_json,
+            }
+        }).collect();
+        match cadkernel_io::save_scene(&objects, path_str) {
+            Ok(()) => {
+                self.gui.current_file = Some(path.display().to_string());
+                self.add_recent_file(&path.display().to_string());
+                self.log_info(format!(
+                    "Saved scene ({} objects) → {}", self.scene.len(), path.display()
+                ));
+            }
+            Err(e) => {
+                self.log_error(format!("Save error: {e}"));
+            }
+        }
+    }
+
+    fn load_scene_file(&mut self, path: &Path) {
+        let path_str = path.to_str().unwrap_or("");
+        match cadkernel_io::load_scene(path_str) {
+            Ok(objects) => {
+                self.snapshot_before("Load scene");
+                self.scene = crate::scene::Scene::new();
+                self.model = BRepModel::new();
+                self.current_mesh = None;
+                self.current_solid = None;
+                let count = objects.len();
+                for obj_data in objects {
+                    let solid = Handle::from_raw_parts(obj_data.solid_index, obj_data.solid_generation);
+                    let params: Option<crate::scene::CreationParams> = obj_data.params_json
+                        .as_deref()
+                        .and_then(|s| serde_json::from_str(s).ok());
+                    let id = self.scene.add_object(
+                        &obj_data.name, obj_data.model, solid, params,
+                    );
+                    if let Some(scene_obj) = self.scene.get_mut(id) {
+                        scene_obj.color = obj_data.color;
+                        scene_obj.visible = obj_data.visible;
+                    }
+                }
+                self.rebuild_scene_gpu();
+                if !self.vertices.is_empty() {
+                    let (min, max) = compute_bounds(&self.vertices);
+                    self.camera.fit_to_bounds(min, max);
+                }
+                self.gui.current_file = Some(path.display().to_string());
+                self.add_recent_file(&path.display().to_string());
+                self.log_info(format!(
+                    "Loaded scene ({count} objects) from {}", path.display()
+                ));
+            }
+            Err(e) => {
+                self.log_error(format!("Failed to load: {e}"));
+            }
+        }
+    }
+
     fn load_mesh_file(&mut self, path: &Path) {
         let ext = path
             .extension()
@@ -2077,52 +2179,14 @@ impl CadApp {
             .unwrap_or("")
             .to_lowercase();
 
-        if ext != "stl" && ext != "obj" && ext != "cadk" {
-            self.log_error(format!("Unsupported format: .{ext}"));
+        // .cadk is handled by load_scene_file(); redirect if reached here.
+        if ext == "cadk" {
+            self.load_scene_file(path);
             return;
         }
 
-        // .cadk files load a BRepModel + tessellate; mesh files load directly.
-        if ext == "cadk" {
-            let path_str = path.to_str().unwrap_or("").to_string();
-            match cadkernel_io::load_project(&path_str) {
-                Ok(model) => {
-                    self.model = model;
-                    // Tessellate all solids into a combined mesh.
-                    let mut combined = Mesh::new();
-                    let mut solid_count = 0usize;
-                    for (sh, _) in self.model.solids.iter() {
-                        let m = tessellate_solid(&self.model, sh);
-                        if !m.indices.is_empty() {
-                            let off = combined.vertices.len() as u32;
-                            combined.vertices.extend_from_slice(&m.vertices);
-                            combined.normals.extend_from_slice(&m.normals);
-                            for idx in &m.indices {
-                                combined
-                                    .indices
-                                    .push([idx[0] + off, idx[1] + off, idx[2] + off]);
-                            }
-                        }
-                        solid_count += 1;
-                    }
-                    if !combined.indices.is_empty() {
-                        self.gui.current_file = Some(path.display().to_string());
-                        self.log_info(format!(
-                            "Loaded {} ({} solids, {} triangles)",
-                            path.display(),
-                            solid_count,
-                            combined.triangle_count()
-                        ));
-                        self.set_mesh(combined);
-                    } else {
-                        self.gui.current_file = Some(path.display().to_string());
-                        self.log_info(format!("Loaded {} (empty model)", path.display()));
-                    }
-                }
-                Err(e) => {
-                    self.log_error(format!("Failed to load: {e}"));
-                }
-            }
+        if ext != "stl" && ext != "obj" {
+            self.log_error(format!("Unsupported format: .{ext}"));
             return;
         }
 
@@ -2196,18 +2260,9 @@ impl CadApp {
             .unwrap_or("")
             .to_lowercase();
 
-        // .cadk saves the BRepModel (not just the mesh).
+        // .cadk is handled by save_scene_file(); redirect if reached here.
         if ext == "cadk" {
-            let path_str = path.to_str().unwrap_or("");
-            match cadkernel_io::save_project(&self.model, path_str) {
-                Ok(()) => {
-                    self.gui.current_file = Some(path.display().to_string());
-                    self.log_info(format!("Saved → {}", path.display()));
-                }
-                Err(e) => {
-                    self.log_error(format!("Save error: {e}"));
-                }
-            }
+            self.save_scene_file(path);
             return;
         }
 
@@ -2928,7 +2983,10 @@ impl ApplicationHandler for CadApp {
 
         // General window events.
         match event {
-            WindowEvent::CloseRequested => event_loop.exit(),
+            WindowEvent::CloseRequested => {
+                save_settings(self);
+                event_loop.exit();
+            }
 
             WindowEvent::KeyboardInput {
                 event: key_event, ..
@@ -2944,6 +3002,7 @@ impl ApplicationHandler for CadApp {
                             self.scene.deselect_all();
                             self.rebuild_scene_gpu();
                         } else {
+                            save_settings(self);
                             event_loop.exit();
                         }
                     }
@@ -3074,6 +3133,7 @@ impl ApplicationHandler for CadApp {
                 self.render_frame();
                 self.process_actions();
                 if self.gui.request_quit {
+                    save_settings(self);
                     event_loop.exit();
                 }
                 if self.mesh_rx.is_some() {
@@ -3157,8 +3217,88 @@ fn rebuild_object_from_params(
     result.map(|solid| (model, solid))
 }
 
+/// Settings file path — stored alongside the executable in a private directory.
+fn settings_path() -> PathBuf {
+    let mut dir = std::env::current_dir().unwrap_or_default();
+    dir.push(".priv-storage");
+    let _ = std::fs::create_dir_all(&dir);
+    dir.push("cadkernel-settings.json");
+    dir
+}
+
+/// Persisted settings (subset of runtime state worth saving across sessions).
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+struct AppSettings {
+    nav: NavConfig,
+    show_grid: bool,
+    show_model_tree: bool,
+    show_properties: bool,
+    recent_files: Vec<String>,
+}
+
+impl Default for AppSettings {
+    fn default() -> Self {
+        Self {
+            nav: NavConfig::new(),
+            show_grid: true,
+            show_model_tree: true,
+            show_properties: true,
+            recent_files: Vec::new(),
+        }
+    }
+}
+
+fn load_settings() -> AppSettings {
+    let path = settings_path();
+    std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+fn save_settings(app: &CadApp) {
+    let settings = AppSettings {
+        nav: NavConfig {
+            style: app.nav.style,
+            orbit_sensitivity: app.nav.orbit_sensitivity,
+            pan_sensitivity: app.nav.pan_sensitivity,
+            zoom_sensitivity: app.nav.zoom_sensitivity,
+            invert_zoom: app.nav.invert_zoom,
+            enable_view_animation: app.nav.enable_view_animation,
+            view_animation_duration: app.nav.view_animation_duration,
+            show_axes_indicator: app.nav.show_axes_indicator,
+            show_fps: app.nav.show_fps,
+            default_projection: app.nav.default_projection,
+            show_view_cube: app.nav.show_view_cube,
+            orbit_steps: app.nav.orbit_steps,
+            cube_size: app.nav.cube_size,
+            cube_opacity: app.nav.cube_opacity,
+            snap_to_nearest: app.nav.snap_to_nearest,
+            cube_corner: app.nav.cube_corner,
+            enable_lighting: app.nav.enable_lighting,
+            light_intensity: app.nav.light_intensity,
+            light_dir: app.nav.light_dir,
+        },
+        show_grid: app.show_grid,
+        show_model_tree: app.gui.show_model_tree,
+        show_properties: app.gui.show_properties,
+        recent_files: app.gui.recent_files.clone(),
+    };
+    if let Ok(json) = serde_json::to_string_pretty(&settings) {
+        let _ = std::fs::write(settings_path(), json);
+    }
+}
+
 pub fn run_gui() {
     let event_loop = EventLoop::new().unwrap();
     let mut app = CadApp::new();
+    // Restore saved settings
+    let settings = load_settings();
+    app.nav = settings.nav;
+    app.show_grid = settings.show_grid;
+    app.gui.show_model_tree = settings.show_model_tree;
+    app.gui.show_properties = settings.show_properties;
+    app.gui.recent_files = settings.recent_files;
     event_loop.run_app(&mut app).unwrap();
 }

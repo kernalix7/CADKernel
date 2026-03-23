@@ -6,6 +6,7 @@
 
 use cadkernel_io::{Mesh, tessellate_solid};
 use cadkernel_topology::{BRepModel, Handle, SolidData};
+use serde::{Deserialize, Serialize};
 
 use crate::render::{Vertex, mesh_to_vertices};
 
@@ -13,7 +14,7 @@ use crate::render::{Vertex, mesh_to_vertices};
 pub type ObjectId = u32;
 
 /// Parameters used to create a scene object (for parametric editing).
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum CreationParams {
     Box { width: f64, height: f64, depth: f64 },
     Cylinder { radius: f64, height: f64 },

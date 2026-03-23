@@ -2,6 +2,8 @@
 //!
 //! Default: FreeCAD Gesture. Switchable at runtime via the Settings dialog.
 
+use serde::{Deserialize, Serialize};
+
 /// Navigation action resolved from mouse + modifier state.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum NavAction {
@@ -12,7 +14,7 @@ pub enum NavAction {
 }
 
 /// Preset navigation styles modelled after popular CAD programs.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Serialize, Deserialize)]
 pub enum NavStyle {
     FreeCADGesture,
     Blender,
@@ -60,6 +62,8 @@ impl NavStyle {
 }
 
 /// Runtime-configurable navigation parameters.
+#[derive(Serialize, Deserialize)]
+#[serde(default)]
 pub struct NavConfig {
     pub style: NavStyle,
     pub orbit_sensitivity: f32,

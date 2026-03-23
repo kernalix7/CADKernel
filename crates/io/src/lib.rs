@@ -34,7 +34,7 @@ pub use iges::{
     parse_iges, read_iges_lines, read_iges_points,
 };
 pub use json::{export_json, import_json, model_from_json, model_to_json, read_json, write_json};
-pub use native::{CADK_EXTENSION, load_project, save_project};
+pub use native::{CADK_EXTENSION, SceneObjectData, load_project, load_scene, save_project, save_scene};
 pub use obj::{export_obj, import_obj, read_obj, write_obj};
 pub use ply::{export_ply, import_ply, write_ply};
 pub use step::{
