@@ -413,14 +413,22 @@ impl CadApp {
         }
 
         if let Some((obj_id, dist)) = best_hit {
-            self.scene.select_single(obj_id);
+            if self.mouse.ctrl_held {
+                // Ctrl+click: toggle selection (multi-select)
+                self.scene.toggle_select(obj_id);
+            } else {
+                self.scene.select_single(obj_id);
+            }
             if let Some(obj) = self.scene.get(obj_id) {
                 self.model = obj.model.clone();
                 self.current_solid = Some(obj.solid);
                 self.current_mesh = Some(obj.mesh.clone());
-                self.gui.status_message = format!(
-                    "Selected: {} (dist {dist:.2})", obj.name
-                );
+                let n_sel = self.scene.selected_ids().len();
+                self.gui.status_message = if n_sel > 1 {
+                    format!("{n_sel} objects selected (last: {})", obj.name)
+                } else {
+                    format!("Selected: {} (dist {dist:.2})", obj.name)
+                };
             }
             self.rebuild_scene_gpu();
         } else {
