@@ -366,29 +366,29 @@ fn draw_techdraw_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
     use cadkernel_io::ProjectionDir;
 
     ui.weak("Views");
-    if ui.button("Front").on_hover_text("Add front projection view").clicked() {
+    if ui.button("\u{25A3} Front").on_hover_text("Front projection").clicked() {
         gui.actions
             .push(GuiAction::TechDrawAddView(ProjectionDir::Front));
     }
-    if ui.button("Top").on_hover_text("Add top projection view").clicked() {
+    if ui.button("\u{25A2} Top").on_hover_text("Top projection").clicked() {
         gui.actions
             .push(GuiAction::TechDrawAddView(ProjectionDir::Top));
     }
-    if ui.button("Right").on_hover_text("Add right projection view").clicked() {
+    if ui.button("\u{25A1} Right").on_hover_text("Right projection").clicked() {
         gui.actions
             .push(GuiAction::TechDrawAddView(ProjectionDir::Right));
     }
-    if ui.button("Iso").on_hover_text("Add isometric projection view").clicked() {
+    if ui.button("\u{25C7} Iso").on_hover_text("Isometric projection").clicked() {
         gui.actions
             .push(GuiAction::TechDrawAddView(ProjectionDir::Isometric));
     }
     ui.separator();
-    if ui.button("3-View").on_hover_text("Generate standard 3-view drawing").clicked() {
+    if ui.button("\u{25A8} 3-View").on_hover_text("Standard 3-view drawing").clicked() {
         gui.actions.push(GuiAction::TechDrawThreeView);
     }
     ui.separator();
     ui.weak("Export");
-    if ui.button("Export SVG").on_hover_text("Export drawing sheet to SVG").clicked() {
+    if ui.button("\u{1F4BE} Export SVG").on_hover_text("Export to SVG").clicked() {
         if let Some(path) = rfd::FileDialog::new()
             .add_filter("SVG", &["svg"])
             .set_file_name("drawing.svg")
@@ -397,7 +397,7 @@ fn draw_techdraw_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
             gui.actions.push(GuiAction::TechDrawExportSvg(path));
         }
     }
-    if ui.button("Clear").on_hover_text("Clear all drawing views").clicked() {
+    if ui.button("\u{1F5D1} Clear").on_hover_text("Clear all views").clicked() {
         gui.actions.push(GuiAction::TechDrawClear);
     }
 }
@@ -405,11 +405,11 @@ fn draw_techdraw_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
 fn draw_assembly_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
     ui.weak("Assembly");
     for (tool, tip) in [
-        ("Insert Component", "Insert a component into the assembly"),
-        ("Fixed", "Fix component position"),
-        ("Coincident", "Add coincident constraint"),
-        ("Concentric", "Add concentric constraint"),
-        ("Distance", "Add distance constraint"),
+        ("\u{2795} Insert", "Insert component"),
+        ("\u{1F4CC} Fixed", "Fix position"),
+        ("\u{25CE} Coincident", "Coincident constraint"),
+        ("\u{25CB} Concentric", "Concentric constraint"),
+        ("\u{21A6} Distance", "Distance constraint"),
     ] {
         if ui.button(tool).on_hover_text(tip).clicked() {
             gui.actions.push(GuiAction::StatusMessage(format!(
@@ -421,31 +421,31 @@ fn draw_assembly_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
 
 fn draw_draft_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
     ui.weak("Wire");
-    if ui.button("Wire").on_hover_text("Create a wire from points").clicked() {
+    if ui.button("\u{2500} Wire").on_hover_text("Create wire from points").clicked() {
         gui.actions.push(GuiAction::StatusMessage(
             "Draft Wire: select points to create a wire".into(),
         ));
     }
-    if ui.button("BSpline Wire").on_hover_text("Create a B-spline wire").clicked() {
+    if ui.button("\u{223F} BSpline").on_hover_text("B-spline wire").clicked() {
         gui.actions.push(GuiAction::StatusMessage(
             "Draft BSpline Wire: not yet implemented".into(),
         ));
     }
     ui.separator();
     ui.weak("Modify");
-    if ui.button("Clone").on_hover_text("Clone the current solid").clicked() {
+    if ui.button("\u{1F4CB} Clone").on_hover_text("Clone solid").clicked() {
         gui.actions.push(GuiAction::StatusMessage(
             "Draft Clone: not yet implemented".into(),
         ));
     }
     ui.separator();
     ui.weak("Array");
-    if ui.button("Rect Array").on_hover_text("Create a rectangular array").clicked() {
+    if ui.button("\u{25A6} Rect Array").on_hover_text("Rectangular array").clicked() {
         gui.actions.push(GuiAction::StatusMessage(
             "Draft Rectangular Array: not yet implemented".into(),
         ));
     }
-    if ui.button("Path Array").on_hover_text("Create a path array").clicked() {
+    if ui.button("\u{21DD} Path Array").on_hover_text("Path array").clicked() {
         gui.actions.push(GuiAction::StatusMessage(
             "Draft Path Array: not yet implemented".into(),
         ));
@@ -454,22 +454,22 @@ fn draw_draft_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
 
 fn draw_surface_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
     ui.weak("Surface");
-    if ui.button("Ruled Surface").on_hover_text("Create a ruled surface between two curves").clicked() {
+    if ui.button("\u{25B1} Ruled").on_hover_text("Ruled surface between curves").clicked() {
         gui.actions.push(GuiAction::StatusMessage(
             "Surface Ruled: not yet implemented".into(),
         ));
     }
-    if ui.button("From Curves").on_hover_text("Create surface from curve network").clicked() {
+    if ui.button("\u{25A8} From Curves").on_hover_text("Surface from curves").clicked() {
         gui.actions.push(GuiAction::StatusMessage(
             "Surface From Curves: not yet implemented".into(),
         ));
     }
-    if ui.button("Extend").on_hover_text("Extend a surface").clicked() {
+    if ui.button("\u{21A6} Extend").on_hover_text("Extend surface").clicked() {
         gui.actions.push(GuiAction::StatusMessage(
             "Surface Extend: not yet implemented".into(),
         ));
     }
-    if ui.button("Pipe").on_hover_text("Create a pipe surface along a path").clicked() {
+    if ui.button("\u{25CB} Pipe").on_hover_text("Pipe surface along path").clicked() {
         gui.actions.push(GuiAction::StatusMessage(
             "Surface Pipe: not yet implemented".into(),
         ));
@@ -478,21 +478,21 @@ fn draw_surface_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
 
 fn draw_fem_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
     ui.weak("Mesh");
-    if ui.button("Generate Tet Mesh").on_hover_text("Generate a tetrahedral FEM mesh").clicked() {
+    if ui.button("\u{25A6} Gen Tet Mesh").on_hover_text("Generate tet FEM mesh").clicked() {
         gui.actions.push(GuiAction::StatusMessage(
             "FEM: Tet mesh generation not yet wired to UI".into(),
         ));
     }
     ui.separator();
     ui.weak("Analysis");
-    if ui.button("Static Analysis").on_hover_text("Run static structural analysis").clicked() {
+    if ui.button("\u{2206} Static").on_hover_text("Static structural analysis").clicked() {
         gui.actions.push(GuiAction::StatusMessage(
             "FEM: Static analysis not yet wired to UI".into(),
         ));
     }
     ui.separator();
     ui.weak("Material");
-    if ui.button("Assign Material").on_hover_text("Assign material properties").clicked() {
+    if ui.button("\u{1F3A8} Material").on_hover_text("Assign material").clicked() {
         gui.actions.push(GuiAction::StatusMessage(
             "FEM: Material assignment not yet wired to UI".into(),
         ));
