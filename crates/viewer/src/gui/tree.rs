@@ -1,4 +1,5 @@
 use super::{GuiAction, GuiState};
+use super::theme;
 use crate::scene::Scene;
 
 /// Standalone panel version (deprecated — kept for compatibility).
@@ -67,6 +68,10 @@ fn draw_object_row(
             gui.actions.push(GuiAction::ToggleVisibility(id));
         }
 
+        // Type icon
+        let type_icon = theme::object_type_icon(obj.params.as_ref());
+        ui.label(egui::RichText::new(type_icon).size(13.0).color(theme::COLOR_ACCENT));
+
         // Color swatch
         let [r, g, b, _] = obj.color;
         let color = egui::Color32::from_rgb(
@@ -75,7 +80,7 @@ fn draw_object_row(
             (b * 255.0) as u8,
         );
         let (rect, _) = ui.allocate_exact_size(
-            egui::vec2(14.0, 14.0),
+            egui::vec2(12.0, 12.0),
             egui::Sense::click(),
         );
         ui.painter().rect_filled(rect, 2.0, color);
@@ -94,9 +99,9 @@ fn draw_object_row(
             }
         } else {
             let label_color = if is_selected {
-                egui::Color32::from_rgb(100, 200, 255)
+                theme::COLOR_SELECTED
             } else if !obj.visible {
-                egui::Color32::from_rgb(130, 130, 130)
+                theme::COLOR_DIM
             } else {
                 ui.visuals().text_color()
             };

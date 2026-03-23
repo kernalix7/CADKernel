@@ -9,6 +9,7 @@ mod report;
 mod sketch_ui;
 mod status_bar;
 pub(crate) mod task_panel;
+pub(crate) mod theme;
 mod toolbar;
 mod tree;
 mod view_cube;
@@ -420,6 +421,7 @@ pub(crate) struct GuiState {
     pub rename_edit: Option<(crate::scene::ObjectId, String)>,
     /// Splash screen frame counter (shown for first ~60 frames).
     pub splash_frames: u32,
+    pub theme_applied: bool,
 
     // Mouse world position for status bar (Block 4)
     pub mouse_world_pos: Option<[f64; 3]>,
@@ -518,6 +520,7 @@ impl GuiState {
             recent_files: Vec::new(),
             rename_edit: None,
             splash_frames: 0,
+            theme_applied: false,
             mouse_world_pos: None,
             cached_props: None,
             cached_props_tri_count: 0,
@@ -557,6 +560,12 @@ pub(crate) fn draw_ui(
     _mesh: &Option<Mesh>,
     scene: &crate::scene::Scene,
 ) {
+    // Apply dark theme on first frame
+    if !gui.theme_applied {
+        theme::apply_cad_theme(ctx);
+        gui.theme_applied = true;
+    }
+
     // Splash screen (first ~90 frames)
     if gui.splash_frames < 90 {
         gui.splash_frames += 1;
@@ -565,9 +574,10 @@ pub(crate) fn draw_ui(
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .show(ctx, |ui| {
                 egui::Frame::new()
-                    .fill(egui::Color32::from_rgba_unmultiplied(20, 20, 30, (alpha * 230.0) as u8))
-                    .corner_radius(12.0)
-                    .inner_margin(40.0)
+                    .fill(egui::Color32::from_rgba_unmultiplied(25, 28, 38, (alpha * 240.0) as u8))
+                    .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(80, 120, 180, (alpha * 100.0) as u8)))
+                    .corner_radius(16.0)
+                    .inner_margin(48.0)
                     .show(ui, |ui| {
                         ui.vertical_centered(|ui| {
                             ui.label(egui::RichText::new("\u{2B22} CADKernel")
@@ -593,7 +603,10 @@ pub(crate) fn draw_ui(
     // FreeCAD-style ComboView: single left panel with tree (top) + properties/task (bottom)
     if gui.show_model_tree || gui.show_properties {
         egui::SidePanel::left("combo_view")
-            .default_width(260.0)
+            .default_width(270.0)
+            .frame(egui::Frame::new()
+                .fill(egui::Color32::from_rgb(38, 41, 48))
+                .inner_margin(egui::Margin::symmetric(6, 4)))
             .show(ctx, |ui| {
                 // Top half: Model Tree
                 let avail = ui.available_height();

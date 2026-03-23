@@ -2,7 +2,11 @@ use super::{GuiAction, GuiState, SelectionMode, SketchTool, Workbench};
 use cadkernel_sketch::WorkPlane;
 
 pub(crate) fn draw_toolbar(ctx: &egui::Context, gui: &mut GuiState) {
-    egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
+    egui::TopBottomPanel::top("toolbar")
+        .frame(egui::Frame::new()
+            .fill(egui::Color32::from_rgb(45, 48, 56))
+            .inner_margin(egui::Margin::symmetric(8, 4)))
+        .show(ctx, |ui| {
         ui.horizontal(|ui| {
             ui.spacing_mut().item_spacing.x = 4.0;
 

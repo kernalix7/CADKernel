@@ -16,6 +16,9 @@ pub(crate) fn draw_report_panel(ctx: &egui::Context, gui: &mut GuiState) {
         .default_height(140.0)
         .resizable(true)
         .min_height(60.0)
+        .frame(egui::Frame::new()
+            .fill(egui::Color32::from_rgb(32, 35, 42))
+            .inner_margin(egui::Margin::symmetric(6, 4)))
         .show(ctx, |ui| {
             // Tab bar
             ui.horizontal(|ui| {
