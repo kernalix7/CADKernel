@@ -422,6 +422,7 @@ pub(crate) struct GuiState {
     /// Splash screen frame counter (shown for first ~60 frames).
     pub splash_frames: u32,
     pub theme_applied: bool,
+    pub show_viewport_context_menu: bool,
 
     // Mouse world position for status bar (Block 4)
     pub mouse_world_pos: Option<[f64; 3]>,
@@ -521,6 +522,7 @@ impl GuiState {
             rename_edit: None,
             splash_frames: 0,
             theme_applied: false,
+            show_viewport_context_menu: false,
             mouse_world_pos: None,
             cached_props: None,
             cached_props_tri_count: 0,
@@ -645,13 +647,32 @@ pub(crate) fn draw_ui(
         sketch_ui::draw_grid_scale_label(ctx, vp.grid_config);
     }
 
-    // Viewport right-click context menu (transparent CentralPanel overlay)
+    // Viewport right-click context menu — use hover sense only so left-click passes
+    // through to the winit event handler for 3D orbit/pick/pan.
     egui::CentralPanel::default()
         .frame(egui::Frame::NONE)
         .show(ctx, |ui| {
-            let resp = ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::click());
-            resp.context_menu(|ui| {
-                context_menu::viewport_context_menu(ui, gui);
-            });
+            // Only capture right-click for context menu, not left-click
+            let resp = ui.allocate_rect(ui.available_rect_before_wrap(), egui::Sense::hover());
+            if resp.secondary_clicked() {
+                gui.show_viewport_context_menu = true;
+            }
         });
+    // Show viewport context menu as a floating window when triggered
+    if gui.show_viewport_context_menu {
+        let mut show = true;
+        egui::Area::new(egui::Id::new("viewport_ctx"))
+            .fixed_pos(ctx.pointer_latest_pos().unwrap_or(egui::pos2(100.0, 100.0)))
+            .show(ctx, |ui| {
+                egui::Frame::popup(ui.style()).show(ui, |ui| {
+                    context_menu::viewport_context_menu(ui, gui);
+                    if ui.button("Close").clicked() {
+                        show = false;
+                    }
+                });
+            });
+        if !show || ctx.input(|i| i.pointer.any_click()) {
+            gui.show_viewport_context_menu = false;
+        }
+    }
 }
