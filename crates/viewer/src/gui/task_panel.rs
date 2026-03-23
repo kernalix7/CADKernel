@@ -47,10 +47,19 @@ impl ActiveTask {
     }
 }
 
-/// Draw the task panel if a task is active.
-/// Returns true if the task panel is shown (so properties panel can be hidden).
+/// Standalone panel version (deprecated — kept for compatibility).
+#[allow(dead_code)]
 pub(crate) fn draw_task_panel(
-    ctx: &egui::Context,
+    _ctx: &egui::Context,
+    _gui: &mut GuiState,
+) -> bool {
+    false // Now drawn inline inside ComboView
+}
+
+/// Inline version — draws task panel into existing Ui.
+/// Returns true if a task is active.
+pub(crate) fn draw_task_panel_inline(
+    ui: &mut egui::Ui,
     gui: &mut GuiState,
 ) -> bool {
     let Some(task) = &gui.active_task else {
@@ -62,9 +71,7 @@ pub(crate) fn draw_task_panel(
     let mut cancel = false;
     let mut changed = false;
 
-    egui::SidePanel::right("task_panel")
-        .default_width(280.0)
-        .show(ctx, |ui| {
+    {
             ui.heading(format!("\u{2699} {title}"));
             ui.separator();
 
@@ -136,7 +143,7 @@ pub(crate) fn draw_task_panel(
 
             ui.separator();
             ui.weak("Parameters update the preview in real-time.");
-        });
+    }
 
     if commit {
         // On OK: if we have a preview, just keep it (it's already in the scene)

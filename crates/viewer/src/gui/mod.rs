@@ -552,10 +552,30 @@ pub(crate) fn draw_ui(
     toolbar::draw_toolbar(ctx, gui);
     toolbar::draw_workbench_tabs(ctx, gui);
     toolbar::draw_context_toolbar(ctx, gui);
-    tree::draw_model_tree(ctx, gui, scene);
-    // Task panel replaces properties when active (FreeCAD ComboView behavior)
-    if !task_panel::draw_task_panel(ctx, gui) {
-        properties::draw_properties(ctx, gui, scene);
+    // FreeCAD-style ComboView: single left panel with tree (top) + properties/task (bottom)
+    if gui.show_model_tree || gui.show_properties {
+        egui::SidePanel::left("combo_view")
+            .default_width(260.0)
+            .show(ctx, |ui| {
+                // Top half: Model Tree
+                let avail = ui.available_height();
+                let tree_height = avail * 0.55;
+                egui::ScrollArea::vertical()
+                    .id_salt("combo_tree")
+                    .max_height(tree_height)
+                    .show(ui, |ui| {
+                        tree::draw_model_tree_inline(ui, gui, scene);
+                    });
+                ui.separator();
+                // Bottom half: Task Panel OR Properties
+                egui::ScrollArea::vertical()
+                    .id_salt("combo_props")
+                    .show(ui, |ui| {
+                        if !task_panel::draw_task_panel_inline(ui, gui) {
+                            properties::draw_properties_inline(ui, gui, scene);
+                        }
+                    });
+            });
     }
     report::draw_report_panel(ctx, gui);
     status_bar::draw_status_bar(ctx, gui, vp, scene);
