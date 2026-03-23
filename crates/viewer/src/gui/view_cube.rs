@@ -188,8 +188,8 @@ pub(crate) fn draw_view_cube(
 ) {
     let actions = &mut gui.actions;
     let cube_half = nav.cube_size * 0.5;
-    let margin = cube_half + 16.0; // dynamic margin based on cube size
-    let viewport = ctx.available_rect();
+    let margin = cube_half + 20.0;
+    let viewport = ctx.screen_rect(); // use FULL screen rect, not available (which is reduced by panels)
     let center = match nav.cube_corner {
         1 => egui::pos2(viewport.left() + margin, viewport.top() + margin + 6.0),     // TopLeft
         2 => egui::pos2(viewport.left() + margin, viewport.bottom() - margin - 6.0),  // BottomLeft

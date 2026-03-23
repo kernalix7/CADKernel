@@ -38,6 +38,7 @@ pub(crate) fn solid_context_menu(
     }
 }
 
+#[allow(dead_code)]
 pub(crate) fn viewport_context_menu(
     ui: &mut egui::Ui,
     gui: &mut GuiState,
