@@ -83,6 +83,8 @@ pub struct NavConfig {
     pub cube_size: f32,
     pub cube_opacity: f32,
     pub snap_to_nearest: bool,
+    /// ViewCube corner: 0=TopRight, 1=TopLeft, 2=BottomLeft, 3=BottomRight
+    pub cube_corner: u8,
 
     // -- Lighting --
     pub enable_lighting: bool,
@@ -114,6 +116,7 @@ impl NavConfig {
             cube_size: 132.0,
             cube_opacity: 0.5,
             snap_to_nearest: true,
+            cube_corner: 0, // TopRight
             enable_lighting: true,
             light_intensity: 1.0,
             light_dir: [0.5, 0.6, 0.8],
