@@ -418,6 +418,8 @@ pub(crate) struct GuiState {
     pub recent_files: Vec<String>,
     /// Object being renamed in tree: (object_id, current_text)
     pub rename_edit: Option<(crate::scene::ObjectId, String)>,
+    /// Splash screen frame counter (shown for first ~60 frames).
+    pub splash_frames: u32,
 
     // Mouse world position for status bar (Block 4)
     pub mouse_world_pos: Option<[f64; 3]>,
@@ -515,6 +517,7 @@ impl GuiState {
             console_input: String::new(),
             recent_files: Vec::new(),
             rename_edit: None,
+            splash_frames: 0,
             mouse_world_pos: None,
             cached_props: None,
             cached_props_tri_count: 0,
@@ -554,6 +557,35 @@ pub(crate) fn draw_ui(
     _mesh: &Option<Mesh>,
     scene: &crate::scene::Scene,
 ) {
+    // Splash screen (first ~90 frames)
+    if gui.splash_frames < 90 {
+        gui.splash_frames += 1;
+        let alpha = if gui.splash_frames < 60 { 1.0 } else { (90 - gui.splash_frames) as f32 / 30.0 };
+        egui::Area::new(egui::Id::new("splash"))
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                egui::Frame::new()
+                    .fill(egui::Color32::from_rgba_unmultiplied(20, 20, 30, (alpha * 230.0) as u8))
+                    .corner_radius(12.0)
+                    .inner_margin(40.0)
+                    .show(ui, |ui| {
+                        ui.vertical_centered(|ui| {
+                            ui.label(egui::RichText::new("\u{2B22} CADKernel")
+                                .size(36.0)
+                                .color(egui::Color32::from_rgba_unmultiplied(200, 220, 255, (alpha * 255.0) as u8)));
+                            ui.add_space(8.0);
+                            ui.label(egui::RichText::new("Open-source CAD Software")
+                                .size(16.0)
+                                .color(egui::Color32::from_rgba_unmultiplied(160, 180, 200, (alpha * 255.0) as u8)));
+                            ui.add_space(4.0);
+                            ui.label(egui::RichText::new("v0.1.0 — 9 crates, 15 I/O formats, NURBS kernel")
+                                .size(11.0)
+                                .color(egui::Color32::from_rgba_unmultiplied(120, 140, 160, (alpha * 255.0) as u8)));
+                        });
+                    });
+            });
+    }
+
     menu::draw_menu_bar(ctx, gui, vp.camera, vp.display_mode);
     toolbar::draw_toolbar(ctx, gui);
     toolbar::draw_workbench_tabs(ctx, gui);
