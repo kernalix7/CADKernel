@@ -36,7 +36,7 @@ impl Vertex {
 // Enums
 // ---------------------------------------------------------------------------
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 pub enum Projection {
     Perspective,
     Orthographic,
