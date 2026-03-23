@@ -388,6 +388,42 @@
 - `cadkernel-viewer`: ~20개 신규 `GuiAction` 변형 + 전체 `process_actions()` 핸들러
 - `cadkernel-viewer`: 미사용 스텁 제거 (BooleanUnion/Subtract/Intersect, TrimDemo)
 
+#### FreeCAD 수준 UI 대개편 Phase 2 (2026-03-23)
+
+**다중 오브젝트 씬 아키텍처:**
+- `scene.rs`: Scene + SceneObject — 오브젝트별 BRepModel, 메시, 색상, 가시성
+- 모든 Create* 핸들러가 Scene에 오브젝트 추가 (다중 오브젝트 유지)
+- 오브젝트별 GPU 렌더링 (개별 base_color 유니폼) + 선택 하이라이트 (초록 틴트)
+- MAX_UNIFORM_SLOTS 64로 확장 (최대 ~58개 동시 오브젝트)
+
+**모델 트리 (FreeCAD 스타일):**
+- 오브젝트별 가시성 토글 (눈 아이콘, 초록/회색)
+- 오브젝트별 색상 스와치 (8색 회전 팔레트)
+- 선택 하이라이트 (파란 텍스트, 선택 시 토폴로지 상세)
+- 컨텍스트 메뉴: 삭제, 복제, 변환, 측정, 지오메트리 검사
+- 검색/필터 박스
+
+**속성 패널 (Data/View 탭):**
+- Data 탭: 기본 정보, 생성 매개변수, 토폴로지, 메시, 질량 속성
+- View 탭: 색상, 가시성, 선택 상태
+- 아무것도 선택 안 됐을 때 씬 개요
+
+**하단 패널 (리포트 + Python 콘솔):**
+- 탭: Report View + Python Console
+- 콘솔: >>> 프롬프트, 명령 입력 + 이력 (PyO3 백엔드 플레이스홀더)
+
+**다중 오브젝트 피킹:**
+- 모든 가시 씬 오브젝트에 레이 테스트, 가장 가까운 히트 선택
+
+**키보드 단축키:**
+- Ctrl+Z (Undo), Ctrl+Y (Redo), Delete (삭제), Ctrl+N (새로만들기), F (맞춤), H (가시성)
+
+**변환 도구:**
+- Move (이동), Rotate (회전), Scale (크기), 컨텍스트 메뉴 프리셋, undo 지원
+
+**툴바 아이콘 + 상태바:**
+- Unicode 심볼, Show/Hide All, 오브젝트 수, 삼각형 수, 선택 이름
+
 #### 심화 품질 개선 (2026-03-20)
 
 **STEP I/O:**
