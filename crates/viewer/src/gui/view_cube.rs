@@ -188,7 +188,9 @@ pub(crate) fn draw_view_cube(
 ) {
     let actions = &mut gui.actions;
     let cube_half = nav.cube_size * 0.5;
-    let margin = cube_half + 20.0;
+    // Total radius: cube_half*1.6 (ring) + 14 (arrows) + 8 (label text)
+    let total_radius = cube_half * 1.6 + 22.0;
+    let margin = total_radius + 8.0;
     let viewport = ctx.screen_rect(); // use FULL screen rect, not available (which is reduced by panels)
     let center = match nav.cube_corner {
         1 => egui::pos2(viewport.left() + margin, viewport.top() + margin + 6.0),     // TopLeft
