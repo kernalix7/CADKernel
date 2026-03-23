@@ -193,13 +193,13 @@ pub(crate) fn draw_view_cube(
     let pad = ring_outer + 46.0; // 14(arrow) + 18(side offset) + 10(side radius) + 4(extra)
     let scr = ctx.screen_rect();
     // Offsets to avoid panels: top ~80px (toolbars), bottom ~170px (report+status), left ~280px (combo)
-    // Uniform edge padding from viewport edges (same distance all sides)
-    let edge = pad + 6.0;
+    let edge = pad + 8.0;
+    // Toolbar height ~82px, report+status ~170px, combo panel ~280px
     let center = match nav.cube_corner {
-        1 => egui::pos2(scr.left() + edge, scr.top() + edge),           // TopLeft
-        2 => egui::pos2(scr.left() + edge, scr.bottom() - edge),        // BottomLeft
-        3 => egui::pos2(scr.right() - edge, scr.bottom() - edge),       // BottomRight
-        _ => egui::pos2(scr.right() - edge, scr.top() + edge),          // TopRight
+        1 => egui::pos2(scr.left() + 280.0 + edge, scr.top() + 82.0 + edge),
+        2 => egui::pos2(scr.left() + 280.0 + edge, scr.bottom() - 170.0 - edge),
+        3 => egui::pos2(scr.right() - edge, scr.bottom() - 170.0 - edge),
+        _ => egui::pos2(scr.right() - edge, scr.top() + 82.0 + edge), // TopRight
     };
 
     let eye = camera.eye();

@@ -117,10 +117,10 @@ impl NavConfig {
             default_projection: crate::render::Projection::Perspective,
             show_view_cube: true,
             orbit_steps: 8,
-            cube_size: 18.0,
+            cube_size: 28.0,
             cube_opacity: 0.5,
             snap_to_nearest: true,
-            cube_corner: 3, // BottomRight (avoids toolbar overlap)
+            cube_corner: 0, // TopRight
             enable_lighting: true,
             light_intensity: 1.0,
             light_dir: [0.5, 0.6, 0.8],
