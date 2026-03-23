@@ -188,9 +188,9 @@ pub(crate) fn draw_view_cube(
 ) {
     let actions = &mut gui.actions;
     let cube_half = nav.cube_size * 0.5;
-    // Total radius including orbit ring, arrows, compass labels
-    let total_radius = cube_half * 1.6 + 22.0;
-    let pad = total_radius + 10.0;
+    // Total radius: ring(cube_half*1.6) + arrows(14) + side buttons(18+10) + margin
+    let ring_outer = cube_half * 1.6;
+    let pad = ring_outer + 46.0; // 14(arrow) + 18(side offset) + 10(side radius) + 4(extra)
     let scr = ctx.screen_rect();
     // Offsets to avoid panels: top ~80px (toolbars), bottom ~170px (report+status), left ~280px (combo)
     let top_off = 80.0;
