@@ -84,6 +84,18 @@ pub(crate) fn draw_toolbar(ctx: &egui::Context, gui: &mut GuiState) {
                     gui.selection_mode = mode;
                 }
             }
+
+            ui.separator();
+
+            // Workbench dropdown selector
+            let wb_label = gui.active_workbench.label();
+            egui::ComboBox::from_id_salt("wb_selector")
+                .selected_text(wb_label)
+                .show_ui(ui, |ui| {
+                    for &wb in Workbench::ALL {
+                        ui.selectable_value(&mut gui.active_workbench, wb, wb.label());
+                    }
+                });
         });
     });
 }
