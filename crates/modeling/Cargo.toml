@@ -17,6 +17,8 @@ cadkernel-io.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
+cadkernel-sketch = { path = "../sketch" }
+cadkernel-io = { path = "../io" }
 
 [[bench]]
 name = "modeling_benchmarks"
