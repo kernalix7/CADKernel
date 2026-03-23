@@ -177,7 +177,24 @@ fn draw_view_tab(
                 ui.label("Selection:");
                 ui.label(if obj.selected { "\u{2714} Selected" } else { "\u{2717} Not selected" });
                 ui.end_row();
+
+                ui.label("Transparency:");
+                let alpha = (1.0 - obj.color[3]) * 100.0;
+                ui.label(format!("{alpha:.0}%"));
+                ui.end_row();
             });
+        });
+
+    // Transparency slider
+    egui::CollapsingHeader::new("Transparency")
+        .default_open(false)
+        .show(ui, |ui| {
+            let mut alpha = obj.color[3];
+            if ui.add(egui::Slider::new(&mut alpha, 0.1..=1.0).text("Opacity")).changed() {
+                let mut c = obj.color;
+                c[3] = alpha;
+                gui.actions.push(GuiAction::SetObjectColor { id: obj.id, color: c });
+            }
         });
 
     egui::CollapsingHeader::new("Object Name")

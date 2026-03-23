@@ -42,6 +42,19 @@ pub(crate) fn draw_menu_bar(
                     ui.close_menu();
                 }
 
+                // Recent files
+                if !gui.recent_files.is_empty() {
+                    ui.menu_button("Recent Files", |ui| {
+                        for path_str in gui.recent_files.clone() {
+                            let short = path_str.rsplit('/').next().unwrap_or(&path_str).to_string();
+                            if ui.button(&short).on_hover_text(&path_str).clicked() {
+                                gui.actions.push(GuiAction::OpenFile(std::path::PathBuf::from(&path_str)));
+                                ui.close_menu();
+                            }
+                        }
+                    });
+                }
+
                 ui.separator();
 
                 // Import submenu

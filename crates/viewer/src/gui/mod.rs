@@ -293,11 +293,13 @@ pub(crate) enum GuiAction {
     ToggleVisibility(crate::scene::ObjectId),
     RemoveObject(crate::scene::ObjectId),
     DuplicateObject(crate::scene::ObjectId),
+    RenameObject(crate::scene::ObjectId, String),
     ShowAll,
     HideAll,
-    // Parametric rebuild + color
+    // Parametric rebuild + color + task preview
     RebuildObject { id: crate::scene::ObjectId, params: crate::scene::CreationParams },
     SetObjectColor { id: crate::scene::ObjectId, color: [f32; 4] },
+    TaskPreviewUpdate(task_panel::ActiveTask),
     // Transform operations
     MoveObject { id: crate::scene::ObjectId, dx: f64, dy: f64, dz: f64 },
     RotateObject { id: crate::scene::ObjectId, axis: u8, angle_deg: f64 },
@@ -407,6 +409,9 @@ pub(crate) struct GuiState {
     pub bottom_tab: report::BottomTab,
     pub console_history: Vec<String>,
     pub console_input: String,
+    pub recent_files: Vec<String>,
+    /// Object being renamed in tree: (object_id, current_text)
+    pub rename_edit: Option<(crate::scene::ObjectId, String)>,
 
     // Mouse world position for status bar (Block 4)
     pub mouse_world_pos: Option<[f64; 3]>,
@@ -502,6 +507,8 @@ impl GuiState {
             bottom_tab: report::BottomTab::Report,
             console_history: Vec::new(),
             console_input: String::new(),
+            recent_files: Vec::new(),
+            rename_edit: None,
             mouse_world_pos: None,
             cached_props: None,
             cached_props_tri_count: 0,
