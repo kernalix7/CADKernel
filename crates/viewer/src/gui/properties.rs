@@ -8,32 +8,37 @@ pub(crate) enum PropertyTab {
     View,
 }
 
+/// Standalone panel version (deprecated — kept for compatibility).
+#[allow(dead_code)]
 pub(crate) fn draw_properties(
-    ctx: &egui::Context,
+    _ctx: &egui::Context,
+    _gui: &mut GuiState,
+    _scene: &Scene,
+) {
+    // Now drawn inline inside ComboView
+}
+
+/// Inline version — draws properties content into an existing Ui.
+pub(crate) fn draw_properties_inline(
+    ui: &mut egui::Ui,
     gui: &mut GuiState,
     scene: &Scene,
 ) {
-    if !gui.show_properties {
-        return;
-    }
-    egui::SidePanel::right("properties")
-        .default_width(280.0)
-        .show(ctx, |ui| {
-            // Tab bar
-            ui.horizontal(|ui| {
-                let data_selected = gui.property_tab == PropertyTab::Data;
-                if ui.selectable_label(data_selected, "\u{1F4CA} Data").clicked() {
-                    gui.property_tab = PropertyTab::Data;
-                }
-                let view_selected = gui.property_tab == PropertyTab::View;
-                if ui.selectable_label(view_selected, "\u{1F3A8} View").clicked() {
-                    gui.property_tab = PropertyTab::View;
-                }
-            });
-            ui.separator();
+    // Tab bar
+    ui.horizontal(|ui| {
+        let data_selected = gui.property_tab == PropertyTab::Data;
+        if ui.selectable_label(data_selected, "\u{1F4CA} Data").clicked() {
+            gui.property_tab = PropertyTab::Data;
+        }
+        let view_selected = gui.property_tab == PropertyTab::View;
+        if ui.selectable_label(view_selected, "\u{1F3A8} View").clicked() {
+            gui.property_tab = PropertyTab::View;
+        }
+    });
+    ui.separator();
 
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                if let Some(obj) = scene.selected_object() {
+    {
+        if let Some(obj) = scene.selected_object() {
                     match gui.property_tab {
                         PropertyTab::Data => draw_data_tab(ui, gui, obj),
                         PropertyTab::View => draw_view_tab(ui, gui, obj),
@@ -41,8 +46,7 @@ pub(crate) fn draw_properties(
                 } else {
                     draw_scene_overview(ui, scene);
                 }
-            });
-        });
+    }
 }
 
 fn draw_data_tab(
