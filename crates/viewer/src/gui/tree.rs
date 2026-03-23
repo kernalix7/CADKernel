@@ -79,26 +79,41 @@ fn draw_object_row(
         );
         ui.painter().rect_filled(rect, 2.0, color);
 
-        // Object name (selectable)
-        let label_color = if is_selected {
-            egui::Color32::from_rgb(100, 200, 255)
-        } else if !obj.visible {
-            egui::Color32::from_rgb(130, 130, 130)
+        // Object name (selectable, double-click to rename)
+        let is_renaming = gui.rename_edit.as_ref().is_some_and(|(rid, _)| *rid == id);
+
+        if is_renaming {
+            let (_, text) = gui.rename_edit.as_mut().unwrap();
+            let resp = ui.text_edit_singleline(text);
+            if resp.lost_focus() || ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                let new_name = gui.rename_edit.take().unwrap().1;
+                if !new_name.is_empty() {
+                    gui.actions.push(GuiAction::RenameObject(id, new_name));
+                }
+            }
         } else {
-            ui.visuals().text_color()
-        };
+            let label_color = if is_selected {
+                egui::Color32::from_rgb(100, 200, 255)
+            } else if !obj.visible {
+                egui::Color32::from_rgb(130, 130, 130)
+            } else {
+                ui.visuals().text_color()
+            };
 
-        let name_resp = ui.selectable_label(
-            is_selected,
-            egui::RichText::new(&obj.name).color(label_color),
-        );
+            let name_resp = ui.selectable_label(
+                is_selected,
+                egui::RichText::new(&obj.name).color(label_color),
+            );
 
-        if name_resp.clicked() {
-            gui.actions.push(GuiAction::SelectObject(id));
-        }
+            if name_resp.clicked() {
+                gui.actions.push(GuiAction::SelectObject(id));
+            }
+            if name_resp.double_clicked() {
+                gui.rename_edit = Some((id, obj.name.clone()));
+            }
 
-        // Context menu
-        name_resp.context_menu(|ui| {
+            // Context menu
+            name_resp.context_menu(|ui| {
             if ui.button("\u{1F441} Toggle Visibility").clicked() {
                 gui.actions.push(GuiAction::ToggleVisibility(id));
                 ui.close_menu();
@@ -157,7 +172,12 @@ fn draw_object_row(
                 gui.actions.push(GuiAction::CheckGeometry);
                 ui.close_menu();
             }
+            if ui.button("\u{270F} Rename").clicked() {
+                gui.rename_edit = Some((id, obj.name.clone()));
+                ui.close_menu();
+            }
         });
+        } // close else block for non-rename mode
     });
 
     // Show topology details if selected

@@ -129,19 +129,19 @@ fn draw_part_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
     // -- Primitives (task panel for main 5, legacy dialogs for rest) --
     ui.weak("Primitives");
     if ui.button("\u{25A1} Box").on_hover_text("Create box (Task Panel)").clicked() {
-        gui.active_task = Some(ActiveTask::Box { width: 10.0, height: 10.0, depth: 10.0 });
+        gui.active_task = Some(ActiveTask::Box { width: 10.0, height: 10.0, depth: 10.0, preview_id: None });
     }
     if ui.button("\u{25CB} Cylinder").on_hover_text("Create cylinder (Task Panel)").clicked() {
-        gui.active_task = Some(ActiveTask::Cylinder { radius: 5.0, height: 10.0 });
+        gui.active_task = Some(ActiveTask::Cylinder { radius: 5.0, height: 10.0, preview_id: None });
     }
     if ui.button("\u{25CF} Sphere").on_hover_text("Create sphere (Task Panel)").clicked() {
-        gui.active_task = Some(ActiveTask::Sphere { radius: 5.0 });
+        gui.active_task = Some(ActiveTask::Sphere { radius: 5.0, preview_id: None });
     }
     if ui.button("\u{25B3} Cone").on_hover_text("Create cone (Task Panel)").clicked() {
-        gui.active_task = Some(ActiveTask::Cone { base_radius: 5.0, top_radius: 0.0, height: 10.0 });
+        gui.active_task = Some(ActiveTask::Cone { base_radius: 5.0, top_radius: 0.0, height: 10.0, preview_id: None });
     }
     if ui.button("\u{25CE} Torus").on_hover_text("Create torus (Task Panel)").clicked() {
-        gui.active_task = Some(ActiveTask::Torus { major_radius: 10.0, minor_radius: 3.0 });
+        gui.active_task = Some(ActiveTask::Torus { major_radius: 10.0, minor_radius: 3.0, preview_id: None });
     }
     // Legacy dialog primitives
     for (label, show_flag, tip) in [

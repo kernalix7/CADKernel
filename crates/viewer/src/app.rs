@@ -431,6 +431,16 @@ impl CadApp {
         }
     }
 
+    // -- recent files ---------------------------------------------------------
+
+    fn add_recent_file(&mut self, path: &str) {
+        self.gui.recent_files.retain(|p| p != path);
+        self.gui.recent_files.insert(0, path.to_string());
+        if self.gui.recent_files.len() > 10 {
+            self.gui.recent_files.truncate(10);
+        }
+    }
+
     // -- preselection (hover) ------------------------------------------------
 
     fn update_preselection(&mut self) {
@@ -1595,6 +1605,13 @@ impl CadApp {
                     }
                     self.rebuild_scene_gpu();
                 }
+                GuiAction::RenameObject(id, new_name) => {
+                    if let Some(obj) = self.scene.get_mut(id) {
+                        let old = obj.name.clone();
+                        obj.name = new_name.clone();
+                        self.log_info(format!("Renamed: {old} → {new_name}"));
+                    }
+                }
                 GuiAction::DuplicateObject(id) => {
                     self.snapshot_before("Duplicate object");
                     if let Some(obj) = self.scene.get(id).cloned() {
@@ -1622,6 +1639,48 @@ impl CadApp {
                     }
                     self.rebuild_scene_gpu();
                     self.log_info("All objects hidden");
+                }
+
+                // -- Task preview (live update) --
+                GuiAction::TaskPreviewUpdate(mut task) => {
+                    use crate::scene::CreationParams;
+                    // Convert ActiveTask to CreationParams
+                    let params = match &task {
+                        gui::task_panel::ActiveTask::Box { width, height, depth, .. } =>
+                            Some(CreationParams::Box { width: *width, height: *height, depth: *depth }),
+                        gui::task_panel::ActiveTask::Cylinder { radius, height, .. } =>
+                            Some(CreationParams::Cylinder { radius: *radius, height: *height }),
+                        gui::task_panel::ActiveTask::Sphere { radius, .. } =>
+                            Some(CreationParams::Sphere { radius: *radius }),
+                        gui::task_panel::ActiveTask::Cone { base_radius, top_radius, height, .. } =>
+                            Some(CreationParams::Cone { base_radius: *base_radius, top_radius: *top_radius, height: *height }),
+                        gui::task_panel::ActiveTask::Torus { major_radius, minor_radius, .. } =>
+                            Some(CreationParams::Torus { major_radius: *major_radius, minor_radius: *minor_radius }),
+                    };
+
+                    if let Some(params) = params {
+                        if let Some((model, solid)) = rebuild_object_from_params(&params) {
+                            if let Some(pid) = task.preview_id() {
+                                // Update existing preview
+                                if let Some(obj) = self.scene.get_mut(pid) {
+                                    let mesh = cadkernel_io::tessellate_solid(&model, solid);
+                                    obj.vertices = crate::render::mesh_to_vertices(&mesh);
+                                    obj.mesh = mesh;
+                                    obj.model = model;
+                                    obj.solid = solid;
+                                    obj.params = Some(params);
+                                }
+                            } else {
+                                // Create new preview object
+                                let name = format!("{} (preview)", task.title());
+                                let id = self.scene.add_object(name, model, solid, Some(params));
+                                task.set_preview_id(id);
+                                self.scene.select_single(id);
+                            }
+                            self.rebuild_scene_gpu();
+                        }
+                    }
+                    self.gui.active_task = Some(task);
                 }
 
                 // -- Color change --
@@ -2050,7 +2109,9 @@ impl CadApp {
                     let id = self.scene.add_mesh_object(&name, mesh, params);
                     self.scene.select_single(id);
                     self.rebuild_scene_gpu();
-                    self.gui.current_file = Some(path.display().to_string());
+                    let path_str = path.display().to_string();
+                    self.gui.current_file = Some(path_str.clone());
+                    self.add_recent_file(&path_str);
                     self.log_info(format!(
                         "Imported {name} ({verts} vertices, {tri} triangles)"
                     ));
