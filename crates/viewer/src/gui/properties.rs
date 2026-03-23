@@ -160,18 +160,13 @@ fn draw_view_tab(
             egui::Grid::new("display_grid").num_columns(2).show(ui, |ui| {
                 // Color display
                 ui.label("Shape Color:");
-                let [r, g, b, _] = obj.color;
-                let color = egui::Color32::from_rgb(
-                    (r * 255.0) as u8,
-                    (g * 255.0) as u8,
-                    (b * 255.0) as u8,
-                );
-                let (rect, resp) = ui.allocate_exact_size(egui::vec2(60.0, 18.0), egui::Sense::click());
-                ui.painter().rect_filled(rect, 2.0, color);
-                if resp.clicked() {
-                    gui.actions.push(GuiAction::StatusMessage(
-                        "Color picker: coming soon".into(),
-                    ));
+                let [r, g, b, a] = obj.color;
+                let mut rgba = egui::Rgba::from_rgba_premultiplied(r, g, b, a);
+                if egui::color_picker::color_edit_button_rgba(ui, &mut rgba, egui::color_picker::Alpha::Opaque).changed() {
+                    gui.actions.push(GuiAction::SetObjectColor {
+                        id: obj.id,
+                        color: [rgba.r(), rgba.g(), rgba.b(), rgba.a()],
+                    });
                 }
                 ui.end_row();
 

@@ -294,8 +294,9 @@ pub(crate) enum GuiAction {
     DuplicateObject(crate::scene::ObjectId),
     ShowAll,
     HideAll,
-    // Parametric rebuild
+    // Parametric rebuild + color
     RebuildObject { id: crate::scene::ObjectId, params: crate::scene::CreationParams },
+    SetObjectColor { id: crate::scene::ObjectId, color: [f32; 4] },
     // Transform operations
     MoveObject { id: crate::scene::ObjectId, dx: f64, dy: f64, dz: f64 },
     RotateObject { id: crate::scene::ObjectId, axis: u8, angle_deg: f64 },
