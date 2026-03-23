@@ -55,15 +55,15 @@ impl Workbench {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Part => "Part",
-            Self::PartDesign => "Part Design",
-            Self::Sketcher => "Sketcher",
-            Self::Mesh => "Mesh",
-            Self::TechDraw => "TechDraw",
-            Self::Assembly => "Assembly",
-            Self::Draft => "Draft",
-            Self::Surface => "Surface",
-            Self::Fem => "FEM",
+            Self::Part => "\u{2B22} Part",
+            Self::PartDesign => "\u{2699} PartDesign",
+            Self::Sketcher => "\u{270F} Sketcher",
+            Self::Mesh => "\u{25A6} Mesh",
+            Self::TechDraw => "\u{1F4D0} TechDraw",
+            Self::Assembly => "\u{1F527} Assembly",
+            Self::Draft => "\u{2712} Draft",
+            Self::Surface => "\u{223F} Surface",
+            Self::Fem => "\u{2206} FEM",
         }
     }
 }

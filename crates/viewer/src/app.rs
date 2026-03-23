@@ -2038,16 +2038,22 @@ impl CadApp {
         let done = if let Some(rx) = &self.mesh_rx {
             match rx.try_recv() {
                 Ok(Ok((mesh, path))) => {
-                    self.model = BRepModel::new();
-                    self.current_solid = None;
+                    let name = path.file_name()
+                        .and_then(|n| n.to_str())
+                        .unwrap_or("imported")
+                        .to_string();
+                    let params = Some(crate::scene::CreationParams::Imported {
+                        path: path.display().to_string(),
+                    });
+                    let tri = mesh.triangle_count();
+                    let verts = mesh.vertices.len();
+                    let id = self.scene.add_mesh_object(&name, mesh, params);
+                    self.scene.select_single(id);
+                    self.rebuild_scene_gpu();
                     self.gui.current_file = Some(path.display().to_string());
                     self.log_info(format!(
-                        "Loaded {} ({} vertices, {} triangles)",
-                        path.display(),
-                        mesh.vertices.len(),
-                        mesh.triangle_count()
+                        "Imported {name} ({verts} vertices, {tri} triangles)"
                     ));
-                    self.set_mesh(mesh);
                     true
                 }
                 Ok(Err(e)) => {

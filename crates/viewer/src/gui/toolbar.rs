@@ -241,10 +241,10 @@ fn draw_sketcher_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
     let in_sketch = gui.sketch_mode.is_some();
     if !in_sketch {
         ui.weak("New Sketch");
-        if ui.button("XY Plane").on_hover_text("Start a sketch on the XY plane").clicked() {
+        if ui.button("\u{25AD} XY Plane").on_hover_text("Sketch on XY plane").clicked() {
             gui.actions.push(GuiAction::EnterSketch(WorkPlane::xy()));
         }
-        if ui.button("XZ Plane").on_hover_text("Start a sketch on the XZ plane").clicked() {
+        if ui.button("\u{25AF} XZ Plane").on_hover_text("Sketch on XZ plane").clicked() {
             gui.actions.push(GuiAction::EnterSketch(WorkPlane::xz()));
         }
     } else {
@@ -255,11 +255,11 @@ fn draw_sketcher_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
             .map(|s| s.tool)
             .unwrap_or(SketchTool::Select);
         for (label, tool, tip) in [
-            ("Select", SketchTool::Select, "Selection tool"),
-            ("Line", SketchTool::Line, "Draw a line segment"),
-            ("Rectangle", SketchTool::Rectangle, "Draw a rectangle"),
-            ("Circle", SketchTool::Circle, "Draw a circle"),
-            ("Arc", SketchTool::Arc, "Draw an arc"),
+            ("\u{25B9} Select", SketchTool::Select, "Selection tool"),
+            ("\u{2500} Line", SketchTool::Line, "Draw line (L)"),
+            ("\u{25A1} Rect", SketchTool::Rectangle, "Draw rectangle (R)"),
+            ("\u{25CB} Circle", SketchTool::Circle, "Draw circle (C)"),
+            ("\u{25E0} Arc", SketchTool::Arc, "Draw arc (A)"),
         ] {
             let btn = egui::Button::new(label);
             if ui.add(btn.selected(current_tool == tool)).on_hover_text(tip).clicked() {
@@ -268,13 +268,13 @@ fn draw_sketcher_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
         }
         ui.separator();
         ui.weak("Constrain");
-        if ui.button("Horizontal").on_hover_text("Add horizontal constraint").clicked() {
+        if ui.button("\u{2194} H").on_hover_text("Horizontal constraint").clicked() {
             gui.actions.push(GuiAction::SketchConstrainHorizontal);
         }
-        if ui.button("Vertical").on_hover_text("Add vertical constraint").clicked() {
+        if ui.button("\u{2195} V").on_hover_text("Vertical constraint").clicked() {
             gui.actions.push(GuiAction::SketchConstrainVertical);
         }
-        if ui.button("Length").on_hover_text("Add length constraint").clicked() {
+        if ui.button("\u{21A6} L").on_hover_text("Length constraint").clicked() {
             gui.actions
                 .push(GuiAction::SketchConstrainLength(gui.constraint_length_value));
         }
@@ -284,10 +284,10 @@ fn draw_sketcher_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
                 .prefix("L: "),
         );
         ui.separator();
-        if ui.button("Close Sketch").on_hover_text("Solve and extrude the sketch").clicked() {
+        if ui.button("\u{2714} Close").on_hover_text("Solve and extrude sketch").clicked() {
             gui.actions.push(GuiAction::CloseSketch);
         }
-        if ui.button("Cancel").on_hover_text("Discard sketch changes").clicked() {
+        if ui.button("\u{2716} Cancel").on_hover_text("Discard sketch").clicked() {
             gui.actions.push(GuiAction::CancelSketch);
         }
     }
@@ -295,7 +295,7 @@ fn draw_sketcher_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
 
 fn draw_mesh_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
     ui.weak("I/O");
-    if ui.button("Import STL").on_hover_text("Import an STL mesh file").clicked() {
+    if ui.button("\u{1F4C2} Import STL").on_hover_text("Import STL mesh").clicked() {
         if let Some(path) = rfd::FileDialog::new()
             .add_filter("STL", &["stl"])
             .pick_file()
@@ -303,7 +303,7 @@ fn draw_mesh_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
             gui.actions.push(GuiAction::ImportFile(path));
         }
     }
-    if ui.button("Export STL").on_hover_text("Export model as STL").clicked() {
+    if ui.button("\u{1F4BE} Export STL").on_hover_text("Export as STL").clicked() {
         if let Some(path) = rfd::FileDialog::new()
             .add_filter("STL", &["stl"])
             .set_file_name("model.stl")
@@ -312,7 +312,7 @@ fn draw_mesh_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
             gui.actions.push(GuiAction::ExportStl(path));
         }
     }
-    if ui.button("Export OBJ").on_hover_text("Export model as OBJ").clicked() {
+    if ui.button("\u{1F4BE} Export OBJ").on_hover_text("Export as OBJ").clicked() {
         if let Some(path) = rfd::FileDialog::new()
             .add_filter("OBJ", &["obj"])
             .set_file_name("model.obj")
@@ -321,7 +321,7 @@ fn draw_mesh_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
             gui.actions.push(GuiAction::ExportObj(path));
         }
     }
-    if ui.button("Export glTF").on_hover_text("Export model as glTF").clicked() {
+    if ui.button("\u{1F4BE} Export glTF").on_hover_text("Export as glTF").clicked() {
         if let Some(path) = rfd::FileDialog::new()
             .add_filter("glTF", &["gltf"])
             .set_file_name("model.gltf")
@@ -333,31 +333,31 @@ fn draw_mesh_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
 
     ui.separator();
     ui.weak("Repair");
-    if ui.button("Decimate 50%").on_hover_text("Reduce mesh triangle count by half").clicked() {
+    if ui.button("\u{25BC} Decimate").on_hover_text("Reduce triangles 50%").clicked() {
         gui.actions.push(GuiAction::MeshDecimate(0.5));
     }
-    if ui.button("Subdivide").on_hover_text("Subdivide mesh (Loop subdivision)").clicked() {
+    if ui.button("\u{25B2} Subdivide").on_hover_text("Subdivide mesh").clicked() {
         gui.actions.push(GuiAction::MeshSubdivide);
     }
-    if ui.button("Fill Holes").on_hover_text("Fill boundary holes in mesh").clicked() {
+    if ui.button("\u{25C7} Fill Holes").on_hover_text("Fill boundary holes").clicked() {
         gui.actions.push(GuiAction::MeshFillHoles);
     }
-    if ui.button("Flip Normals").on_hover_text("Reverse all face normals").clicked() {
+    if ui.button("\u{21C5} Flip Normals").on_hover_text("Reverse normals").clicked() {
         gui.actions.push(GuiAction::MeshFlipNormals);
     }
-    if ui.button("Smooth…").on_hover_text("Laplacian mesh smoothing").clicked() {
+    if ui.button("\u{223F} Smooth…").on_hover_text("Laplacian smoothing").clicked() {
         gui.show_mesh_smooth = true;
     }
-    if ui.button("Harmonize").on_hover_text("Make face normals consistent").clicked() {
+    if ui.button("\u{21BB} Harmonize").on_hover_text("Consistent normals").clicked() {
         gui.actions.push(GuiAction::MeshHarmonizeNormals);
     }
-    if ui.button("Watertight?").on_hover_text("Check if mesh is watertight").clicked() {
+    if ui.button("\u{2714} Watertight?").on_hover_text("Check watertight").clicked() {
         gui.actions.push(GuiAction::MeshCheckWatertight);
     }
-    if ui.button("Remesh…").on_hover_text("Remesh to target edge length").clicked() {
+    if ui.button("\u{25A6} Remesh…").on_hover_text("Remesh to target edge").clicked() {
         gui.show_mesh_remesh = true;
     }
-    if ui.button("Repair").on_hover_text("Auto-repair mesh issues").clicked() {
+    if ui.button("\u{1F527} Repair").on_hover_text("Auto-repair mesh").clicked() {
         gui.actions.push(GuiAction::MeshRepair);
     }
 }
