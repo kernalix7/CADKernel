@@ -841,6 +841,23 @@ pub(crate) fn draw_settings(ctx: &egui::Context, gui: &mut GuiState, nav: &mut N
                                 ui.end_row();
                             });
                         ui.checkbox(&mut nav.snap_to_nearest, "Snap to nearest view");
+                        egui::Grid::new("cube_corner_grid").num_columns(2).show(ui, |ui| {
+                            ui.label("Corner:");
+                            egui::ComboBox::from_id_salt("cube_corner")
+                                .selected_text(match nav.cube_corner {
+                                    1 => "Top-Left",
+                                    2 => "Bottom-Left",
+                                    3 => "Bottom-Right",
+                                    _ => "Top-Right",
+                                })
+                                .show_ui(ui, |ui| {
+                                    ui.selectable_value(&mut nav.cube_corner, 0, "Top-Right");
+                                    ui.selectable_value(&mut nav.cube_corner, 1, "Top-Left");
+                                    ui.selectable_value(&mut nav.cube_corner, 2, "Bottom-Left");
+                                    ui.selectable_value(&mut nav.cube_corner, 3, "Bottom-Right");
+                                });
+                            ui.end_row();
+                        });
                     }
                 });
 
