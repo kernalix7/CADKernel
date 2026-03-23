@@ -430,7 +430,20 @@
 - Escape 계층: task panel → 선택해제 → sketch → 종료
 - Ctrl+O (열기), Ctrl+S (저장) 단축키
 - Import STL/OBJ가 Scene에 추가 (다중 오브젝트 유지)
-- 개선된 About 다이얼로그
+
+**Phase 3 (FreeCAD ComboView + 고급 인터랙션):**
+- ComboView: 트리 + 속성 단일 좌측 패널 (55/45 스플리터)
+- Task Panel 라이브 프리뷰 (파라미터 조정 시 프리뷰 오브젝트 실시간 업데이트)
+- 인라인 이름 변경 (트리에서 더블클릭, Enter 확인)
+- 다중 선택: Ctrl+클릭 (트리 + 3D 뷰포트)
+- 씬 불리언 연산 (2개 오브젝트 선택 → Union/Subtract/Intersect)
+- 오브젝트 투명도 슬라이더 (View 탭, opacity 0.1–1.0)
+- 최근 파일 (File 메뉴, 최근 10개)
+- Color Picker (View 탭)
+- 스플래시 화면 (중앙, 페이드아웃 애니메이션)
+- 피처 히스토리 (트리에서 생성 이력 표시)
+- NavCube 코너 위치 선택기 (4코너, Settings에서 설정)
+- Workbench 드롭다운 선택기
 
 #### 심화 품질 개선 (2026-03-20)
 
