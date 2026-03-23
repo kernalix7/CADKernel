@@ -460,7 +460,20 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - Escape hierarchy: task panel → deselect → sketch → quit
 - Ctrl+O (open), Ctrl+S (save) shortcuts
 - Import STL/OBJ adds to Scene (multi-object persistence)
-- Improved About dialog with version, author, crate list
+
+**Phase 3 (FreeCAD ComboView + advanced interactions):**
+- ComboView: tree + properties in single left panel (55/45 splitter)
+- Task Panel live preview (preview object updates as params change)
+- Inline rename (double-click in tree, Enter to confirm)
+- Multi-select: Ctrl+click in tree AND 3D viewport
+- Scene Boolean operations (select 2 objects → Union/Subtract/Intersect)
+- Object transparency slider (opacity 0.1–1.0 in View tab)
+- Recent files (File menu, last 10)
+- Color picker (egui color_edit_button_rgba in View tab)
+- Splash screen (centered, fade-out animation on startup)
+- Feature history display in tree (construction operations list)
+- NavCube corner position selector (4 corners, configurable in Settings)
+- Workbench dropdown selector in toolbar
 
 #### Deep Quality Improvements (2026-03-20)
 
