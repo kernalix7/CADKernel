@@ -1,4 +1,4 @@
-use super::{GuiAction, GuiState, SketchTool, Workbench};
+use super::{GuiAction, GuiState, SelectionMode, SketchTool, Workbench};
 use cadkernel_sketch::WorkPlane;
 
 pub(crate) fn draw_toolbar(ctx: &egui::Context, gui: &mut GuiState) {
@@ -65,6 +65,24 @@ pub(crate) fn draw_toolbar(ctx: &egui::Context, gui: &mut GuiState) {
             }
             if ui.button("\u{1F6AB} Hide All").on_hover_text("Hide all objects").clicked() {
                 gui.actions.push(GuiAction::HideAll);
+            }
+
+            ui.separator();
+
+            // -- Selection mode --
+            for &(mode, icon, tip) in &[
+                (SelectionMode::Solid, "\u{25A3}", "Select solids"),
+                (SelectionMode::Face, "\u{25A2}", "Select faces"),
+                (SelectionMode::Edge, "\u{2500}", "Select edges"),
+                (SelectionMode::Vertex, "\u{25CF}", "Select vertices"),
+            ] {
+                let sel = gui.selection_mode == mode;
+                let btn = egui::Button::new(
+                    egui::RichText::new(icon).size(14.0)
+                ).selected(sel);
+                if ui.add(btn).on_hover_text(tip).clicked() {
+                    gui.selection_mode = mode;
+                }
             }
         });
     });

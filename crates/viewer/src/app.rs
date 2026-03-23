@@ -143,6 +143,10 @@ pub(crate) struct CadApp {
     mouse_dragged: bool,
     /// Per-object vertex ranges in the combined GPU buffer: (id, start, count, color, selected).
     object_ranges: Vec<(crate::scene::ObjectId, u32, u32, [f32; 4], bool)>,
+    /// Preselected (hover) object id for highlight.
+    preselected_object: Option<crate::scene::ObjectId>,
+    /// Frame counter for throttled preselection picking.
+    preselect_frame: u32,
 }
 
 impl CadApp {
@@ -171,6 +175,8 @@ impl CadApp {
             command_stack: crate::command::CommandStack::new(50),
             mouse_dragged: false,
             object_ranges: Vec::new(),
+            preselected_object: None,
+            preselect_frame: 0,
         }
     }
 
@@ -421,6 +427,36 @@ impl CadApp {
             self.scene.deselect_all();
             self.gui.selected_entity = None;
             self.gui.status_message = "Selection cleared".into();
+            self.rebuild_scene_gpu();
+        }
+    }
+
+    // -- preselection (hover) ------------------------------------------------
+
+    fn update_preselection(&mut self) {
+        let Some((sx, sy)) = self.mouse.last_pos else { return };
+        let Some(rt) = &self.runtime else { return };
+        let size = rt.gpu.window.inner_size();
+        let w = size.width as f32;
+        let h = size.height as f32;
+        if w < 1.0 || h < 1.0 { return; }
+
+        let inv_vp = self.camera.inv_view_proj();
+        let (origin, dir) = crate::picking::screen_to_ray(sx as f32, sy as f32, w, h, inv_vp);
+
+        let mut best: Option<(crate::scene::ObjectId, f32)> = None;
+        for obj in self.scene.visible_objects() {
+            if let Some(hit) = crate::picking::pick_triangle(origin, dir, &obj.mesh.vertices, &obj.mesh.indices) {
+                if best.as_ref().is_none_or(|(_, d)| hit.distance < *d) {
+                    best = Some((obj.id, hit.distance));
+                }
+            }
+        }
+
+        let new_presel = best.map(|(id, _)| id);
+        if new_presel != self.preselected_object {
+            self.preselected_object = new_presel;
+            // Rebuild GPU to update highlight colors
             self.rebuild_scene_gpu();
         }
     }
@@ -1588,6 +1624,23 @@ impl CadApp {
                     self.log_info("All objects hidden");
                 }
 
+                // -- Parametric rebuild --
+                GuiAction::RebuildObject { id, params } => {
+                    self.snapshot_before("Edit parameters");
+                    let result = rebuild_object_from_params(&params);
+                    if let Some((model, solid)) = result {
+                        if let Some(obj) = self.scene.get_mut(id) {
+                            let mesh = cadkernel_io::tessellate_solid(&model, solid);
+                            obj.vertices = crate::render::mesh_to_vertices(&mesh);
+                            obj.mesh = mesh;
+                            obj.model = model;
+                            obj.solid = solid;
+                            obj.params = Some(params);
+                        }
+                        self.rebuild_scene_gpu();
+                    }
+                }
+
                 // -- Transform operations --
                 GuiAction::MoveObject { id, dx, dy, dz } => {
                     self.snapshot_before("Move object");
@@ -2074,6 +2127,7 @@ impl CadApp {
             grid_config,
             fps_display,
             object_ranges,
+            preselected_object,
             ..
         } = self;
         let Some(rt) = runtime else { return };
@@ -2403,12 +2457,16 @@ impl CadApp {
 
                 // Write per-object uniform slots (starting after grid+mesh slots)
                 let obj_slot_base = slot + 1;
-                for (i, &(_id, _start, _count, color, selected)) in object_ranges.iter().enumerate() {
+                let presel = *preselected_object;
+                for (i, &(id, _start, _count, color, selected)) in object_ranges.iter().enumerate() {
                     let obj_slot = obj_slot_base + i as u32;
                     if obj_slot >= 62 { break; } // leave room
                     let obj_color = if selected {
                         // Selection highlight: green tint
                         [color[0] * 0.5 + 0.15, color[1] * 0.5 + 0.35, color[2] * 0.5 + 0.1, color[3]]
+                    } else if presel == Some(id) {
+                        // Preselection highlight: warm yellow tint
+                        [color[0] * 0.6 + 0.3, color[1] * 0.6 + 0.25, color[2] * 0.4, color[3]]
                     } else {
                         color
                     };
@@ -2716,6 +2774,12 @@ impl ApplicationHandler for CadApp {
                         }
                     }
                     self.mouse.last_pos = Some((position.x, position.y));
+
+                    // Throttled preselection (hover highlight) — every 3 frames
+                    self.preselect_frame += 1;
+                    if self.preselect_frame % 3 == 0 && !self.mouse.left_pressed && !self.mouse.middle_pressed {
+                        self.update_preselection();
+                    }
                 }
 
                 WindowEvent::MouseWheel { delta, .. } => {
@@ -2911,6 +2975,33 @@ fn snap_roll_90(roll: f32, prev_roll: f32) -> f32 {
 // ---------------------------------------------------------------------------
 // Public entry point
 // ---------------------------------------------------------------------------
+
+/// Rebuild a primitive solid from creation parameters.
+fn rebuild_object_from_params(
+    params: &crate::scene::CreationParams,
+) -> Option<(BRepModel, Handle<SolidData>)> {
+    use crate::scene::CreationParams;
+    let mut model = BRepModel::new();
+    let result = match params {
+        CreationParams::Box { width, height, depth } => {
+            make_box(&mut model, Point3::ORIGIN, *width, *height, *depth).ok().map(|r| r.solid)
+        }
+        CreationParams::Cylinder { radius, height } => {
+            make_cylinder(&mut model, Point3::ORIGIN, *radius, *height, 64).ok().map(|r| r.solid)
+        }
+        CreationParams::Sphere { radius } => {
+            make_sphere(&mut model, Point3::ORIGIN, *radius, 64, 32).ok().map(|r| r.solid)
+        }
+        CreationParams::Cone { base_radius, top_radius, height } => {
+            make_cone(&mut model, Point3::ORIGIN, *base_radius, *top_radius, *height, 64).ok().map(|r| r.solid)
+        }
+        CreationParams::Torus { major_radius, minor_radius } => {
+            make_torus(&mut model, Point3::ORIGIN, *major_radius, *minor_radius, 64, 32).ok().map(|r| r.solid)
+        }
+        _ => None,
+    };
+    result.map(|solid| (model, solid))
+}
 
 pub fn run_gui() {
     let event_loop = EventLoop::new().unwrap();

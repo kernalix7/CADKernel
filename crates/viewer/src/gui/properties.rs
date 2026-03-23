@@ -213,63 +213,104 @@ fn draw_scene_overview(ui: &mut egui::Ui, scene: &Scene) {
 
 fn draw_params_editor(
     ui: &mut egui::Ui,
-    _gui: &mut GuiState,
-    _id: crate::scene::ObjectId,
+    gui: &mut GuiState,
+    id: crate::scene::ObjectId,
     params: &CreationParams,
 ) {
+    // Editable parameter fields — changes emit GuiAction to rebuild the object
     match params {
         CreationParams::Box { width, height, depth } => {
+            let (mut w, mut h, mut d) = (*width, *height, *depth);
+            let mut changed = false;
             egui::Grid::new("box_params").num_columns(2).show(ui, |ui| {
                 ui.label("Width:");
-                ui.label(format!("{width:.2}"));
+                changed |= ui.add(egui::DragValue::new(&mut w).range(0.1..=1000.0).speed(0.1)).changed();
                 ui.end_row();
                 ui.label("Height:");
-                ui.label(format!("{height:.2}"));
+                changed |= ui.add(egui::DragValue::new(&mut h).range(0.1..=1000.0).speed(0.1)).changed();
                 ui.end_row();
                 ui.label("Depth:");
-                ui.label(format!("{depth:.2}"));
+                changed |= ui.add(egui::DragValue::new(&mut d).range(0.1..=1000.0).speed(0.1)).changed();
                 ui.end_row();
             });
+            if changed {
+                gui.actions.push(GuiAction::RebuildObject {
+                    id,
+                    params: CreationParams::Box { width: w, height: h, depth: d },
+                });
+            }
         }
         CreationParams::Cylinder { radius, height } => {
+            let (mut r, mut h) = (*radius, *height);
+            let mut changed = false;
             egui::Grid::new("cyl_params").num_columns(2).show(ui, |ui| {
                 ui.label("Radius:");
-                ui.label(format!("{radius:.2}"));
+                changed |= ui.add(egui::DragValue::new(&mut r).range(0.1..=500.0).speed(0.1)).changed();
                 ui.end_row();
                 ui.label("Height:");
-                ui.label(format!("{height:.2}"));
+                changed |= ui.add(egui::DragValue::new(&mut h).range(0.1..=1000.0).speed(0.1)).changed();
                 ui.end_row();
             });
+            if changed {
+                gui.actions.push(GuiAction::RebuildObject {
+                    id,
+                    params: CreationParams::Cylinder { radius: r, height: h },
+                });
+            }
         }
         CreationParams::Sphere { radius } => {
+            let mut r = *radius;
+            let mut changed = false;
             egui::Grid::new("sph_params").num_columns(2).show(ui, |ui| {
                 ui.label("Radius:");
-                ui.label(format!("{radius:.2}"));
+                changed |= ui.add(egui::DragValue::new(&mut r).range(0.1..=500.0).speed(0.1)).changed();
                 ui.end_row();
             });
+            if changed {
+                gui.actions.push(GuiAction::RebuildObject {
+                    id,
+                    params: CreationParams::Sphere { radius: r },
+                });
+            }
         }
         CreationParams::Cone { base_radius, top_radius, height } => {
+            let (mut br, mut tr, mut h) = (*base_radius, *top_radius, *height);
+            let mut changed = false;
             egui::Grid::new("cone_params").num_columns(2).show(ui, |ui| {
                 ui.label("Base Radius:");
-                ui.label(format!("{base_radius:.2}"));
+                changed |= ui.add(egui::DragValue::new(&mut br).range(0.01..=500.0).speed(0.1)).changed();
                 ui.end_row();
                 ui.label("Top Radius:");
-                ui.label(format!("{top_radius:.2}"));
+                changed |= ui.add(egui::DragValue::new(&mut tr).range(0.0..=500.0).speed(0.1)).changed();
                 ui.end_row();
                 ui.label("Height:");
-                ui.label(format!("{height:.2}"));
+                changed |= ui.add(egui::DragValue::new(&mut h).range(0.1..=1000.0).speed(0.1)).changed();
                 ui.end_row();
             });
+            if changed {
+                gui.actions.push(GuiAction::RebuildObject {
+                    id,
+                    params: CreationParams::Cone { base_radius: br, top_radius: tr, height: h },
+                });
+            }
         }
         CreationParams::Torus { major_radius, minor_radius } => {
+            let (mut mr, mut mnr) = (*major_radius, *minor_radius);
+            let mut changed = false;
             egui::Grid::new("tor_params").num_columns(2).show(ui, |ui| {
                 ui.label("Major Radius:");
-                ui.label(format!("{major_radius:.2}"));
+                changed |= ui.add(egui::DragValue::new(&mut mr).range(0.1..=500.0).speed(0.1)).changed();
                 ui.end_row();
                 ui.label("Minor Radius:");
-                ui.label(format!("{minor_radius:.2}"));
+                changed |= ui.add(egui::DragValue::new(&mut mnr).range(0.01..=200.0).speed(0.05)).changed();
                 ui.end_row();
             });
+            if changed {
+                gui.actions.push(GuiAction::RebuildObject {
+                    id,
+                    params: CreationParams::Torus { major_radius: mr, minor_radius: mnr },
+                });
+            }
         }
         _ => {
             ui.weak("(parameters not editable for this type)");
