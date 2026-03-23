@@ -188,13 +188,13 @@ pub(crate) fn draw_view_cube(
 ) {
     let actions = &mut gui.actions;
     let cube_half = nav.cube_size * 0.5;
-    let margin = 70.0f32;
+    let margin = cube_half + 16.0; // dynamic margin based on cube size
     let viewport = ctx.available_rect();
     let center = match nav.cube_corner {
-        1 => egui::pos2(viewport.left() + margin, viewport.top() + margin + 10.0),    // TopLeft
-        2 => egui::pos2(viewport.left() + margin, viewport.bottom() - margin - 10.0), // BottomLeft
-        3 => egui::pos2(viewport.right() - margin, viewport.bottom() - margin - 10.0),// BottomRight
-        _ => egui::pos2(viewport.right() - margin, viewport.top() + margin + 10.0),   // TopRight (default)
+        1 => egui::pos2(viewport.left() + margin, viewport.top() + margin + 6.0),     // TopLeft
+        2 => egui::pos2(viewport.left() + margin, viewport.bottom() - margin - 6.0),  // BottomLeft
+        3 => egui::pos2(viewport.right() - margin, viewport.bottom() - margin - 6.0), // BottomRight
+        _ => egui::pos2(viewport.right() - margin, viewport.top() + margin + 6.0),    // TopRight (default)
     };
 
     let eye = camera.eye();
