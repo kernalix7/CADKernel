@@ -112,6 +112,43 @@ fn draw_object_row(
                 ui.close_menu();
             }
             ui.separator();
+            ui.menu_button("\u{2B06} Transform", |ui| {
+                if ui.button("Move +X (10)").clicked() {
+                    gui.actions.push(GuiAction::MoveObject { id, dx: 10.0, dy: 0.0, dz: 0.0 });
+                    ui.close_menu();
+                }
+                if ui.button("Move +Y (10)").clicked() {
+                    gui.actions.push(GuiAction::MoveObject { id, dx: 0.0, dy: 10.0, dz: 0.0 });
+                    ui.close_menu();
+                }
+                if ui.button("Move +Z (10)").clicked() {
+                    gui.actions.push(GuiAction::MoveObject { id, dx: 0.0, dy: 0.0, dz: 10.0 });
+                    ui.close_menu();
+                }
+                ui.separator();
+                if ui.button("Rotate X 90\u{00B0}").clicked() {
+                    gui.actions.push(GuiAction::RotateObject { id, axis: 0, angle_deg: 90.0 });
+                    ui.close_menu();
+                }
+                if ui.button("Rotate Y 90\u{00B0}").clicked() {
+                    gui.actions.push(GuiAction::RotateObject { id, axis: 1, angle_deg: 90.0 });
+                    ui.close_menu();
+                }
+                if ui.button("Rotate Z 90\u{00B0}").clicked() {
+                    gui.actions.push(GuiAction::RotateObject { id, axis: 2, angle_deg: 90.0 });
+                    ui.close_menu();
+                }
+                ui.separator();
+                if ui.button("Scale 2\u{00D7}").clicked() {
+                    gui.actions.push(GuiAction::ScaleObjectUniform { id, factor: 2.0 });
+                    ui.close_menu();
+                }
+                if ui.button("Scale 0.5\u{00D7}").clicked() {
+                    gui.actions.push(GuiAction::ScaleObjectUniform { id, factor: 0.5 });
+                    ui.close_menu();
+                }
+            });
+            ui.separator();
             if ui.button("\u{1F4CF} Measure").clicked() {
                 gui.actions.push(GuiAction::MeasureSolid);
                 ui.close_menu();
