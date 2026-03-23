@@ -294,6 +294,7 @@ pub(crate) enum GuiAction {
 pub(crate) struct GuiState {
     pub show_model_tree: bool,
     pub show_properties: bool,
+    pub property_tab: properties::PropertyTab,
     pub show_about: bool,
     pub show_settings: bool,
     pub show_create_box: bool,
@@ -396,6 +397,7 @@ impl GuiState {
         Self {
             show_model_tree: true,
             show_properties: true,
+            property_tab: properties::PropertyTab::Data,
             show_about: false,
             show_settings: false,
             show_create_box: false,
@@ -506,8 +508,8 @@ pub(crate) fn draw_ui(
     gui: &mut GuiState,
     nav: &mut NavConfig,
     vp: &ViewportInfo<'_>,
-    model: &BRepModel,
-    mesh: &Option<Mesh>,
+    _model: &BRepModel,
+    _mesh: &Option<Mesh>,
     scene: &crate::scene::Scene,
 ) {
     menu::draw_menu_bar(ctx, gui, vp.camera, vp.display_mode);
@@ -515,9 +517,9 @@ pub(crate) fn draw_ui(
     toolbar::draw_workbench_tabs(ctx, gui);
     toolbar::draw_context_toolbar(ctx, gui);
     tree::draw_model_tree(ctx, gui, scene);
-    properties::draw_properties(ctx, gui, model, mesh);
+    properties::draw_properties(ctx, gui, scene);
     report::draw_report_panel(ctx, gui);
-    status_bar::draw_status_bar(ctx, gui, vp, mesh);
+    status_bar::draw_status_bar(ctx, gui, vp, scene);
     dialogs::draw_create_dialogs(ctx, gui);
     sketch_ui::draw_sketch_overlay(ctx, gui, vp.camera);
     overlays::draw_techdraw_overlay(ctx, gui);

@@ -1,390 +1,297 @@
-use super::{GuiState, SelectedEntity};
-use cadkernel_io::Mesh;
-use cadkernel_modeling::compute_mass_properties;
-use cadkernel_topology::BRepModel;
+use super::{GuiAction, GuiState};
+use crate::scene::{CreationParams, Scene};
+
+/// Property panel tab state.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum PropertyTab {
+    Data,
+    View,
+}
 
 pub(crate) fn draw_properties(
     ctx: &egui::Context,
     gui: &mut GuiState,
-    model: &BRepModel,
-    mesh: &Option<Mesh>,
+    scene: &Scene,
 ) {
     if !gui.show_properties {
         return;
     }
     egui::SidePanel::right("properties")
-        .default_width(260.0)
+        .default_width(280.0)
         .show(ctx, |ui| {
-            ui.heading("Properties");
+            // Tab bar
+            ui.horizontal(|ui| {
+                let data_selected = gui.property_tab == PropertyTab::Data;
+                if ui.selectable_label(data_selected, "\u{1F4CA} Data").clicked() {
+                    gui.property_tab = PropertyTab::Data;
+                }
+                let view_selected = gui.property_tab == PropertyTab::View;
+                if ui.selectable_label(view_selected, "\u{1F3A8} View").clicked() {
+                    gui.property_tab = PropertyTab::View;
+                }
+            });
             ui.separator();
 
             egui::ScrollArea::vertical().show(ui, |ui| {
-                match &gui.selected_entity {
-                    Some(SelectedEntity::Solid(handle)) => {
-                        draw_solid_props(ui, gui, model, mesh, *handle);
+                if let Some(obj) = scene.selected_object() {
+                    match gui.property_tab {
+                        PropertyTab::Data => draw_data_tab(ui, gui, obj),
+                        PropertyTab::View => draw_view_tab(ui, gui, obj),
                     }
-                    Some(SelectedEntity::Shell(handle)) => {
-                        draw_shell_props(ui, model, *handle);
-                    }
-                    Some(SelectedEntity::Face(handle)) => {
-                        draw_face_props(ui, model, *handle);
-                    }
-                    Some(SelectedEntity::Edge(handle)) => {
-                        draw_edge_props(ui, model, *handle);
-                    }
-                    Some(SelectedEntity::Vertex(handle)) => {
-                        draw_vertex_props(ui, model, *handle);
-                    }
-                    None => {
-                        draw_model_overview(ui, gui, model, mesh);
-                    }
-                }
-
-                if let Some(path) = &gui.current_file {
-                    ui.separator();
-                    ui.strong("File");
-                    ui.label(path.as_str());
+                } else {
+                    draw_scene_overview(ui, scene);
                 }
             });
         });
 }
 
-fn draw_model_overview(
+fn draw_data_tab(
     ui: &mut egui::Ui,
     gui: &mut GuiState,
-    model: &BRepModel,
-    mesh: &Option<Mesh>,
+    obj: &crate::scene::SceneObject,
 ) {
-    ui.strong("Model Overview");
-    egui::Grid::new("overview_grid")
-        .num_columns(2)
-        .spacing([12.0, 4.0])
+    ui.strong(&obj.name);
+    ui.separator();
+
+    // Base properties
+    egui::CollapsingHeader::new("Base")
+        .default_open(true)
         .show(ui, |ui| {
-            ui.label("Solids:");
-            ui.label(format!("{}", model.solids.len()));
-            ui.end_row();
-            ui.label("Shells:");
-            ui.label(format!("{}", model.shells.len()));
-            ui.end_row();
-            ui.label("Faces:");
-            ui.label(format!("{}", model.faces.len()));
-            ui.end_row();
-            ui.label("Edges:");
-            ui.label(format!("{}", model.edges.len()));
-            ui.end_row();
-            ui.label("Vertices:");
-            ui.label(format!("{}", model.vertices.len()));
-            ui.end_row();
-        });
-
-    if let Some(mesh) = mesh {
-        ui.separator();
-        ui.strong("Mesh");
-        egui::Grid::new("mesh_grid")
-            .num_columns(2)
-            .spacing([12.0, 4.0])
-            .show(ui, |ui| {
-                ui.label("Vertices:");
-                ui.label(format!("{}", mesh.vertices.len()));
+            egui::Grid::new("base_grid").num_columns(2).show(ui, |ui| {
+                ui.label("Label:");
+                ui.label(&obj.name);
                 ui.end_row();
-                ui.label("Triangles:");
-                ui.label(format!("{}", mesh.triangle_count()));
+
+                if let Some(params) = &obj.params {
+                    ui.label("Type:");
+                    ui.label(params_type_name(params));
+                    ui.end_row();
+                }
+
+                ui.label("Visible:");
+                ui.label(if obj.visible { "Yes" } else { "No" });
                 ui.end_row();
             });
+        });
 
-        ui.separator();
-        ui.strong("Mass Properties");
-        let tri_count = mesh.triangle_count();
-        if gui.cached_props.is_none() || gui.cached_props_tri_count != tri_count {
-            gui.cached_props = Some(compute_mass_properties(mesh));
-            gui.cached_props_tri_count = tri_count;
-        }
-        if let Some(props) = &gui.cached_props {
-            egui::Grid::new("mass_grid")
-                .num_columns(2)
-                .spacing([12.0, 4.0])
-                .show(ui, |ui| {
-                    ui.label("Volume:");
-                    ui.label(format!("{:.4}", props.volume));
-                    ui.end_row();
-                    ui.label("Surface area:");
-                    ui.label(format!("{:.4}", props.surface_area));
-                    ui.end_row();
-                    ui.label("Centroid:");
-                    ui.label(format!(
-                        "({:.2}, {:.2}, {:.2})",
-                        props.centroid.x, props.centroid.y, props.centroid.z
-                    ));
-                    ui.end_row();
-                });
-        }
-    } else {
-        ui.separator();
-        ui.weak("No model loaded");
-        ui.weak("Use File > Open or Create menu");
-    }
-}
-
-fn draw_solid_props(
-    ui: &mut egui::Ui,
-    gui: &mut GuiState,
-    model: &BRepModel,
-    mesh: &Option<Mesh>,
-    handle: cadkernel_topology::Handle<cadkernel_topology::SolidData>,
-) {
-    ui.strong("Solid Properties");
-    if let Some(solid) = model.solids.get(handle) {
-        egui::Grid::new("solid_grid")
-            .num_columns(2)
-            .spacing([12.0, 4.0])
+    // Creation parameters (editable)
+    if let Some(params) = &obj.params {
+        egui::CollapsingHeader::new("Parameters")
+            .default_open(true)
             .show(ui, |ui| {
-                ui.label("Handle:");
-                ui.label(format!("{:?}", handle));
+                draw_params_editor(ui, gui, obj.id, params);
+            });
+    }
+
+    // Topology info
+    egui::CollapsingHeader::new("Topology")
+        .default_open(false)
+        .show(ui, |ui| {
+            let m = &obj.model;
+            egui::Grid::new("topo_grid").num_columns(2).show(ui, |ui| {
+                ui.label("Solids:");
+                ui.label(format!("{}", m.solids.len()));
                 ui.end_row();
-                if let Some(tag) = &solid.tag {
-                    ui.label("Tag:");
-                    ui.label(format!("{tag}"));
-                    ui.end_row();
-                }
                 ui.label("Shells:");
-                ui.label(format!("{}", solid.shells.len()));
+                ui.label(format!("{}", m.shells.len()));
                 ui.end_row();
-
-                // Count faces and edges
-                let mut face_count = 0;
-                let mut edge_set = std::collections::HashSet::new();
-                let mut vertex_set = std::collections::HashSet::new();
-                for &sh in &solid.shells {
-                    if let Some(shell) = model.shells.get(sh) {
-                        face_count += shell.faces.len();
-                        for &fh in &shell.faces {
-                            if let Ok(edges) = model.edges_of_face(fh) {
-                                for eh in edges {
-                                    edge_set.insert(format!("{:?}", eh));
-                                    if let Some(ed) = model.edges.get(eh) {
-                                        vertex_set.insert(format!("{:?}", ed.start));
-                                        vertex_set.insert(format!("{:?}", ed.end));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-
                 ui.label("Faces:");
-                ui.label(format!("{face_count}"));
+                ui.label(format!("{}", m.faces.len()));
                 ui.end_row();
                 ui.label("Edges:");
-                ui.label(format!("{}", edge_set.len()));
+                ui.label(format!("{}", m.edges.len()));
                 ui.end_row();
                 ui.label("Vertices:");
-                ui.label(format!("{}", vertex_set.len()));
+                ui.label(format!("{}", m.vertices.len()));
                 ui.end_row();
             });
+        });
 
-        // Mass properties
-        if let Some(mesh) = mesh {
-            ui.separator();
-            ui.strong("Mass Properties");
-            let tri_count = mesh.triangle_count();
-            if gui.cached_props.is_none() || gui.cached_props_tri_count != tri_count {
-                gui.cached_props = Some(compute_mass_properties(mesh));
-                gui.cached_props_tri_count = tri_count;
-            }
-            if let Some(props) = &gui.cached_props {
-                egui::Grid::new("solid_mass_grid")
-                    .num_columns(2)
-                    .spacing([12.0, 4.0])
-                    .show(ui, |ui| {
-                        ui.label("Volume:");
-                        ui.label(format!("{:.4}", props.volume));
-                        ui.end_row();
-                        ui.label("Surface area:");
-                        ui.label(format!("{:.4}", props.surface_area));
-                        ui.end_row();
-                        ui.label("Centroid:");
-                        ui.label(format!(
-                            "({:.2}, {:.2}, {:.2})",
-                            props.centroid.x, props.centroid.y, props.centroid.z
-                        ));
-                        ui.end_row();
-                    });
-            }
+    // Mesh info
+    egui::CollapsingHeader::new("Mesh")
+        .default_open(false)
+        .show(ui, |ui| {
+            egui::Grid::new("mesh_grid").num_columns(2).show(ui, |ui| {
+                ui.label("Triangles:");
+                ui.label(format!("{}", obj.mesh.triangle_count()));
+                ui.end_row();
+                ui.label("Vertices:");
+                ui.label(format!("{}", obj.mesh.vertices.len()));
+                ui.end_row();
+            });
+        });
+
+    // Mass properties
+    egui::CollapsingHeader::new("Mass Properties")
+        .default_open(false)
+        .show(ui, |ui| {
+            let props = cadkernel_modeling::compute_mass_properties(&obj.mesh);
+            egui::Grid::new("mass_grid").num_columns(2).show(ui, |ui| {
+                ui.label("Volume:");
+                ui.label(format!("{:.4}", props.volume));
+                ui.end_row();
+                ui.label("Surface Area:");
+                ui.label(format!("{:.4}", props.surface_area));
+                ui.end_row();
+                ui.label("Centroid X:");
+                ui.label(format!("{:.4}", props.centroid.x));
+                ui.end_row();
+                ui.label("Centroid Y:");
+                ui.label(format!("{:.4}", props.centroid.y));
+                ui.end_row();
+                ui.label("Centroid Z:");
+                ui.label(format!("{:.4}", props.centroid.z));
+                ui.end_row();
+            });
+        });
+}
+
+fn draw_view_tab(
+    ui: &mut egui::Ui,
+    gui: &mut GuiState,
+    obj: &crate::scene::SceneObject,
+) {
+    ui.strong("Display Properties");
+    ui.separator();
+
+    egui::CollapsingHeader::new("Display")
+        .default_open(true)
+        .show(ui, |ui| {
+            egui::Grid::new("display_grid").num_columns(2).show(ui, |ui| {
+                // Color display
+                ui.label("Shape Color:");
+                let [r, g, b, _] = obj.color;
+                let color = egui::Color32::from_rgb(
+                    (r * 255.0) as u8,
+                    (g * 255.0) as u8,
+                    (b * 255.0) as u8,
+                );
+                let (rect, resp) = ui.allocate_exact_size(egui::vec2(60.0, 18.0), egui::Sense::click());
+                ui.painter().rect_filled(rect, 2.0, color);
+                if resp.clicked() {
+                    gui.actions.push(GuiAction::StatusMessage(
+                        "Color picker: coming soon".into(),
+                    ));
+                }
+                ui.end_row();
+
+                ui.label("Visibility:");
+                ui.label(if obj.visible { "\u{25C9} Visible" } else { "\u{25CB} Hidden" });
+                ui.end_row();
+
+                ui.label("Selection:");
+                ui.label(if obj.selected { "\u{2714} Selected" } else { "\u{2717} Not selected" });
+                ui.end_row();
+            });
+        });
+
+    egui::CollapsingHeader::new("Object Name")
+        .default_open(true)
+        .show(ui, |ui| {
+            ui.label(&obj.name);
+        });
+}
+
+fn draw_scene_overview(ui: &mut egui::Ui, scene: &Scene) {
+    ui.strong("Scene Overview");
+    ui.separator();
+
+    egui::Grid::new("overview_grid").num_columns(2).show(ui, |ui| {
+        ui.label("Objects:");
+        ui.label(format!("{}", scene.len()));
+        ui.end_row();
+        ui.label("Visible:");
+        ui.label(format!("{}", scene.visible_objects().count()));
+        ui.end_row();
+    });
+
+    if scene.is_empty() {
+        ui.separator();
+        ui.weak("No objects in scene.\nCreate or import a model to start.");
+    }
+}
+
+fn draw_params_editor(
+    ui: &mut egui::Ui,
+    _gui: &mut GuiState,
+    _id: crate::scene::ObjectId,
+    params: &CreationParams,
+) {
+    match params {
+        CreationParams::Box { width, height, depth } => {
+            egui::Grid::new("box_params").num_columns(2).show(ui, |ui| {
+                ui.label("Width:");
+                ui.label(format!("{width:.2}"));
+                ui.end_row();
+                ui.label("Height:");
+                ui.label(format!("{height:.2}"));
+                ui.end_row();
+                ui.label("Depth:");
+                ui.label(format!("{depth:.2}"));
+                ui.end_row();
+            });
         }
-    } else {
-        ui.weak("(solid not found)");
+        CreationParams::Cylinder { radius, height } => {
+            egui::Grid::new("cyl_params").num_columns(2).show(ui, |ui| {
+                ui.label("Radius:");
+                ui.label(format!("{radius:.2}"));
+                ui.end_row();
+                ui.label("Height:");
+                ui.label(format!("{height:.2}"));
+                ui.end_row();
+            });
+        }
+        CreationParams::Sphere { radius } => {
+            egui::Grid::new("sph_params").num_columns(2).show(ui, |ui| {
+                ui.label("Radius:");
+                ui.label(format!("{radius:.2}"));
+                ui.end_row();
+            });
+        }
+        CreationParams::Cone { base_radius, top_radius, height } => {
+            egui::Grid::new("cone_params").num_columns(2).show(ui, |ui| {
+                ui.label("Base Radius:");
+                ui.label(format!("{base_radius:.2}"));
+                ui.end_row();
+                ui.label("Top Radius:");
+                ui.label(format!("{top_radius:.2}"));
+                ui.end_row();
+                ui.label("Height:");
+                ui.label(format!("{height:.2}"));
+                ui.end_row();
+            });
+        }
+        CreationParams::Torus { major_radius, minor_radius } => {
+            egui::Grid::new("tor_params").num_columns(2).show(ui, |ui| {
+                ui.label("Major Radius:");
+                ui.label(format!("{major_radius:.2}"));
+                ui.end_row();
+                ui.label("Minor Radius:");
+                ui.label(format!("{minor_radius:.2}"));
+                ui.end_row();
+            });
+        }
+        _ => {
+            ui.weak("(parameters not editable for this type)");
+        }
     }
 }
 
-fn draw_shell_props(
-    ui: &mut egui::Ui,
-    model: &BRepModel,
-    handle: cadkernel_topology::Handle<cadkernel_topology::ShellData>,
-) {
-    ui.strong("Shell Properties");
-    if let Some(shell) = model.shells.get(handle) {
-        egui::Grid::new("shell_grid")
-            .num_columns(2)
-            .spacing([12.0, 4.0])
-            .show(ui, |ui| {
-                ui.label("Handle:");
-                ui.label(format!("{:?}", handle));
-                ui.end_row();
-                if let Some(tag) = &shell.tag {
-                    ui.label("Tag:");
-                    ui.label(format!("{tag}"));
-                    ui.end_row();
-                }
-                ui.label("Faces:");
-                ui.label(format!("{}", shell.faces.len()));
-                ui.end_row();
-                ui.label("Parent Solid:");
-                ui.label(if shell.solid.is_some() {
-                    "Yes"
-                } else {
-                    "None"
-                });
-                ui.end_row();
-            });
-    } else {
-        ui.weak("(shell not found)");
-    }
-}
-
-fn draw_face_props(
-    ui: &mut egui::Ui,
-    model: &BRepModel,
-    handle: cadkernel_topology::Handle<cadkernel_topology::FaceData>,
-) {
-    ui.strong("Face Properties");
-    if let Some(face) = model.faces.get(handle) {
-        egui::Grid::new("face_grid")
-            .num_columns(2)
-            .spacing([12.0, 4.0])
-            .show(ui, |ui| {
-                ui.label("Handle:");
-                ui.label(format!("{:?}", handle));
-                ui.end_row();
-                if let Some(tag) = &face.tag {
-                    ui.label("Tag:");
-                    ui.label(format!("{tag}"));
-                    ui.end_row();
-                }
-                ui.label("Orientation:");
-                ui.label(format!("{:?}", face.orientation));
-                ui.end_row();
-                ui.label("Inner loops:");
-                ui.label(format!("{}", face.inner_loops.len()));
-                ui.end_row();
-                ui.label("Has surface:");
-                ui.label(if face.surface.is_some() {
-                    "Yes"
-                } else {
-                    "No"
-                });
-                ui.end_row();
-
-                // Edge count via edges_of_face
-                if let Ok(edges) = model.edges_of_face(handle) {
-                    ui.label("Edges:");
-                    ui.label(format!("{}", edges.len()));
-                    ui.end_row();
-                }
-            });
-    } else {
-        ui.weak("(face not found)");
-    }
-}
-
-fn draw_edge_props(
-    ui: &mut egui::Ui,
-    model: &BRepModel,
-    handle: cadkernel_topology::Handle<cadkernel_topology::EdgeData>,
-) {
-    ui.strong("Edge Properties");
-    if let Some(edge) = model.edges.get(handle) {
-        egui::Grid::new("edge_grid")
-            .num_columns(2)
-            .spacing([12.0, 4.0])
-            .show(ui, |ui| {
-                ui.label("Handle:");
-                ui.label(format!("{:?}", handle));
-                ui.end_row();
-                if let Some(tag) = &edge.tag {
-                    ui.label("Tag:");
-                    ui.label(format!("{tag}"));
-                    ui.end_row();
-                }
-                ui.label("Has curve:");
-                ui.label(if edge.curve.is_some() { "Yes" } else { "No" });
-                ui.end_row();
-
-                if let Some(sv) = model.vertices.get(edge.start) {
-                    ui.label("Start:");
-                    ui.label(format!(
-                        "({:.3}, {:.3}, {:.3})",
-                        sv.point.x, sv.point.y, sv.point.z
-                    ));
-                    ui.end_row();
-                }
-                if let Some(ev) = model.vertices.get(edge.end) {
-                    ui.label("End:");
-                    ui.label(format!(
-                        "({:.3}, {:.3}, {:.3})",
-                        ev.point.x, ev.point.y, ev.point.z
-                    ));
-                    ui.end_row();
-                }
-
-                // Compute length
-                if let (Some(sv), Some(ev)) = (
-                    model.vertices.get(edge.start),
-                    model.vertices.get(edge.end),
-                ) {
-                    let dx = ev.point.x - sv.point.x;
-                    let dy = ev.point.y - sv.point.y;
-                    let dz = ev.point.z - sv.point.z;
-                    let length = (dx * dx + dy * dy + dz * dz).sqrt();
-                    ui.label("Length:");
-                    ui.label(format!("{:.4}", length));
-                    ui.end_row();
-                }
-            });
-    } else {
-        ui.weak("(edge not found)");
-    }
-}
-
-fn draw_vertex_props(
-    ui: &mut egui::Ui,
-    model: &BRepModel,
-    handle: cadkernel_topology::Handle<cadkernel_topology::VertexData>,
-) {
-    ui.strong("Vertex Properties");
-    if let Some(vertex) = model.vertices.get(handle) {
-        egui::Grid::new("vertex_grid")
-            .num_columns(2)
-            .spacing([12.0, 4.0])
-            .show(ui, |ui| {
-                ui.label("Handle:");
-                ui.label(format!("{:?}", handle));
-                ui.end_row();
-                if let Some(tag) = &vertex.tag {
-                    ui.label("Tag:");
-                    ui.label(format!("{tag}"));
-                    ui.end_row();
-                }
-                ui.label("X:");
-                ui.label(format!("{:.6}", vertex.point.x));
-                ui.end_row();
-                ui.label("Y:");
-                ui.label(format!("{:.6}", vertex.point.y));
-                ui.end_row();
-                ui.label("Z:");
-                ui.label(format!("{:.6}", vertex.point.z));
-                ui.end_row();
-            });
-    } else {
-        ui.weak("(vertex not found)");
+fn params_type_name(p: &CreationParams) -> &'static str {
+    match p {
+        CreationParams::Box { .. } => "Part::Box",
+        CreationParams::Cylinder { .. } => "Part::Cylinder",
+        CreationParams::Sphere { .. } => "Part::Sphere",
+        CreationParams::Cone { .. } => "Part::Cone",
+        CreationParams::Torus { .. } => "Part::Torus",
+        CreationParams::Tube { .. } => "Part::Tube",
+        CreationParams::Prism { .. } => "Part::Prism",
+        CreationParams::Wedge { .. } => "Part::Wedge",
+        CreationParams::Ellipsoid { .. } => "Part::Ellipsoid",
+        CreationParams::Helix { .. } => "Part::Helix",
+        CreationParams::Imported { .. } => "Mesh::Import",
+        CreationParams::Extruded => "Part::Extrusion",
+        CreationParams::Revolved => "Part::Revolution",
+        CreationParams::Boolean { .. } => "Part::Boolean",
     }
 }
