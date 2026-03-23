@@ -188,15 +188,19 @@ pub(crate) fn draw_view_cube(
 ) {
     let actions = &mut gui.actions;
     let cube_half = nav.cube_size * 0.5;
-    // Total radius: cube_half*1.6 (ring) + 14 (arrows) + 8 (label text)
+    // Total radius including orbit ring, arrows, compass labels
     let total_radius = cube_half * 1.6 + 22.0;
-    let margin = total_radius + 8.0;
-    let viewport = ctx.screen_rect(); // use FULL screen rect, not available (which is reduced by panels)
+    let pad = total_radius + 10.0;
+    let scr = ctx.screen_rect();
+    // Offsets to avoid panels: top ~80px (toolbars), bottom ~170px (report+status), left ~280px (combo)
+    let top_off = 80.0;
+    let bot_off = 180.0;
+    let left_off = 290.0;
     let center = match nav.cube_corner {
-        1 => egui::pos2(viewport.left() + margin, viewport.top() + margin + 6.0),     // TopLeft
-        2 => egui::pos2(viewport.left() + margin, viewport.bottom() - margin - 6.0),  // BottomLeft
-        3 => egui::pos2(viewport.right() - margin, viewport.bottom() - margin - 6.0), // BottomRight
-        _ => egui::pos2(viewport.right() - margin, viewport.top() + margin + 6.0),    // TopRight (default)
+        1 => egui::pos2(left_off + pad, top_off + pad),                         // TopLeft
+        2 => egui::pos2(left_off + pad, scr.bottom() - bot_off - pad),         // BottomLeft
+        3 => egui::pos2(scr.right() - pad, scr.bottom() - bot_off - pad),     // BottomRight
+        _ => egui::pos2(scr.right() - pad, top_off + pad),                     // TopRight
     };
 
     let eye = camera.eye();
