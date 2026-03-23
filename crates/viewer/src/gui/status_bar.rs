@@ -1,12 +1,12 @@
 use super::{GuiState, ViewportInfo};
 use crate::render::Projection;
-use cadkernel_io::Mesh;
+use crate::scene::Scene;
 
 pub(crate) fn draw_status_bar(
     ctx: &egui::Context,
     gui: &GuiState,
     vp: &ViewportInfo<'_>,
-    mesh: &Option<Mesh>,
+    scene: &Scene,
 ) {
     egui::TopBottomPanel::bottom("status_bar").show(ctx, |ui| {
         ui.horizontal(|ui| {
@@ -20,7 +20,7 @@ pub(crate) fn draw_status_bar(
             }
             ui.label(&gui.status_message);
 
-            // Right: mesh info + display mode + projection
+            // Right: scene info + display mode + projection + FPS
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 let proj_tag = match vp.camera.projection {
                     Projection::Perspective => "Persp",
@@ -32,18 +32,21 @@ pub(crate) fn draw_status_bar(
                 } else {
                     String::new()
                 };
-                if let Some(mesh) = mesh {
-                    ui.label(format!(
-                        "{}V: {} | T: {} | {} | {}",
-                        fps_tag,
-                        mesh.vertices.len(),
-                        mesh.triangle_count(),
-                        dm_tag,
-                        proj_tag,
-                    ));
+
+                // Scene stats
+                let n_obj = scene.len();
+                let n_vis = scene.visible_objects().count();
+                let total_tri: usize = scene.visible_objects().map(|o| o.mesh.triangle_count()).sum();
+
+                let sel_info = if let Some(obj) = scene.selected_object() {
+                    format!(" | Sel: {}", obj.name)
                 } else {
-                    ui.label(format!("{fps_tag}{dm_tag} | {proj_tag}"));
-                }
+                    String::new()
+                };
+
+                ui.label(format!(
+                    "{fps_tag}Obj: {n_obj} ({n_vis} vis) | \u{25B3} {total_tri}{sel_info} | {dm_tag} | {proj_tag}"
+                ));
             });
         });
     });

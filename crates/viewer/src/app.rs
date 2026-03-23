@@ -382,7 +382,6 @@ impl CadApp {
 
     fn try_pick_entity(&mut self) {
         let Some((sx, sy)) = self.mouse.last_pos else { return };
-        let Some(mesh) = &self.current_mesh else { return };
         let Some(rt) = &self.runtime else { return };
         let size = rt.gpu.window.inner_size();
         let w = size.width as f32;
@@ -394,19 +393,35 @@ impl CadApp {
             sx as f32, sy as f32, w, h, inv_vp,
         );
 
-        if let Some(hit) = crate::picking::pick_triangle(origin, dir, &mesh.vertices, &mesh.indices) {
-            // Select the solid that owns this triangle
-            if let Some(solid) = self.current_solid {
-                self.gui.selected_entity = Some(gui::SelectedEntity::Solid(solid));
+        // Test all visible scene objects and find the closest hit
+        let mut best_hit: Option<(crate::scene::ObjectId, f32)> = None;
+        for obj in self.scene.visible_objects() {
+            if let Some(hit) = crate::picking::pick_triangle(
+                origin, dir, &obj.mesh.vertices, &obj.mesh.indices,
+            ) {
+                let is_closer = best_hit.as_ref().is_none_or(|(_, d)| hit.distance < *d);
+                if is_closer {
+                    best_hit = Some((obj.id, hit.distance));
+                }
+            }
+        }
+
+        if let Some((obj_id, dist)) = best_hit {
+            self.scene.select_single(obj_id);
+            if let Some(obj) = self.scene.get(obj_id) {
+                self.model = obj.model.clone();
+                self.current_solid = Some(obj.solid);
+                self.current_mesh = Some(obj.mesh.clone());
                 self.gui.status_message = format!(
-                    "Selected: triangle {}, dist {:.2}",
-                    hit.triangle_index, hit.distance
+                    "Selected: {} (dist {dist:.2})", obj.name
                 );
             }
+            self.rebuild_scene_gpu();
         } else {
-            // Click on empty space → deselect
+            self.scene.deselect_all();
             self.gui.selected_entity = None;
             self.gui.status_message = "Selection cleared".into();
+            self.rebuild_scene_gpu();
         }
     }
 
