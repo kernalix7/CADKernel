@@ -221,6 +221,19 @@ fn draw_object_row(
             if let Some(params) = &obj.params {
                 ui.weak(format!("  Type: {}", params_label(params)));
             }
+
+            // Construction history
+            let records = obj.model.history.records();
+            if !records.is_empty() {
+                egui::CollapsingHeader::new(format!("\u{1F4DC} History ({})", records.len()))
+                    .id_salt(format!("hist_{id}"))
+                    .default_open(false)
+                    .show(ui, |ui| {
+                        for (i, record) in records.iter().enumerate() {
+                            ui.weak(format!("  {}. {}", i + 1, record.label));
+                        }
+                    });
+            }
         });
     }
 }
