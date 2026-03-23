@@ -521,7 +521,7 @@ pub(crate) fn draw_view_cube(
 
     // Face labels
     for lbl in &face_labels {
-        let font_size = 9.0 + lbl.facing * 3.0;
+        let font_size = 6.0 + lbl.facing * 2.5;
         let alpha = ((lbl.facing * 255.0) as u8).max(80);
         let tc = if lbl.is_hovered {
             egui::Color32::from_rgba_premultiplied(255, 255, 255, alpha)
