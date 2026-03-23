@@ -293,6 +293,7 @@ pub(crate) enum GuiAction {
 
 pub(crate) struct GuiState {
     pub show_model_tree: bool,
+    pub tree_filter: String,
     pub show_properties: bool,
     pub property_tab: properties::PropertyTab,
     pub show_about: bool,
@@ -384,6 +385,9 @@ pub(crate) struct GuiState {
     // Report panel (Block 5)
     pub report_lines: Vec<(ReportLevel, String)>,
     pub show_report_panel: bool,
+    pub bottom_tab: report::BottomTab,
+    pub console_history: Vec<String>,
+    pub console_input: String,
 
     // Mouse world position for status bar (Block 4)
     pub mouse_world_pos: Option<[f64; 3]>,
@@ -396,6 +400,7 @@ impl GuiState {
     pub fn new() -> Self {
         Self {
             show_model_tree: true,
+            tree_filter: String::new(),
             show_properties: true,
             property_tab: properties::PropertyTab::Data,
             show_about: false,
@@ -473,6 +478,9 @@ impl GuiState {
             selected_entity: None,
             report_lines: Vec::new(),
             show_report_panel: true,
+            bottom_tab: report::BottomTab::Report,
+            console_history: Vec::new(),
+            console_input: String::new(),
             mouse_world_pos: None,
             cached_props: None,
             cached_props_tri_count: 0,
