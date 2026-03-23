@@ -1624,6 +1624,14 @@ impl CadApp {
                     self.log_info("All objects hidden");
                 }
 
+                // -- Color change --
+                GuiAction::SetObjectColor { id, color } => {
+                    if let Some(obj) = self.scene.get_mut(id) {
+                        obj.color = color;
+                    }
+                    self.rebuild_scene_gpu();
+                }
+
                 // -- Parametric rebuild --
                 GuiAction::RebuildObject { id, params } => {
                     self.snapshot_before("Edit parameters");
