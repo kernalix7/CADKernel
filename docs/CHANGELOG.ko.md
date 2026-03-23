@@ -422,7 +422,15 @@
 - Move (이동), Rotate (회전), Scale (크기), 컨텍스트 메뉴 프리셋, undo 지원
 
 **툴바 아이콘 + 상태바:**
-- Unicode 심볼, Show/Hide All, 오브젝트 수, 삼각형 수, 선택 이름
+- 9개 워크벤치 전체 ~70개 버튼에 Unicode 심볼
+- Show/Hide All, 오브젝트 수, 삼각형 수, 선택 이름
+
+**추가:**
+- About 다이얼로그: 크레이트 정보, 렌더러, 기능 수
+- Escape 계층: task panel → 선택해제 → sketch → 종료
+- Ctrl+O (열기), Ctrl+S (저장) 단축키
+- Import STL/OBJ가 Scene에 추가 (다중 오브젝트 유지)
+- 개선된 About 다이얼로그
 
 #### 심화 품질 개선 (2026-03-20)
 
