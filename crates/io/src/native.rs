@@ -1,7 +1,6 @@
 //! Native CADKernel project file format (`.cadk`).
 //!
 //! Human-readable JSON with format header for version tracking.
-//! Designed for easy text editing and AI-assisted workflows.
 
 use cadkernel_core::{KernelError, KernelResult};
 use cadkernel_topology::BRepModel;
