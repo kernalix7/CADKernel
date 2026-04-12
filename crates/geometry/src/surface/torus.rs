@@ -5,8 +5,9 @@ use super::Surface;
 
 /// A torus surface defined by center, axis, major radius, and minor radius.
 ///
-/// Parameterisation: `u` = angle around the axis (major circle),
-/// `v` = angle around the tube (minor circle).
+/// Parameterisation: `u` = angle around the axis (major circle) in `[0, 2*pi]`,
+/// `v` = angle around the tube (minor circle) in `[0, 2*pi]`.
+/// Validated at construction: both radii must be positive and `major > minor`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Torus {
     pub center: Point3,

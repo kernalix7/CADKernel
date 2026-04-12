@@ -13,8 +13,21 @@ struct Entry<T> {
 
 /// An arena-style store that allocates entities and returns [`Handle`]s.
 ///
-/// Supports O(1) insert, remove, and lookup. Generations prevent use-after-free
-/// via stale handles.
+/// Supports O(1) insert, remove, and lookup. Generations prevent
+/// use-after-free via stale handles. Removed slots are recycled through a
+/// free list. Iteration yields only live entities.
+///
+/// # Examples
+///
+/// ```
+/// use cadkernel_topology::EntityStore;
+///
+/// let mut store = EntityStore::new();
+/// let h = store.insert(42);
+/// assert_eq!(store.get(h), Some(&42));
+/// store.remove(h);
+/// assert!(store.get(h).is_none());
+/// ```
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(bound(serialize = "T: Serialize", deserialize = "T: Deserialize<'de>"))]
 pub struct EntityStore<T> {

@@ -1,6 +1,8 @@
 use cadkernel_math::Point2;
 
 /// A 2D point in sketch space, the fundamental degree of freedom.
+///
+/// Each point contributes two variables (x, y) to the solver system.
 #[derive(Debug, Clone, Copy)]
 pub struct SketchPoint {
     pub position: Point2,
@@ -15,19 +17,19 @@ impl SketchPoint {
     }
 }
 
-/// Index into the sketch's point storage.
+/// Index into the sketch's point storage. Wraps a `usize` for type safety.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PointId(pub usize);
 
-/// Index into the sketch's line storage.
+/// Index into the sketch's line storage. Wraps a `usize` for type safety.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct LineId(pub usize);
 
-/// Index into the sketch's arc storage.
+/// Index into the sketch's arc storage. Wraps a `usize` for type safety.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ArcId(pub usize);
 
-/// Index into the sketch's circle storage.
+/// Index into the sketch's circle storage. Wraps a `usize` for type safety.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct CircleId(pub usize);
 
@@ -81,6 +83,8 @@ pub struct SketchBSpline {
     pub control_points: Vec<PointId>,
     pub degree: usize,
     pub closed: bool,
+    /// Explicit knot vector. If empty, a clamped uniform knot vector is used.
+    pub knots: Vec<f64>,
 }
 
 /// Index into the sketch's elliptical arc storage.

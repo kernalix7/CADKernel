@@ -1,3 +1,10 @@
+//! DWG (AutoCAD native binary) file format import and export.
+//!
+//! DWG is a complex proprietary binary format. This implementation provides
+//! basic 3D geometry extraction by scanning for 3DFACE-like patterns in the
+//! binary object data. For full DWG support, converting to DXF first using
+//! external tools (e.g., LibreDWG) is recommended.
+
 use cadkernel_core::{KernelError, KernelResult};
 use cadkernel_math::{Point3, Vec3};
 
@@ -135,7 +142,7 @@ pub fn export_dwg(mesh: &Mesh) -> KernelResult<Vec<u8>> {
     Ok(dxf_content.into_bytes())
 }
 
-/// Write DWG bytes to file.
+/// Writes DWG byte data to a file at the given path.
 pub fn write_dwg(path: &str, data: &[u8]) -> KernelResult<()> {
     std::fs::write(path, data).map_err(|e| KernelError::IoError(e.to_string()))
 }
@@ -171,5 +178,73 @@ mod tests {
     fn test_dwg_import_empty() {
         let fake_data = b"AC1015\x00\x00\x00\x00";
         assert!(import_dwg(fake_data).is_err());
+    }
+
+    #[test]
+    fn test_dwg_version_detection_all_versions() {
+        assert_eq!(detect_dwg_version(b"AC1015xxxx").unwrap(), "2000");
+        assert_eq!(detect_dwg_version(b"AC1018xxxx").unwrap(), "2004");
+        assert_eq!(detect_dwg_version(b"AC1021xxxx").unwrap(), "2007");
+        assert_eq!(detect_dwg_version(b"AC1024xxxx").unwrap(), "2010");
+        assert_eq!(detect_dwg_version(b"AC1027xxxx").unwrap(), "2013");
+        assert_eq!(detect_dwg_version(b"AC1032xxxx").unwrap(), "2018+");
+    }
+
+    #[test]
+    fn test_dwg_version_too_short() {
+        assert!(detect_dwg_version(b"AC10").is_err());
+    }
+
+    #[test]
+    fn test_dwg_export_empty_mesh() {
+        let mesh = Mesh { vertices: vec![], normals: vec![], indices: vec![] };
+        assert!(export_dwg(&mesh).is_err());
+    }
+
+    #[test]
+    fn test_dwg_export_multiple_triangles() {
+        let mesh = Mesh {
+            vertices: vec![
+                Point3::new(0.0, 0.0, 0.0),
+                Point3::new(1.0, 0.0, 0.0),
+                Point3::new(0.5, 1.0, 0.0),
+                Point3::new(2.0, 0.0, 0.0),
+                Point3::new(3.0, 0.0, 0.0),
+                Point3::new(2.5, 1.0, 0.0),
+            ],
+            normals: vec![Vec3::Z, Vec3::Z],
+            indices: vec![[0, 1, 2], [3, 4, 5]],
+        };
+        let data = export_dwg(&mesh).unwrap();
+        let text = String::from_utf8(data).unwrap();
+        let count = text.matches("3DFACE").count();
+        assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn test_dwg_import_too_short() {
+        assert!(import_dwg(b"AC10").is_err());
+    }
+
+    #[test]
+    fn test_dwg_export_contains_header() {
+        let mesh = Mesh {
+            vertices: vec![
+                Point3::new(0.0, 0.0, 0.0),
+                Point3::new(1.0, 0.0, 0.0),
+                Point3::new(0.0, 1.0, 0.0),
+            ],
+            normals: vec![Vec3::Z],
+            indices: vec![[0, 1, 2]],
+        };
+        let data = export_dwg(&mesh).unwrap();
+        let text = String::from_utf8(data).unwrap();
+        assert!(text.contains("SECTION"));
+        assert!(text.contains("EOF"));
+    }
+
+    #[test]
+    fn test_dwg_unknown_magic_fails() {
+        assert!(detect_dwg_version(b"XXXXXX").is_err());
     }
 }

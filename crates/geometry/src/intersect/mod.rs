@@ -1,3 +1,9 @@
+//! Intersection algorithms for curves and surfaces.
+//!
+//! Includes curve-curve, curve-surface, and surface-surface intersection
+//! routines. Surface-surface intersection uses a marching algorithm seeded
+//! by UV-grid sampling.
+
 pub mod curve_curve;
 pub mod curve_surface;
 pub mod line_surface;

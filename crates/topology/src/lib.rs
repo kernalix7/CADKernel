@@ -3,6 +3,39 @@
 //! All entities (vertices, edges, half-edges, loops, faces, shells, solids)
 //! live in arena-based [`EntityStore`]s. Cross-references use generational
 //! [`Handle`]s. Persistent naming is tracked via [`ShapeHistory`] and [`NameMap`].
+//!
+//! # Entity Hierarchy
+//!
+//! ```text
+//! Solid  (bounded by one or more shells)
+//!   Shell  (connected set of faces)
+//!     Face  (outer loop + optional inner loops / holes)
+//!       Loop  (cycle of half-edges)
+//!         HalfEdge  (directed, linked by next/prev/twin)
+//!           Edge  (pair of twin half-edges)
+//!             Vertex  (position in 3D space)
+//! ```
+//!
+//! # Persistent Naming
+//!
+//! Every entity may carry a [`Tag`] that encodes its construction history
+//! as a chain of [`TagSegment`](naming::TagSegment)s. When a parametric model
+//! is rebuilt, the same tags are regenerated, keeping external references
+//! (fillets, constraints, etc.) stable across edits.
+//!
+//! # Examples
+//!
+//! ```
+//! use cadkernel_topology::BRepModel;
+//! use cadkernel_math::Point3;
+//!
+//! let mut model = BRepModel::new();
+//! let v0 = model.add_vertex(Point3::new(0.0, 0.0, 0.0));
+//! let v1 = model.add_vertex(Point3::new(1.0, 0.0, 0.0));
+//! let (_edge, _he_a, _he_b) = model.add_edge(v0, v1);
+//! assert_eq!(model.vertices.len(), 2);
+//! assert_eq!(model.edges.len(), 1);
+//! ```
 
 pub mod edge;
 pub mod error;
@@ -75,6 +108,21 @@ impl ValidationIssue {
 ///
 /// All entities live in arena stores; cross-references use [`Handle`]s.
 /// Persistent naming is tracked via [`ShapeHistory`] and [`NameMap`].
+///
+/// This is the central data structure of the CAD kernel. Modeling operations
+/// in `cadkernel-modeling` take a `&mut BRepModel` and add/modify entities
+/// within it. Serialization is supported via `serde`.
+///
+/// # Examples
+///
+/// ```
+/// use cadkernel_topology::BRepModel;
+/// use cadkernel_math::Point3;
+///
+/// let mut model = BRepModel::new();
+/// let v = model.add_vertex(Point3::ORIGIN);
+/// assert!(model.vertices.get(v).is_some());
+/// ```
 #[derive(Clone, Serialize, Deserialize)]
 pub struct BRepModel {
     pub vertices: EntityStore<VertexData>,

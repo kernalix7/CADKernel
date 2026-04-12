@@ -11,6 +11,804 @@
 
 ### 추가됨
 
+#### V28: 뷰어 통합 & 프로덕션 폴리시 (2026-04-08)
+
+**Lua 콘솔:**
+- Report 패널에 대화형 Lua 탭 추가: 코드 입력 필드, 출력 표시, 명령 이력
+- `GuiAction::ExecuteLuaCode` — 현재 입력 줄 실행
+- `GuiAction::ExecuteLuaFile` — 디스크에서 `.lua` 파일 불러와 실행
+- `GuiAction::ClearLuaConsole` — 콘솔 출력 버퍼 지우기
+
+**플러그인 매니저:**
+- 등록된 플러그인 목록(이름, 상태, 활성화/비활성화 토글)을 표시하는 UI 다이얼로그
+- `GuiAction::TogglePluginManager` — 플러그인 매니저 다이얼로그 열기/닫기
+- `GuiAction::InitPlugins` — 시작 시 플러그인 레지스트리 (재)초기화
+
+**MCP 서버 컨트롤:**
+- Tools 메뉴에서 MCP 서버 시작/중지 (CLI 불필요)
+- `GuiAction::StartMcpServer` — JSON-RPC 2.0 MCP 서버 시작
+- `GuiAction::StopMcpServer` — 실행 중인 MCP 서버 정상 종료
+- 상태 바에 서버 상태 인디케이터 표시
+
+**예제 스크립트:**
+- `examples/lua/hello_cad.lua` — 기본 지오메트리 생성 및 내보내기
+- `examples/lua/boolean_operations.lua` — union/subtract/intersect 파이프라인
+- `examples/lua/parametric_part.lua` — 파라미터 기반 브래킷 모델
+- `examples/lua/batch_export.lua` — 솔리드를 여러 형식으로 한 번에 내보내기
+- `examples/lua/assembly.lua` — 다중 컴포넌트 어셈블리 (제약 조건 포함)
+- `examples/python/basic_modeling.py` — PyO3 프리미티브 및 불리언 예제
+- `examples/python/batch_analysis.py` — 파일 목록에 대한 질량 속성 루프
+- `examples/mcp/session.json` — 주석이 달린 JSON-RPC 세션 트랜스크립트
+
+**프로젝트 템플릿:**
+- `templates/template_empty.cadk` — 빈 모델 (올바른 스키마)
+- `templates/template_single_box.cadk` — 10×10×10 박스 하나
+- `templates/template_basic_assembly.cadk` — 두 컴포넌트 어셈블리 골격
+- `templates/template_mechanical_part.cadk` — 필렛이 있는 플랜지 브래킷
+- `templates/template_gear_demo.cadk` — 파라메트릭 스퍼 기어 (m=2, z=20)
+
+**편의 API (`cadkernel-modeling`):**
+- `quick_box / quick_cylinder / quick_sphere / quick_cone / quick_torus` — 위치 인수를 사용하는 단일 호출 프리미티브 생성자
+- `quick_union / quick_subtract / quick_intersect` — 두 솔리드 불리언 헬퍼
+- `quick_volume / quick_area / quick_centroid / quick_bbox` — 단일 호출 질량 속성 조회
+
+**에러 메시지 개선:**
+- 모든 `KernelError` 변형에 사람이 읽을 수 있는 컨텍스트 문자열 추가 (연산명, 파라미터 값)
+- 뷰어 상태 바 및 Report 패널에서 원시 디버그 출력 대신 구조화된 에러 메시지 표시
+
+#### V27: 확장 생태계 — 플러그인 API, MCP 서버, Lua 스크립팅 (2026-04-08)
+
+**플러그인 API:**
+- 생명주기 관리(init/shutdown/commands)가 있는 Plugin 트레이트
+- register/unregister/execute_command를 갖춘 PluginRegistry
+- 내장 예제 플러그인: ValidationPlugin, AutoNamingPlugin, StatisticsPlugin
+
+**MCP 서버 (Model Context Protocol):**
+- JSON-RPC 2.0 프로토콜 구현
+- 8개 AI 통합 도구: create_primitive, boolean_operation, transform, query_model, measure, export_model, delete_solid, list_solids
+- handle_request() 디스패치를 갖춘 McpServer 구조체
+
+**Lua 스크립팅 엔진:**
+- 자동화를 위한 임베디드 스크립팅 엔진
+- 프리미티브, 불리언, 변환, 피처, I/O, 쿼리 명령 지원
+- 스크립트 실행을 위한 execute()/execute_file() API
+
+**CI/CD & 패키징:**
+- GitHub Actions CI: 매트릭스 빌드(Linux/macOS/Windows), cargo 캐시
+- GitHub Actions Release: 태그 푸시 시 자동 바이너리 빌드
+- Python 패키징: maturin 백엔드를 사용하는 pyproject.toml
+
+#### V26: API 레퍼런스 & 문서화 (2026-04-08)
+
+**Rust Doc Comments:**
+- 8개 크레이트 `lib.rs` 전체에 모듈 수준 `//!` 문서 추가 (사용 예제 포함)
+- 55개 파일에 걸쳐 ~295개 공개 타입, 함수, 필드에 `///` 문서 주석 추가
+- 8개 새 컴파일 가능 `# Examples` doc test 블록 (core, math, geometry, topology, modeling, sketch)
+- 주요 문서화 타입: `KernelError`, `Vec3`, `Point3`, `Mat4`, `Transform`, `Curve`, `Surface`, `NurbsCurve`, `NurbsSurface`, `BRepModel`, `Handle<T>`, `EntityStore`, `Sketch`, 전체 I/O 함수
+
+**README 업데이트 (영문 + 한국어):**
+- 비교표 업데이트: 3D 모델링, 파라메트릭 설계, B-Rep+NURBS, STEP → 전부 ✅
+- Python 바인딩 행, 테스트 커버리지 행 추가 (1,450+)
+- 파일 형식 테이블: 15+개 형식 🔲/🚧 → ✅ (STEP, IGES, BREP, DXF, DWG, SVG, PDF, glTF, PLY, 3MF, AMF, COLLADA, VRML, .cadk)
+- 로드맵: Application Phase 3 (FreeCAD 동등성), Phase 4 (성능) 완료 표시
+- 데모 섹션 확장: 14개 기능 카테고리, 전체 기능 목록
+- FAQ 업데이트: 프로덕션 준비 상태 — 576/576 기능 동등성 반영
+- 한국어 README (`docs/README.ko.md`) 영문과 동일하게 미러링
+
+#### V25: 성능, 테스트 & Python 스프린트 (2026-04-08)
+
+**성능 최적화:**
+- `crates/modeling/src/boolean/`: `rayon::par_iter()`를 사용한 불리언 면 분류 루프 병렬화 — 멀티코어 환경에서 불리언 연산 시간 단축
+- `crates/modeling/src/features/`: `linear_pattern`, `circular_pattern`의 복제 루프에 `rayon` 병렬 반복 적용
+- `crates/geometry/src/bvh.rs`: `query_nearest()` — 가장 가까운 단일 AABB 항목 반환; `query_ray()` — 레이와 교차하는 모든 AABB 항목 반환
+- `crates/geometry/src/bvh.rs`: 노드 탐색 시 스택 할당 버퍼 재사용으로 쿼리당 힙 할당 감소
+- `crates/geometry/src/curve/bspline_basis.rs`: `BasisCache` LRU 캐시(1024개 항목) — `CachedNurbsCurve`와 `NurbsSurface::evaluate_cached()`에서 공유
+- `crates/modeling/benches/modeling_benchmarks.rs`: 4개 신규 Criterion 벤치마크 추가 — `bench_parallel_boolean`, `bench_bvh_query_nearest`, `bench_bvh_query_ray`, `bench_pattern_parallel` (총 25개)
+
+**종합 스트레스 테스트:**
+- `crates/modeling/tests/stress_tests.rs`: 18개 신규 스트레스 테스트 추가:
+  - 다중 불리언 체인 (10회 이상 순차 union/subtract/intersect 연산)
+  - 대형 어셈블리 (50개 컴포넌트 간섭 검출)
+  - 복합 스케치 (접선 호 + 일치 체인을 포함한 30개 이상 제약조건 시스템)
+  - 패턴 스트레스 (64개 인스턴스 linear/circular 패턴)
+  - FEM 메시 품질 (대형 바디에서 tet 메시 생성 + 품질 지표)
+  - Surface 연산 체인 (ruled → extend → pipe 파이프라인)
+  - 에지 케이스 커버: 퇴화 입력, 길이 0 엣지, 거의 일치하는 정점, 빈 컴파운드, 단일 면 솔리드 불리언
+- 스트레스 테스트 총계: 49개 → 67개
+
+**Python 바인딩 확장:**
+- `crates/python/src/lib.rs`: `PyAssembly` 클래스 — `add_component`, `add_constraint`, `solve_constraints`, `check_interference`, `bill_of_materials` 노출
+- `crates/python/src/lib.rs`: `PyFem` 클래스 — `generate_tet_mesh`, `static_analysis`, `modal_analysis`, `mesh_quality` 노출
+- `crates/python/src/lib.rs`: Draft 연산 바인딩 — `make_wire`, `make_bspline_wire`, `rectangular_array`, `path_array`, `clone_solid`
+- `crates/python/src/lib.rs`: Surface 연산 바인딩 — `ruled_surface`, `surface_from_curves`, `extend_surface`, `pipe_surface`
+- `crates/python/src/lib.rs`: Compound 연산 바인딩 — `boolean_fragments`, `slice_to_compound`, `compound_filter`, `explode_compound`
+- 신규 바인딩 클래스를 커버하는 Python 통합 테스트 74개 추가
+
+**I/O 에지 케이스 테스트:**
+- `crates/io/`: STL, OBJ, glTF, PLY, BREP 포맷 라운드트립 일관성 테스트
+- `crates/io/`: 빈 모델 익스포트/임포트 테스트 (면이 없는 솔리드)
+- `crates/io/`: 대형 메시 테스트 (100K+ 삼각형 STL 읽기 + 쓰기)
+- `crates/io/`: 포맷별 에지 케이스 — 삼각형 수 0인 바이너리 STL 헤더, 법선 없는 OBJ, 다중 프리미티브 glTF 메시
+
+#### V45: 재질 프리셋, Undo 히스토리 드롭다운 & 익스포트 옵션 (2026-04-08)
+
+**프로퍼티 View 탭 재질 프리셋:**
+- `crates/viewer/src/gui/properties.rs`: 16개 재질 프리셋 (Steel, Aluminum, Brass, Copper, Gold, Titanium, Cast Iron, Plastic White/Black/Red/Blue, Glass, Wood Light/Dark, Rubber, Carbon Fiber) + 사실적 색상
+- 2열 그리드 레이아웃 — 아이콘+이름 버튼 + 색상 스와치 프리뷰
+- 현재 재질 색상 근접도로 자동 감지; 활성 재질 파란색 하이라이트
+- Glass 프리셋 투명도 포함 (알파 0.35)
+
+**Undo/Redo 히스토리 드롭다운:**
+- `crates/viewer/src/gui/toolbar.rs`: Undo/Redo 툴바 버튼 옆에 드롭다운 화살표(▾) 추가
+- 드롭다운 클릭 시 최근 10개 히스토리 항목 + 단계 번호 표시
+- 항목 클릭 시 여러 단계 한번에 undo/redo
+- 히스토리 항목 존재 시 + undo/redo 가능 시에만 표시
+
+**STL 익스포트 옵션 다이얼로그:**
+- `crates/viewer/src/gui/dialogs.rs`: Export Options 윈도우 — 포맷(Binary/ASCII 라디오), 스케일 팩터 DragValue
+- `crates/viewer/src/gui/mod.rs`: `ExportStlWithOptions` 액션 (binary/scale 파라미터), 익스포트 다이얼로그 상태 필드
+- `crates/viewer/src/app.rs`: 핸들러에서 버텍스 스케일링 적용 후 `export_stl_binary`/`export_stl_ascii` 직접 호출
+- 메뉴 STL 익스포트 시 옵션 다이얼로그 먼저 표시; OBJ/PLY는 직접 익스포트 유지
+
+#### V44: 브레드크럼 바, 최근 파일 & 토스트 알림 (2026-04-08)
+
+**브레드크럼 네비게이션 바:**
+- `crates/viewer/src/gui/overlays.rs`: `draw_breadcrumb_bar()` — 컨텍스트 툴바와 뷰포트 사이에 TopBottomPanel 렌더링
+- 경로 세그먼트: Scene › ObjectName › Face/Edge/Vertex/Solid, 스케치 모드 시 Sketch 추가
+- 클릭 가능한 "Scene" 루트 세그먼트 → `DeselectAll`로 상위 탐색
+- 다중 선택 시 우측에 악센트 블루로 선택 수 표시
+- 셰브론 구분자(›), 활성 세그먼트 흰색, 비활성 연회색
+
+**File 메뉴 최근 파일:**
+- `crates/viewer/src/gui/menu.rs`: File 메뉴에 "Recent Files" 서브메뉴 추가
+- 최근 열린 파일 최대 10개 표시 (파일명 + 전체 경로 툴팁)
+- 하단에 "Clear Recent Files" 옵션; `GuiAction::ClearRecentFiles` 추가
+- `crates/viewer/src/app.rs`: 파일 열기/임포트 시 `recent_files`에 추가 (중복 제거, 최대 10개)
+
+**토스트 알림 시스템:**
+- `crates/viewer/src/gui/mod.rs`: `Toast` 구조체와 `ToastLevel` 열거형 (Success/Info/Warning/Error)
+- `crates/viewer/src/gui/overlays.rs`: `draw_toast_overlay()` — 우하단 플로팅 알림 렌더링
+- 3초 후 자동 사라짐 + 0.5초 페이드아웃 + 0.15초 페이드인 애니메이션
+- 레벨별 스타일링: 컬러 악센트 바, 배경 틴트, 아이콘 (✓/ℹ/⚠/✖)
+- 최대 5개 토스트 수직 스택; 텍스트 길면 말줄임표(…) 처리
+- `log_info()` → Success 토스트, `log_warning()` → Warning 토스트, `log_error()` → Error 토스트
+- `StatusMessage` 액션도 Info 토스트 트리거 — 즉각적 시각 피드백
+
+#### V43: 메뉴 단축키 텍스트 정렬 (2026-04-08)
+
+**메뉴 바 — 네이티브 단축키 텍스트 우측 정렬:**
+- `crates/viewer/src/gui/menu.rs`: `menu_action_sc()` 헬퍼 추가 — `egui::Button::new().shortcut_text()`로 우측 정렬 단축키 힌트
+- 모든 메뉴 항목을 인라인 형식(`"New  (Ctrl+N)"`)에서 egui 네이티브 `shortcut_text()` API로 변환
+- File 메뉴: New, Open, Save As, Quit; Edit 메뉴: Undo, Redo, Copy, Paste, Select All, Deselect All, Delete
+- View 메뉴: 투영 토글, Standard Views, Grid, Fit All, Section Plane
+- Sketch 메뉴: 모든 지오메트리 도구 (Select/Line/Rectangle/Circle/Arc/Ellipse/Polyline/B-Spline/Polygon), 구속조건 (Horizontal/Vertical/Fixed), 토글 (Construction Mode/Grid/Snap), Close/Cancel
+- PartDesign 메뉴: Pad 단축키
+
+#### V42: 컨텍스트 메뉴 아이콘, 웰컴 스크린 & 디스플레이 모드 셀렉터 (2026-04-08)
+
+**컨텍스트 메뉴 아이콘 & 단축키 힌트:**
+- `crates/viewer/src/gui/context_menu.rs`: `menu_item()` 헬퍼 추가 — 버튼 텍스트에 이모지 아이콘 접두사 + 단축키 힌트 접미사
+- 오브젝트 컨텍스트 메뉴: Select(📌), Duplicate(⎘/Ctrl+D), Rename(✏/F2), Hide/Show(👁/H), Measure(📏), Check(✔), Delete(🗑/Del)
+- 뷰포트 컨텍스트 메뉴: Fit All(🔍/V), Reset Camera(🏠), Grid(▦/G), Projection(▣/5), Origin Axes(✥), 3D Grid(▦), Measurement(📏), Select All(☐/Ctrl+A), Deselect(☒/Esc)
+
+**빈 씬 웰컴 스크린:**
+- `crates/viewer/src/gui/overlays.rs`: `draw_welcome_screen()` — 씬 비어있을 때 중앙 오버레이 렌더링. CADKernel 타이틀/서브타이틀, 3개 퀵 액션 버튼(Create Box, Import File, Open Project) + 호버 하이라이트 + 커서 아이콘
+- 페인터 기반 렌더링 + 수동 히트 테스트(pointer_pos + click 감지)
+- 하단에 F1 단축키 힌트; 스케치 모드/활성 태스크 없을 때만 표시
+
+**디스플레이 모드 툴바 셀렉터:**
+- `crates/viewer/src/gui/toolbar.rs`: View 섹션에 ComboBox 드롭다운 추가 — 현재 디스플레이 모드 + 8개 모드 단축키 표시
+- `crates/viewer/src/gui/mod.rs`: `tb_display_mode: DisplayMode` 필드 추가, 매 프레임 ViewportInfo에서 미러링
+
+#### V41: 상태 바, 기즈모 툴바 & 투영 토글 (2026-04-08)
+
+**상태 바 — 세분화된 레이아웃 + 클릭 가능한 투영:**
+- `crates/viewer/src/gui/status_bar.rs`: 우측 섹션을 개별 스타일 세그먼트로 분리 (투영 | 디스플레이 모드 | 씬 통계 | 선택 | 측정 | FPS) + `vert_divider()` 구분선
+- 투영 인디케이터 (`Persp`/`Ortho`) 클릭으로 원근/직교 투영 토글 — `GuiAction::ToggleProjection`; 색상 코드: 파랑=원근, 녹색=직교
+- 씬 통계 `vis/total obj` 포맷 + K/M 삼각형 수 포맷팅
+- 선택 정보 악센트 블루 표시; 측정 모드 인디케이터 노란색
+
+**툴바 — 트랜스폼 기즈모 버튼:**
+- `crates/viewer/src/gui/toolbar.rs`: "Transform" 섹션 추가 — Move(W), Rotate(E), Scale(R) 기즈모 토글 버튼 + `icon_toggle` 활성 상태 하이라이트
+- `crates/viewer/src/gui/mod.rs`: `GuiAction::SetGizmoMode(GizmoMode)` 액션 추가
+- `crates/viewer/src/app.rs`: `SetGizmoMode` 핸들러 — 같은 모드 클릭 시 해제, 다른 모드 클릭 시 전환
+
+#### V40: 다이얼로그 일관성, 키보드 단축키 & 트리 다듬기 (2026-04-08)
+
+**다이얼로그 그리드 — 2열 레이아웃 + DragValue 접미사:**
+- `crates/viewer/src/gui/dialogs.rs`: 전체 32개 다이얼로그 그리드를 3열(Label | DragValue | "mm")에서 2열(Label | DragValue `.suffix(" mm")`)로 변환, V39 프로퍼티 패널 패턴과 일치
+- 그리드 간격 `[8.0, 4.0]` → `[10.0, 4.0]`; 모든 수동 `ui.label("")` 3열 잔재 제거
+- 샤프트 세그먼트 행 `.suffix(" mm")` 적용 (L=, D= 프리픽스 DragValue)
+- 모든 레이블 색상 `theme::COLOR_DIM` 일관 적용
+
+**키보드 단축키 참조 (F1):**
+- `crates/viewer/src/app.rs`: F1 키로 `show_shortcuts` 패널 토글
+- `crates/viewer/src/gui/dialogs.rs`: 단축키 다이얼로그 개선 — 9개 카테고리 섹션(File, Edit, Navigation, Standard Views, Display Modes, Transform Gizmo, Selection Modes, Sketcher, General) + `dialog_section()` 악센트 헤더 + 아이콘
+- 스케처 키바인딩 추가 (S/L/R/C/A/E/P/B/W/H/V/Enter/Escape)
+- 키 이름 모노스페이스 볼드, 설명 연한 색상
+
+**모델 트리 — 전체 펼치기/접기 & 필터 다듬기:**
+- `crates/viewer/src/gui/tree.rs`: 검색 상자와 트리 내용 사이에 미니 툴바 추가 — 전체 펼치기(▿), 전체 접기(▹) 버튼
+- 버튼 클릭 시 모든 최상위/하위 트리 노드의 `("tree_expand", obj_id)` 상태 토글
+- 필터 활성 시 미니 툴바 좌측에 결과 수 표시
+
+#### V39: 프로퍼티, 리포트, 히스토리 & 스케치 폴리시 (2026-04-08)
+
+**프로퍼티 패널 — 개선된 편집:**
+- `crates/viewer/src/gui/properties.rs`: 파라미터 에디터 그리드 간격 `[4.0, 2.0]` → `[10.0, 4.0]`; DragValue `.suffix(" mm")` 사용하여 별도 단위 레이블 열 제거, 2열 레이아웃
+- 씬 개요: 삼각형/정점 수 K/M 포맷 추가, 아이콘 헤더, 개선된 빈 상태 표시
+
+**리포트 패널 — 강화된 로그 표시:**
+- `crates/viewer/src/gui/report.rs`: 로그 항목에 레벨 아이콘(ℹ/⚠/✖) + 모노스페이스 타임스탬프 열; 경고/오류 행에 미세한 틴트 배경
+
+**히스토리 패널 — 작업 아이콘:**
+- `crates/viewer/src/gui/report.rs`: 히스토리 항목에 컨텍스트 인식 아이콘(➕ 생성, ➖ 삭제, → 이동, ↻ 회전, ⤢ 크기, ∪ 불리언, ⬆ 돌출); 모노스페이스 번호 정렬; 초록 화살표 현재 상태 마커
+
+**스케치 UI — 추가 폴리시:**
+- `crates/viewer/src/gui/sketch_ui.rs`: 치수 입력 팝업 재설계 — 아이콘 제목, DragValue 접미사(mm/°), 태스크 패널 스타일 OK/Cancel 버튼
+- 스케치 컨텍스트 메뉴: 섹션 헤더(Edit, Constraints, Selection) + 메뉴 항목 아이콘
+
+#### V38: FreeCAD 스타일 스케치 UI, 태스크 패널 & 테마 확장 (2026-04-08)
+
+**태스크 패널 — FreeCAD TaskView 오버홀:**
+- `crates/viewer/src/gui/task_panel.rs`: 모든 태스크 헤더를 `theme::draw_task_header()`로 교체 — 악센트 그라디언트 바 + 아이콘 + 제목
+- `crates/viewer/src/gui/task_panel.rs`: 그리드 섹션에 `theme::draw_task_section()` 사용 — 악센트 밑줄 레이블
+- `crates/viewer/src/gui/task_panel.rs`: OK/Cancel 버튼에 `theme::draw_task_buttons()` 사용 — 악센트 블루 기본 버튼 + 흰색 텍스트
+- DRY 매크로: `plabel!`, `pmm!`, `pdeg!`, `pval!` — DragValue 접미사(" mm", "°") 지원 그리드 파라미터 렌더링
+- 모든 그리드 간격 `[10.0, 4.0]`으로 확대; BooleanOp을 Operation/Tool Shape/Offset 섹션으로 분리
+
+**메뉴 바 — 섹션 헤더:**
+- `crates/viewer/src/gui/menu.rs`: `menu_section()` 헬퍼 추가, `theme::MENU_SECTION_COLOR` 사용
+- File 메뉴: "Project"/"Transfer"; Edit: "History"; View: "Layout"/"Overlays"/"Camera"
+- Create: "Basic Primitives"/"Extended Primitives"; Tools: "Analysis"/"Measurement"
+- Sketch > Constraints: "Geometric"/"Dimensional" 섹션 레이블
+
+**스케치 UI — FreeCAD 스타일 시각 오버홀:**
+- `crates/viewer/src/gui/sketch_ui.rs`: 엔티티 색상을 FreeCAD 팔레트로 변경 — 흰색 지오메트리, 파란색 보조선, 녹색 선택, 밝은 녹색 호버, 금색 대기, ��간색 구속
+- 커서 십자선: 갭 센터 스타일 (내부/외부 세그먼트 + 4px 갭)
+- 스냅 인디케이터: 일치점 = 채운 점 + 링, H/V = 빨간 점선 가이드라인 + 방향 배지, 중점 = 채운 다이아몬드, 그리드 = 미세 십자, 교차점 = X + 원
+- 배너: 둥근 배경 필 + 색상 코드(빨강=충돌, 녹색=완전 구속, 진한 파랑=기본), 불릿 구분자
+- DOF 화살표: 주황색(기존 녹색), 14px 길이
+- 과잉 구속 경고: 배경 필 오버레이
+- 보조선 점: 파란 X 마커(기존 링)
+- ��스 선택: 더 은은한 파랑/녹색 채우기
+- OVP 패널: 도구 아이콘 + 이름 헤더, 어두운 배경, 좁은 여백
+- 미리보기/러버밴드 색상: 금색-노랑 (255, 200, 50)
+
+**테마 시스템 확장:**
+- `crates/viewer/src/gui/theme.rs`: 스케치 오버레이 색상 상수 추가 — `SKETCH_GEOMETRY`, `SKETCH_CONSTRUCTION`, `SKETCH_SELECTED`, `SKETCH_HOVERED`, `SKETCH_PENDING`, `SKETCH_CONSTRAINT`, `SKETCH_VIOLATED`, `SKETCH_DOF`
+- `crates/viewer/src/gui/theme.rs`: `MENU_SECTION_COLOR` 상수 추가 — 통합 메뉴/툴바/컨텍스트 메뉴 섹션 레이블
+- 툴바, 메뉴, 컨텍스트 메뉴 섹션 헬퍼가 `theme::MENU_SECTION_COLOR` 사용
+
+**레이아웃 & 간격:**
+- ComboView 패널: 기본 너비 300px (기존 280), 최소 너비 220px (기존 200)
+- 트리/속성 분할: 45%/55% (기존 50/50) — 태스크 패널과 속성에 더 많은 공간
+
+#### V37: 툴바, 다이얼로그 & 컨텍스트 메뉴 다듬기 (2026-04-08)
+
+**툴바 — 섹션 레이블 & 개선된 구분선:**
+- `crates/viewer/src/gui/toolbar.rs`: `section_label()` 헬퍼 추가 — 9px 연회색 레이블로 모든 9개 워크벤치 컨텍스트 툴바와 메인 툴바(File/Edit/View/Scene/Select)의 각 도구 그룹 앞에 표시
+- `crates/viewer/src/gui/toolbar.rs`: `toolbar_separator()` 개선 — 그라디언트 페이드 효과(투명→회색→투명) + 밝은 중심 구간, 기존 1px 단색 선 대체
+- Part 툴바 섹션: Primitives, Boolean, Transform, Join, Compound, Convert, Analysis
+- PartDesign 툴바 섹션: Features, Additive, Dress-up, Transform, Extras, Body, Boolean
+- Sketcher 툴바 섹션: Geometry, Constraints, Tools, B-Spline, Options
+- Mesh 툴바 섹션: Import/Export, Repair
+- TechDraw 툴바 섹션: Page, Views, Dimensions, Annotations, Centerlines, Export
+- Assembly 툴바 섹션: Assembly, Joints
+- Draft 툴바 섹션: Draw, Modify, Array, Annotation, Convert, Snap
+- Surface 툴바 섹션: Surface
+- FEM 툴바 섹션: Setup, Mesh, Constraints, Solve, Results
+
+**다이얼로그 — FreeCAD 스타일 섹션 헤더 & 간격:**
+- `crates/viewer/src/gui/dialogs.rs`: `dialog_section()` 재작성 — 파란 배경 틴트 + 3px 좌측 악센트 바 + 악센트 색상 레이블
+- `crates/viewer/src/gui/dialogs.rs`: `button_bar()` 재작성 — 악센트 블루 채움 + 흰색 텍스트 기본 버튼, 최소 크기(OK 70px, Cancel 60px), 커스텀 구분선
+- 모든 31개 다이얼로그 그리드 간격 `[4.0, 2.0]` → `[8.0, 4.0]` 확대
+
+**컨텍스트 메뉴 — 섹션 헤더:**
+- `crates/viewer/src/gui/context_menu.rs`: `menu_section()` 헬퍼 추가 — 10px 연회색 굵은 레이블로 시각적 그루핑
+- 오브젝트 컨텍스트 메뉴 섹션: Selection, Edit, Appearance, Analysis
+- 뷰포트 컨텍스트 메뉴 섹션: View, Display, Overlays, Selection, Create
+
+#### V36: FreeCAD 스타일 UI 오버홀 (2026-04-08)
+
+**테마 시스템 — 패널 크롬 & 섹션 헤더:**
+- `crates/viewer/src/gui/theme.rs`: `panel_header_bg/text`, `panel_separator`, `section_header_bg/text` 색상 추가; `panel_header_height`, `section_header_height`, `tree_row_height` 사이징; 밀도별 스케일링 (Compact 20px / Normal 24px / Spacious 28px)
+- `draw_panel_header()` — FreeCAD 스타일 독 헤더 바 (어두운 배경, 제목, 닫기 버튼); `draw_section_header()` — 접기 가능한 섹션 바; `draw_separator()` — 얇은 구분선
+
+**패널 레이아웃 — FreeCAD 스타일 ComboView:**
+- `crates/viewer/src/gui/mod.rs`: 좌측 패널에 타이틀 헤더 바 ("Model" / "Properties" / "Tasks"), 각각 닫기 가능; 제로 내부 마진 + 콘텐츠 레벨 패딩; 트리와 프로퍼티 사이 구분선
+
+**모델 트리 — FreeCAD 스타일 계층 구조:**
+- `crates/viewer/src/gui/tree.rs`: 문서 루트 노드 ("CADKernel" + 파일 아이콘 + 오브젝트 수); 루트 아래 인덴트; 선택 시 좌측 액센트 바 (2px 파란색); 눈 아이콘 호버/숨김 시만 표시; 색상 스와치 외곽선; 그룹을 접기 가능 섹션으로; 커스텀 검색 박스; 빈 씬 도움말 텍스트
+
+**프로퍼티 패널 — 섹션 헤더 & 간격:**
+- `crates/viewer/src/gui/properties.rs`: Data/View 탭에 언더라인 스타일 활성 표시기; 접기 그룹을 `draw_section_header()`로 교체; 그리드 간격 확대 (10px 수평, 4px 수직); 타입 아이콘 배지가 있는 오브젝트 이름 헤더
+
+**리포트 패널 — 언더라인 탭 바:**
+- `crates/viewer/src/gui/report.rs`: 커스텀 탭 바 렌더링 (26px 높이, 개별 탭 호버 하이라이트, 액센트 블루 활성 언더라인); 우측 심각도 요약 카운트
+
+**상태 바 — 수직 구분선 & 폴리싱:**
+- `crates/viewer/src/gui/status_bar.rs`: `vert_divider()` — 얇은 0.5px 수직선; 어두운 배경; 상단 액센트 라인; 좌표에 "mm" 단위 포함
+
+#### V35: 뷰어 사용성 & 인터랙션 (2026-04-08)
+
+**뷰어 — 카메라 뷰 북마크 (폴리싱):**
+- `crates/viewer/src/nav.rs`: `ViewBookmark` 구조체 (이름, yaw, pitch, roll, distance, target); NavConfig에 `view_bookmarks` 벡터; 최대 20개 제한
+- `crates/viewer/src/gui/menu.rs`: View > Bookmarks 서브메뉴 — 220px 너비, 힌트 텍스트 입력, 활성/비활성 저장 버튼, 카메라 각도 툴팁이 있는 번호 매긴 항목, 우측 정렬 삭제 버튼, "X/20 bookmarks" 카운트, 빈 상태 메시지
+- `crates/viewer/src/app.rs`: `.cloned()`로 빌림 충돌 방지 후 저장 뷰로 애니메이션
+
+**뷰어 — 프리셀렉션 하이라이트 (폴리싱):**
+- `crates/viewer/src/gui/overlays.rs`: `draw_selection_overlay()` — 선택 없이도 프리셀렉션 표시; `nav.preselection_color`/`nav.selection_color`로 색상 설정 가능; 커서 따라다니는 엔티티 타입 라벨; 엣지 8px 글로우 + 3.5px 코어; 버텍스 10px 글로우 링 + 6px 마커 + 2px 중심점
+- `crates/viewer/src/nav.rs`: NavConfig에 `preselection_color`, `selection_color` ([u8; 3]) 설정 가능 필드
+
+**뷰어 — 오브젝트 그룹핑 (폴리싱):**
+- `crates/viewer/src/scene.rs`: `ObjectGroup` 구조체; Scene 메서드: `create_group()`, `group_selected()`, `ungroup_object()`, `toggle_group_visibility()`, `delete_group()`, `group_members()`
+- `crates/viewer/src/gui/menu.rs`: Edit > Groups 서브메뉴 — 눈 아이콘 (◉/○) 색상 코딩, 멤버 수 라벨 "(N)", 힌트 텍스트 입력, 빈 상태 처리
+- `crates/viewer/src/gui/tree.rs`: 모델 트리에 그룹 섹션 — 헤더에 눈 토글, 폴더 아이콘, 이름, 카운트, 삭제 버튼; 인덴트된 멤버 이름
+
+**뷰어 — 3D 측정 오버레이 (폴리싱):**
+- `crates/viewer/src/gui/overlays.rs`: `draw_measurement_overlay()` — `nav.unit_system.label()`/`nav.decimal_places`로 단위 인식 표시; 번호 매긴 포인트 마커 (P1, P2...); 좌표 표시; 연속 쌍 간 거리; 3점 이상 총 경로 길이; ΔX/ΔY/ΔZ 성분 분해; 각도 호 + 도 표시; 컨텍스트 모드 인디케이터; 라벨 배경에 둥근 사각형 + 외곽선
+- `crates/viewer/src/app.rs`: `pick_surface_point()` — 레이 캐스트, 버텍스 스냅 우선 (임계값 `camera.distance * 0.012`), 삼각형 표면 폴백; C로 클리어, Escape로 종료
+
+**뷰어 — 좌표축 인디케이터 (폴리싱):**
+- `crates/viewer/src/gui/overlays.rs`: `draw_axes_overlay()` — 클릭으로 표준 뷰 스냅 (X+→Right, X−→Left, Y+→Front, Y−→Back, Z+→Top, Z−→Bottom); 호버 시 링 하이라이트 + 커서 변경; 깊이 기반 투명도 페이드; 글로우 라인으로 안티앨리어싱; 라벨 텍스트 그림자; 그라데이션 배경 링; 스페큘러 하이라이트 중심 구체
+- `crates/viewer/src/render.rs`: `Camera::forward()` 메서드
+
+#### V34: 뷰어 프로덕션 품질 (2026-04-07)
+
+**뷰어 — ViewCube 드래그 회전:**
+- `crates/viewer/src/gui/view_cube.rs`: ViewCube 면/엣지/코너를 드래그하면 `ScreenOrbit`으로 카메라 연속 궤도 회전; 움직임 없는 클릭은 표준 뷰로 스냅 유지; GuiState에 `cube_dragging`/`cube_drag_moved` 상태
+- `crates/viewer/src/gui/mod.rs`: GuiState에 `cube_dragging`, `cube_drag_moved` 필드 추가
+
+**뷰어 — 3D 그리드 스냅:**
+- `crates/viewer/src/nav.rs`: NavConfig에 `snap_to_grid_3d` 토글; `snap_3d()` 헬퍼가 활성화 시 가장 가까운 그리드 간격으로 반올림
+- `crates/viewer/src/gui/dialogs.rs`: Display 설정 — "Snap to 3D grid" 체크박스
+- `crates/viewer/src/app.rs`: `MoveObject` 액션이 스냅 활성화 시 dx/dy/dz에 `snap_3d()` 적용
+
+**뷰어 — 인터랙티브 변환 기즈모:**
+- `crates/viewer/src/gui/overlays.rs`: `draw_transform_gizmo()`가 `&mut GuiState` 수용; 호버 감지 (커서-축 선분 거리 `point_to_segment_dist()` 사용); 드래그 시 마우스 델타를 축 방향에 투영하여 `MoveObject`/`RotateObject`/`ScaleObjectUniform` 액션 발생
+- `crates/viewer/src/app.rs`: W/E/R 키보드 단축키로 이동/회전/스케일 기즈모 모드 전환 (스케치 모드가 아닐 때만)
+
+**뷰어 — 실행 취소/다시 실행 기록 패널:**
+- `crates/viewer/src/gui/report.rs`: 하단 패널에 "History" 탭 추가; 번호 매긴 작업 목록 + 현재 위치 마커 (초록 화살표); 흐릿한 redo 항목; Undo/Redo 버튼
+- `crates/viewer/src/gui/mod.rs`: GuiState에 `history_entries`/`future_entries` 필드, 매 프레임 `CommandStack::entries()`에서 채움
+- `crates/viewer/src/command.rs`: UI 표시용 `entries()` 메서드 추가 (history, future 설명 목록 반환)
+- `crates/viewer/src/app.rs`: draw_ui 전에 `tb_can_undo`/`tb_can_redo` 및 history 항목 채움
+
+**뷰어 — 환경 설정에 단축키 탭:**
+- `crates/viewer/src/gui/dialogs.rs`: 환경 설정에 6번째 "Shortcuts" 탭 추가하여 모든 키보드 단축키 표시; `draw_all_shortcuts()` 함수를 탭과 독립 다이얼로그에서 공유; 새 단축키 추가 (Shift+S 단면, W/E/R 기즈모, Ctrl+Shift+Z redo)
+
+#### V33: 3D 모델링 & 뷰포트 향상 (2026-04-07)
+
+**뷰어 — FlatLines 디스플레이 모드 조정:**
+- `crates/viewer/src/render.rs`: `EDGE_OVERLAY_COLOR`를 `[0.05, 0.05, 0.05, 1.0]`에서 `[0.08, 0.08, 0.10, 1.0]`으로 조정하여 음영 표면 위 와이어프레임 오버레이를 더 자연스럽게 개선
+
+**뷰어 — 미구속 점에 DOF 화살표:**
+- `crates/viewer/src/gui/sketch_ui.rs`: 미구속 스케치 점에 방향별 DOF 화살표 표시 — 모든 제약조건 스캔하여 점별 X/Y 구속 상태 판단; 미구속 축에 빨간 화살표, 완전 구속 점에 초록 체크마크 표시
+
+**뷰어 — 단면 평면 토글:**
+- `crates/viewer/src/gui/mod.rs`: `GuiAction` 열거형에 `ToggleSectionPlane` 액션 추가
+- `crates/viewer/src/app.rs`: Shift+S 단축키로 단면 평면 토글; 액션 핸들러가 `nav.clip_enabled` 전환
+- `crates/viewer/src/gui/menu.rs`: View 메뉴 "Section Plane (Shift+S)" 항목
+- `crates/viewer/src/gui/dialogs.rs`: Display 설정 탭 — 단면 평면 제어 (활성화 체크박스, 축 선택기 X/Y/Z, 오프셋 DragValue)
+- `crates/viewer/src/nav.rs`: 기존 `clip_enabled`, `clip_plane_normal`, `clip_plane_offset`이 UI에 연결
+
+**뷰어 — 커스텀 배경 그라디언트:**
+- `crates/viewer/src/nav.rs`: `BgPreset::Custom` 변형 추가, NavConfig에 `bg_custom_top`/`bg_custom_bottom` 색상 필드
+- `crates/viewer/src/render.rs`: `gradient_colors()`가 Custom 포함 모든 프리셋의 상단/하단 색상 추출; `gradient_shader_src_colors()`가 명시적 색상으로 셰이더 생성; `update_bg()`가 색상 변경 시만 파이프라인 재구축 (`bg_colors` 비교)
+- `crates/viewer/src/gui/dialogs.rs`: Display 설정 — Custom 프리셋 선택 시 상단/하단 색상 선택기 표시
+- `crates/viewer/src/app.rs`: `render_frame()`이 매 프레임 `gpu.update_bg()` 호출하여 설정 변경 동기화
+
+**뷰어 — 오브젝트 불투명도 슬라이더:**
+- `crates/viewer/src/gui/properties.rs`: Properties 패널 View 탭에 투명도 슬라이더 (0–90%) 이미 존재; `SetObjectColor` 액션으로 오브젝트별 알파 조정, 투명 파이프라인으로 렌더링
+
+#### V32: 스케치 인터랙션 & 고급 스냅 (2026-04-07)
+
+**뷰어 — 박스 선택 (러버밴드) 스케치:**
+- `crates/viewer/src/app.rs`: Select 도구에서 엔티티 없이 드래그 시 박스 선택 시작; `box_select_start`/`box_select_end` 필드로 러버밴드 사각형 추적
+- `crates/viewer/src/app.rs`: 릴리스 시 박스 내부 엔티티 선택 — 좌→우 (윈도우)는 모든 끝점 포함 필요; 우→좌 (크로싱)는 아무 끝점 포함으로 충분; Ctrl로 선택에 추가
+- `crates/viewer/src/gui/sketch_ui.rs`: 반투명 파랑 (윈도우) 또는 초록 (크로싱) 사각형 + 실선/파선 테두리
+
+**뷰어 — 스냅 시각 표시기:**
+- `crates/viewer/src/gui/sketch_ui.rs`: 그리기 중 커서 근처 캔버스 스냅 표시 — X 마커 (일치/점), 파선 H/V 가이드라인 (축 정렬), 삼각형 (중점), 사각형 (그리드), 원형 X (교차점)
+
+**뷰어 — 더블클릭 제약조건 편집:**
+- `crates/viewer/src/app.rs`: `try_sketch_dimension_edit()` — 치수 제약조건이 있는 선택 엔티티에 더블클릭 시 현재 값으로 팝업 열기; Distance, Length, Radius, Diameter, Angle, H/V-Distance 지원
+- `crates/viewer/src/gui/sketch_ui.rs`: `DimensionPopup`의 `edit_constraint_index` — 확인 시 중복 추가 대신 기존 제약조건 값을 직접 수정 (undo 스냅샷 포함)
+
+**뷰어 — 스케치 커서 형상:**
+- `crates/viewer/src/gui/sketch_ui.rs`: 모든 그리기 도구에 십자 커서, Select 모드에서 엔티티 호버 시 포인팅 핸드, 점 드래그 중 그래빙
+
+**뷰어 — 중점 & 교차점 스냅:**
+- `crates/viewer/src/app.rs`: `snap_sketch_coords()`에 중점 스냅 (선 중점) 및 교차점 스냅 (선-선 교차 매개변수 t/u 테스트) 추가
+- `crates/viewer/src/gui/sketch_ui.rs`: `detect_auto_constraints()`에 `Intersection` 종류 추가; 교차점 표시기는 주황색 원형 X 마커
+
+#### V31: 스케치→솔리드 파이프라인 & 치수 UX (2026-04-07)
+
+**뷰어 — 치수 입력 팝업:**
+- `crates/viewer/src/gui/sketch_ui.rs`: `draw_dimension_popup()` — Distance/Radius/Angle/Length/H-Dist/V-Dist/Diameter 제약조건 버튼 클릭 시 중앙 입력 팝업 표시; Enter/OK로 확인, Escape로 취소; 값이 툴바 기본값에 저장
+- `crates/viewer/src/gui/mod.rs`: `DimensionPopup` 구조체 + `DimensionKind` 열거형 (7종) 추가
+- `crates/viewer/src/gui/toolbar.rs`: 7개 치수 제약조건 버튼이 직접 적용 대신 팝업 열기로 변경; 인라인 DragValue 필드 제거
+
+**뷰어 — 닫힌 프로파일 감지 & 하이라이트:**
+- `crates/viewer/src/gui/sketch_ui.rs`: `find_closed_loops()` — 선 인접성 탐색으로 닫힌 루프 감지; 닫힌 프로파일을 반투명 초록 채움 (rgba 80,200,120,30)으로 렌더링하여 압출 가능 영역 표시
+
+**뷰어 — 압출 방향 미리보기 화살표:**
+- `crates/viewer/src/gui/sketch_ui.rs`: 닫힌 프로파일 존재 시 스케치 중심에서 작업 평면 법선 방향으로 초록 화살표 표시; 화살촉 삼각형 + 거리 라벨 ("10.0 mm")
+
+**뷰어 — 스케치 평면 축 레이블:**
+- `crates/viewer/src/gui/sketch_ui.rs`: 스케치 원점에 색상 X (빨강) / Y (초록) 축 화살표 + 텍스트 레이블; 좌표계 시각화를 위한 흰색 원점 표시
+
+#### V30: 스케치 시각 개선 & 슬롯 도구 (2026-04-07)
+
+**뷰어 — 스케치 엔티티 호버 정보:**
+- `crates/viewer/src/gui/status_bar.rs`: `sketch_hover_info()`로 호버된 스케치 엔티티 속성을 상태바에 표시 — Point(x,y), Line(길이, 각도), Circle(중심, 반지름), Arc(중심, 반지름, 범위), Ellipse(중심, 단축 반지름), B-Spline(차수, 제어점 수)
+
+**뷰어 — 슬롯 도구 개선:**
+- `crates/viewer/src/app.rs`: 슬롯 도구가 단순 선에서 실제 스타디움 형상으로 업그레이드 — 3클릭 흐름 (중심1, 중심2, 너비 점)으로 2개 평행선 + 2개 반원호 생성하여 닫힌 슬롯/직사각원 형성
+- `crates/viewer/src/gui/status_bar.rs`: 슬롯 도구 힌트를 "Click center 1, center 2, then width"로 업데이트
+
+**뷰어 — 부드러운 B-Spline 렌더링:**
+- `crates/viewer/src/gui/sketch_ui.rs`: B-스플라인 곡선이 제어점 직선 연결 대신 de Boor 알고리즘으로 부드러운 곡선 렌더링; `de_boor_eval()` + `clamped_uniform_knots()` 헬퍼 함수; 곡선당 4N+16 샘플 포인트로 시각적 부드러움; 제어 다각형은 여전히 파선 + 다이아몬드 마커로 표시
+
+**뷰어 — 스케치 툴바 버튼:**
+- `crates/viewer/src/gui/toolbar.rs`: 카본 카피 버튼 뒤에 Copy, Paste, Merge Pts 버튼 추가
+
+#### V29: 스케치 도구 완성 & 유효성 검증 (2026-04-07)
+
+**뷰어 — B-Spline 도구 연결:**
+- `crates/viewer/src/app.rs`: `SketchConvertToBSpline` → `geometry_to_bspline()`으로 선택된 선/호/원을 B-스플라인 변환; `SketchIncreaseDegree`/`SketchDecreaseDegree` → 선택된 B-스플라인 차수 증가/감소; `SketchInsertKnot` → t=0.5에 매듭 삽입
+
+**뷰어 — 외부 투영 & 카본 카피:**
+- `crates/viewer/src/app.rs`: `SketchExternalProjection` → `external_projection()`으로 모든 모델 꼭짓점을 스케치 평면에 투영; `SketchCarbonCopy` → `carbon_copy()`로 마지막 닫은 스케치를 현재 스케치에 복사
+
+**뷰어 — 스케치 복사/붙여넣기:**
+- `crates/viewer/src/gui/mod.rs`: `SketchMode`에 `clipboard_points` + `clipboard_lines` — 중심 기준 상대 좌표 저장
+- `crates/viewer/src/app.rs`: `SketchCopySelection`으로 선택 엔티티 복사, `SketchPasteSelection(x, y)`으로 대상 위치에 재생성; 스케치 모드에서 Ctrl+C/Ctrl+V 단축키
+
+**뷰어 — 점 병합:**
+- `crates/viewer/src/app.rs`: `SketchMergePoints` — 일치 점(엡실론 0.01) 검색, 모든 엔티티 참조(선, 호, 원, 타원, B-스플라인) 병합 인덱스로 재매핑
+
+**뷰어 — 스케치 유효성 검증 오버레이:**
+- `crates/viewer/src/gui/mod.rs`: `SketchMode`에 `validation_issues` 필드, 매 프레임 `validate_sketch()` 호출
+- `crates/viewer/src/gui/sketch_ui.rs`: 길이 0 선 근처 경고 아이콘, 근접 일치 점 "merge?" 표시, 과잉 구속 배너 경고
+
+**뷰어 — 스케치 스텁 제로:**
+- 6개 스케치 액션 스텁 모두 실제 구현으로 교체 (ConvertToBSpline, IncreaseDegree, DecreaseDegree, InsertKnot, ExternalProjection, CarbonCopy)
+
+#### V28: 스케치 보조선 모드 & 자동 제약조건 (2026-04-07)
+
+**뷰어 — 보조선 지오메트리 토글:**
+- `crates/viewer/src/app.rs`: `ToggleSketchConstruction`이 선택된 엔티티(점/선)를 보조선/일반 모드 간 전환; 선택 없으면 새 엔티티의 전역 보조선 모드 토글
+- `crates/viewer/src/app.rs`: 선, 사각형, 점 도구가 `construction_mode` ON일 때 새 지오메트리를 자동으로 보조선으로 표시
+
+**뷰어 — 스케치 대칭 지오메트리:**
+- `crates/viewer/src/app.rs`: `SketchMirrorGeometry`를 `sketch.mirror_elements()`에 연결 — 1개 선을 대칭축으로 선택 + 선택적 점 대칭; 점 미선택 시 축 외 모든 점 대칭
+
+**뷰어 — 폴리라인 닫기:**
+- `crates/viewer/src/app.rs`: Enter 키로 폴리라인 루프 닫기 (3개 이상 점 → 마지막에서 첫 번째로 선 추가); 우클릭도 폴리라인 닫기 (3개 이상 점)
+- `crates/viewer/src/app.rs`: B-Spline 모드에서 Enter로 축적된 제어점으로 B-스플라인 확정
+
+**뷰어 — 제약조건 색상 코딩 완성:**
+- `crates/viewer/src/gui/sketch_ui.rs`: 모든 제약조건 렌더링 함수 (Radius, Diameter, Angle, H/V-Distance, Perpendicular, Tangent, Midpoint, Collinear, Concentric, Symmetric)가 고정 색상 대신 제약조건별 잔차 색상 (초록/노랑/빨강) 사용
+- 미사용 `DIM_COLOR` 상수 제거
+
+**뷰어 — 자동 제약조건 적용:**
+- `crates/viewer/src/app.rs`: `find_or_create_point()` — 기존 근접 점 재사용 (스냅 거리 0.3)으로 중복 생성 방지, 암시적 일치 제약조건 구현
+- `crates/viewer/src/app.rs`: `apply_line_auto_constraints()` — 선 각도가 축과 5° 이내일 때 자동으로 수평/수직 제약조건 추가
+- 선, 폴리라인, 사각형 도구가 자동 제약조건 사용; 사각형은 4변 모두에 H/V 제약조건 자동 추가
+
+#### V27: 스케치 정밀 편집 (2026-04-06)
+
+**뷰어 — 제약조건 인식 드래그:**
+- `crates/viewer/src/app.rs`: 단일 점 드래그 시 `drag_solve()`를 사용하여 기존 제약조건 유지 — 솔버 미수렴 시 원시 이동으로 폴백; 다중 점 엔티티 드래그는 여전히 델타 기반 이동
+
+**뷰어 — 완전한 스케치 Undo/Redo:**
+- `crates/viewer/src/gui/mod.rs`: `SketchSnapshot`이 엔티티 수 대신 전체 `Sketch` 클론 저장 — undo와 redo 모두 삭제, 점 이동, 제약조건 변경 포함 완전한 스케치 상태 복원
+- `crates/viewer/src/gui/mod.rs`: `redo()` 완전 작동 — `redo_stack`에서 스케치 복원, 선택 초기화
+
+**뷰어 — 인터랙티브 Trim/Split/Extend:**
+- `crates/viewer/src/app.rs`: `SketchTrimEdge` — 2개 선 선택 후 교차점에서 첫 번째 선 트리밍 (시작점 쪽 유지); `SketchSplitEdge` — 1개 선 선택 후 중점에서 분할 (t=0.5); `SketchExtendEdge` — 1개 선 선택 후 끝점을 현재 길이의 50% 연장
+- `crates/viewer/src/app.rs`: `SketchFilletCorner` / `SketchChamferCorner` — 꼭짓점을 공유하는 2개 선 선택 후 설정된 반경/거리로 필릿 호 또는 챔퍼 선 적용
+
+**뷰어 — Ctrl+A 스케치 전체 선택:**
+- `crates/viewer/src/app.rs`: 스케치 모드에서 Ctrl+A로 모든 엔티티 선택 (점, 선, 호, 원, 타원, B-스플라인); 스케치 모드 밖에서는 글로벌 SelectAll로 전달
+
+**뷰어 — 설정 가능한 그리드 간격:**
+- `crates/viewer/src/gui/mod.rs`: `SketchMode`에 `grid_spacing: f64` 필드 (기본값 1.0)
+- `crates/viewer/src/gui/toolbar.rs`: 툴바 토글 섹션에 DragValue 입력 (G: 접두사, 0.1–10.0 범위)
+- `crates/viewer/src/gui/sketch_ui.rs`: 그리드 렌더링이 설정된 간격 사용; 자동 제약조건 그리드 스냅도 간격 반영
+- `crates/viewer/src/app.rs`: `snap_sketch_coords()`가 하드코딩된 0.5 대신 설정된 그리드 간격으로 스냅
+
+#### V26: 스케치 고급 편집 (2026-04-06)
+
+**뷰어 — 엔티티 드래그:**
+- `crates/viewer/src/app.rs`: 선/원/호 클릭+드래그 시 모든 구성 점을 한 단위로 이동 — `entity_drag_points()`가 엔티티 타입별 점 인덱스 수집 (선→2개 끝점, 원/호→중심, 타원→중심+장축 끝점); `drag_origin` 추적을 통한 델타 기반 이동
+- `crates/viewer/src/gui/mod.rs`: `drag_point: Option<usize>`를 `drag_points: Vec<usize>` + `drag_origin: Option<(f64, f64)>`로 교체하여 다중 점 드래그 지원
+
+**뷰어 — 제약조건 솔버 피드백:**
+- `crates/sketch/src/solver.rs`: `constraint_residuals()` — 전체 솔버 실행 없이 제약조건별 L2 잔차 노름 계산
+- `crates/viewer/src/gui/mod.rs`: `update_constraint_status()` — 프레임당 `constraint_residuals()` 호출, `constraint_residuals: Vec<f64>`와 `solver_converged: bool`에 결과 저장
+- `crates/viewer/src/gui/sketch_ui.rs`: 제약조건 표시기 색상 코딩: 초록=만족 (<1e-6), 노랑=경고 (<0.1), 빨강=위반; 제약조건 위반 시 배너 빨간색으로 변경 + "N conflicting" 표시
+- `crates/viewer/src/gui/sketch_ui.rs`: 제약조건별 잔차 색상을 위한 색상 오버라이드 변형 (`draw_distance_c`, `draw_geo_line_sym_c`, `draw_coincident_c`, `draw_fixed_c` 등)
+
+**뷰어 — 스케치 재편집:**
+- `crates/viewer/src/gui/mod.rs`: `GuiState`에 `last_sketch: Option<(Sketch, WorkPlane)>` 필드 — 닫을 때 스케치 데이터 저장
+- `crates/viewer/src/app.rs`: `EditSketch` 액션 — 마지막으로 닫은 스케치를 Select 모드로 다시 열어 모든 엔티티와 제약조건 보존
+- `crates/viewer/src/gui/toolbar.rs`: 이전 스케치가 있을 때 Sketcher 툴바에 "Edit Sketch" 버튼 표시
+
+**뷰어 — 수치 제약조건 입력:**
+- `crates/viewer/src/gui/toolbar.rs`: 툴바에 Distance (D:), Angle (A: 도 단위 접미사), Radius (R:) 제약조건의 DragValue 인라인 입력 — 제약조건 적용 전 정확한 값 설정 가능
+
+#### V25: 스케치 인터랙티브 편집 (2026-04-06)
+
+**뷰어 — 스케치 점 드래그:**
+- `crates/viewer/src/app.rs`: Select 모드에서 클릭+드래그로 스케치 점 이동 — 누를 때 undo 스냅샷 저장, 드래그 중 스냅 적용하여 점 위치 업데이트, 실제 이동 없으면 스냅샷 취소
+
+**뷰어 — 스케치 호버 프리셀렉션:**
+- `crates/viewer/src/app.rs`: CursorMoved에서 `hit_test_sketch()`로 `hovered_entity` 업데이트 — 클릭 선택과 동일한 히트테스트 로직
+- `crates/viewer/src/gui/sketch_ui.rs`: 호버된 엔티티 초록색 하이라이트 (rgb 100,255,150), 두꺼운 스트로크 (2.5px), 점에 링
+
+**뷰어 — 스케치 다시 실행 + Escape:**
+- `crates/viewer/src/gui/mod.rs`: `redo()` 메서드가 `redo_stack`에서 이전에 취소된 스냅샷 복원
+- `crates/viewer/src/app.rs`: Ctrl+Shift+Z로 스케치 모드에서 다시 실행; Escape는 먼저 pending_point/polyline_points 초기화, 대기 중인 것 없을 때만 스케치 취소
+
+**뷰어 — 스케치 우클릭 컨텍스트 메뉴:**
+- `crates/viewer/src/gui/sketch_ui.rs`: `draw_sketch_context_menu()` — Delete (Del), Horizontal (H), Vertical (V), Fixed, Select All (Ctrl+A), Clear Selection이 있는 egui 팝업; 컨텍스트 감지 (선 선택 시에만 제약조건 항목 표시)
+- `crates/viewer/src/app.rs`: Select 모드에서 대기 중인 지오메트리 없을 때 우클릭으로 컨텍스트 메뉴 트리거; 대기 중인 지오메트리 있으면 초기화
+
+**뷰어 — DOF 표시기 + 선택 정보:**
+- `crates/viewer/src/gui/sketch_ui.rs`: 배너에 DOF 수 표시 (`degrees_of_freedom()`로 제약조건 타입별 가중치 계산), 완전 구속 시 초록색; 선택 수 표시
+- `crates/viewer/src/gui/status_bar.rs`: 상태 바에서 정확한 DOF 계산을 위해 `degrees_of_freedom()` 사용; 스케치 선택 수 표시
+
+#### V24: 스케치 편집 기반 (2026-04-06)
+
+**뷰어 — 스케치 엔티티 선택:**
+- `crates/viewer/src/gui/mod.rs`: `SketchEntityRef` 열거형 (Point/Line/Arc/Circle/Ellipse/BSpline) + `SketchMode`에 `selected_entities: Vec<SketchEntityRef>` 필드
+- `crates/viewer/src/app.rs`: Select 도구 히트테스트 — 점 근접 (0.24 임계값), 선분 거리, 원/호 반경 거리, 타원 정규화 거리, B-스플라인 제어 다각형 거리; Ctrl+클릭으로 다중 선택 토글
+- `crates/viewer/src/gui/sketch_ui.rs`: 선택된 엔티티 파란색 하이라이트 (rgb 80,160,255), 두꺼운 스트로크 (3px vs 2px), 점에 선택 링
+
+**뷰어 — 스케치 엔티티 삭제:**
+- `crates/viewer/src/app.rs`: `delete_sketch_entities()` — 스케치 벡터에서 선택된 엔티티 제거 (높은 인덱스부터 시프트 방지); 참조하는 모든 엔티티의 PointId 연쇄 조정 (lines, arcs, circles, ellipses, B-splines)
+- `crates/viewer/src/app.rs`: 스케치 모드에서 Delete/Backspace로 스냅샷 저장 후 선택된 엔티티 삭제 (undo 지원)
+
+**뷰어 — 스케치 키보드 단축키:**
+- `crates/viewer/src/app.rs`: S=Select, L=Line, R=Rectangle, C=Circle, A=Arc, E=Ellipse, P=Point, B=B-Spline, W=Polyline (스케치 모드에서만, ctrl 없이)
+- `crates/viewer/src/app.rs`: H=Horizontal 제약조건, V=Vertical 제약조건 (선택된 선에 적용, 스케치 모드 전용)
+- `crates/viewer/src/gui/toolbar.rs`: 모든 스케치 도구 및 제약조건 버튼에 단축키 힌트 업데이트
+
+**뷰어 — 인터랙티브 제약조건 (선택 기반):**
+- `crates/viewer/src/app.rs`: 모든 제약조건 툴바 버튼이 선택된 엔티티에 적용: Coincident (2점), Parallel/Perpendicular/Equal (2선), Fixed/Block (현재 위치 점), Distance (2점 또는 선 길이), Angle (2선, 도 단위), Radius (원), H-Distance/V-Distance (2점); 선택 없으면 마지막 엔티티로 폴백
+- `crates/viewer/src/app.rs`: 제약조건 액션의 모든 `log_info()` 스텁 제거 — 실제 제약조건 적용으로 대체
+
+**뷰어 — Extrude 거리 UI:**
+- `crates/viewer/src/gui/toolbar.rs`: Sketcher 툴바에 Close/Cancel 전 DragValue 입력 (0–1000mm 범위, 0.5 스텝); 스케치 중 편집 가능
+
+#### V23: 스케치 인터랙션 개선 (2026-04-06)
+
+**뷰어 — 스케치 실시간 미리보기:**
+- `crates/viewer/src/gui/sketch_ui.rs`: 모든 그리기 도구에서 펜딩 포인트와 커서 사이 고무줄 미리보기: Line/Slot (점선), Rectangle (4개 점선), Circle (점선 원 + 반지름), Arc (반지름 + 반원), Ellipse (점선 타원), Polygon (점선 윤곽), Polyline/BSpline (마지막 점에서 커서까지 점선)
+
+**뷰어 — 스케치 스냅:**
+- `crates/viewer/src/app.rs`: `snap_sketch_coords()` — 그리드 스냅 (0.5 격자) + 점 스냅 (가장 가까운 기존 점에 0.3 거리 임계값), 모든 도구에서 엔티티 생성 전 적용
+
+**뷰어 — 스케치 도구 수정:**
+- `crates/viewer/src/app.rs`: 타원 도구가 `add_circle()` 대신 `add_ellipse(center, major_end, minor_radius)` 사용 — 독립적 rx/ry로 실제 타원 생성
+- `crates/viewer/src/app.rs`: 호 도구가 하드코딩된 0→π 호 대신 클릭 각도 기반 ±90° 반원 사용 — 중심에서 커서 방향을 따라 호 방향 결정
+
+**뷰어 — 스케치 실행 취소:**
+- `crates/viewer/src/gui/mod.rs`: `SketchSnapshot` 구조체 + `SketchMode`에 `undo_stack` 필드 — 각 연산 전 엔티티 수 (points/lines/arcs/circles/ellipses/bsplines/constraints) 기록
+- `crates/viewer/src/app.rs`: 스케치 모드에서 Ctrl+Z가 `SketchMode::undo()` 호출 — 모든 엔티티 벡터를 연산 전 스냅샷으로 절단, 펜딩 포인트 초기화; 스택 비어있으면 전역 실행취소로 전달
+
+**뷰어 — 다각형 미리보기 수정:**
+- `crates/viewer/src/gui/sketch_ui.rs`: 다각형 미리보기 정점 할당의 `u32` → `usize` 용량 변환 수정
+
+#### V22: 통합 자동 피킹 + 더블클릭 루프 + 호버 미리보기 (2026-04-06)
+
+**뷰어 — 통합 자동 피킹:**
+- `crates/viewer/src/app.rs`: 모든 선택 모드에서 `pick_auto()` 사용 — 툴바 선택 모드와 관계없이 vertex > edge > face > solid 자동 감지; 사용하지 않는 `pick_face()`, `pick_edge_mode()`, `pick_vertex_mode()` 함수 제거
+- `crates/viewer/src/app.rs`: 프리셀렉션(호버)도 통합 자동 피킹 사용 — 커서 아래 가장 구체적인 엔티티 하이라이트
+- `crates/viewer/src/gui/context_menu.rs`: 컨텍스트 메뉴가 실제 선택된 엔티티 타입에 따라 적응 (선택 모드가 아닌 `selected_entities` 내용 기반)
+- `crates/viewer/src/gui/properties.rs`: 엔티티 선택 시 항상 하위 요소 속성 표시 (모드 확인 제거)
+- `crates/viewer/src/gui/overlays.rs`: 선택 오버레이가 `selected_entities.is_empty()` 기준으로 그려짐 (모드 아님)
+
+**뷰어 — 더블클릭 루프 선택:**
+- `crates/viewer/src/app.rs`: `try_double_click_loop()` — 더블클릭 감지 (300ms, 10px 근접); 엣지 더블클릭 → 엣지 루프 선택, 면 더블클릭 → 면 루프 선택
+- `crates/viewer/src/app.rs`: `last_click_time` / `last_click_pos` 필드 (더블클릭 타이밍)
+
+**뷰어 — 호버 미리보기:**
+- `crates/viewer/src/gui/status_bar.rs`: `build_hover_preview()` — 커서 아래 엔티티 타입 및 인덱스 표시 (예: "Edge 12", "Face 3", "Vertex 5")
+- `crates/viewer/src/gui/status_bar.rs`: 선택 모드 표시기가 이제 "Auto" 표시 (항상 자동 피킹 활성)
+
+**뷰어 — 가장 가까운 표준 뷰 스냅:**
+- `crates/viewer/src/app.rs`: `try_snap_to_nearest_view()` — 궤도 드래그 종료 후 카메라가 표준 뷰(Front/Back/Right/Left/Top/Bottom)에서 ~10° 이내이면 자동 애니메이션 스냅; `nav.snap_to_nearest` 설정으로 제어
+- `crates/viewer/src/app.rs`: `was_orbiting` 플래그가 마우스 버튼 릴리즈 이벤트에서 궤도 상태 추적 (모든 네비게이션 스타일 지원)
+
+**뷰어 — 피킹 임계값 튜닝:**
+- `crates/viewer/src/app.rs`: 정점 임계값 (0.012×거리) 및 엣지 임계값 (0.015×거리)을 조정하여 우발적 정점 선택 감소, 엣지/면 선택 정확도 유지
+
+#### V21: 엣지/면 루프 선택 + 자동 피킹 + 네비게이션 수정 (2026-04-03)
+
+**뷰어 — 엣지 루프 선택:**
+- `crates/viewer/src/app.rs`: `compute_edge_loop()` — 시드 엣지에서 공유 꼭짓점을 통한 BFS valence-2 체인 워크; 양방향으로 연결된 엣지 수집하여 루프 형성
+- `crates/viewer/src/gui/mod.rs`: `GuiAction::SelectEdgeLoop` — 첫 번째 선택된 엣지를 포함하는 루프의 모든 엣지 선택
+
+**뷰어 — 엣지 링 선택:**
+- `crates/viewer/src/app.rs`: `compute_edge_ring()` — 쿼드 면을 가로지르는 반대편 엣지 순회; 시드 엣지에서 4변 면의 index+2 엣지 선택
+- `crates/viewer/src/gui/mod.rs`: `GuiAction::SelectEdgeRing` — 링의 모든 엣지 선택
+
+**뷰어 — 면 루프 선택:**
+- `crates/viewer/src/app.rs`: `compute_face_loop()` — 시드 면에서 공유 엣지를 통한 BFS 외향 탐색, 전이적으로 연결된 모든 면 수집
+- `crates/viewer/src/gui/mod.rs`: `GuiAction::SelectFaceLoop` — 연결 영역의 모든 면 선택
+
+**뷰어 — 컨텍스트 메뉴 연결:**
+- `crates/viewer/src/gui/context_menu.rs`: 엣지 컨텍스트 메뉴 — "Select Edge Loop" 및 "Select Edge Ring"이 실제 토폴로지 기반 액션 디스패치 (기존 플레이스홀더 StatusMessage 대체)
+- `crates/viewer/src/gui/context_menu.rs`: 면 컨텍스트 메뉴 — "Select Face Loop"가 실제 BFS 면 루프 선택 디스패치
+
+**뷰어 — 필릿/챔퍼 파라미터 UI:**
+- `crates/viewer/src/gui/toolbar.rs`: Part 툴바 Fillet/Chamfer가 항상 태스크 패널 열기 (엣지 선택 시에도) — 툴팁이 선택/전체 엣지 구분 표시
+- `crates/viewer/src/gui/toolbar.rs`: PartDesign 드레스업 플라이아웃이 Fillet/Chamfer 항상 태스크 패널 열기
+- `crates/viewer/src/gui/task_panel.rs`: Fillet/Chamfer 태스크 패널에 사전 선택된 엣지 수 "N selected" 표시
+- `crates/viewer/src/gui/context_menu.rs`: 엣지 Fillet/Chamfer 컨텍스트 메뉴가 직접 디스패치 대신 태스크 패널 열기
+
+**뷰어 — 자동 피킹 (Solid 모드):**
+- `crates/viewer/src/app.rs`: `pick_auto()` — Solid 선택 모드에서 클릭 위치의 가장 구체적인 하위 요소를 자동 감지 (vertex > edge > face > solid), 수동 모드 전환 불필요
+- `crates/viewer/src/app.rs`: `select_object_for_pick()` — 공유 헬퍼, 객체 선택 및 모델 데이터 로드
+
+**뷰어 — 네비게이션 스타일 수정 & 확장:**
+- `crates/viewer/src/nav.rs`: FreeCADGesture 설명 텍스트 수정 (기존 "LMB: Orbit" → "LMB: Select | MMB: Orbit")
+- `crates/viewer/src/nav.rs`: FreeCADGesture에 `Shift+MMB → Pan` 추가 (실제 FreeCAD와 일치)
+- `crates/viewer/src/nav.rs`: Inventor 매핑 수정 (기존 MMB=Pan/Shift+MMB=Orbit → MMB=Orbit/Shift+MMB=Pan)
+- `crates/viewer/src/nav.rs`: FreeCAD 전체 12개 네비게이션 스타일, 정확한 버튼+수정키 매핑:
+  - CAD(기본), Gesture, Blender, Maya, SolidWorks, OpenInventor, OpenCascade, OpenSCAD, Revit, SiemensNX, TinkerCAD, Touchpad
+  - 수정: OpenInventor (LMB=Orbit), OpenCascade (Ctrl+RMB=Orbit, Ctrl+LMB=Zoom), OpenSCAD (LMB=Orbit, MMB=Zoom)
+  - 신규: Gesture (LMB 드래그=Orbit), Maya (Alt+LMB/MMB/RMB), SiemensNX (MMB+RMB=Pan), Touchpad (Alt+Move=Orbit)
+- `crates/viewer/src/nav.rs`: `OrbitStyle` 열거형 — Turntable, Trackball, Free Turntable, Trackball Classic, Rounded Arcball (기본)
+- `crates/viewer/src/nav.rs`: `RotationMode` 열거형 — Window center (기본), Drag at cursor, Object center
+- `crates/viewer/src/nav.rs`: NavConfig 신규 필드: `orbit_style`, `rotation_mode`, `zoom_step`, `zoom_at_cursor`, `disable_touch_tilt`, `enable_spinning`, `show_rotation_center`, `rotation_center_size`
+- `crates/viewer/src/nav.rs`: `resolve_drag()`에 `alt` 파라미터 (Maya/Touchpad Alt+버튼 네비게이션)
+- `crates/viewer/src/app.rs`: 스케치 모드에서 LMB 기반 orbit 억제 (Gesture/OpenInventor/OpenSCAD 충돌 방지)
+- `crates/viewer/src/gui/dialogs.rs`: 설정 다이얼로그 — "Orbit & Rotation" 섹션 (orbit style, rotation center, rotation mode 드롭다운), 감도 섹션 (zoom step, zoom-at-cursor, touch tilt), 애니메이션 (spinning 토글)
+
+**뷰어 — 네비게이션 동작 구현:**
+- `crates/viewer/src/nav.rs`: `apply_orbit()` — OrbitStyle 기반 궤도 회전 연산:
+  - Turntable: yaw/pitch 회전, pitch ±89° 클램핑 (짐벌 잠금 방지)
+  - FreeTurntable: yaw/pitch 회전, pitch 제한 없음 (극점 통과 자유 회전)
+  - Trackball/TrackballClassic/RoundedArcball: 가상 구체 트랙볼 매핑 — 커서 위치를 가상 구체에 투영, 이전/현재 벡터 간 호 각도에서 회전각 계산, 화면 공간 회전축에서 교차 결합된 yaw/pitch 도출
+- `crates/viewer/src/nav.rs`: `drag_zoom_factor()` — 연속 마우스 드래그 줌용 별도 줌 계산 (`zoom_sensitivity` 사용)
+- `crates/viewer/src/nav.rs`: `scroll_zoom_factor()`가 이제 `zoom_step` 사용 (0.2 = 스크롤당 20% 줌, FreeCAD 기본값과 일치)
+- `crates/viewer/src/app.rs`: `apply_rotation_mode_pivot()` — RotationMode 기반 궤도 중심점:
+  - WindowCenter: 카메라 타겟 중심 궤도 (기본값)
+  - ObjectCenter: 선택된 객체의 정점 무게 중심 궤도
+  - DragAtCursor: 화면 공간 레이 근사로 커서 위치 방향으로 궤도 중심 이동
+- `crates/viewer/src/app.rs`: zoom_at_cursor 구현 — 스크롤 줌 시 카메라 타겟을 커서 아래 지점으로 줌 양에 비례하여 이동 (NDC 기반 화면 공간 투영)
+- `crates/viewer/src/lib.rs`: 단순 뷰어에 `apply_orbit()` 및 `drag_zoom_factor()` 호출 적용
+
+#### V20: 선택 기반 연산 (2026-04-03)
+
+**뷰어 — 선택된 엣지에 필릿/챔퍼:**
+- `crates/viewer/src/app.rs`: `selected_edge_pairs()` — `SelectedEntity::Edge` 핸들을 필릿/챔퍼 연산용 `(Handle<VertexData>, Handle<VertexData>)` 쌍으로 변환
+- `crates/viewer/src/app.rs`: `FilletAllEdges`/`ChamferAllEdges` 핸들러가 선택된 엣지를 순회하며 순차적으로 연산 적용; 엣지 미선택 시 첫 번째 엣지 쌍으로 폴백
+
+**뷰어 — 선택된 면에 스케치:**
+- `crates/viewer/src/app.rs`: `compute_face_workplane()` — 선택된 첫 번째 면에서 WorkPlane 계산 (면 삼각형에서 무게중심 + 법선, 수직 x축)
+- `crates/viewer/src/gui/mod.rs`: `GuiAction::SketchOnSelectedFace` — 선택된 면의 계산된 작업 평면에서 스케치 모드 진입
+- `crates/viewer/src/app.rs`: `SketchOnSelectedFace` 핸들러 — 면 기반 WorkPlane으로 Sketcher 워크벤치 진입
+
+**뷰어 — 컨텍스트 메뉴 연결:**
+- `crates/viewer/src/gui/context_menu.rs`: 면 컨텍스트 메뉴 — "Create Sketch on Face"가 `SketchOnSelectedFace` 디스패치 (기존 플레이스홀더 `WorkPlane::xy()` 대체)
+- `crates/viewer/src/gui/context_menu.rs`: 엣지 컨텍스트 메뉴 — "Fillet/Chamfer Selected Edges"가 선택된 엣지 사용하여 `FilletAllEdges`/`ChamferAllEdges` 디스패치
+- `crates/viewer/src/gui/context_menu.rs`: 꼭짓점 컨텍스트 메뉴 — "Fillet at Vertex"가 `FilletAllEdges` 디스패치
+- `crates/viewer/src/gui/context_menu.rs`: 측정 버튼이 `ToggleMeasurement` 디스패치 (기존 플레이스홀더 `StatusMessage` 대체)
+
+**뷰어 — 선택 인식 툴바:**
+- `crates/viewer/src/gui/toolbar.rs`: Part 툴바 Fillet/Chamfer 버튼 — 엣지 선택 시 `FilletAllEdges`/`ChamferAllEdges` 직접 디스패치; 미선택 시 태스크 패널 열기
+- `crates/viewer/src/gui/toolbar.rs`: PartDesign 드레스업 플라이아웃 — 엣지 선택 시 Fillet/Chamfer 직접 디스패치
+- `crates/viewer/src/gui/toolbar.rs`: Sketcher 툴바 — 면 선택 시 "On Face" 버튼 표시, `SketchOnSelectedFace` 디스패치
+
+#### V19: 다중 선택 + 측정 + 선택 툴바 (2026-04-03)
+
+**뷰어 — 다중 선택 (Ctrl+클릭):**
+- `crates/viewer/src/gui/mod.rs`: `selected_entities: Vec<SelectedEntity>` — 단일 `selected_entity` 대체, Face/Edge/Vertex 다중 선택 지원
+- `crates/viewer/src/app.rs`: `pick_face()`, `pick_edge_mode()`, `pick_vertex_mode()` — Ctrl+클릭으로 선택 목록에 토글; Ctrl 없이 클릭하면 교체
+- `crates/viewer/src/app.rs`: `toggle_entity()` 헬퍼 — 선택 Vec에 엔티티 추가/제거
+- `crates/viewer/src/scene.rs`: `Scene::select_all()` — 모든 보이는 객체 선택
+- `crates/viewer/src/gui/overlays.rs`: `draw_selection_overlay()` 모든 `selected_entities` 순회하여 파란색 하이라이트
+
+**뷰어 — 하위 요소 간 측정:**
+- `crates/viewer/src/gui/overlays.rs`: `draw_measurement_overlay_between()` — 정확히 2개 엔티티 선택 시 대표점 사이에 점선 청록색 라인 + 거리 라벨(mm) 표시
+- `crates/viewer/src/gui/overlays.rs`: `representative_point()` — 꼭짓점 위치 / 엣지 중점 / 면 무게중심
+- `crates/viewer/src/gui/properties.rs`: 다중 선택 요약에 "Measurement" 접이식 그룹 — 2개 엔티티 선택 시 거리(mm) 표시
+
+**뷰어 — 다중 선택 속성 패널:**
+- `crates/viewer/src/gui/properties.rs`: `draw_multi_selection_summary()` — 면/엣지/꼭짓점 수, 총 면적, 총 길이 표시
+
+**뷰어 — 선택 모드 툴바:**
+- `crates/viewer/src/gui/toolbar.rs`: 4개 토글 버튼(Solid/Face/Edge/Vertex) + 선택 수 배지 + Select All / Deselect 버튼
+- `crates/viewer/src/gui/mod.rs`: `GuiAction::SetSelectionMode(SelectionMode)` — 모드 변경 액션
+- `crates/viewer/src/app.rs`: 키보드 단축키 — Key 2 → Face 모드, Key 4 → Vertex 모드 (Keys 1/3은 표준 뷰에 예약됨)
+
+### 수정됨
+
+#### V18: 핵심 피킹/선택 수정 + 하위 요소 시각적 하이라이트 (2026-04-02)
+
+**뷰어 — 3D 피킹 수정 (근본 원인):**
+- `crates/viewer/src/render.rs`: `mat4_inv()` 수정 — 4×4 행렬 역행렬에 두 가지 버그가 있어 `inv_view_proj()`가 완전히 잘못된 결과를 생성:
+  - 버그 1: 여인수(cofactor) `c` 값 이름이 역순 (`c5,c4,c3,c2,c1,c0` → `c0,c1,c2,c3,c4,c5`), 모든 수반행렬(adjugate) 항이 잘못된 2×2 소행렬(minor)을 사용
+  - 버그 2: 마지막 4개 수반행렬 항이 행 2 요소(`m(2,...)`) 대신 행 3 요소(`m(3,...)`)를 사용하여 잘못된 여인수 생성
+  - 결합 효과: `VP * inv_VP ≠ 단위행렬` — 피킹 레이가 잘못된 월드 좌표에서 계산되어 커서-객체 선택이 완전히 불안정
+  - GLM 기반 올바른 구현으로 교체, `VP * inv_VP = I` 테스트로 검증
+- `crates/viewer/src/picking.rs`: 하위 요소 피킹 추가 (Face/Edge/Vertex 모드), B-Rep 토폴로지 순회
+- `crates/viewer/src/scene.rs`: SceneObject에 face→삼각형 맵, 엣지 끝점, 꼭짓점 위치 저장
+
+**뷰어 — 하위 요소 시각적 하이라이트 오버레이:**
+- `crates/viewer/src/gui/overlays.rs`: `draw_selection_overlay()` + `draw_entity_highlight()` — 선택/프리셀렉션 하위 요소에 대한 화면 공간 시각 피드백:
+  - Face: 반투명 파란색 채움 + 삼각형 가장자리 윤곽선 (`face_tri_map` 기반)
+  - Edge: 두꺼운 하이라이트 라인 + 끝점 도트 (`edge_positions`/`edge_handles` 기반)
+  - Vertex: 채워진 원 + 흰색 윤곽 링 (`vertex_positions`/`vertex_handles` 기반)
+- 프리셀렉션(호버) 하이라이트: 연한 녹색 색조, 선택과 동일하면 생략
+- 선택 하이라이트: 파란색 색조, 프리셀렉션 위에 렌더링
+- `crates/viewer/src/gui/mod.rs`: `GuiState`에 `preselected_entity` + `preselected_object_id` 필드 추가
+- `crates/viewer/src/app.rs`: `update_preselection()`이 이제 객체 ID만이 아닌 하위 요소 핸들(Face/Edge/Vertex)도 추적
+- `crates/viewer/src/scene.rs`: `Scene::get_object(id)` — 프리셀렉션 객체 조회용 접근자
+
+**뷰어 — 하위 요소 속성 패널:**
+- `crates/viewer/src/gui/properties.rs`: 속성 패널이 선택된 하위 요소의 상세 정보를 표시:
+  - Face: 핸들 ID, 삼각형 수, 계산된 면적 (mm²), 루프 수
+  - Edge: 핸들 ID, 시작/끝 꼭짓점 위치, 계산된 길이 (mm)
+  - Vertex: 핸들 ID, X/Y/Z 좌표 (소수점 6자리)
+- 모든 속성이 기존 검색 필터를 지원
+- Base와 Creation Parameters 사이에 접을 수 있는 "Selected Face/Edge/Vertex" 그룹으로 표시
+
+**뷰어 — 신규 피킹 테스트 (+3):**
+- `test_project_unproject_roundtrip`: 5개 월드 포인트를 스크린에 투영 후 역투영, 레이가 원래 점을 통과하는지 검증 (기본 카메라 yaw=0.8, pitch=0.4)
+- `test_vp_inverse_identity`: `VP * inv_VP = 단위행렬` f32 허용 범위 내 검증
+- `test_pick_box_default_camera`: VP 행렬로 박스 중심을 스크린에 투영 후 해당 위치에서 피킹, 히트 검증
+
+### 추가됨
+
+#### V17: 복합 모델 스트레스 테스트 및 Python 패키징 (2026-03-31)
+
+**QA — 복합 모델 스트레스 테스트 (+49개 신규 테스트):**
+- `crates/modeling/tests/stress_tests.rs`: 5가지 실제 CAD 워크플로우 카테고리를 커버하는 49개 통합 테스트 추가
+- 카테고리 1 — 다중 피처 PartDesign Body (9개 테스트): pad+pocket+chamfer 체인, 5-피처 순차 body, 피처 억제/재정렬/되감기, mirror/linear-pattern 피처, revolve+groove 피처 체인, 바디 간 객체 이동
+- 카테고리 2 — 10개 이상 파트 어셈블리 (9개 테스트): 10-박스 어셈블리, 수량 포함 12-파트 BOM, 배치 변환, 가시성 토글, Coincident/Distance 구속조건, 점 변환, 분해 뷰, 10개 파트 BVH 간섭 감지
+- 카테고리 3 — 20개 이상 구속조건 스케치 (10개 테스트): 19개 구속조건 L-형상, 대칭, 동심원, 수평/수직 거리, 완전 구속 검증, 중점, 등길이, 호-접선, 반지름, 공선
+- 카테고리 4 — 불리언 체인 5회 이상 (6개 테스트): 5-실린더 빼기 플레이트, 5-박스 합집합 십자형, 교집합 체인, XOR+빼기 체인, 교대 합집합/빼기 (6회 연산), 정밀 불리언 5-박스 합집합
+- 카테고리 5 — 전체 I/O 라운드트립 (10개 테스트): JSON 박스/구, ASCII STL 박스, 이진 STL 실린더, STEP 박스, OBJ 구, glTF 박스, PLY 토러스, BREP 박스, 병렬 테셀레이션
+- 크로스 도메인 워크플로우 (5개 테스트): 스케치→압출→검사→테셀레이션→STL 내보내기, 다중 불리언→내보내기 브라켓, 어셈블리 BOM 내보내기, 모든 프리미티브 형상 검사, 스케일→미러→패턴 체인
+- 테스트 스위트 1300개 → 1369개로 확장 (+69개 추가, 실패 0개)
+
+#### V16: 성능 최적화, Python 바인딩 및 테스트 확장 (2026-04-01)
+
+**성능 — 병렬 불리언 연산:**
+- `cadkernel-modeling`: `boolean_op()`에 rayon `par_iter()` 적용 — 페이스 분류 내부 루프 병렬 처리
+- `cadkernel-modeling`: `BoolOp::evaluate_faces_parallel()` — rayon 기반 병렬 페이스 분류 (Inside/Outside/OnBoundary)
+- `cadkernel-modeling`: `merge_boolean_results()` — 병렬 분류된 페이스를 최종 B-Rep으로 통합
+
+**성능 — BVH 및 공간 인덱싱:**
+- `cadkernel-geometry` (BVH): `query_aabb_parallel()` — 배치 쿼리를 위한 rayon 병렬 BVH 탐색
+- `cadkernel-geometry` (BVH): `build_sah()` — 최적 트리 품질을 위한 Surface Area Heuristic 구성
+- `cadkernel-geometry` (BVH): `refit()` — 전체 재구성 없이 동적 장면을 위한 상향식 AABB 갱신
+
+**성능 — NURBS 기저 함수 캐싱:**
+- `cadkernel-geometry`: `BasisCache` — `basis_funs()` 결과를 위한 LRU 캐시 (용량 1024), (degree, knot_hash, span, t) 키 사용
+- `cadkernel-geometry`: `CachedNurbsCurve` 래퍼 — NurbsCurve 평가 위에 투명한 캐싱 레이어
+- `cadkernel-geometry`: `NurbsSurface::evaluate_cached()` — 반복 UV 쿼리를 위한 캐시된 곡면 평가
+
+**Python 바인딩 (PyO3 0.23):**
+- `cadkernel-python`: Sprint 2/3 API 전체 바인딩 업데이트: `make_cone()`, `make_torus()`, 어셈블리 DOF 분석, FEM 메시 생성
+- `cadkernel-python`: `PyAssembly` 클래스 — `add_component()`, `add_constraint()`, `solve()`, `analyze_dof()`
+- `cadkernel-python`: `PyFem` 클래스 — `generate_tet_mesh()`, `static_analysis()`, `thermal_analysis()`
+- `cadkernel-python`: 6개 Python 클래스 전체를 커버하는 74개 Python 통합 테스트
+
+**QA — 테스트 확장:**
+- 테스트 스위트 1136개 → 1300개로 확장 (+164개 신규 테스트)
+- 신규 테스트 영역: 컴파운드 연산, 조인 연산, 서피스 연산, 어셈블리 솔버, FEM 분석, 메시 연산, 파일 포맷 라운드트립 (DXF, PLY, 3MF, BREP, VRML, AMF, OCA, COLLADA, DWG), 형상 분석, 바디 연산, 기어, 공간 쿼리, 멀티 트랜스폼, 질량 계산
+- BREP 포맷: 14개 테스트 (정점/엣지/페이스/셸/솔리드 수 라운드트립, 잘못된 입력, 섹션 순서)
+- OCA 포맷: 15개 테스트 (명령어, 노멀, 대소문자 무관, 복수 페이스 라운드트립)
+- 전체 1300개 테스트 통과, clippy 경고 0개, 빌드 오류 0개
+
 #### Phase 1: Foundation
 - Cargo workspace 구조 초기화 (7 크레이트 모노레포)
 - `cadkernel-math`: Vec2/3/4, Point2/3, Mat3/4, Transform, Quaternion, Ray3, BoundingBox, Tolerance
@@ -664,6 +1462,554 @@
 - `cadkernel-geometry`: Line/Plane 해석적 `project_point` 오버라이드 (무한 기하에 대한 정확한 해, 샘플링 NaN 방지)
 - `cadkernel-geometry`: Line/Plane `bounding_box` 유한 폴백 도메인 오버라이드 (±1e6)
 - `cadkernel-modeling`: 프리미티브 엣지 중복 제거 `EdgeCache` — Box (24→12 엣지), Cylinder (6N→3N 엣지), Sphere 올바른 하프엣지 공유. B-Rep 검증을 위한 정확한 매니폴드 토폴로지
+
+#### Phase W: FreeCAD 패리티 스프린트 (2026-03-24)
+
+**Part 형상 프리미티브:**
+- `cadkernel-modeling`: `make_circle_shape()`, `make_ellipse_shape()`, `make_point_shape()`, `make_line_shape()` — Part 워크벤치 형상 프리미티브
+- `cadkernel-modeling`: `shape_builder_from_edges()` — 엣지 리스트에서 형상 조합
+- `cadkernel-modeling`: `convert_to_solid()` — 셸/메시를 솔리드로 변환
+
+**PartDesign 완성:**
+- `cadkernel-modeling`: `additive_loft()`, `additive_pipe()` — 통합 가산 로프트 및 파이프 스위프 연산
+- `cadkernel-modeling`: `make_sprocket()` — 매개변수 스프로킷 프로파일 생성기
+- `cadkernel-modeling`: `shaft_design()` — 단차 프로파일의 샤프트 설계 마법사
+- `cadkernel-modeling`: `shape_binder()`, `sub_shape_binder()` — 기하 참조 도구
+- `cadkernel-modeling`: Body 컨텍스트 메뉴 — `suppress_feature()`, `set_tip()`, `move_feature()`
+
+**스케처 기하 확장:**
+- `cadkernel-sketch`: `add_periodic_bspline()`, `add_bspline_from_knots()` — 고급 B-스플라인 생성
+- `cadkernel-sketch`: `add_centered_rectangle()`, `add_rounded_rectangle()` — 사각형 변형
+- `cadkernel-sketch`: `add_slot()`, `add_arc_slot()` — 슬롯 기하 생성
+- `cadkernel-sketch`: `add_circle_3pt()`, `add_ellipse_3pt()` — 3점 원 및 타원
+- `cadkernel-sketch`: Refraction 제약조건 (스넬 법칙)
+- `cadkernel-sketch`: `toggle_driving_reference()` — 구동/참조 제약 전환
+- `cadkernel-sketch`: `attach_to_plane()`, `reorient()`, `merge_with()`, `mirror_geometry()` — 스케치 관리
+
+**스케처 B-스플라인 도구:**
+- `cadkernel-sketch`: `geometry_to_bspline()` — 기하를 B-스플라인으로 변환
+- `cadkernel-sketch`: `increase_bspline_degree()`, `decrease_bspline_degree()` — 차수 조정
+- `cadkernel-sketch`: `increase_knot_multiplicity()`, `decrease_knot_multiplicity()` — 노트 다중도 연산
+- `cadkernel-sketch`: `insert_knot()`, `join_curves()` — 노트 삽입 및 커브 결합
+- `cadkernel-sketch`: `external_projection()`, `carbon_copy()` — 외부 기하 도구
+- `cadkernel-sketch`: `move_geometry()`, `rotate_geometry()`, `scale_geometry()`, `offset_geometry()`, `mirror_geometry()` — 기하 편집
+- `cadkernel-sketch`: `delete_all_geometry()`, `delete_all_constraints()` — 일괄 삭제
+
+**TechDraw 뷰 & 치수:**
+- `cadkernel-io`: `broken_view()`, `complex_section_view()`, `clip_group()`, `active_view()`, `project_shape_2d()` — 새 뷰 타입
+- `cadkernel-io`: `contextual_dimension()`, `angle_from_3_points()`, `area_annotation()`, `arc_length_dimension()`, `hv_extent_dimension()` — 새 치수 타입
+- `cadkernel-io`: `repair_dimension_refs()` — 치수 참조 수리
+- `cadkernel-io`: `rich_text_annotation()`, `balloon_annotation()`, `axonometric_length_dimension()` — 새 주석
+- `cadkernel-io`: `geometric_hatch()`, `weld_symbol()` (ISO 2553), `hole_shaft_fit()` — 기호
+
+**TechDraw 중심선, 장식, 서식:**
+- `cadkernel-io`: `centerline_on_face()`, `centerline_between_lines()`, `centerline_between_points()`, `bolt_circle_centerlines()` — 중심선 도구
+- `cadkernel-io`: `cosmetic_line()`, `cosmetic_thread_internal()`, `cosmetic_thread_external()`, `cosmetic_vertex()`, `cosmetic_circle()`, `cosmetic_arc()` — 장식 요소
+- `cadkernel-io`: `cosmetic_parallel_line()`, `cosmetic_perpendicular_line()` — 장식 선 도구
+- `cadkernel-io`: `chain_dimension()`, `coordinate_dimension()`, `chamfer_dimension()`, `FormattedDimension` — 치수 서식
+- `cadkernel-io`: `stack_order()`, `align_elements()`, `lock_element()` — 요소 관리
+- `cadkernel-io`: `page_from_template()`, `update_template_fields()`, `redraw_page()`, `print_all_pages()` — 페이지 관리
+- `cadkernel-io`: `edit_line_appearance()`, `toggle_edge_visibility()` — 선 외관
+
+**Draft 워크벤치:**
+- `cadkernel-modeling`: `make_arc_3pt_draft()`, `make_ellipse_wire()`, `make_rectangle_wire()`, `make_polygon_wire()` — 와이어 생성
+- `cadkernel-modeling`: `make_bezier_wire()`, `make_cubic_bezier_wire()`, `make_point_draft()`, `make_facebinder()`, `draft_hatch()` — 제도 도구
+- `cadkernel-modeling`: `make_draft_dimension_full()`, `make_label_full()`, `AnnotationStyle` — 주석 시스템
+- `cadkernel-modeling`: `move_draft()`, `rotate_draft()`, `scale_draft()`, `mirror_draft()`, `offset_draft()`, `trimex_draft()`, `stretch_draft()` — 수정 도구
+- `cadkernel-modeling`: `circular_array()`, `path_link_array()`, `point_link_array()` — 배열 패턴
+- `cadkernel-modeling`: `edit_draft()`, `join_draft()`, `split_draft()`, `draft_to_sketch()` — Draft 편집
+- `cadkernel-modeling`: `SnapMode` 열거형, `snap_to_point()`, `snap_lock()` — 스냅 시스템
+
+**어셈블리 & FEM:**
+- `cadkernel-modeling`: Assembly `solve_constraints()` (Newton-Raphson), `simulate_step()`, `export_asmt()`, `AssemblyPreferences`
+- `cadkernel-modeling`: FEM `AnalysisContainer`, `ElementGeometry`, `EmBoundaryCondition`, `FluidBoundaryCondition`, `GeometricalFeature`
+- `cadkernel-modeling`: FEM `heat_equation()`, `flow_equation()`, `deformation_equation()`, `electrostatic_equation()`
+- `cadkernel-modeling`: FEM `apply_filter()`, `FilterFunction`, `VisualizationMode`, `purge_results()`, `create_mesh_region()`
+
+**I/O 포맷:**
+- `cadkernel-io`: VRML 가져오기/내보내기 (`vrml.rs`) — VRML97 기하 노드
+- `cadkernel-io`: AMF 가져오기/내보내기 (`amf.rs`) — XML 기반 적층 제조 파일 포맷
+
+#### FreeCAD 호환성 스프린트 2 (2026-03-24)
+
+**Part 워크벤치 완성 (91%):**
+- `cadkernel-modeling`: `face_from_wires()` — 와이어 경계에서 페이스 생성
+- `cadkernel-modeling`: `explode_compound()`, `compound_filter()`, `boolean_fragments()`, `slice_to_compound()` — 컴파운드 연산
+- `cadkernel-modeling`: `connect_shapes()`, `embed_shapes()`, `cutout_shapes()` — 결합 연산
+- `cadkernel-modeling`: `points_from_shape()` — 형상에서 꼭짓점 추출
+- `cadkernel-modeling`: `set_face_appearance()`, `FaceAppearanceMap` — 면별 외관 시스템
+- `cadkernel-modeling`: `compute_attachment()`, `AttachmentMode` (6가지 모드) — 면/엣지에 객체 부착
+
+**PartDesign 완성 (98%):**
+- `cadkernel-modeling`: `additive_helix()`, `subtractive_helix()` — 나선형 스위프 연산
+- `cadkernel-modeling`: `additive_ellipsoid()`, `subtractive_ellipsoid()` — 타원체 프리미티브
+- `cadkernel-modeling`: `additive_prism()`, `subtractive_prism()` — 프리즘 프리미티브
+- `cadkernel-modeling`: `additive_wedge()`, `subtractive_wedge()` — 쐐기 프리미티브
+- `cadkernel-modeling`: `subtractive_loft()`, `subtractive_pipe()` — 감산 복합 연산
+
+**스케처 완성 (89%):**
+- `cadkernel-sketch`: `SketchEllipticalArc`, `SketchHyperbolicArc`, `SketchParabolicArc` — 3개 신규 엔티티
+- `cadkernel-sketch`: `add_periodic_bspline_from_knots()` — 주기적 B-스플라인 생성
+- `cadkernel-sketch`: `SketchDisplayOptions` — 13가지 시각적 도우미 토글
+- `cadkernel-sketch`: `SketchGrid`, `SketchSnap` — 그리드 및 스냅 시스템
+- `cadkernel-sketch`: `align_view_to_sketch()`, `stop_operation()`, `select_origin()` — UI 도구
+- `cadkernel-sketch`: `copy_entities()`, `paste_entities()` — 클립보드 연산
+
+**TechDraw 완성 (76%):**
+- `cadkernel-io`: `SvgInsert`, `BitmapImage`, `share_view()` — 뷰 삽입/공유
+
+**어셈블리 완성 (100%):**
+- `cadkernel-modeling`: `ParallelAxes`, `PerpendicularAxes` — 평행/수직 축 구속
+- `cadkernel-modeling`: 12개 조인트 타입 모두 Newton-Raphson 구속 방정식 완성
+- `cadkernel-modeling`: `new_part_in_assembly()` — 어셈블리 내 새 부품 생성
+
+**메시 워크벤치 완성 (100%):**
+- `cadkernel-io`: `close_holes()`, `segmentation_best_fit()` — 구멍 닫기, 최적 분할
+
+**Draft 워크벤치 완성 (95%):**
+- `cadkernel-modeling`: `upgrade_wire()`, `downgrade_solid()`, `wire_to_bspline()` — 형상 변환
+- `cadkernel-modeling`: `shape_from_text()` — 텍스트에서 형상 생성
+- `cadkernel-modeling`: `DraftLayer`, `LayerManager`, `WorkingPlane`, `DraftStyle` — 레이어/작업면/스타일 관리
+
+**I/O 포맷 완성 (89%):**
+- `cadkernel-io`: `import_oca()`, `export_oca()` — OCA/GCAD 포맷 지원
+
+#### FreeCAD 호환성 스프린트 3 (2026-03-25)
+
+**Part 워크벤치 완성 (98%):**
+- `cadkernel-modeling`: `PrimitiveParams` + `make_primitive()` — 통합 프리미티브 생성자 (enum 디스패치)
+- `cadkernel-geometry`: `offset_polygon_2d_checked()` — `KernelResult` 반환하는 개선된 2D 오프셋
+- `cadkernel-modeling`: `project_curves_on_surface()` — 서피스에 커브 투영 (점뿐만 아니라 커브도)
+- `cadkernel-modeling`: `auto_defeaturing()` — 크기 임계값 기반 자동 소형 피처 제거
+- `cadkernel-modeling`: `transformed_copy()` — 변환이 적용된 솔리드 복사본 생성
+
+**PartDesign 완성 (100%):**
+- `cadkernel-modeling`: `Body::move_object_to_body()` — Body 간 피처 이동
+
+**스케처 완성 (96%):**
+- `cadkernel-sketch`: `add_triangle()`, `add_square()`, `add_pentagon()`, `add_hexagon()`, `add_heptagon()`, `add_octagon()` — 전용 다각형 단축 래퍼
+- `cadkernel-sketch`: `external_intersection()` — 외부 지오메트리 엣지와 스케치 교차
+- `cadkernel-sketch`: `toggle_section_view()` + `SectionViewState` — 스케처용 토글 단면 뷰
+
+**서피스 워크벤치 완성 (100%):**
+- `cadkernel-modeling`: `coons_patch()` — 4개 경계 커브에서 쌍선형 블렌딩 서피스
+
+**Draft 워크벤치 (96%):**
+- `cadkernel-modeling`: `make_line_draft()` — Draft 워크벤치용 2점 선 생성
+
+**FEM 워크벤치 완성 (90%):**
+- `cadkernel-modeling`: `HexMesh`, `generate_hex_mesh()`, `mesh_from_shape()`, `adaptive_mesh_refinement()`, `mesh_smoothing()` — 메시 생성
+- `cadkernel-modeling`: `export_mesh_abaqus()`, `export_mesh_nastran()` — 메시 내보내기 형식
+- `cadkernel-modeling`: `nonlinear_static_analysis()`, `frequency_analysis()`, `buckling_analysis()` — 신규 해석 타입
+- `cadkernel-modeling`: `magnetostatic_equation()`, `coupled_thermo_mechanical()`, `acoustic_equation()`, `poisson_equation()`, `diffusion_equation()` — 5개 신규 방정식
+- `cadkernel-modeling`: `extract_nodal_values()`, `interpolate_to_nodes()`, `compute_error_estimate()`, `result_at_point()`, `integrate_over_surface()`, `max_min_values()`, `path_result()`, `reaction_forces()` — 후처리 함수
+- `cadkernel-modeling`: `fem_summary()`, `export_fem_report()`, `check_mesh_quality_detailed()`, `check_boundary_conditions()`, `estimate_computation_time()`, `apply_element_geometry()` — 유틸리티
+- `cadkernel-modeling`: `BodyLoad`, `ContactConstraint`, `InitialTemperature` — 신규 경계 조건 타입
+- `cadkernel-modeling`: `BucklingResult`, `MagnetostaticResult`, `CoupledResult`, `AcousticResult`, `ScalarResult`, `ElementQuality` — 신규 결과 타입
+
+**I/O 완성 (100%):**
+- `cadkernel-io`: `import_svg()` — 7가지 요소 타입, 경로 명령, 변환, 이어-클리핑 삼각분할의 SVG 가져오기
+- `cadkernel-io`: `import_pdf()` — 벡터/텍스트 추출의 PDF 가져오기 (`PdfImportResult`)
+- `cadkernel-io`: `export_drawing_dxf()` — 치수, 중심선, 해칭, 리더, 텍스트가 포함된 전체 TechDraw→DXF 내보내기
+
+### 테스트
+- 총 1133개 테스트 (기존 1037개), Sprint 3에서 96개 신규 테스트
+- 전체 FreeCAD 기능 호환성: 100% (576/576)
+
+#### UI 스프린트: FreeCAD 100% 패리티 달성 (2026-03-25)
+
+**마일스톤: 576/576 FreeCAD 기능 구현 완료 (100% 패리티)**
+
+**뷰어 — GuiAction 시스템 확장:**
+- `cadkernel-viewer`: GuiAction 열거형 ~40개에서 130개 이상으로 확장, 9개 워크벤치 전체 커버
+- `cadkernel-viewer`: `app.rs`의 `process_actions()`가 130개 이상의 액션을 실제 백엔드 호출로 처리 (FEM 사면체 메시 생성, 불리언 연산, TechDraw 페이지 관리, I/O 가져오기/내보내기 등)
+- `cadkernel-viewer`: `AssemblyJointType` 열거형 (13가지 조인트 타입) — 어셈블리 툴바 연동
+- `cadkernel-viewer`: `FemConstraintType` 열거형 (6가지 제약 타입) — FEM 툴바 연동
+
+**뷰어 — 9개 워크벤치 툴바 (toolbar.rs):**
+- Part: 13개 프리미티브 + 3개 불리언 + shape builder + shape analysis + attachment + appearance
+- PartDesign: pad/pocket/revolve/groove/hole + 추가적/감산적 프리미티브 + 피처 (fillet/chamfer/draft/shell) + body 연산 + shape binder
+- Sketcher: 8개 기하 도구 + B-spline 도구 + 7개 제약 버튼 + 디스플레이 옵션 + 스케치 관리
+- Mesh: 가져오기/내보내기 + 15개 메시 연산 + 분석 (곡률, 수밀성, 바운딩 박스, 면 정보)
+- TechDraw: 7개 뷰 + 12개 치수 + 6개 중심선 + 8개 장식 + 서식 + 페이지 관리
+- Assembly: 컴포넌트 삽입 + 13가지 조인트 타입 + 솔버 + 시뮬레이션 + DOF 분석 + 환경설정
+- Draft: 10개 와이어 생성 + 8개 수정 + 5개 배열 패턴 + 3개 주석 + 스냅 + 쿼리 + 레이어 관리
+- Surface: ruled surface + filling + sections + extend + pipe + coons patch + curve on mesh
+- FEM: 4개 메시 타입 + 6개 재료 프리셋 + 8개 경계조건 + 6가지 해석 타입 + 9개 방정식 + 후처리 + 내보내기
+
+**뷰어 — 생성 다이얼로그 (dialogs.rs):**
+- 13개 프리미티브 생성 다이얼로그 (매개변수 입력)
+- 불리언 연산 다이얼로그 (두 번째 피연산자 매개변수)
+- Part 연산 다이얼로그 (미러/스케일/셸/필렛/챔퍼/패턴/두께/오프셋/단면)
+- FEM 해석 설정 다이얼로그
+- 어셈블리 조인트 구성 다이얼로그
+
+**뷰어 — 스케치 UI (sketch_ui.rs):**
+- 전체 제약조건 시각화 오버레이 (24가지 제약 타입별 적절한 인디케이터 렌더링)
+- 간격 및 세분화 설정 가능한 스케치 그리드
+- 스냅 인디케이터 시스템 (7가지 스냅 타입: 끝점, 중점, 중심, 그리드, 교차, 수직, 최근접)
+- B-spline 제어 다각형 및 노트 다중도 표시
+- 보조선 기하 시각적 구분
+
+**뷰어 — 컨텍스트 메뉴 (context_menu.rs):**
+- 오브젝트 컨텍스트 메뉴: 선택, 삭제, 복제, 변환, 측정, 지오메트리 검사, 내보내기, 숨기기/표시
+- 뷰포트 컨텍스트 메뉴: 표준 뷰, 디스플레이 모드, 전체 맞춤, 카메라 초기화, 전체 선택/해제
+
+**뷰어 — 앱 통합 (app.rs):**
+- 130개 이상의 GuiAction을 백엔드 크레이트 호출에 연결하는 완전한 `process_actions()` 구현
+- FEM 연동: 사면체 메시 생성, 정적/모달/열/주파수/좌굴 해석 디스패치
+- 어셈블리 연동: 제약 해석, DOF 분석, 시뮬레이션 스텝, 내보내기
+- TechDraw 연동: 뷰 생성, 치수 배치, 중심선/장식 도구, SVG/DXF 내보내기
+- Draft 연동: 와이어 생성, 수정 도구, 배열 패턴, 스냅 시스템
+- Surface 연동: ruled surface, filling, sections, coons patch 생성
+- I/O 연동: 15개 이상의 파일 포맷 가져오기/내보내기 (리포트 패널 로깅 포함)
+
+#### UI 폴리시 스프린트: 전문 CAD 품질 달성 (2026-03-25)
+
+**테마 시스템 (theme.rs):**
+- `CadTheme` 구조체: 30개 이상의 색상/간격/타이포그래피 필드, Dark/Light 프리셋
+- `ThemeMode` (Dark/Light), `UiDensity` (Compact/Normal/Spacious) 열거형
+- `apply_to_egui()`: 완전한 egui visuals + style + text styles 통합
+- `object_type_icon()`: `CreationParams` 변형에 매핑된 15개 유니코드 아이콘
+- 테마 색상 상수: `COLOR_INFO`, `COLOR_WARN`, `COLOR_ERROR`, `COLOR_SUCCESS`, `COLOR_ACCENT`, `COLOR_DIM`
+
+**벡터 아이콘 툴바 (toolbar.rs):**
+- 150개 이상의 `ToolIcon` 열거형 변형, `draw_icon()`으로 `egui::Painter` 벡터 도형 렌더링
+- `icon_button()` (28×28 호버 반응형), `icon_toggle()`, `toolbar_separator()`
+- 액센트 색상 언더라인이 있는 스타일된 워크벤치 탭
+- 워크벤치별 시각적 구분자가 있는 그룹화된 툴바 섹션
+
+**계층적 모델 트리 (tree.rs):**
+- `EntityIcon` 열거형 (14가지 타입: Solid, Face, Edge, Vertex, Sketch, Extrude, Revolve 등)
+- `TreeNode` 계층구조: 생성 이력(`CreationParams`)에서 자동 구축
+- 트리 가이드 라인, 접기/펼치기 노드, 검색/필터 (클리어 버튼 포함)
+- 인라인 이름 변경 (더블클릭), 드래그앤드롭 재정렬 지원
+- 아이콘, 이름, 가시성 토글이 있는 전문적 행 렌더링
+- 우클릭 컨텍스트 메뉴 (이름 변경, 삭제, 복제, 위/아래 이동)
+
+**향상된 다이얼로그 (dialogs.rs):**
+- 공유 헬퍼: `dialog_section()`, `param_field()`, `validation_error()`, `button_bar()`
+- 빨간색 오류 메시지와 입력 검증 (예: "반지름은 0보다 커야 합니다")
+- "mm" 단위 라벨, 도움말 텍스트, 28개 전체 다이얼로그에 기본값 버튼
+- 일관된 3열 그리드 레이아웃 (라벨 | DragValue | 단위)
+
+**속성 패널 (properties.rs):**
+- 액센트 색상 섹션 헤더
+- 3열 매개변수 그리드 (라벨 | DragValue | "mm")
+- 뷰 탭: 8개 프리셋이 있는 색상 선택기, 투명도 슬라이더
+- 오브젝트 수, 면/엣지 통계가 있는 씬 개요
+- ID, 타입, 생성 매개변수가 있는 오브젝트 정보 표시
+
+**상태 바 (status_bar.rs):**
+- 왼쪽: 마우스 좌표 (고정폭 글꼴)
+- 중앙: 활성 도구 이름 + 힌트 (스케치 모드) / 선택 모드 (일반 모드)
+- 오른쪽: 씬 통계 (오브젝트, 면, 엣지) + FPS 카운터
+
+**리포트 패널 (report.rs):**
+- 번호 매김 타임스탬프, 심각도 필터 토글 (Info/Warn/Error)
+- 심각도별 카운트 배지
+- 긴 메시지 접기 (>80자), 클리어 버튼
+
+**뷰포트 오버레이 (overlays.rs):**
+- `draw_origin_overlay()`: 색상 화살표와 축 라벨이 있는 XYZ 축
+- `draw_grid_3d_overlay()`: 거리 기반 페이드가 있는 주/보조 그리드 라인
+- `draw_measurement_overlay()`: 선택한 2점 사이의 거리 및 각도
+- `draw_snap_overlay()`: 정점/그리드 스냅 하이라이트 인디케이터
+- `draw_sketch_plane_preview()`: 반투명 평면 시각화
+
+**컨텍스트 메뉴 (context_menu.rs):**
+- 향상된 뷰포트 메뉴: 표준 뷰, 디스플레이 모드, 전체 맞춤, 오버레이 토글
+- 향상된 오브젝트 메뉴: 이름 변경, 삭제, 복제, 변환, 피처 재정렬
+- 면/엣지 컨텍스트 메뉴: 면에 스케치 생성, 필렛/챔퍼 엣지
+
+**내비게이션 설정 (nav.rs):**
+- `theme_mode`, `ui_density` 필드: 영구 테마 설정
+- `show_origin`, `show_grid_3d`, `grid_3d_spacing`: 뷰포트 오버레이 제어
+
+**렌더 헬퍼 (render.rs):**
+- `selection_color()`, `preselection_color()` 헬퍼 함수
+
+#### UI 폴리시 스프린트 2: 전문 인터랙션 품질 (2026-03-25)
+
+**모델 트리 개선 (tree.rs):**
+- 인라인 가시성 눈 아이콘 (우측 정렬) — 클릭하여 가시성 토글
+- 팁 마커 (`\u{25B8}` 액센트 색상) — 마지막 오브젝트 및 마지막 이력 레코드 표시
+- 억제 디밍: "suppressed" 포함 자식 노드를 흐린 색상으로 렌더링
+- 눈 아이콘 겹침 방지를 위한 이름 변경 TextEdit 폭 조정
+
+**툴바 활성 도구 하이라이트 (toolbar.rs):**
+- `icon_button_active()` / `icon_button_ex()`: 파란색 배경 + 2px 액센트 하단 테두리
+- 선택 모드 버튼 (Solid/Face/Edge/Vertex) `gui.selection_mode` 기반 하이라이트
+- Part 툴바 프리미티브 버튼: 태스크 패널의 `ActiveTask` 기반 하이라이트
+- 스케치 도구: `sketch_mode.tool` 기반 하이라이트
+- `icon_toggle()`: 선택 시 하단 액센트 테두리 추가
+
+**키보드 단축키 다이얼로그 (dialogs.rs):**
+- 5개 섹션 단축키 레퍼런스 창: 내비게이션, 표준 뷰, 디스플레이 모드, 편집, 파일
+- 고정폭 키 라벨, 줄무늬 그리드 행, 액센트 색상 섹션 헤더
+- Help > Keyboard Shortcuts 메뉴에서 접근
+
+**설정 다이얼로그 개선 (dialogs.rs):**
+- 상단에 "외관" 섹션 추가: 테마 토글 (Dark/Light), UI 밀도 (Compact/Normal/Spacious)
+- 테마/밀도 변경 즉시 적용 (`theme_applied` 플래그 리셋)
+
+**정보 다이얼로그 개선 (dialogs.rs):**
+- 액센트 색상 중앙 정렬 로고, 부제목, 줄무늬 정보 그리드
+- 버전, 라이선스, 저자, 렌더러, 커널 정보, 워크벤치 목록, I/O 포맷, 테스트 수 표시
+
+**패널 레이아웃 개선 (mod.rs):**
+- ComboView 좌측 패널: 리사이즈 가능 폭 (200-450px), 테두리 스트로크, 트리/속성 간 미묘한 액센트 구분선
+
+#### UI 폴리시 스프린트 3: 설정 & 렌더링 (2026-03-25)
+
+**투명 패널 수정 (render.rs):**
+- Surface 구성에 `wgpu::CompositeAlphaMode::Opaque` 설정 — Linux 컴포지터 블렌딩으로 인한 3D 뷰포트가 UI 패널을 투과하는 현상 해결
+
+**환경 설정 다이얼로그 재설계 (dialogs.rs):**
+- 평면 스크롤 레이아웃을 탭 내비게이션 사이드바로 교체 (일반, 디스플레이, 내비게이션, 외관, 조명)
+- 일반 탭: 단위 시스템 (mm/cm/m/in/ft), 소수점 자릿수, 자동 저장 토글 + 간격, 최근 파일 제한, 삭제 확인
+- 디스플레이 탭: 배경 그라디언트 프리셋 (Dark/Medium/Light/Blueprint) + 실시간 파이프라인 재빌드, 뷰포트 오버레이 (축/원점/그리드/FPS), 카메라 기본값, 선택/사전선택 색상 선택기, 테셀레이션 품질 슬라이더
+- 내비게이션 탭: 마우스 스타일 프리셋, 감도 슬라이더, 애니메이션 제어, View Cube 설정
+- 외관 탭: 테마 (Dark/Light), UI 밀도 (Compact/Normal/Spacious) + 설명
+- 조명 탭: 활성화 토글, 강도 슬라이더, 방향광 XYZ 제어
+- 사이드바에 "전체 초기화" 버튼
+
+**동적 배경 그라디언트 (render.rs + nav.rs):**
+- `BgPreset` 열거형 (4가지 변형: Dark, Medium, Light, Blueprint) + `label()` 메서드
+- `GpuState::update_bg_preset()`를 통한 런타임 셰이더 재생성 배경 프리셋 시스템
+- 애플리케이션 재시작 없이 실시간 그라디언트 전환
+
+**NavConfig 확장 (nav.rs):**
+- 신규 필드: `unit_system`, `decimal_places`, `bg_preset`, `selection_color`, `preselection_color`, `tessellation_segments`, `auto_save_enabled`, `auto_save_interval_secs`, `recent_files_max`, `confirm_delete`
+- `UnitSystem` 열거형 (5가지 변형: Millimeter, Centimeter, Meter, Inch, Foot) + `label()`/`long_label()`
+- `NavConfig`에 `Clone` derive 추가 — `save_settings()`를 `nav.clone()` 방식으로 간소화
+
+#### V11: 뷰어 UI 확장 (2026-03-25)
+- 작업 패널: 5 → 13개 프리미티브 (Tube, Prism, Wedge, Ellipsoid, Helix) + PartDesign (Pad, Pocket, Hole) 인라인 편집
+- 확장 프리미티브 전체 인라인 작업 패널 전환 (팝업 다이얼로그 대체), 실시간 3D 프리뷰
+- 스케처: B-spline 도구 (변환, 차수+/-, 노트 삽입), Split/Mirror/External Projection/Carbon Copy, Block/HDist/VDist 구속조건
+- 메뉴: 거리 측정 연결, 워크벤치 전환 메뉴, Macro 메뉴 비활성화 (계획 표시), Origin/Grid3D 토글
+- 원점 축: wgpu 전용 렌더링 (egui 오버레이 제거), Z축 전체 길이, show_origin 독립 토글
+- 그리드 오버레이 뷰포트 영역 클리핑 (패널 관통 방지)
+
+#### V11 UI 오버홀: 완전한 액션 처리 & 폴리시 (2026-03-25)
+
+**GuiAction 처리 완성 (app.rs):**
+- 130개 이상의 모든 `GuiAction` 변형에 백엔드 크레이트 호출을 포함한 완전한 `process_actions()` 핸들러 구현
+- Part 연산: Join (connect/embed/cutout), compound 연산 (fragments/slice/filter/explode), auto-defeaturing, transformed copy, project curves, Coons patch
+- PartDesign: Pad/Pocket/Groove/Hole 스케치 연동, additive/subtractive loft/pipe, sprocket, shaft design, involute gear, shape binder, suppress/set tip/move feature
+- Assembly: 컴포넌트 삽입, 13개 조인트 타입, 제약 해석 (Newton-Raphson), DOF 분석, 분해도, BOM, 시뮬레이션 스텝
+- Draft: 10개 와이어 생성 + 8개 수정 + 5개 배열 패턴 + 주석 + 스냅 시스템 + 레이어 관리 + upgrade/downgrade
+- Surface: ruled surface, filling, sections, extend, pipe, Coons patch, curve on mesh
+- FEM: tet/hex 메시 생성, 6개 재료 프리셋, 8개 경계조건, 6가지 해석 타입 (static/nonlinear/frequency/buckling/modal/thermal), 9개 방정식, 후처리 (응력/변형률 텐서, 주응력, 반력), Abaqus/Nastran 내보내기
+- TechDraw: 페이지 관리, 7개 뷰 타입, 12개 치수 타입, 중심선/장식, SVG/DXF/PDF 내보내기
+- I/O: 15개 이상 포맷 가져오기/내보내기 (SVG, glTF, 3MF, DAE, DWG, VRML, AMF, OCA, PDF) — 리포트 패널 로깅 포함
+- 모든 핸들러에 리포트 로깅 적용으로 완전한 작업 추적 가능
+
+**속성 패널 개선 (properties.rs):**
+- Data 탭: 오브젝트 이름, 편집 가능한 DragValue 필드의 생성 매개변수, 토폴로지 통계 (솔리드/셸/면/엣지/정점), 메시 정보, 질량 속성
+- View 탭: 8개 프리셋이 있는 색상 선택기, 투명도 슬라이더, 가시성 토글
+- 씬 개요: 오브젝트 수, 집계된 면/엣지 통계
+- 변환 편집: 이동 (dx/dy/dz), 회전 (축 + 각도), 스케일 (균일 비율) — `MoveObject`/`RotateObject`/`ScaleObjectUniform` 액션 연동
+- 파라메트릭 리빌드: DragValue 변경 시 `RebuildObject` 트리거로 실시간 매개변수 편집
+
+**컨텍스트 메뉴 확장 (context_menu.rs):**
+- 오브젝트 메뉴: 선택, 복제, 이름 변경, 숨기기/표시, 색상 설정 (8개 프리셋), 변환 하위메뉴 (이동/회전/스케일 프리셋), 측정, 지오메트리 검사, 연산 (미러/셸/필렛/챔퍼/패턴), 다른 형식으로 내보내기 (9개 포맷), 삭제
+- 뷰포트 메뉴: 전체 맞춤, 카메라 초기화, 표준 뷰, 디스플레이 모드, 그리드/투영/원점/3D 그리드/측정 토글, 전체 선택/해제, 생성 하위메뉴 (5개 프리미티브 + 3개 스케치 평면), 전체 표시/숨기기
+- 트리 메뉴: 오브젝트 메뉴 확장 + PartDesign 피처 연산 (억제, 팁 설정, 위/아래 이동)
+- 면/엣지 메뉴: 면에 스케치 생성, 필렛/챔퍼 엣지, 측정, 지오메트리 검사
+
+**워크벤치 툴바 연결 (toolbar.rs):**
+- 9개 워크벤치 툴바 전체 `GuiAction` 디스패치를 통한 백엔드 연결 완성
+- Part: 13개 프리미티브, 3개 불리언, shape builder, 변환, join/compound 연산, mirror/scale/shell/fillet/chamfer/pattern/thickness/offset/section, attachment, appearance, 분석
+- PartDesign: pad/pocket/revolve/groove/hole, 10개 additive/subtractive 프리미티브, 피처, body 연산, shape binder
+- Sketcher: 8개 기하 도구, B-spline 도구, 7개 구속, 디스플레이 옵션, 스케치 관리, external projection, carbon copy
+- Mesh: 가져오기/내보내기, 15개 연산, 분석 (곡률, 수밀성, 바운딩 박스, 면 정보, 정다면체, UV 전개)
+- TechDraw: 7개 뷰, 12개 치수, 6개 중심선, 8개 장식, 서식, 페이지 관리
+- Assembly: 컴포넌트, 13개 조인트, 솔버, 시뮬레이션, DOF 분석, 환경설정, 내보내기
+- Draft: 10개 생성, 8개 수정, 5개 배열, 3개 주석, 스냅, 쿼리, 레이어
+- Surface: 7개 서피스 연산
+- FEM: 4개 메시 타입, 6개 재료, 8개 경계조건, 6개 해석, 9개 방정식, 후처리, 내보내기
+
+**상태 바 개선 (status_bar.rs):**
+- 좌측: 마우스 월드 좌표 (고정폭, X/Y/Z)
+- 중앙 (스케치 모드): 활성 도구 이름 + 힌트, DOF 상태 (완전/과소 구속 색상 표시), 스냅/그리드 인디케이터
+- 중앙 (일반 모드): 활성 워크벤치 표시, 선택 모드 (Solid/Face/Edge/Vertex)
+- 우측: 씬 통계 (오브젝트 가시/전체, 면, 엣지), 투영 모드 (Persp/Ortho), FPS 카운터
+
+**리포트 패널 개선 (report.rs):**
+- Report/Python Console 탭 및 개별 Clear 버튼
+- 심각도 필터: 레벨별 (Info/Warn/Error) 카운트 배지 및 색상 코딩
+- Console: 이력이 있는 명령 입력, `>>>` 프롬프트 (PyO3 백엔드 플레이스홀더)
+- 130개 이상 액션 핸들러 전체에 리포트 패널 로깅 적용
+
+**모델 트리 개선 (tree.rs):**
+- `EntityIcon` 열거형 (14가지 타입) — 엔티티 타입별 14x14 프로시저럴 벡터 아이콘
+- `TreeNode` 계층구조 — `CreationParams` 생성 이력에서 자동 구축
+- 트리 가이드 라인, 접기/펼치기 노드, 검색/필터 (클리어 버튼 포함)
+- 인라인 이름 변경 (더블클릭), 드래그앤드롭 재정렬 지원
+- 가시성 눈 아이콘 (우측 정렬), 팁 마커 (액센트 색상), 억제 디밍
+- 우클릭 컨텍스트 메뉴 (이름 변경, 삭제, 복제, 위/아래 이동, 억제, 팁 설정)
+
+#### V15 프로페셔널 인터랙션: 3D 기즈모, 클립 플레인, 단축키 & 월드 좌표 (2026-03-30)
+
+**3D 변환 기즈모 (overlays.rs + mod.rs):**
+- 선택된 오브젝트 중심에 인터랙티브 변환 기즈모: 이동(XYZ 화살표), 회전(XYZ 호), 스케일(XYZ 사각형)
+- `GizmoMode` 열거형, 축별 호버 하이라이팅, 모드 라벨
+
+**클립 플레인 / 단면 뷰 (render.rs + nav.rs):**
+- GPU 클립 플레인: WGSL 프래그먼트 셰이더의 `clip_params` vec4 유니폼
+- 클립 면 뒤의 프래그먼트 폐기, 절단면 주황색 에지 하이라이트
+- NavConfig: `clip_enabled`, `clip_plane_normal`, `clip_plane_offset`
+
+**키보드 단축키 패널 (app.rs):**
+- `?` / F1으로 5개 카테고리 단축키 창 토글
+
+**마우스 월드 좌표 (app.rs + status_bar.rs):**
+- CursorMoved 시 Z=0 지면 평면 레이 캐스트, 상태바에 표시
+
+#### V14 인터랙티브 선택: 박스 선택, 선택 게이트 & 내비게이션 수정 (2026-03-30)
+
+**박스 선택 / 러버밴드:**
+- 뷰포트에서 좌클릭 드래그로 선택 사각형 그리기 (수정자 키 불필요)
+- 좌→우 드래그 = 윈도우 선택 (파란색, 실선) — 완전히 포함된 오브젝트
+- 우→좌 드래그 = 크로싱 선택 (녹색, 점선) — 겹치는 오브젝트
+- Ctrl+드래그로 선택 추가 (누적 박스 선택)
+- `object_screen_aabb()`로 각 가시 오브젝트의 스크린 공간 AABB 투영
+- `overlays::draw_rubber_band()`에서 방향별 색상의 러버밴드 오버레이
+
+**선택 게이트 / 필터:**
+- SelectionMode (Solid/Face/Edge/Vertex)가 `try_pick_entity()`에 연결됨
+- 활성 모드에 따라 `selected_entity` 설정 (Solid → SolidData, Face → FaceData 등)
+- 상태 메시지에 모드 레이블 표시 ("[Face]", "[Edge]", "[Vertex]")
+
+**내비게이션 수정:**
+- FreeCADGesture: 좌클릭 드래그가 더 이상 궤도 회전하지 않음 (실제 FreeCAD는 중간 버튼 사용)
+- 5개 내비게이션 스타일 모두 일관성 확보: 좌클릭 드래그 = 박스 선택
+
+#### V13 FreeCAD 패리티: 프로페셔널 UI 대개편 (2026-03-30)
+
+**프리셀렉션 호버 하이라이트 (render.rs):**
+- Uniforms 구조체 및 WGSL 셰이더에 `hover_params` vec4 유니폼 추가
+- GPU 측 호버 블렌딩: `PRESELECT_COLOR` (연한 시안), `PRESELECT_STRENGTH` (0.3)
+- 프래그먼트 셰이더에서 오브젝트별 호버 ID 비교
+- GpuState에 `hover_object_id` 필드 — 매 프레임 커서 기반 프리셀렉션
+
+**계층형 모델 트리 (tree.rs + scene.rs):**
+- SceneObject 확장: `parent_id`, `is_body`, `is_tip`, `suppressed`, `has_error`, `needs_recompute`
+- Scene 메서드: `children_of()`, `root_objects()` 계층 탐색
+- Body > Feature 중첩 렌더링 (접기/펼치기)
+- 14종 절차적 엔티티 아이콘 (Solid, Face, Edge, Vertex, Sketch, Extrude 등)
+- Tip 마커 (녹색 화살표), 억제 흐리게, 오류/재계산 상태 표시
+- 드래그앤드롭 피처 재정렬 힌트, Ctrl/Shift 다중 선택
+
+**향상된 프로퍼티 패널 (properties.rs):**
+- `collapsible_group()` 헬퍼로 접을 수 있는 속성 섹션
+- Placement 편집기: 위치 (X/Y/Z) + 회전 (X/Y/Z) DragValue 컨트롤
+- 계산된 속성: 부피, 표면적, 무게중심, 바운딩 박스
+- View 탭: 디스플레이 모드 선택, 투명도 슬라이더, 색상 피커
+- 속성 검색/필터 바
+
+**플라이아웃 툴바 시스템 (toolbar.rs + context_menu.rs):**
+- `flyout_button()` / `flyout_button_with_active()` 그룹 도구 드롭다운 버튼
+- `FlyoutEntry` 타입: (ToolIcon, title, description, shortcut)
+- egui 메모리로 그룹별 마지막 사용 도구 기억
+- Part/PartDesign 툴바 플라이아웃 그룹화
+- 컨텍스트 메뉴: 하위 요소 메뉴, 변환 서브메뉴, 내보내기 서브메뉴, 색상 피커
+
+**빠른 측정 & 상태 표시줄 (status_bar.rs + overlays.rs):**
+- 선택 모드 표시 (Solid/Face/Edge/Vertex)
+- 프리셀렉션 정보, 빠른 측정 자동 치수 표시
+- 내비게이션 모드 표시, 스냅/그리드 토글, 단위계 표시
+
+**프로페셔널 테마 시스템 (theme.rs):**
+- `CadTheme` 구조체: 25+ 색상 상수 (accent, selection, preselection, error 등)
+- Dark/Light 테마 프리셋, `UiDensity` 열거형 (Compact/Normal/Spacious)
+- 전체 UI 패널에 테마 적용 색상 사용
+
+**스케치 UI 향상 (sketch_ui.rs):**
+- 11종 스케치 도구: Select, Line, Rectangle, Circle, Arc, Point, Ellipse, Polyline, Slot, BSpline, Polygon
+- 그리기 중 스케치 평면 커서 십자선
+- 향상된 구속 시각화 (치수선, 색상 코드 표시)
+- 컨스트럭션 모드/그리드/스냅 토글 상태 배너 표시
+
+**확장된 워크벤치 (mod.rs + menu.rs + dialogs.rs):**
+- 9개 워크벤치: Part, PartDesign, Sketcher, Mesh, TechDraw, Assembly, Draft, Surface, FEM
+- SelectionMode 열거형 (Solid/Face/Edge/Vertex) — 하위 요소 피킹
+- 13종 AssemblyJointType, 6종 FemConstraintType
+- 5종 NavStyle 프리셋, 5종 UnitSystem, 4종 BgPreset
+
+#### V12 핵심 UI 대개편: 통합 작업 시스템, CAD 임포트 & 툴바 상태 (2026-03-27)
+
+**통합 작업 시스템 (이중 UI 제거):**
+- 모든 메뉴/컨텍스트 메뉴의 프리미티브 생성이 레거시 팝업 대화상자 대신 ActiveTask 인라인 패널로 전환
+- 레거시 `draw_create_dialogs()` — `gui.active_task.is_none()` 게이팅으로 팝업/패널 충돌 제거
+- 메뉴, 컨텍스트 메뉴, 툴바 코드에서 `show_create_*` 플래그 할당 완전 제거
+- File > Create 메뉴, 뷰포트 우클릭 > Create, 툴바 모두 통합 ActiveTask 플로우 사용
+
+**CAD 포맷 임포트 수정 (STEP/IGES/BREP/DXF/PLY/3MF):**
+- `load_mesh_file()` — 모든 지원 포맷을 적절한 임포터로 라우팅
+- `FileLoadResult` 열거형 — BRep 모델 임포트 (STEP/IGES/BREP)와 메시 임포트 (DXF/PLY/3MF/STL/OBJ) 구분
+- BRep 임포트: `import_step()`, `import_iges()`, `import_brep()` → 테셀레이션 → `scene.add_object()`
+- 메시 임포트: `import_dxf()`, `import_ply()`, `import_3mf()` → `scene.add_mesh_object()`
+- 백그라운드 스레드 로딩 모든 포맷에 유지
+
+**툴바 비활성화 상태:**
+- `icon_button_disabled()` — 액션 불가 시 회색 비인터랙티브 버튼 렌더링
+- `ToolbarContext` 구조체 — 씬 상태 전달 (has_selection, has_objects, can_undo, can_redo, in_sketch)
+- 객체 미선택 시 Part/PartDesign 작업 비활성화
+- Undo/Redo 스택 비어있을 때 버튼 비활성화
+- `gated_button!` 매크로로 DRY 패턴
+
+#### V11 인터랙티브 작업 패널 확장 (2026-03-26)
+
+**인터랙티브 작업 패널 (task_panel.rs):**
+- 35개 `ActiveTask` 변형: 프리미티브 (Box/Cylinder/Sphere/Cone/Torus/Tube/Prism/Wedge/Ellipsoid/Helix), PartDesign (Pad/Pocket/Hole/Groove/Fillet/Chamfer/Shell/Mirror/Pattern/Sprocket/InvoluteGear), Draft (Line/Circle/Rectangle/Polygon/Arc/Ellipse), Surface (Pipe/Ruled), FEM (Mesh), Boolean (Union/Subtract/Intersect), Scale
+- 각 변형은 타입별 매개변수 + `preview_id: Option<ObjectId>`를 저장하여 실시간 3D 프리뷰 제공
+- 툴바 버튼이 즉시 실행 대신 인라인 작업 패널을 열어 OK 확인, Cancel/Escape 취소 방식으로 전환
+- `draw_task_panel()`이 변형별 매개변수 편집기를 DragValue 슬라이더 + 단위 라벨로 렌더링
+- `app.rs`의 `apply_task()`가 확정된 작업을 백엔드 크레이트 호출로 디스패치, 리포트 로깅 포함
+
+**툴바 연결 (toolbar.rs):**
+- 9개 전체 워크벤치 툴바가 `GuiAction::Create*` 즉시 디스패치에서 `GuiAction::StartTask(ActiveTask::*)` 패턴으로 전환
+- 활성 작업 하이라이트: 해당 `ActiveTask` 변형이 활성화된 툴바 버튼에 파란색 액센트 표시
+- Part/PartDesign/Draft/Surface/FEM 프리미티브 버튼 전체가 작업 패널 흐름 사용
+
+#### V11 심층 개편: 전체 액션 연결, 메뉴 & 스케치 완성 (2026-03-26)
+
+**GuiAction 처리 (app.rs):**
+- 200개 이상의 `GuiAction` 변형에 대해 백엔드 크레이트 호출을 포함한 실제 `process_actions()` 핸들러 완성
+- 스텁 핸들러를 실제 구현으로 교체: Draft (프리미티브를 통한 라인/원/호/타원/사각형/다각형/점 생성), Assembly (조인트 생성, 구속 풀기, DOF 분석, 분해도, BOM), FEM (tet/hex 메시 생성, 정적/모달/열/좌굴/비선형 해석, 재료 할당, 후처리), Surface (filling/boundary/sections/extend/blend/pipe/coons)
+- TechDraw: 페이지 관리, 단면/상세/절단 뷰, 치수 (선형/반지름/지름/각도/호 길이/면적), 주석 (텍스트/리치 텍스트/벌룬/리더/용접/표면 마감), 중심선, SVG/DXF/PDF 내보내기
+- 스케치 구속 핸들러 수정: `arc.start`를 `arc.start_point`로 수정, 원 반지름 구속에 중심점 사용
+- Draft 프리미티브 시각화: 얇은 실린더 라인, 평면 실린더 원, 토러스 호, 타원체, 박스 사각형, 프리즘 다각형, 구 포인트
+
+**워크벤치별 메뉴 (menu.rs):**
+- `gui.active_workbench` 기반 동적 워크벤치별 메뉴 그룹 9개
+- Part 메뉴: 13개 프리미티브, 3개 불리언, join/compound 연산, mirror/scale/shell/fillet/chamfer/pattern/thickness/offset/section, shape builder, 변환, attachment, appearance, 분석
+- PartDesign 메뉴: pad/pocket/revolve/groove/hole, additive/subtractive 프리미티브, 피처, body 연산, shape binder, sprocket/shaft/gear
+- Sketcher 메뉴: 8개 기하 도구, B-spline 도구, 구속, 디스플레이 옵션, 스케치 관리, external projection, carbon copy
+- Mesh 메뉴: 가져오기/내보내기, 15개 연산, 분석 도구
+- TechDraw 메뉴: 뷰, 치수, 중심선, 장식, 서식, 페이지 관리
+- Assembly 메뉴: 컴포넌트, 13개 조인트 타입, 솔버, 시뮬레이션, DOF 분석
+- Draft 메뉴: 12개 생성, 8개 수정, 5개 배열, 주석, 스냅, 레이어, upgrade/downgrade
+- Surface 메뉴: 7개 서피스 연산
+- FEM 메뉴: 메시, 재료, 경계조건, 해석, 방정식, 후처리
+
+**스케치 구속 시각화 (sketch_ui.rs):**
+- 24개 전체 구속 타입에 대한 치수 라벨 포함 구속 렌더링 개선
+- 구속 인디케이터: 기하 구속에 H/V/P/T/E/S/F/B 기호
+- Distance/Length/Angle/Radius/Diameter 구속: 구속된 엔티티 근처에 수치 표시
+- HorizontalDistance/VerticalDistance 구속: 방향 화살표 렌더링
+- 구속 색상 코딩: 만족 (녹색) vs 미만족 (빨강) 시각 피드백
+- 스케치 그리드 오버레이 (간격 및 세분화 설정 가능)
+- 스냅 인디케이터 시스템: 7개 스냅 타입 (끝점, 중점, 중심, 그리드, 교차점, 수직, 근접)
+- B-스플라인 제어 다각형 및 노트 다중도 표시
+- 구성 기하 시각 구분 (점선)
+
+**컨텍스트 메뉴 확장 (context_menu.rs):**
+- 활성 워크벤치별 관련 연산을 표시하는 워크벤치 인식 컨텍스트 메뉴
+- 9개 워크벤치 전체 아이콘 버튼에 툴바 툴팁 추가
 
 ### 수정됨
 

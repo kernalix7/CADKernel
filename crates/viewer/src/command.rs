@@ -98,6 +98,14 @@ impl CommandStack {
     pub fn history_len(&self) -> usize {
         self.history.len()
     }
+
+    /// Returns (history_descriptions, future_descriptions) for display.
+    /// History is oldest-first, future is oldest-undo-first.
+    pub fn entries(&self) -> (Vec<&str>, Vec<&str>) {
+        let h: Vec<&str> = self.history.iter().map(|r| r.description.as_str()).collect();
+        let f: Vec<&str> = self.future.iter().rev().map(|r| r.description.as_str()).collect();
+        (h, f)
+    }
 }
 
 #[cfg(test)]

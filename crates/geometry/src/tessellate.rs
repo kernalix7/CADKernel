@@ -16,6 +16,17 @@ use crate::surface::Surface;
 // TessellationOptions
 // ---------------------------------------------------------------------------
 
+/// Level of detail for tessellation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LevelOfDetail {
+    /// Coarse: fast preview (fewer triangles).
+    Coarse,
+    /// Medium: balanced quality/performance (default).
+    Medium,
+    /// Fine: high quality for rendering/export.
+    Fine,
+}
+
 /// Options that control the adaptive tessellation algorithm.
 ///
 /// This struct is `Send + Sync` so it can be shared across threads.
@@ -40,6 +51,27 @@ impl Default for TessellationOptions {
             angle_tolerance: 15.0_f64.to_radians(),
             min_segments: 4,
             max_depth: 8,
+        }
+    }
+}
+
+impl TessellationOptions {
+    /// Creates options tuned for a given level of detail.
+    pub fn from_lod(lod: LevelOfDetail) -> Self {
+        match lod {
+            LevelOfDetail::Coarse => Self {
+                chord_tolerance: 0.1,
+                angle_tolerance: 30.0_f64.to_radians(),
+                min_segments: 2,
+                max_depth: 4,
+            },
+            LevelOfDetail::Medium => Self::default(),
+            LevelOfDetail::Fine => Self {
+                chord_tolerance: 0.001,
+                angle_tolerance: 5.0_f64.to_radians(),
+                min_segments: 8,
+                max_depth: 12,
+            },
         }
     }
 }
@@ -173,8 +205,6 @@ where
     F: Fn(f64, f64) -> Point3,
     G: Fn(f64, f64) -> Vec3,
 {
-    let _ = &normal; // Reserved for future normal-based refinement.
-
     let nu = opts.min_segments.max(2);
     let nv = opts.min_segments.max(2);
     let du = (u_domain.1 - u_domain.0) / nu as f64;
@@ -195,6 +225,7 @@ where
         for j in 0..nv {
             tessellate_quad_adaptive(
                 &eval,
+                &normal,
                 u_params[i],
                 u_params[i + 1],
                 v_params[j],
@@ -211,8 +242,9 @@ where
 }
 
 #[allow(clippy::too_many_arguments)]
-fn tessellate_quad_adaptive<F>(
+fn tessellate_quad_adaptive<F, G>(
     eval: &F,
+    normal_fn: &G,
     u0: f64,
     u1: f64,
     v0: f64,
@@ -223,6 +255,7 @@ fn tessellate_quad_adaptive<F>(
     cache: &mut std::collections::HashMap<(u64, u64), u32>,
 ) where
     F: Fn(f64, f64) -> Point3,
+    G: Fn(f64, f64) -> Vec3,
 {
     let p00 = eval(u0, v0);
     let p10 = eval(u1, v0);
@@ -242,12 +275,30 @@ fn tessellate_quad_adaptive<F>(
         );
         let err = p_center.distance_to(bilinear);
 
-        if err > opts.chord_tolerance {
-            // Subdivide into 4 quads.
-            tessellate_quad_adaptive(eval, u0, u_mid, v0, v_mid, opts, depth + 1, mesh, cache);
-            tessellate_quad_adaptive(eval, u_mid, u1, v0, v_mid, opts, depth + 1, mesh, cache);
-            tessellate_quad_adaptive(eval, u0, u_mid, v_mid, v1, opts, depth + 1, mesh, cache);
-            tessellate_quad_adaptive(eval, u_mid, u1, v_mid, v1, opts, depth + 1, mesh, cache);
+        let needs_split = if err > opts.chord_tolerance {
+            true
+        } else {
+            // Normal deviation: if corner normals diverge, surface is curved here
+            let n00 = normal_fn(u0, v0);
+            let n10 = normal_fn(u1, v0);
+            let n01 = normal_fn(u0, v1);
+            let n11 = normal_fn(u1, v1);
+            let cos_tol = opts.angle_tolerance.cos();
+            let pairs = [(n00, n10), (n00, n01), (n11, n10), (n11, n01)];
+            pairs.iter().any(|(a, b)| {
+                let la = (a.x * a.x + a.y * a.y + a.z * a.z).sqrt();
+                let lb = (b.x * b.x + b.y * b.y + b.z * b.z).sqrt();
+                if la < 1e-14 || lb < 1e-14 { return false; }
+                let dot = (a.x * b.x + a.y * b.y + a.z * b.z) / (la * lb);
+                dot < cos_tol
+            })
+        };
+
+        if needs_split {
+            tessellate_quad_adaptive(eval, normal_fn, u0, u_mid, v0, v_mid, opts, depth + 1, mesh, cache);
+            tessellate_quad_adaptive(eval, normal_fn, u_mid, u1, v0, v_mid, opts, depth + 1, mesh, cache);
+            tessellate_quad_adaptive(eval, normal_fn, u0, u_mid, v_mid, v1, opts, depth + 1, mesh, cache);
+            tessellate_quad_adaptive(eval, normal_fn, u_mid, u1, v_mid, v1, opts, depth + 1, mesh, cache);
             return;
         }
     }
@@ -416,6 +467,67 @@ mod tests {
         assert!(
             curved.indices.len() >= flat.indices.len(),
             "curved surface should have at least as many tris as flat: {} vs {}",
+            curved.indices.len(),
+            flat.indices.len()
+        );
+    }
+
+    #[test]
+    fn test_lod_coarse_fewer_tris_than_fine() {
+        let coarse = adaptive_tessellate_surface(
+            |u, v| Point3::new(v.cos() * u.cos(), v.cos() * u.sin(), v.sin()),
+            |u, v| Vec3::new(v.cos() * u.cos(), v.cos() * u.sin(), v.sin()),
+            (0.0, std::f64::consts::FRAC_PI_2),
+            (0.0, std::f64::consts::FRAC_PI_2),
+            &TessellationOptions::from_lod(LevelOfDetail::Coarse),
+        );
+        let fine = adaptive_tessellate_surface(
+            |u, v| Point3::new(v.cos() * u.cos(), v.cos() * u.sin(), v.sin()),
+            |u, v| Vec3::new(v.cos() * u.cos(), v.cos() * u.sin(), v.sin()),
+            (0.0, std::f64::consts::FRAC_PI_2),
+            (0.0, std::f64::consts::FRAC_PI_2),
+            &TessellationOptions::from_lod(LevelOfDetail::Fine),
+        );
+        assert!(
+            coarse.indices.len() <= fine.indices.len(),
+            "coarse ({}) should have <= triangles than fine ({})",
+            coarse.indices.len(),
+            fine.indices.len()
+        );
+    }
+
+    #[test]
+    fn test_normal_based_refinement_triggers() {
+        // A flat surface with varying normals should not trigger extra refinement,
+        // but a curved surface should produce more triangles with tight angle tolerance.
+        let flat = adaptive_tessellate_surface(
+            |u, v| Point3::new(u, v, 0.0),
+            |_, _| Vec3::Z,
+            (0.0, 1.0),
+            (0.0, 1.0),
+            &TessellationOptions {
+                chord_tolerance: 1.0, // very loose chord
+                angle_tolerance: 5.0_f64.to_radians(), // tight angle
+                min_segments: 2,
+                max_depth: 6,
+            },
+        );
+        let curved = adaptive_tessellate_surface(
+            |u, v| Point3::new(v.cos() * u.cos(), v.cos() * u.sin(), v.sin()),
+            |u, v| Vec3::new(v.cos() * u.cos(), v.cos() * u.sin(), v.sin()),
+            (0.0, std::f64::consts::FRAC_PI_2),
+            (0.0, std::f64::consts::FRAC_PI_2),
+            &TessellationOptions {
+                chord_tolerance: 1.0, // very loose chord
+                angle_tolerance: 5.0_f64.to_radians(), // tight angle triggers normal-based split
+                min_segments: 2,
+                max_depth: 6,
+            },
+        );
+        // With loose chord but tight angle, flat stays minimal, curved should refine
+        assert!(
+            curved.indices.len() > flat.indices.len(),
+            "curved ({}) should have more tris than flat ({}) due to normal refinement",
             curved.indices.len(),
             flat.indices.len()
         );

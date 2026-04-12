@@ -570,23 +570,55 @@ pub(crate) fn draw_view_cube(
         );
     }
 
-    // Handle click
-    if clicked {
-        if let Some(target) = hover {
-            match target {
-                HoverTarget::Face(fi) => {
-                    actions.push(GuiAction::SetStandardView(FACE_VIEWS[fi]));
-                }
-                HoverTarget::Edge(ei) => {
-                    let [yaw, pitch] = EDGE_YAW_PITCH[ei];
-                    actions.push(GuiAction::SetCameraYawPitch(yaw, pitch));
-                }
-                HoverTarget::Corner(ci) => {
-                    let [yaw, pitch] = CORNER_YAW_PITCH[ci];
-                    actions.push(GuiAction::SetCameraYawPitch(yaw, pitch));
+    // Handle click and drag
+    let primary_down = ctx.input(|i| i.pointer.button_down(egui::PointerButton::Primary));
+    let primary_pressed = ctx.input(|i| i.pointer.button_pressed(egui::PointerButton::Primary));
+    let primary_released = ctx.input(|i| i.pointer.button_released(egui::PointerButton::Primary));
+    let drag_delta = ctx.input(|i| i.pointer.delta());
+
+    // Check if cursor is within the cube bounding circle
+    let in_cube_area = mouse_pos
+        .map(|mp| (mp - center).length() < ring_r + 2.0)
+        .unwrap_or(false);
+
+    // Start drag on primary press over cube
+    if primary_pressed && in_cube_area && hover.is_some() {
+        gui.cube_dragging = true;
+        gui.cube_drag_moved = false;
+    }
+
+    // During drag, emit orbit proportional to mouse delta
+    if gui.cube_dragging && primary_down {
+        let dx = drag_delta.x;
+        let dy = drag_delta.y;
+        if dx.abs() > 2.0 || dy.abs() > 2.0 {
+            gui.cube_drag_moved = true;
+            let scale = 0.008;
+            actions.push(GuiAction::ScreenOrbit(dx * scale, -dy * scale));
+        }
+    }
+
+    // On release, either snap-click or finish drag
+    if gui.cube_dragging && (primary_released || !primary_down) {
+        if !gui.cube_drag_moved {
+            // No significant movement — treat as click (snap to face/edge/corner)
+            if let Some(target) = hover {
+                match target {
+                    HoverTarget::Face(fi) => {
+                        actions.push(GuiAction::SetStandardView(FACE_VIEWS[fi]));
+                    }
+                    HoverTarget::Edge(ei) => {
+                        let [yaw, pitch] = EDGE_YAW_PITCH[ei];
+                        actions.push(GuiAction::SetCameraYawPitch(yaw, pitch));
+                    }
+                    HoverTarget::Corner(ci) => {
+                        let [yaw, pitch] = CORNER_YAW_PITCH[ci];
+                        actions.push(GuiAction::SetCameraYawPitch(yaw, pitch));
+                    }
                 }
             }
         }
+        gui.cube_dragging = false;
     }
 
     // Arrow buttons

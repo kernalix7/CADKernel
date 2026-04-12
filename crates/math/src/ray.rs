@@ -1,7 +1,11 @@
 use crate::point::Point3;
 use crate::vector::Vec3;
 
-/// A ray in 3D space: origin + normalised direction.
+/// A ray in 3D space defined by an origin and a normalised direction.
+///
+/// Used for ray-casting, picking, and intersection tests. The direction is
+/// normalised at construction time. Evaluate points along the ray with
+/// [`at`](Self::at) and project points with [`project`](Self::project).
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Ray3 {
     pub origin: Point3,

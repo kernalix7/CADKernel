@@ -1,7 +1,22 @@
 use crate::point::Point3;
 use crate::vector::Vec3;
 
-/// Axis-Aligned Bounding Box in 3D.
+/// Axis-Aligned Bounding Box (AABB) in 3D.
+///
+/// Start with [`BoundingBox::empty()`] and grow via
+/// [`include_point`](Self::include_point), or construct from two corner
+/// points with [`new`](Self::new). Supports containment, overlap, union,
+/// intersection, and volume/surface-area queries.
+///
+/// # Examples
+///
+/// ```
+/// use cadkernel_math::{BoundingBox, Point3};
+///
+/// let bb = BoundingBox::new(Point3::ORIGIN, Point3::new(1.0, 1.0, 1.0));
+/// assert!(bb.contains(Point3::new(0.5, 0.5, 0.5)));
+/// assert!(!bb.contains(Point3::new(2.0, 0.0, 0.0)));
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct BoundingBox {
     pub min: Point3,

@@ -5,6 +5,30 @@ use super::Curve;
 use super::bspline_basis;
 
 /// A NURBS (Non-Uniform Rational B-Spline) curve in 3D space.
+///
+/// Evaluated via the De Boor algorithm with rational (weighted) control
+/// points. Supports knot insertion/removal, degree elevation, Bezier
+/// decomposition, splitting, joining, and reversal.
+///
+/// Invariant: `knots.len() == control_points.len() + degree + 1`.
+///
+/// # Examples
+///
+/// ```
+/// use cadkernel_math::Point3;
+/// use cadkernel_geometry::{Curve, NurbsCurve};
+///
+/// // A cubic Bezier curve
+/// let pts = vec![
+///     Point3::new(0.0, 0.0, 0.0),
+///     Point3::new(1.0, 1.0, 0.0),
+///     Point3::new(2.0, 1.0, 0.0),
+///     Point3::new(3.0, 0.0, 0.0),
+/// ];
+/// let curve = NurbsCurve::bezier(pts).unwrap();
+/// let mid = curve.point_at(0.5);
+/// assert!((mid.y - 0.75).abs() < 0.01);
+/// ```
 #[derive(Debug, Clone)]
 pub struct NurbsCurve {
     pub degree: usize,

@@ -2,7 +2,7 @@
 //! extend surface, and pipe surface.
 
 use cadkernel_core::{KernelError, KernelResult};
-use cadkernel_geometry::{Curve, NurbsCurve};
+use cadkernel_geometry::{Curve, NurbsCurve, NurbsSurface};
 use cadkernel_math::{Point3, Vec3};
 use cadkernel_topology::{
     BRepModel, EntityKind, FaceData, Handle, SolidData, Tag, VertexData,
@@ -447,6 +447,125 @@ fn make_ring_face(
     Ok(model.make_face_tagged(lp, ft))
 }
 
+/// Result of a Coons patch operation.
+#[derive(Debug)]
+pub struct CoonsPatchResult {
+    pub surface: NurbsSurface,
+}
+
+/// Creates a Coons bilinear blending patch from four boundary curves.
+///
+/// The four curves form a closed boundary: `u0` (bottom), `u1` (top),
+/// `v0` (left), `v1` (right). The resulting surface is a bilinear
+/// interpolation (Coons patch) represented as a NurbsSurface.
+///
+/// Each boundary curve is sampled at `n+1` points (where `n` is a
+/// resolution parameter derived from the curve degrees). The Coons
+/// formula is: `S(u,v) = L_u + L_v - B` where `L_u` interpolates the
+/// u-direction curves, `L_v` interpolates the v-direction curves, and
+/// `B` is the bilinear correction from the four corner points.
+pub fn coons_patch(
+    curve_u0: &dyn Curve,
+    curve_u1: &dyn Curve,
+    curve_v0: &dyn Curve,
+    curve_v1: &dyn Curve,
+) -> KernelResult<CoonsPatchResult> {
+    let n = 16_usize;
+    let count_u = n + 1;
+    let count_v = n + 1;
+
+    let (u0_a, u0_b) = curve_u0.domain();
+    let (u1_a, u1_b) = curve_u1.domain();
+    let (v0_a, v0_b) = curve_v0.domain();
+    let (v1_a, v1_b) = curve_v1.domain();
+
+    // Corner points: P(0,0), P(1,0), P(0,1), P(1,1)
+    let p00 = curve_u0.point_at(u0_a);
+    let p10 = curve_u0.point_at(u0_b);
+    let p01 = curve_u1.point_at(u1_a);
+    let p11 = curve_u1.point_at(u1_b);
+
+    let total = count_u * count_v;
+    let mut control_points = Vec::with_capacity(total);
+
+    for vi in 0..count_v {
+        let v = vi as f64 / n as f64;
+        for ui in 0..count_u {
+            let u = ui as f64 / n as f64;
+
+            // Ruled surface in u-direction
+            let cu0 = curve_u0.point_at(u0_a + u * (u0_b - u0_a));
+            let cu1 = curve_u1.point_at(u1_a + u * (u1_b - u1_a));
+            let lu = Point3::new(
+                (1.0 - v) * cu0.x + v * cu1.x,
+                (1.0 - v) * cu0.y + v * cu1.y,
+                (1.0 - v) * cu0.z + v * cu1.z,
+            );
+
+            // Ruled surface in v-direction
+            let cv0 = curve_v0.point_at(v0_a + v * (v0_b - v0_a));
+            let cv1 = curve_v1.point_at(v1_a + v * (v1_b - v1_a));
+            let lv = Point3::new(
+                (1.0 - u) * cv0.x + u * cv1.x,
+                (1.0 - u) * cv0.y + u * cv1.y,
+                (1.0 - u) * cv0.z + u * cv1.z,
+            );
+
+            // Bilinear correction
+            let b = Point3::new(
+                (1.0 - u) * (1.0 - v) * p00.x
+                    + u * (1.0 - v) * p10.x
+                    + (1.0 - u) * v * p01.x
+                    + u * v * p11.x,
+                (1.0 - u) * (1.0 - v) * p00.y
+                    + u * (1.0 - v) * p10.y
+                    + (1.0 - u) * v * p01.y
+                    + u * v * p11.y,
+                (1.0 - u) * (1.0 - v) * p00.z
+                    + u * (1.0 - v) * p10.z
+                    + (1.0 - u) * v * p01.z
+                    + u * v * p11.z,
+            );
+
+            // Coons: S = Lu + Lv - B
+            control_points.push(Point3::new(
+                lu.x + lv.x - b.x,
+                lu.y + lv.y - b.y,
+                lu.z + lv.z - b.z,
+            ));
+        }
+    }
+
+    let weights = vec![1.0; total];
+
+    // Uniform clamped knot vector of degree 1 for the interpolation grid
+    let degree = 1;
+    let make_knots = |count: usize| -> Vec<f64> {
+        let mut knots = vec![0.0; degree + 1];
+        for i in 1..count - degree {
+            knots.push(i as f64 / (count - degree) as f64);
+        }
+        knots.extend(std::iter::repeat_n(1.0, degree + 1));
+        knots
+    };
+
+    let knots_u = make_knots(count_u);
+    let knots_v = make_knots(count_v);
+
+    let surface = NurbsSurface::new(
+        degree,
+        degree,
+        count_u,
+        count_v,
+        control_points,
+        weights,
+        knots_u,
+        knots_v,
+    )?;
+
+    Ok(CoonsPatchResult { surface })
+}
+
 /// Result of a surface filling operation.
 #[derive(Debug)]
 pub struct SurfaceFillingResult {
@@ -667,6 +786,7 @@ pub fn curve_on_mesh(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cadkernel_geometry::Surface;
 
     fn make_linear_curve(p0: Point3, p1: Point3) -> NurbsCurve {
         NurbsCurve::new(
@@ -856,5 +976,214 @@ mod tests {
             });
             assert!(on_mesh, "projected point should be on mesh vertex: {:?}", p);
         }
+    }
+
+    #[test]
+    fn test_coons_patch_flat() {
+        use cadkernel_geometry::LineSegment;
+        let u0 = LineSegment::new(
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(10.0, 0.0, 0.0),
+        );
+        let u1 = LineSegment::new(
+            Point3::new(0.0, 10.0, 0.0),
+            Point3::new(10.0, 10.0, 0.0),
+        );
+        let v0 = LineSegment::new(
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(0.0, 10.0, 0.0),
+        );
+        let v1 = LineSegment::new(
+            Point3::new(10.0, 0.0, 0.0),
+            Point3::new(10.0, 10.0, 0.0),
+        );
+
+        let result = coons_patch(&u0, &u1, &v0, &v1).unwrap();
+        let mid = result.surface.point_at(0.5, 0.5);
+        assert!((mid.x - 5.0).abs() < 0.5, "mid.x = {}", mid.x);
+        assert!((mid.y - 5.0).abs() < 0.5, "mid.y = {}", mid.y);
+        assert!((mid.z).abs() < 0.5, "mid.z = {}", mid.z);
+    }
+
+    #[test]
+    fn test_coons_patch_unit_square_corners() {
+        use cadkernel_geometry::LineSegment;
+        let u0 = LineSegment::new(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 0.0, 0.0));
+        let u1 = LineSegment::new(Point3::new(0.0, 1.0, 0.0), Point3::new(1.0, 1.0, 0.0));
+        let v0 = LineSegment::new(Point3::new(0.0, 0.0, 0.0), Point3::new(0.0, 1.0, 0.0));
+        let v1 = LineSegment::new(Point3::new(1.0, 0.0, 0.0), Point3::new(1.0, 1.0, 0.0));
+        let result = coons_patch(&u0, &u1, &v0, &v1).unwrap();
+        let p00 = result.surface.point_at(0.0, 0.0);
+        let p11 = result.surface.point_at(1.0, 1.0);
+        assert!(p00.x.abs() < 0.1 && p00.y.abs() < 0.1);
+        assert!((p11.x - 1.0).abs() < 0.1 && (p11.y - 1.0).abs() < 0.1);
+    }
+
+    #[test]
+    fn test_coons_patch_elevated_surface() {
+        use cadkernel_geometry::LineSegment;
+        let u0 = LineSegment::new(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 0.0, 0.0));
+        let u1 = LineSegment::new(Point3::new(0.0, 1.0, 1.0), Point3::new(1.0, 1.0, 1.0));
+        let v0 = LineSegment::new(Point3::new(0.0, 0.0, 0.0), Point3::new(0.0, 1.0, 1.0));
+        let v1 = LineSegment::new(Point3::new(1.0, 0.0, 0.0), Point3::new(1.0, 1.0, 1.0));
+        let result = coons_patch(&u0, &u1, &v0, &v1).unwrap();
+        let mid = result.surface.point_at(0.5, 0.5);
+        assert!(mid.z > 0.0, "mid z should be elevated");
+    }
+
+    #[test]
+    fn test_ruled_surface_validation_segments_u() {
+        let mut model = BRepModel::new();
+        let c1 = make_linear_curve(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 0.0, 0.0));
+        let c2 = make_linear_curve(Point3::new(0.0, 1.0, 0.0), Point3::new(1.0, 1.0, 0.0));
+        assert!(ruled_surface(&mut model, &c1, &c2, 0, 4).is_err());
+    }
+
+    #[test]
+    fn test_ruled_surface_validation_segments_v() {
+        let mut model = BRepModel::new();
+        let c1 = make_linear_curve(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 0.0, 0.0));
+        let c2 = make_linear_curve(Point3::new(0.0, 1.0, 0.0), Point3::new(1.0, 1.0, 0.0));
+        assert!(ruled_surface(&mut model, &c1, &c2, 4, 0).is_err());
+    }
+
+    #[test]
+    fn test_ruled_surface_single_segment() {
+        let mut model = BRepModel::new();
+        let c1 = make_linear_curve(Point3::new(0.0, 0.0, 0.0), Point3::new(4.0, 0.0, 0.0));
+        let c2 = make_linear_curve(Point3::new(0.0, 2.0, 0.0), Point3::new(4.0, 2.0, 0.0));
+        let r = ruled_surface(&mut model, &c1, &c2, 1, 1).unwrap();
+        assert_eq!(r.faces.len(), 1);
+    }
+
+    #[test]
+    fn test_pipe_surface_too_few_points() {
+        let mut model = BRepModel::new();
+        let path = vec![Point3::new(0.0, 0.0, 0.0)];
+        assert!(pipe_surface(&mut model, &path, 1.0, 8).is_err());
+    }
+
+    #[test]
+    fn test_pipe_surface_invalid_radius() {
+        let mut model = BRepModel::new();
+        let path = vec![
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(0.0, 0.0, 5.0),
+        ];
+        assert!(pipe_surface(&mut model, &path, 0.0, 8).is_err());
+    }
+
+    #[test]
+    fn test_pipe_surface_invalid_segments() {
+        let mut model = BRepModel::new();
+        let path = vec![
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(0.0, 0.0, 5.0),
+        ];
+        assert!(pipe_surface(&mut model, &path, 1.0, 2).is_err());
+    }
+
+    #[test]
+    fn test_pipe_surface_curved_path() {
+        let mut model = BRepModel::new();
+        let path = vec![
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(1.0, 1.0, 0.0),
+            Point3::new(2.0, 0.0, 0.0),
+            Point3::new(3.0, 1.0, 0.0),
+        ];
+        let r = pipe_surface(&mut model, &path, 0.2, 6).unwrap();
+        assert!(!r.faces.is_empty());
+    }
+
+    #[test]
+    fn test_filling_square() {
+        let mut model = BRepModel::new();
+        let boundary = vec![
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(1.0, 0.0, 0.0),
+            Point3::new(1.0, 1.0, 0.0),
+            Point3::new(0.0, 1.0, 0.0),
+        ];
+        let result = filling(&mut model, &boundary, 1).unwrap();
+        assert_eq!(result.faces.len(), 4);
+    }
+
+    #[test]
+    fn test_filling_two_points_fails() {
+        let mut model = BRepModel::new();
+        let boundary = vec![
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(1.0, 0.0, 0.0),
+        ];
+        assert!(filling(&mut model, &boundary, 1).is_err());
+    }
+
+    #[test]
+    fn test_filling_with_subdivisions() {
+        let mut model = BRepModel::new();
+        let boundary = vec![
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(2.0, 0.0, 0.0),
+            Point3::new(2.0, 2.0, 0.0),
+            Point3::new(0.0, 2.0, 0.0),
+        ];
+        let result = filling(&mut model, &boundary, 2).unwrap();
+        assert!(!result.faces.is_empty());
+    }
+
+    #[test]
+    fn test_extend_surface_zero_distance_fails() {
+        let mut model = BRepModel::new();
+        let b = crate::primitives::make_box(&mut model, Point3::new(0.0, 0.0, 0.0), 2.0, 2.0, 2.0).unwrap();
+        assert!(extend_surface(&mut model, b.solid, 0.0).is_err());
+    }
+
+    #[test]
+    fn test_extend_surface_positive() {
+        let mut model = BRepModel::new();
+        let b = crate::primitives::make_box(&mut model, Point3::new(0.0, 0.0, 0.0), 2.0, 2.0, 2.0).unwrap();
+        let result = extend_surface(&mut model, b.solid, 0.5).unwrap();
+        assert_eq!(result.solid, b.solid);
+    }
+
+    #[test]
+    fn test_extend_surface_negative_shrink() {
+        let mut model = BRepModel::new();
+        let b = crate::primitives::make_box(&mut model, Point3::new(0.0, 0.0, 0.0), 4.0, 4.0, 4.0).unwrap();
+        let result = extend_surface(&mut model, b.solid, -0.5).unwrap();
+        assert_eq!(result.solid, b.solid);
+    }
+
+    #[test]
+    fn test_surface_from_curves_two_profiles() {
+        let mut model = BRepModel::new();
+        let c1 = make_linear_curve(Point3::new(0.0, 0.0, 0.0), Point3::new(2.0, 0.0, 0.0));
+        let c2 = make_linear_curve(Point3::new(0.0, 1.0, 1.0), Point3::new(2.0, 1.0, 1.0));
+        let result = surface_from_curves(&mut model, &[&c1, &c2], 4).unwrap();
+        assert!(!result.faces.is_empty());
+    }
+
+    #[test]
+    fn test_surface_from_curves_single_profile_fails() {
+        let mut model = BRepModel::new();
+        let c1 = make_linear_curve(Point3::new(0.0, 0.0, 0.0), Point3::new(2.0, 0.0, 0.0));
+        assert!(surface_from_curves(&mut model, &[&c1], 4).is_err());
+    }
+
+    #[test]
+    fn test_sections_two_profiles() {
+        let mut model = BRepModel::new();
+        let c1 = make_linear_curve(Point3::new(0.0, 0.0, 0.0), Point3::new(2.0, 0.0, 0.0));
+        let c2 = make_linear_curve(Point3::new(0.0, 0.0, 2.0), Point3::new(2.0, 0.0, 2.0));
+        let result = sections(&mut model, &[&c1, &c2], 4).unwrap();
+        assert!(!result.faces.is_empty());
+    }
+
+    #[test]
+    fn test_sections_single_profile_fails() {
+        let mut model = BRepModel::new();
+        let c1 = make_linear_curve(Point3::new(0.0, 0.0, 0.0), Point3::new(2.0, 0.0, 0.0));
+        assert!(sections(&mut model, &[&c1], 4).is_err());
     }
 }

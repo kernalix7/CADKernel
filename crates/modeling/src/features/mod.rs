@@ -1,3 +1,9 @@
+//! Feature operations that transform existing solids.
+//!
+//! Includes extrude, revolve, sweep, loft, fillet, chamfer, draft, shell,
+//! mirror, pattern, pad, pocket, hole, section, split, and more. Also
+//! includes PartDesign additive/subtractive primitive operations.
+
 pub mod additive;
 pub mod chamfer;
 pub mod compound_ops;
@@ -31,7 +37,8 @@ pub mod thickness;
 
 pub use additive::{
     additive_box, additive_cone, additive_cylinder, additive_ellipsoid, additive_helix,
-    additive_prism, additive_sphere, additive_torus, additive_wedge, subtractive_box,
+    additive_loft, additive_pipe, additive_prism, additive_sphere, additive_torus, additive_wedge,
+    make_sprocket, shaft_design, shape_binder, sub_shape_binder, subtractive_box,
     subtractive_cone, subtractive_cylinder, subtractive_ellipsoid, subtractive_helix,
     subtractive_loft, subtractive_pipe, subtractive_prism, subtractive_sphere, subtractive_torus,
     subtractive_wedge,
@@ -41,7 +48,7 @@ pub use compound_ops::{
     explode_compound, slice_to_compound,
 };
 pub use chamfer::{ChamferResult, chamfer_edge};
-pub use defeature::{remove_face, simplify_solid};
+pub use defeature::{auto_defeaturing, remove_face, simplify_solid};
 pub use cross_sections::cross_sections;
 pub use draft::{DraftResult, draft_faces};
 pub use extrude::{ExtrudeResult, extrude};
@@ -56,7 +63,7 @@ pub use offset::{OffsetResult, offset_solid};
 pub use pad::{PadResult, pad};
 pub use pattern::{PatternResult, circular_pattern, linear_pattern};
 pub use pocket::{PocketResult, pocket};
-pub use project_on_surface::project_points_on_surface;
+pub use project_on_surface::{project_curves_on_surface, project_points_on_surface};
 pub use projection::project_curve_on_solid;
 pub use revolve::{RevolveResult, revolve};
 pub use scale::{ScaleResult, scale_solid};

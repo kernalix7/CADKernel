@@ -180,4 +180,77 @@ mod tests {
         let exploded = explode_compound(&compound);
         assert_eq!(exploded.len(), 2);
     }
+
+    #[test]
+    fn test_compound_filter_empty() {
+        let model = BRepModel::new();
+        let empty = Compound::new("empty");
+        let filtered = compound_filter(&model, &empty, 1).unwrap();
+        assert_eq!(filtered.solids.len(), 0);
+    }
+
+    #[test]
+    fn test_explode_empty_compound() {
+        let empty = Compound::new("empty");
+        let exploded = explode_compound(&empty);
+        assert_eq!(exploded.len(), 0);
+    }
+
+    #[test]
+    fn test_slice_to_compound_xy_plane() {
+        let mut model = BRepModel::new();
+        let b = make_box(&mut model, Point3::ORIGIN, 6.0, 6.0, 6.0).unwrap();
+        let result = slice_to_compound(
+            &mut model,
+            b.solid,
+            Point3::new(0.0, 0.0, 3.0),
+            Vec3::Z,
+        )
+        .unwrap();
+        assert_eq!(result.compound.solids.len(), 2);
+    }
+
+    #[test]
+    fn test_boolean_fragments_name() {
+        let mut a = BRepModel::new();
+        let ra = make_box(&mut a, Point3::ORIGIN, 2.0, 2.0, 2.0).unwrap();
+        let mut b = BRepModel::new();
+        let rb = make_box(&mut b, Point3::new(10.0, 0.0, 0.0), 2.0, 2.0, 2.0).unwrap();
+        let result = boolean_fragments(&a, ra.solid, &b, rb.solid).unwrap();
+        assert_eq!(result.compound.name, "boolean_fragments");
+    }
+
+    #[test]
+    fn test_slice_compound_name() {
+        let mut model = BRepModel::new();
+        let b = make_box(&mut model, Point3::ORIGIN, 4.0, 4.0, 4.0).unwrap();
+        let result = slice_to_compound(
+            &mut model,
+            b.solid,
+            Point3::new(0.0, 0.0, 2.0),
+            Vec3::Z,
+        )
+        .unwrap();
+        assert_eq!(result.compound.name, "slice_to_compound");
+    }
+
+    #[test]
+    fn test_compound_filter_all_pass() {
+        let mut model = BRepModel::new();
+        let r1 = make_box(&mut model, Point3::ORIGIN, 2.0, 2.0, 2.0).unwrap();
+        let mut compound = Compound::new("test");
+        compound.add(r1.solid);
+        let filtered = compound_filter(&model, &compound, 1).unwrap();
+        assert_eq!(filtered.solids.len(), 1);
+    }
+
+    #[test]
+    fn test_compound_filter_none_pass() {
+        let mut model = BRepModel::new();
+        let r1 = make_box(&mut model, Point3::ORIGIN, 2.0, 2.0, 2.0).unwrap();
+        let mut compound = Compound::new("test");
+        compound.add(r1.solid);
+        let filtered = compound_filter(&model, &compound, 1000).unwrap();
+        assert_eq!(filtered.solids.len(), 0);
+    }
 }

@@ -1,0 +1,105 @@
+[
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/list",
+    "params": {}
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 2,
+    "method": "tools/call",
+    "params": {
+      "name": "create_primitive",
+      "arguments": {
+        "type": "box",
+        "dimensions": { "dx": 20, "dy": 30, "dz": 40 }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "tools/call",
+    "params": {
+      "name": "create_primitive",
+      "arguments": {
+        "type": "cylinder",
+        "dimensions": { "radius": 8, "height": 50, "segments": 32 }
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "tools/call",
+    "params": {
+      "name": "transform",
+      "arguments": {
+        "id": 1,
+        "translate": [10, 15, -5]
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 5,
+    "method": "tools/call",
+    "params": {
+      "name": "boolean_operation",
+      "arguments": {
+        "op": "subtract",
+        "target_id": 0,
+        "tool_id": 1
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "tools/call",
+    "params": {
+      "name": "measure",
+      "arguments": { "id": 2 }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "tools/call",
+    "params": {
+      "name": "list_solids",
+      "arguments": {}
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 8,
+    "method": "tools/call",
+    "params": {
+      "name": "export_model",
+      "arguments": {
+        "format": "stl",
+        "id": 2
+      }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 9,
+    "method": "tools/call",
+    "params": {
+      "name": "delete_solid",
+      "arguments": { "id": 0 }
+    }
+  },
+  {
+    "jsonrpc": "2.0",
+    "id": 10,
+    "method": "tools/call",
+    "params": {
+      "name": "query_model",
+      "arguments": {}
+    }
+  }
+]

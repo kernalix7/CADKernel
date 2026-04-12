@@ -3,6 +3,9 @@ use cadkernel_math::{Point3, Vec3};
 use super::Curve;
 
 /// A circular arc in 3D space, parameterized from `start_angle` to `end_angle` (radians).
+///
+/// Unlike [`Circle`](super::circle::Circle), an arc is not closed and covers
+/// only a portion of the circle. The domain is `[start_angle, end_angle]`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Arc {
     pub center: Point3,

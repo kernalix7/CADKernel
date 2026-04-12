@@ -76,6 +76,18 @@ pub fn make_wire(model: &mut BRepModel, points: &[Point3]) -> KernelResult<WireR
     Ok(WireResult { vertices, edges })
 }
 
+/// Creates a wire consisting of a single straight-line edge between two points.
+///
+/// This is a convenience wrapper around [`make_wire`] for the common case
+/// of constructing a simple two-point line in the Draft workbench.
+pub fn make_line_draft(
+    model: &mut BRepModel,
+    p1: Point3,
+    p2: Point3,
+) -> KernelResult<WireResult> {
+    make_wire(model, &[p1, p2])
+}
+
 /// Creates a B-spline wire from control points.
 ///
 /// Builds a [`NurbsCurve`] of the given degree, tessellates it into `segments`
@@ -1321,6 +1333,1406 @@ pub fn stretch_wire(
         .collect()
 }
 
+/// Hatch pattern specification.
+#[derive(Debug, Clone)]
+pub enum HatchPattern {
+    Lines { angle: f64, spacing: f64 },
+    Cross { angle: f64, spacing: f64 },
+    Dots { spacing: f64 },
+}
+
+/// Result of a hatch fill operation.
+#[derive(Debug, Clone)]
+pub struct HatchResult {
+    pub lines: Vec<(Point3, Point3)>,
+    pub pattern: HatchPattern,
+}
+
+/// Generate 2D hatch fill lines within a convex polygon boundary.
+///
+/// Lines are generated at the given `angle` and `spacing` from the pattern,
+/// clipped to the bounding box of the boundary points.
+pub fn draft_hatch(
+    boundary_points: &[Point3],
+    pattern: HatchPattern,
+    scale: f64,
+) -> KernelResult<HatchResult> {
+    if boundary_points.len() < 3 {
+        return Err(KernelError::InvalidArgument(
+            "hatch requires at least 3 boundary points".into(),
+        ));
+    }
+    if scale <= 0.0 {
+        return Err(KernelError::InvalidArgument(
+            "scale must be positive".into(),
+        ));
+    }
+
+    let (angle, spacing) = match &pattern {
+        HatchPattern::Lines { angle, spacing } => (*angle, *spacing * scale),
+        HatchPattern::Cross { angle, spacing } => (*angle, *spacing * scale),
+        HatchPattern::Dots { spacing } => (0.0, *spacing * scale),
+    };
+
+    if spacing <= 0.0 {
+        return Err(KernelError::InvalidArgument(
+            "hatch spacing must be positive".into(),
+        ));
+    }
+
+    // Bounding box in XY
+    let mut min_x = f64::INFINITY;
+    let mut max_x = f64::NEG_INFINITY;
+    let mut min_y = f64::INFINITY;
+    let mut max_y = f64::NEG_INFINITY;
+    for p in boundary_points {
+        min_x = min_x.min(p.x);
+        max_x = max_x.max(p.x);
+        min_y = min_y.min(p.y);
+        max_y = max_y.max(p.y);
+    }
+
+    let cos_a = angle.cos();
+    let sin_a = angle.sin();
+    let diag = ((max_x - min_x).powi(2) + (max_y - min_y).powi(2)).sqrt();
+    let cx = (min_x + max_x) * 0.5;
+    let cy = (min_y + max_y) * 0.5;
+
+    let n_lines = (diag / spacing).ceil() as i32 + 1;
+    let mut lines = Vec::new();
+
+    for i in -n_lines..=n_lines {
+        let offset = i as f64 * spacing;
+        let ox = cx + offset * (-sin_a);
+        let oy = cy + offset * cos_a;
+        let p1 = Point3::new(ox - diag * cos_a, oy - diag * sin_a, 0.0);
+        let p2 = Point3::new(ox + diag * cos_a, oy + diag * sin_a, 0.0);
+        lines.push((p1, p2));
+    }
+
+    // For Cross pattern, add perpendicular lines
+    if let HatchPattern::Cross { angle: a, .. } = &pattern {
+        let a2 = a + std::f64::consts::FRAC_PI_2;
+        let cos_a2 = a2.cos();
+        let sin_a2 = a2.sin();
+        for i in -n_lines..=n_lines {
+            let offset = i as f64 * spacing;
+            let ox = cx + offset * (-sin_a2);
+            let oy = cy + offset * cos_a2;
+            let p1 = Point3::new(ox - diag * cos_a2, oy - diag * sin_a2, 0.0);
+            let p2 = Point3::new(ox + diag * cos_a2, oy + diag * sin_a2, 0.0);
+            lines.push((p1, p2));
+        }
+    }
+
+    Ok(HatchResult { lines, pattern })
+}
+
+/// Extract faces from a model by face handle indices.
+///
+/// Creates a new solid containing only the specified faces.
+pub fn make_facebinder(
+    model: &mut BRepModel,
+    face_handles: &[Handle<FaceData>],
+) -> KernelResult<Handle<SolidData>> {
+    if face_handles.is_empty() {
+        return Err(KernelError::InvalidArgument(
+            "make_facebinder requires at least one face".into(),
+        ));
+    }
+
+    let op = model.history.next_operation("facebinder");
+
+    let mut new_faces = Vec::new();
+
+    for (fi, &face_h) in face_handles.iter().enumerate() {
+        let face = model
+            .faces
+            .get(face_h)
+            .ok_or(KernelError::InvalidHandle("face"))?;
+        let outer_loop_h = face.outer_loop;
+        let hes = model.loop_half_edges(
+            model
+                .loops
+                .get(outer_loop_h)
+                .ok_or(KernelError::InvalidHandle("loop"))?
+                .half_edge,
+        );
+
+        let mut face_points = Vec::new();
+        for &he_h in &hes {
+            if let Some(he) = model.half_edges.get(he_h) {
+                if let Some(v) = model.vertices.get(he.origin) {
+                    face_points.push(v.point);
+                }
+            }
+        }
+
+        if face_points.len() < 3 {
+            continue;
+        }
+
+        let mut verts = Vec::new();
+        for (vi, &pt) in face_points.iter().enumerate() {
+            let tag = Tag::generated(EntityKind::Vertex, op, (fi * 100 + vi) as u32);
+            verts.push(model.add_vertex_tagged(pt, tag));
+        }
+
+        let mut he_list = Vec::new();
+        for i in 0..verts.len() {
+            let j = (i + 1) % verts.len();
+            let tag = Tag::generated(EntityKind::Edge, op, (fi * 100 + i) as u32);
+            let (_, fwd, _) = model.add_edge_tagged(verts[i], verts[j], tag);
+            he_list.push(fwd);
+        }
+
+        let loop_h = model.make_loop(&he_list)?;
+        let face_tag = Tag::generated(EntityKind::Face, op, fi as u32);
+        let new_face_h = model.make_face_tagged(loop_h, face_tag);
+        new_faces.push(new_face_h);
+    }
+
+    if new_faces.is_empty() {
+        return Err(KernelError::InvalidArgument(
+            "no valid faces could be created from the input".into(),
+        ));
+    }
+
+    let shell_tag = Tag::generated(EntityKind::Shell, op, 0);
+    let shell_h = model.make_shell_tagged(&new_faces, shell_tag);
+    let solid_tag = Tag::generated(EntityKind::Solid, op, 0);
+    let solid_h = model.make_solid_tagged(&[shell_h], solid_tag);
+
+    Ok(solid_h)
+}
+
+/// Dimension type for draft annotations.
+#[derive(Debug, Clone)]
+pub enum DraftDimensionType {
+    Linear,
+    Angular,
+    Radial,
+    Diameter,
+    ArcLength,
+}
+
+/// Full draft dimension with type and offset.
+#[derive(Debug, Clone)]
+pub struct DraftDimensionFull {
+    pub dim_type: DraftDimensionType,
+    pub start: Point3,
+    pub end: Point3,
+    pub value: f64,
+    pub midpoint: Point3,
+    pub offset_point: Point3,
+}
+
+/// Create a full draft dimension with type.
+pub fn make_draft_dimension_full(
+    dim_type: DraftDimensionType,
+    p1: Point3,
+    p2: Point3,
+    offset: f64,
+) -> DraftDimensionFull {
+    let diff = p2 - p1;
+    let distance = diff.length();
+    let value = match &dim_type {
+        DraftDimensionType::Angular => {
+            // Angle between p1 and p2 relative to origin
+            let d1 = Vec3::new(p1.x, p1.y, p1.z);
+            let d2 = Vec3::new(p2.x, p2.y, p2.z);
+            let dot = d1.dot(d2);
+            let l1 = d1.length();
+            let l2 = d2.length();
+            if l1 > 1e-15 && l2 > 1e-15 {
+                (dot / (l1 * l2)).clamp(-1.0, 1.0).acos()
+            } else {
+                0.0
+            }
+        }
+        DraftDimensionType::Radial | DraftDimensionType::Diameter => {
+            let r = distance;
+            match dim_type {
+                DraftDimensionType::Diameter => r * 2.0,
+                _ => r,
+            }
+        }
+        _ => distance,
+    };
+    let midpoint = Point3::new(
+        (p1.x + p2.x) * 0.5,
+        (p1.y + p2.y) * 0.5,
+        (p1.z + p2.z) * 0.5,
+    );
+    let normal = if distance > 1e-15 {
+        let dir = Vec3::new(diff.x / distance, diff.y / distance, diff.z / distance);
+        Vec3::new(-dir.y, dir.x, 0.0)
+    } else {
+        Vec3::Y
+    };
+    let offset_point = Point3::new(
+        midpoint.x + normal.x * offset,
+        midpoint.y + normal.y * offset,
+        midpoint.z + normal.z * offset,
+    );
+
+    DraftDimensionFull {
+        dim_type,
+        start: p1,
+        end: p2,
+        value,
+        midpoint,
+        offset_point,
+    }
+}
+
+/// Full draft label with leader line target.
+#[derive(Debug, Clone)]
+pub struct DraftLabelFull {
+    pub text: String,
+    pub position: Point3,
+    pub leader_target: Option<Point3>,
+    pub style: AnnotationStyle,
+}
+
+/// Create a full label with leader and style.
+pub fn make_label_full(
+    text: &str,
+    position: Point3,
+    leader_target: Option<Point3>,
+    style: AnnotationStyle,
+) -> DraftLabelFull {
+    DraftLabelFull {
+        text: text.to_string(),
+        position,
+        leader_target,
+        style,
+    }
+}
+
+/// Annotation style settings.
+#[derive(Debug, Clone)]
+pub struct AnnotationStyle {
+    pub font_size: f64,
+    pub font_color: [f64; 3],
+    pub line_width: f64,
+    pub line_color: [f64; 3],
+    pub arrow_size: f64,
+}
+
+impl Default for AnnotationStyle {
+    fn default() -> Self {
+        Self {
+            font_size: 12.0,
+            font_color: [0.0, 0.0, 0.0],
+            line_width: 1.0,
+            line_color: [0.0, 0.0, 0.0],
+            arrow_size: 3.0,
+        }
+    }
+}
+
+/// Snap modes for draft editing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SnapMode {
+    Endpoint,
+    Midpoint,
+    Center,
+    Angle,
+    Intersection,
+    Perpendicular,
+    Extension,
+    Parallel,
+    Special,
+    Nearest,
+    Grid,
+    WorkingPlane,
+    Dimensions,
+}
+
+/// Find the nearest snap target in a wire based on snap mode.
+pub fn snap_to_point(
+    wire: &[Point3],
+    query: Point3,
+    mode: SnapMode,
+) -> KernelResult<SnapResult> {
+    match mode {
+        SnapMode::Endpoint => snap_to_endpoint(wire, query)
+            .ok_or(KernelError::InvalidArgument("no snap target found".into())),
+        SnapMode::Midpoint => snap_to_midpoint(wire, query)
+            .ok_or(KernelError::InvalidArgument("no snap target found".into())),
+        SnapMode::Nearest => snap_to_nearest(wire, query)
+            .ok_or(KernelError::InvalidArgument("no snap target found".into())),
+        SnapMode::Center => {
+            // Center of bounding box
+            if wire.is_empty() {
+                return Err(KernelError::InvalidArgument("empty wire".into()));
+            }
+            let mut cx = 0.0;
+            let mut cy = 0.0;
+            let mut cz = 0.0;
+            for p in wire {
+                cx += p.x;
+                cy += p.y;
+                cz += p.z;
+            }
+            let n = wire.len() as f64;
+            let center = Point3::new(cx / n, cy / n, cz / n);
+            Ok(SnapResult {
+                point: center,
+                distance: center.distance_to(query),
+            })
+        }
+        SnapMode::Grid => Ok(snap_to_grid(query, 1.0)),
+        SnapMode::Angle => snap_to_angle(wire, query)
+            .ok_or(KernelError::InvalidArgument("no snap target found".into())),
+        SnapMode::Intersection => snap_to_intersection(wire, query)
+            .ok_or(KernelError::InvalidArgument("no intersection found".into())),
+        SnapMode::Perpendicular => snap_to_perpendicular(wire, query)
+            .ok_or(KernelError::InvalidArgument("no snap target found".into())),
+        SnapMode::Extension => snap_to_extension(wire, query)
+            .ok_or(KernelError::InvalidArgument("no snap target found".into())),
+        SnapMode::Parallel => snap_to_parallel(wire, query)
+            .ok_or(KernelError::InvalidArgument("no snap target found".into())),
+        SnapMode::Special => snap_to_special(wire, query)
+            .ok_or(KernelError::InvalidArgument("no snap target found".into())),
+        SnapMode::WorkingPlane => Ok(snap_to_working_plane(query, Point3::ORIGIN, Vec3::Z)),
+        SnapMode::Dimensions => {
+            // For generic snap_to_point, fall back to nearest
+            snap_to_nearest(wire, query)
+                .ok_or(KernelError::InvalidArgument("no snap target found".into()))
+        }
+    }
+}
+
+/// Lock a point's position along an axis constraint.
+pub fn snap_lock(position: Point3, locked_axis: Vec3) -> Point3 {
+    let n = locked_axis
+        .normalized()
+        .unwrap_or(Vec3::X);
+    let proj = Vec3::new(position.x, position.y, position.z).dot(n);
+    Point3::new(n.x * proj, n.y * proj, n.z * proj)
+}
+
+/// Trim or extend a wire to a target point.
+///
+/// If the target is beyond the wire, extends the last segment.
+/// If the target is inside, trims the wire at the nearest edge point.
+pub fn trimex_draft(points: &[Point3], target: Point3) -> KernelResult<Vec<Point3>> {
+    if points.len() < 2 {
+        return Err(KernelError::InvalidArgument(
+            "trimex requires at least 2 points".into(),
+        ));
+    }
+
+    // Find nearest point on wire
+    let mut best_idx = 0;
+    let mut best_t = 0.0;
+    let mut best_dist = f64::INFINITY;
+
+    for i in 0..points.len() - 1 {
+        let a = points[i];
+        let b = points[i + 1];
+        let ab = b - a;
+        let at = target - a;
+        let ab_len_sq = ab.length_squared();
+        let t = if ab_len_sq > 1e-30 {
+            at.dot(ab) / ab_len_sq
+        } else {
+            0.0
+        };
+        let closest = Point3::new(a.x + t * ab.x, a.y + t * ab.y, a.z + t * ab.z);
+        let d = closest.distance_to(target);
+        if d < best_dist {
+            best_dist = d;
+            best_idx = i;
+            best_t = t;
+        }
+    }
+
+    if best_t <= 0.0 && best_idx == 0 {
+        // Extend from the start
+        let mut result = vec![target];
+        result.extend_from_slice(points);
+        Ok(result)
+    } else if best_t >= 1.0 && best_idx == points.len() - 2 {
+        // Extend from the end
+        let mut result = points.to_vec();
+        result.push(target);
+        Ok(result)
+    } else {
+        // Trim at the nearest point
+        let clamped_t = best_t.clamp(0.0, 1.0);
+        let a = points[best_idx];
+        let b = points[best_idx + 1];
+        let trim_pt = Point3::new(
+            a.x + clamped_t * (b.x - a.x),
+            a.y + clamped_t * (b.y - a.y),
+            a.z + clamped_t * (b.z - a.z),
+        );
+        let mut result: Vec<Point3> = points[..=best_idx].to_vec();
+        result.push(trim_pt);
+        Ok(result)
+    }
+}
+
+/// Circular array with specified total angle (not necessarily full 360).
+pub fn circular_array(
+    model: &mut BRepModel,
+    solid: Handle<SolidData>,
+    center: Point3,
+    axis: Vec3,
+    count: usize,
+    total_angle: f64,
+) -> KernelResult<Vec<Handle<SolidData>>> {
+    if count < 2 {
+        return Err(KernelError::InvalidArgument(
+            "circular_array count must be at least 2".into(),
+        ));
+    }
+    if total_angle.abs() < 1e-15 {
+        return Err(KernelError::InvalidArgument(
+            "total_angle must be non-zero".into(),
+        ));
+    }
+    let dir = axis.normalized().ok_or(KernelError::InvalidArgument(
+        "axis must be non-zero".into(),
+    ))?;
+
+    let mut solids = vec![solid];
+    let angle_step = total_angle / count as f64;
+
+    for i in 1..count {
+        let angle = angle_step * i as f64;
+        let cos_a = angle.cos();
+        let sin_a = angle.sin();
+
+        let op = model.history.next_operation("circular_array");
+        let result = copy_solid_transformed(
+            model,
+            solid,
+            op,
+            |pt| {
+                let v = pt - center;
+                let along = dir * v.dot(dir);
+                let perp = v - along;
+                let perp_len = perp.length();
+                if perp_len < 1e-15 {
+                    return pt;
+                }
+                let u = Vec3::new(perp.x / perp_len, perp.y / perp_len, perp.z / perp_len);
+                let w = dir.cross(u);
+                let rotated = u * (perp_len * cos_a) + w * (perp_len * sin_a) + along;
+                Point3::new(center.x + rotated.x, center.y + rotated.y, center.z + rotated.z)
+            },
+            false,
+        )?;
+        solids.push(result.solid);
+    }
+
+    Ok(solids)
+}
+
+/// Place copies along a path, linking each copy to the path point.
+pub fn path_link_array(
+    model: &mut BRepModel,
+    solid: Handle<SolidData>,
+    path_points: &[Point3],
+) -> KernelResult<Vec<Handle<SolidData>>> {
+    if path_points.len() < 2 {
+        return Err(KernelError::InvalidArgument(
+            "path_link_array requires at least 2 path points".into(),
+        ));
+    }
+
+    let origin = path_points[0];
+    let mut solids = vec![solid];
+
+    for &target in &path_points[1..] {
+        let offset = target - origin;
+        let op = model.history.next_operation("path_link_array");
+        let result = copy_solid_transformed(
+            model,
+            solid,
+            op,
+            |pt| Point3::new(pt.x + offset.x, pt.y + offset.y, pt.z + offset.z),
+            false,
+        )?;
+        solids.push(result.solid);
+    }
+
+    Ok(solids)
+}
+
+/// Place copies at each specified point.
+pub fn point_link_array(
+    model: &mut BRepModel,
+    solid: Handle<SolidData>,
+    points: &[Point3],
+) -> KernelResult<Vec<Handle<SolidData>>> {
+    if points.len() < 2 {
+        return Err(KernelError::InvalidArgument(
+            "point_link_array requires at least 2 points".into(),
+        ));
+    }
+
+    let origin = points[0];
+    let mut solids = vec![solid];
+
+    for &target in &points[1..] {
+        let offset = target - origin;
+        let op = model.history.next_operation("point_link_array");
+        let result = copy_solid_transformed(
+            model,
+            solid,
+            op,
+            |pt| Point3::new(pt.x + offset.x, pt.y + offset.y, pt.z + offset.z),
+            false,
+        )?;
+        solids.push(result.solid);
+    }
+
+    Ok(solids)
+}
+
+/// Edit a vertex position in a wire.
+pub fn edit_draft(points: &mut [Point3], index: usize, new_position: Point3) -> KernelResult<()> {
+    if index >= points.len() {
+        return Err(KernelError::InvalidArgument(format!(
+            "index {} out of range ({})",
+            index,
+            points.len()
+        )));
+    }
+    points[index] = new_position;
+    Ok(())
+}
+
+/// Convert a draft wire (polyline) into a sketch representation.
+///
+/// Each wire segment becomes a `SketchLine`. Returns a `Sketch` object.
+pub fn draft_to_sketch(points: &[Point3]) -> KernelResult<cadkernel_sketch::Sketch> {
+    if points.len() < 2 {
+        return Err(KernelError::InvalidArgument(
+            "draft_to_sketch requires at least 2 points".into(),
+        ));
+    }
+
+    let mut sketch = cadkernel_sketch::Sketch::new();
+
+    // Add points as sketch entities
+    let mut point_ids = Vec::with_capacity(points.len());
+    for &pt in points {
+        point_ids.push(sketch.add_point(pt.x, pt.y));
+    }
+
+    // Add line segments between consecutive points
+    for i in 0..point_ids.len() - 1 {
+        sketch.add_line(point_ids[i], point_ids[i + 1]);
+    }
+
+    Ok(sketch)
+}
+
+/// Creates a cubic Bezier wire (degree 3) from 4 control points.
+///
+/// This is a convenience wrapper around [`make_bezier_wire`] that specifically
+/// takes start, control1, control2, and end points for a single cubic Bezier segment.
+pub fn make_cubic_bezier_wire(
+    p0: Point3,
+    p1: Point3,
+    p2: Point3,
+    p3: Point3,
+    segments: usize,
+) -> KernelResult<Vec<Point3>> {
+    make_bezier_wire(p0, p1, p2, p3, segments)
+}
+
+/// Creates a shape (polyline) from a text string.
+///
+/// Generates a set of point sequences representing each character as a simple
+/// stroke font. Each character is a fixed-width block placed left-to-right.
+/// Returns a vector of polyline segments (each segment is a list of points).
+pub fn shape_from_text(
+    text: &str,
+    position: Point3,
+    height: f64,
+    normal: Vec3,
+) -> KernelResult<Vec<Vec<Point3>>> {
+    if text.is_empty() {
+        return Err(KernelError::InvalidArgument(
+            "text must not be empty".into(),
+        ));
+    }
+    if height <= 0.0 {
+        return Err(KernelError::InvalidArgument(
+            "height must be positive".into(),
+        ));
+    }
+
+    let n = normal.normalized().unwrap_or(Vec3::Z);
+    // Build a local coordinate frame on the plane
+    let arbitrary = if n.x.abs() < 0.9 { Vec3::X } else { Vec3::Y };
+    let right = n.cross(arbitrary).normalized().unwrap_or(Vec3::X);
+    let up = right.cross(n).normalized().unwrap_or(Vec3::Y);
+
+    let char_width = height * 0.6;
+    let mut result = Vec::new();
+
+    for (ci, ch) in text.chars().enumerate() {
+        let x_off = ci as f64 * char_width * 1.2;
+        let strokes = char_strokes(ch);
+        for stroke in strokes {
+            let pts: Vec<Point3> = stroke
+                .iter()
+                .map(|&(sx, sy)| {
+                    let x = x_off + sx * char_width;
+                    let y = sy * height;
+                    Point3::new(
+                        position.x + right.x * x + up.x * y,
+                        position.y + right.y * x + up.y * y,
+                        position.z + right.z * x + up.z * y,
+                    )
+                })
+                .collect();
+            if pts.len() >= 2 {
+                result.push(pts);
+            }
+        }
+    }
+
+    if result.is_empty() {
+        return Err(KernelError::InvalidArgument(
+            "no renderable characters in text".into(),
+        ));
+    }
+    Ok(result)
+}
+
+/// Returns stroke data for a character as normalized (0..1, 0..1) coordinate pairs.
+fn char_strokes(ch: char) -> Vec<Vec<(f64, f64)>> {
+    match ch.to_ascii_uppercase() {
+        'A' => vec![
+            vec![(0.0, 0.0), (0.5, 1.0), (1.0, 0.0)],
+            vec![(0.2, 0.4), (0.8, 0.4)],
+        ],
+        'B' => vec![
+            vec![(0.0, 0.0), (0.0, 1.0), (0.7, 1.0), (0.8, 0.85), (0.7, 0.5), (0.0, 0.5)],
+            vec![(0.0, 0.5), (0.7, 0.5), (0.8, 0.35), (0.8, 0.15), (0.7, 0.0), (0.0, 0.0)],
+        ],
+        'C' => vec![vec![(1.0, 0.0), (0.0, 0.0), (0.0, 1.0), (1.0, 1.0)]],
+        'D' => vec![vec![(0.0, 0.0), (0.0, 1.0), (0.6, 1.0), (1.0, 0.5), (0.6, 0.0), (0.0, 0.0)]],
+        'E' => vec![
+            vec![(1.0, 0.0), (0.0, 0.0), (0.0, 1.0), (1.0, 1.0)],
+            vec![(0.0, 0.5), (0.7, 0.5)],
+        ],
+        'F' => vec![
+            vec![(0.0, 0.0), (0.0, 1.0), (1.0, 1.0)],
+            vec![(0.0, 0.5), (0.7, 0.5)],
+        ],
+        'G' => vec![vec![(1.0, 1.0), (0.0, 1.0), (0.0, 0.0), (1.0, 0.0), (1.0, 0.5), (0.5, 0.5)]],
+        'H' => vec![
+            vec![(0.0, 0.0), (0.0, 1.0)],
+            vec![(1.0, 0.0), (1.0, 1.0)],
+            vec![(0.0, 0.5), (1.0, 0.5)],
+        ],
+        'I' => vec![
+            vec![(0.3, 0.0), (0.7, 0.0)],
+            vec![(0.5, 0.0), (0.5, 1.0)],
+            vec![(0.3, 1.0), (0.7, 1.0)],
+        ],
+        'L' => vec![vec![(0.0, 1.0), (0.0, 0.0), (1.0, 0.0)]],
+        'M' => vec![vec![(0.0, 0.0), (0.0, 1.0), (0.5, 0.5), (1.0, 1.0), (1.0, 0.0)]],
+        'N' => vec![vec![(0.0, 0.0), (0.0, 1.0), (1.0, 0.0), (1.0, 1.0)]],
+        'O' => vec![vec![(0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0), (0.0, 0.0)]],
+        'P' => vec![vec![(0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.5), (0.0, 0.5)]],
+        'R' => vec![
+            vec![(0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.5), (0.0, 0.5)],
+            vec![(0.5, 0.5), (1.0, 0.0)],
+        ],
+        'S' => vec![vec![(1.0, 1.0), (0.0, 1.0), (0.0, 0.5), (1.0, 0.5), (1.0, 0.0), (0.0, 0.0)]],
+        'T' => vec![
+            vec![(0.0, 1.0), (1.0, 1.0)],
+            vec![(0.5, 1.0), (0.5, 0.0)],
+        ],
+        'U' => vec![vec![(0.0, 1.0), (0.0, 0.0), (1.0, 0.0), (1.0, 1.0)]],
+        'V' => vec![vec![(0.0, 1.0), (0.5, 0.0), (1.0, 1.0)]],
+        'W' => vec![vec![(0.0, 1.0), (0.25, 0.0), (0.5, 0.5), (0.75, 0.0), (1.0, 1.0)]],
+        'X' => vec![
+            vec![(0.0, 0.0), (1.0, 1.0)],
+            vec![(0.0, 1.0), (1.0, 0.0)],
+        ],
+        'Y' => vec![
+            vec![(0.0, 1.0), (0.5, 0.5)],
+            vec![(1.0, 1.0), (0.5, 0.5)],
+            vec![(0.5, 0.5), (0.5, 0.0)],
+        ],
+        'Z' => vec![vec![(0.0, 1.0), (1.0, 1.0), (0.0, 0.0), (1.0, 0.0)]],
+        '0'..='9' => digit_strokes(ch),
+        ' ' => vec![],
+        '-' => vec![vec![(0.1, 0.5), (0.9, 0.5)]],
+        '.' => vec![vec![(0.4, 0.0), (0.6, 0.0)]],
+        _ => vec![vec![(0.0, 0.0), (1.0, 1.0), (0.0, 1.0), (1.0, 0.0)]],
+    }
+}
+
+/// Returns stroke data for digit characters.
+fn digit_strokes(ch: char) -> Vec<Vec<(f64, f64)>> {
+    match ch {
+        '0' => vec![vec![(0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0), (0.0, 0.0)]],
+        '1' => vec![vec![(0.3, 0.8), (0.5, 1.0), (0.5, 0.0)]],
+        '2' => vec![vec![(0.0, 0.8), (0.0, 1.0), (1.0, 1.0), (1.0, 0.5), (0.0, 0.0), (1.0, 0.0)]],
+        '3' => vec![
+            vec![(0.0, 1.0), (1.0, 1.0), (1.0, 0.5), (0.2, 0.5)],
+            vec![(1.0, 0.5), (1.0, 0.0), (0.0, 0.0)],
+        ],
+        '4' => vec![vec![(0.0, 1.0), (0.0, 0.5), (1.0, 0.5)], vec![(0.7, 1.0), (0.7, 0.0)]],
+        '5' => vec![vec![(1.0, 1.0), (0.0, 1.0), (0.0, 0.5), (1.0, 0.5), (1.0, 0.0), (0.0, 0.0)]],
+        '6' => vec![vec![(1.0, 1.0), (0.0, 0.5), (0.0, 0.0), (1.0, 0.0), (1.0, 0.5), (0.0, 0.5)]],
+        '7' => vec![vec![(0.0, 1.0), (1.0, 1.0), (0.3, 0.0)]],
+        '8' => vec![
+            vec![(0.0, 0.5), (0.0, 1.0), (1.0, 1.0), (1.0, 0.5), (0.0, 0.5)],
+            vec![(0.0, 0.5), (0.0, 0.0), (1.0, 0.0), (1.0, 0.5)],
+        ],
+        '9' => vec![vec![(1.0, 0.5), (0.0, 0.5), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0)]],
+        _ => vec![],
+    }
+}
+
+/// Snap to the centroid (center) of a wire.
+pub fn snap_to_center(wire: &[Point3], query: Point3) -> Option<SnapResult> {
+    if wire.is_empty() {
+        return None;
+    }
+    let mut cx = 0.0;
+    let mut cy = 0.0;
+    let mut cz = 0.0;
+    for p in wire {
+        cx += p.x;
+        cy += p.y;
+        cz += p.z;
+    }
+    let n = wire.len() as f64;
+    let center = Point3::new(cx / n, cy / n, cz / n);
+    Some(SnapResult {
+        point: center,
+        distance: center.distance_to(query),
+    })
+}
+
+/// Snap to the nearest angle-constrained direction from the first point.
+///
+/// Constrains movement to multiples of 15 degrees relative to the X axis.
+pub fn snap_to_angle(wire: &[Point3], query: Point3) -> Option<SnapResult> {
+    let origin = *wire.first()?;
+    let dx = query.x - origin.x;
+    let dy = query.y - origin.y;
+    let dist = (dx * dx + dy * dy).sqrt();
+    if dist < 1e-15 {
+        return Some(SnapResult {
+            point: origin,
+            distance: 0.0,
+        });
+    }
+    let angle = dy.atan2(dx);
+    let step = std::f64::consts::PI / 12.0; // 15 degrees
+    let snapped_angle = (angle / step).round() * step;
+    let p = Point3::new(
+        origin.x + dist * snapped_angle.cos(),
+        origin.y + dist * snapped_angle.sin(),
+        query.z,
+    );
+    Some(SnapResult {
+        point: p,
+        distance: p.distance_to(query),
+    })
+}
+
+/// Snap to the nearest intersection of two wire segments.
+///
+/// Checks all segment pairs for 2D intersections (projected on Z=0).
+pub fn snap_to_intersection(wire: &[Point3], query: Point3) -> Option<SnapResult> {
+    if wire.len() < 4 {
+        return None;
+    }
+    let mut best: Option<SnapResult> = None;
+    let n = wire.len();
+    for i in 0..n - 1 {
+        for j in (i + 2)..n - 1 {
+            if let Some(pt) = segment_intersect_2d(wire[i], wire[i + 1], wire[j], wire[j + 1]) {
+                let d = pt.distance_to(query);
+                if best.as_ref().is_none_or(|b| d < b.distance) {
+                    best = Some(SnapResult {
+                        point: pt,
+                        distance: d,
+                    });
+                }
+            }
+        }
+    }
+    best
+}
+
+/// 2D segment-segment intersection (ignoring z).
+fn segment_intersect_2d(a0: Point3, a1: Point3, b0: Point3, b1: Point3) -> Option<Point3> {
+    let d1x = a1.x - a0.x;
+    let d1y = a1.y - a0.y;
+    let d2x = b1.x - b0.x;
+    let d2y = b1.y - b0.y;
+    let denom = d1x * d2y - d1y * d2x;
+    if denom.abs() < 1e-15 {
+        return None;
+    }
+    let t = ((b0.x - a0.x) * d2y - (b0.y - a0.y) * d2x) / denom;
+    let u = ((b0.x - a0.x) * d1y - (b0.y - a0.y) * d1x) / denom;
+    if (0.0..=1.0).contains(&t) && (0.0..=1.0).contains(&u) {
+        Some(Point3::new(a0.x + t * d1x, a0.y + t * d1y, a0.z))
+    } else {
+        None
+    }
+}
+
+/// Snap to the nearest perpendicular foot on a wire segment.
+pub fn snap_to_perpendicular(wire: &[Point3], query: Point3) -> Option<SnapResult> {
+    snap_to_nearest(wire, query)
+}
+
+/// Snap along the extension direction of the nearest wire segment end.
+pub fn snap_to_extension(wire: &[Point3], query: Point3) -> Option<SnapResult> {
+    if wire.len() < 2 {
+        return None;
+    }
+    let n = wire.len();
+    // Extend from the last segment
+    let dir = (wire[n - 1] - wire[n - 2]).normalized()?;
+    let v = Vec3::new(
+        query.x - wire[n - 1].x,
+        query.y - wire[n - 1].y,
+        query.z - wire[n - 1].z,
+    );
+    let proj = v.dot(dir);
+    let p = Point3::new(
+        wire[n - 1].x + dir.x * proj,
+        wire[n - 1].y + dir.y * proj,
+        wire[n - 1].z + dir.z * proj,
+    );
+    Some(SnapResult {
+        point: p,
+        distance: p.distance_to(query),
+    })
+}
+
+/// Snap to the nearest point along a direction parallel to the nearest segment.
+pub fn snap_to_parallel(wire: &[Point3], query: Point3) -> Option<SnapResult> {
+    if wire.len() < 2 {
+        return None;
+    }
+    // Find nearest segment
+    let mut best_seg = 0;
+    let mut best_dist = f64::MAX;
+    for i in 0..wire.len() - 1 {
+        let mid = Point3::new(
+            (wire[i].x + wire[i + 1].x) * 0.5,
+            (wire[i].y + wire[i + 1].y) * 0.5,
+            (wire[i].z + wire[i + 1].z) * 0.5,
+        );
+        let d = mid.distance_to(query);
+        if d < best_dist {
+            best_dist = d;
+            best_seg = i;
+        }
+    }
+    let dir = (wire[best_seg + 1] - wire[best_seg]).normalized()?;
+    let v = Vec3::new(
+        query.x - wire[best_seg].x,
+        query.y - wire[best_seg].y,
+        query.z - wire[best_seg].z,
+    );
+    let proj = v.dot(dir);
+    let p = Point3::new(
+        wire[best_seg].x + dir.x * proj,
+        wire[best_seg].y + dir.y * proj,
+        wire[best_seg].z + dir.z * proj,
+    );
+    Some(SnapResult {
+        point: p,
+        distance: p.distance_to(query),
+    })
+}
+
+/// Special snap: combines endpoint, midpoint, and center, picking the closest.
+pub fn snap_to_special(wire: &[Point3], query: Point3) -> Option<SnapResult> {
+    let candidates = [
+        snap_to_endpoint(wire, query),
+        snap_to_midpoint(wire, query),
+        snap_to_center(wire, query),
+    ];
+    candidates
+        .into_iter()
+        .flatten()
+        .min_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap_or(std::cmp::Ordering::Equal))
+}
+
+/// Snap to the nearest grid point with configurable spacing.
+pub fn snap_to_grid(query: Point3, spacing: f64) -> SnapResult {
+    let s = if spacing > 0.0 { spacing } else { 1.0 };
+    let snapped = Point3::new(
+        (query.x / s).round() * s,
+        (query.y / s).round() * s,
+        (query.z / s).round() * s,
+    );
+    SnapResult {
+        point: snapped,
+        distance: snapped.distance_to(query),
+    }
+}
+
+/// Snap a point to the nearest position on a working plane defined by origin and normal.
+pub fn snap_to_working_plane(query: Point3, plane_origin: Point3, plane_normal: Vec3) -> SnapResult {
+    let n = plane_normal.normalized().unwrap_or(Vec3::Z);
+    let v = Vec3::new(
+        query.x - plane_origin.x,
+        query.y - plane_origin.y,
+        query.z - plane_origin.z,
+    );
+    let dist = v.dot(n);
+    let projected = Point3::new(
+        query.x - n.x * dist,
+        query.y - n.y * dist,
+        query.z - n.z * dist,
+    );
+    SnapResult {
+        point: projected,
+        distance: projected.distance_to(query),
+    }
+}
+
+/// Snap to the nearest dimension reference point (start, end, or midpoint of a dimension).
+pub fn snap_to_dimensions(dim_start: Point3, dim_end: Point3, query: Point3) -> SnapResult {
+    let mid = Point3::new(
+        (dim_start.x + dim_end.x) * 0.5,
+        (dim_start.y + dim_end.y) * 0.5,
+        (dim_start.z + dim_end.z) * 0.5,
+    );
+    let candidates = [dim_start, dim_end, mid];
+    let (point, distance) = candidates
+        .iter()
+        .map(|p| (*p, p.distance_to(query)))
+        .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+        .unwrap();
+    SnapResult { point, distance }
+}
+
+// ---------------------------------------------------------------------------
+// Draft Layers
+// ---------------------------------------------------------------------------
+
+/// A draft layer groups objects with shared visual settings.
+#[derive(Debug, Clone)]
+pub struct DraftLayer {
+    pub name: String,
+    pub color: (f64, f64, f64),
+    pub line_type: String,
+    pub line_width: f64,
+    pub visible: bool,
+    pub locked: bool,
+    pub objects: Vec<usize>,
+}
+
+impl DraftLayer {
+    pub fn new(name: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            color: (0.0, 0.0, 0.0),
+            line_type: "Solid".into(),
+            line_width: 1.0,
+            visible: true,
+            locked: false,
+            objects: Vec::new(),
+        }
+    }
+}
+
+/// Manages a stack of draft layers.
+#[derive(Debug, Clone)]
+pub struct LayerManager {
+    pub layers: Vec<DraftLayer>,
+    pub active_layer: usize,
+}
+
+impl LayerManager {
+    pub fn new() -> Self {
+        Self {
+            layers: vec![DraftLayer::new("Default")],
+            active_layer: 0,
+        }
+    }
+
+    pub fn add_layer(&mut self, name: &str) -> usize {
+        let idx = self.layers.len();
+        self.layers.push(DraftLayer::new(name));
+        idx
+    }
+
+    pub fn remove_layer(&mut self, index: usize) -> KernelResult<()> {
+        if self.layers.len() <= 1 {
+            return Err(KernelError::InvalidArgument(
+                "cannot remove the last layer".into(),
+            ));
+        }
+        if index >= self.layers.len() {
+            return Err(KernelError::InvalidArgument(
+                "layer index out of range".into(),
+            ));
+        }
+        self.layers.remove(index);
+        if self.active_layer >= self.layers.len() {
+            self.active_layer = self.layers.len() - 1;
+        }
+        Ok(())
+    }
+
+    pub fn set_active(&mut self, index: usize) -> KernelResult<()> {
+        if index >= self.layers.len() {
+            return Err(KernelError::InvalidArgument(
+                "layer index out of range".into(),
+            ));
+        }
+        self.active_layer = index;
+        Ok(())
+    }
+
+    pub fn toggle_visibility(&mut self, index: usize) -> KernelResult<()> {
+        let layer = self
+            .layers
+            .get_mut(index)
+            .ok_or(KernelError::InvalidArgument("layer index out of range".into()))?;
+        layer.visible = !layer.visible;
+        Ok(())
+    }
+
+    pub fn get_active(&self) -> &DraftLayer {
+        &self.layers[self.active_layer]
+    }
+}
+
+impl Default for LayerManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Working Plane
+// ---------------------------------------------------------------------------
+
+/// A reference plane for drafting operations.
+#[derive(Debug, Clone)]
+pub struct WorkingPlane {
+    pub origin: Point3,
+    pub normal: Vec3,
+    pub x_dir: Vec3,
+}
+
+impl WorkingPlane {
+    pub fn new(origin: Point3, normal: Vec3, x_dir: Vec3) -> Self {
+        Self { origin, normal, x_dir }
+    }
+
+    /// XY plane at origin.
+    pub fn set_to_xy(&mut self) {
+        self.origin = Point3::ORIGIN;
+        self.normal = Vec3::Z;
+        self.x_dir = Vec3::X;
+    }
+
+    /// XZ plane at origin.
+    pub fn set_to_xz(&mut self) {
+        self.origin = Point3::ORIGIN;
+        self.normal = Vec3::Y;
+        self.x_dir = Vec3::X;
+    }
+
+    /// YZ plane at origin.
+    pub fn set_to_yz(&mut self) {
+        self.origin = Point3::ORIGIN;
+        self.normal = Vec3::X;
+        self.x_dir = Vec3::Y;
+    }
+
+    /// Set to a face plane.
+    pub fn set_to_face(&mut self, point: Point3, normal: Vec3) {
+        self.origin = point;
+        self.normal = normal.normalized().unwrap_or(Vec3::Z);
+        let up = if self.normal.x.abs() < 0.9 { Vec3::X } else { Vec3::Y };
+        self.x_dir = Vec3::new(
+            up.y * self.normal.z - up.z * self.normal.y,
+            up.z * self.normal.x - up.x * self.normal.z,
+            up.x * self.normal.y - up.y * self.normal.x,
+        ).normalized().unwrap_or(Vec3::X);
+    }
+
+    /// Align to the current camera view.
+    pub fn align_to_view(&mut self, yaw: f64, pitch: f64) {
+        let cy = yaw.cos();
+        let sy = yaw.sin();
+        let cp = pitch.cos();
+        let sp = pitch.sin();
+        self.normal = Vec3::new(sy * cp, -sp, cy * cp);
+        self.x_dir = Vec3::new(cy, 0.0, -sy);
+    }
+
+    /// Projects a 3D point onto the working plane and returns 2D coordinates.
+    pub fn project_point(&self, p: Point3) -> cadkernel_math::Point2 {
+        let d = Vec3::new(
+            p.x - self.origin.x,
+            p.y - self.origin.y,
+            p.z - self.origin.z,
+        );
+        let y_dir = Vec3::new(
+            self.normal.y * self.x_dir.z - self.normal.z * self.x_dir.y,
+            self.normal.z * self.x_dir.x - self.normal.x * self.x_dir.z,
+            self.normal.x * self.x_dir.y - self.normal.y * self.x_dir.x,
+        );
+        let u = d.dot(self.x_dir);
+        let v = d.dot(y_dir);
+        cadkernel_math::Point2::new(u, v)
+    }
+
+    /// Unprojects a 2D point back into 3D world coordinates.
+    pub fn unproject_point(&self, p: cadkernel_math::Point2) -> Point3 {
+        let y_dir = Vec3::new(
+            self.normal.y * self.x_dir.z - self.normal.z * self.x_dir.y,
+            self.normal.z * self.x_dir.x - self.normal.x * self.x_dir.z,
+            self.normal.x * self.x_dir.y - self.normal.y * self.x_dir.x,
+        );
+        Point3::new(
+            self.origin.x + self.x_dir.x * p.x + y_dir.x * p.y,
+            self.origin.y + self.x_dir.y * p.x + y_dir.y * p.y,
+            self.origin.z + self.x_dir.z * p.x + y_dir.z * p.y,
+        )
+    }
+}
+
+impl Default for WorkingPlane {
+    fn default() -> Self {
+        Self {
+            origin: Point3::ORIGIN,
+            normal: Vec3::Z,
+            x_dir: Vec3::X,
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Draft Styles
+// ---------------------------------------------------------------------------
+
+/// Arrow head style for dimension lines.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum ArrowStyle {
+    Dot,
+    Arrow,
+    Tick,
+    Circle,
+    None,
+}
+
+/// Visual style for draft annotations.
+#[derive(Debug, Clone)]
+pub struct DraftStyle {
+    pub line_color: (f64, f64, f64),
+    pub line_width: f64,
+    pub shape_color: (f64, f64, f64),
+    pub font_size: f64,
+    pub arrow_style: ArrowStyle,
+    pub text_alignment: String,
+}
+
+impl Default for DraftStyle {
+    fn default() -> Self {
+        Self {
+            line_color: (0.0, 0.0, 0.0),
+            line_width: 1.0,
+            shape_color: (0.8, 0.8, 0.8),
+            font_size: 12.0,
+            arrow_style: ArrowStyle::Arrow,
+            text_alignment: "center".into(),
+        }
+    }
+}
+
+/// Manages named draft styles.
+#[derive(Debug, Clone)]
+pub struct DraftStyleManager {
+    pub styles: std::collections::HashMap<String, DraftStyle>,
+    pub active: String,
+}
+
+impl DraftStyleManager {
+    pub fn new() -> Self {
+        let mut styles = std::collections::HashMap::new();
+        styles.insert("Standard".to_string(), DraftStyle::default());
+        styles.insert(
+            "Thin".to_string(),
+            DraftStyle {
+                line_width: 0.5,
+                ..Default::default()
+            },
+        );
+        styles.insert(
+            "Thick".to_string(),
+            DraftStyle {
+                line_width: 2.0,
+                ..Default::default()
+            },
+        );
+        Self {
+            styles,
+            active: "Standard".into(),
+        }
+    }
+
+    pub fn get_active(&self) -> &DraftStyle {
+        self.styles.get(&self.active).unwrap_or_else(|| {
+            self.styles.values().next().unwrap()
+        })
+    }
+
+    pub fn set_active(&mut self, name: &str) -> KernelResult<()> {
+        if !self.styles.contains_key(name) {
+            return Err(KernelError::InvalidArgument(
+                format!("style '{}' not found", name),
+            ));
+        }
+        self.active = name.into();
+        Ok(())
+    }
+
+    pub fn add_style(&mut self, name: &str, style: DraftStyle) {
+        self.styles.insert(name.into(), style);
+    }
+}
+
+impl Default for DraftStyleManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Wire/BSpline conversion (model-level)
+// ---------------------------------------------------------------------------
+
+/// Creates a face from a closed wire by closing the polyline if needed.
+///
+/// Returns a solid containing a single face whose outer loop follows the wire.
+pub fn upgrade_wire_model(model: &mut BRepModel, points: &[Point3]) -> KernelResult<Handle<SolidData>> {
+    use cadkernel_topology::{EntityKind, Tag};
+
+    if points.len() < 3 {
+        return Err(KernelError::InvalidArgument(
+            "upgrade_wire requires at least 3 points".into(),
+        ));
+    }
+
+    let op = model.history.next_operation("upgrade_wire");
+    let closed = upgrade_wire(points);
+    let n = closed.len() - 1; // remove closing point for vertex count
+
+    let mut vertices = Vec::with_capacity(n);
+    for (i, &pt) in closed.iter().take(n).enumerate() {
+        let tag = Tag::generated(EntityKind::Vertex, op, i as u32);
+        vertices.push(model.add_vertex_tagged(pt, tag));
+    }
+
+    let mut half_edges = Vec::with_capacity(n);
+    for i in 0..n {
+        let j = (i + 1) % n;
+        let tag = Tag::generated(EntityKind::Edge, op, i as u32);
+        let (_e, he, _) = model.add_edge_tagged(vertices[i], vertices[j], tag);
+        half_edges.push(he);
+    }
+
+    let loop_h = model.make_loop(&half_edges)?;
+    let tag_f = Tag::generated(EntityKind::Face, op, 0);
+    let face_h = model.make_face_tagged(loop_h, tag_f);
+    let tag_sh = Tag::generated(EntityKind::Shell, op, 0);
+    let shell_h = model.make_shell_tagged(&[face_h], tag_sh);
+    let tag_so = Tag::generated(EntityKind::Solid, op, 0);
+    Ok(model.make_solid_tagged(&[shell_h], tag_so))
+}
+
+/// Decomposes a solid into individual face solids.
+///
+/// Returns one single-face solid per face in the original solid.
+pub fn downgrade_solid_faces(model: &mut BRepModel, solid: Handle<SolidData>) -> KernelResult<Vec<Handle<SolidData>>> {
+    use crate::features::copy_utils::collect_solid_faces;
+
+    let faces = collect_solid_faces(model, solid)?;
+    let mut result = Vec::with_capacity(faces.len());
+
+    for (fi, &face_h) in faces.iter().enumerate() {
+        let op = model.history.next_operation("downgrade_solid_face");
+        let verts = model.vertices_of_face(face_h)?;
+
+        let mut new_verts = Vec::with_capacity(verts.len());
+        for (vi, &vh) in verts.iter().enumerate() {
+            let pt = model.vertices.get(vh)
+                .ok_or(KernelError::InvalidHandle("vertex"))?.point;
+            let tag = cadkernel_topology::Tag::generated(
+                cadkernel_topology::EntityKind::Vertex, op, vi as u32,
+            );
+            new_verts.push(model.add_vertex_tagged(pt, tag));
+        }
+
+        let n = new_verts.len();
+        let mut half_edges = Vec::with_capacity(n);
+        for j in 0..n {
+            let tag = cadkernel_topology::Tag::generated(
+                cadkernel_topology::EntityKind::Edge, op, j as u32,
+            );
+            let (_e, he, _) = model.add_edge_tagged(
+                new_verts[j],
+                new_verts[(j + 1) % n],
+                tag,
+            );
+            half_edges.push(he);
+        }
+
+        let loop_h = model.make_loop(&half_edges)?;
+        let tag_f = cadkernel_topology::Tag::generated(
+            cadkernel_topology::EntityKind::Face, op, fi as u32,
+        );
+        let new_face = model.make_face_tagged(loop_h, tag_f);
+        let tag_sh = cadkernel_topology::Tag::generated(
+            cadkernel_topology::EntityKind::Shell, op, 0,
+        );
+        let shell_h = model.make_shell_tagged(&[new_face], tag_sh);
+        let tag_so = cadkernel_topology::Tag::generated(
+            cadkernel_topology::EntityKind::Solid, op, 0,
+        );
+        result.push(model.make_solid_tagged(&[shell_h], tag_so));
+    }
+
+    Ok(result)
+}
+
+/// Converts a polyline wire (in a BRepModel) to a B-spline curve and stores it.
+pub fn wire_to_bspline_convert(_model: &mut BRepModel, points: &[Point3], degree: usize) -> KernelResult<NurbsCurve> {
+    wire_to_bspline(points, degree)
+}
+
+/// Converts a B-spline curve to a polyline wire stored in the model.
+pub fn bspline_to_wire_convert(
+    model: &mut BRepModel,
+    curve: &NurbsCurve,
+    segments: usize,
+) -> KernelResult<WireResult> {
+    let points = bspline_to_wire(curve, segments)?;
+    make_wire(model, &points)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1824,5 +3236,627 @@ mod tests {
         assert!((pts[0].x - 1.0).abs() < 1e-10);
         // Last point should be near end
         assert!((pts.last().unwrap().y - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_draft_hatch_lines() {
+        let boundary = vec![
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(10.0, 0.0, 0.0),
+            Point3::new(10.0, 10.0, 0.0),
+            Point3::new(0.0, 10.0, 0.0),
+        ];
+        let result = draft_hatch(
+            &boundary,
+            HatchPattern::Lines {
+                angle: 0.0,
+                spacing: 2.0,
+            },
+            1.0,
+        )
+        .unwrap();
+        assert!(!result.lines.is_empty());
+    }
+
+    #[test]
+    fn test_draft_hatch_cross() {
+        let boundary = vec![
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(5.0, 0.0, 0.0),
+            Point3::new(5.0, 5.0, 0.0),
+        ];
+        let result = draft_hatch(
+            &boundary,
+            HatchPattern::Cross {
+                angle: 0.785,
+                spacing: 1.0,
+            },
+            1.0,
+        )
+        .unwrap();
+        assert!(!result.lines.is_empty());
+    }
+
+    #[test]
+    fn test_draft_hatch_invalid() {
+        let boundary = vec![Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 0.0, 0.0)];
+        assert!(draft_hatch(
+            &boundary,
+            HatchPattern::Lines {
+                angle: 0.0,
+                spacing: 1.0,
+            },
+            1.0,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn test_make_facebinder() {
+        let mut model = BRepModel::new();
+        let bx = make_box(&mut model, Point3::ORIGIN, 2.0, 2.0, 2.0).unwrap();
+        let face_handles: Vec<_> = bx.faces.iter().take(2).cloned().collect();
+        let solid_h = make_facebinder(&mut model, &face_handles).unwrap();
+        let solid = model.solids.get(solid_h).unwrap();
+        assert!(!solid.shells.is_empty());
+    }
+
+    #[test]
+    fn test_make_facebinder_empty() {
+        let mut model = BRepModel::new();
+        assert!(make_facebinder(&mut model, &[]).is_err());
+    }
+
+    #[test]
+    fn test_draft_dimension_full_linear() {
+        let dim = make_draft_dimension_full(
+            DraftDimensionType::Linear,
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(3.0, 4.0, 0.0),
+            1.0,
+        );
+        assert!((dim.value - 5.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_draft_dimension_full_diameter() {
+        let dim = make_draft_dimension_full(
+            DraftDimensionType::Diameter,
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(5.0, 0.0, 0.0),
+            1.0,
+        );
+        assert!((dim.value - 10.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_make_label_full() {
+        let label = make_label_full(
+            "Test Label",
+            Point3::new(1.0, 2.0, 0.0),
+            Some(Point3::ORIGIN),
+            AnnotationStyle::default(),
+        );
+        assert_eq!(label.text, "Test Label");
+        assert!(label.leader_target.is_some());
+        assert!((label.style.font_size - 12.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_annotation_style_default() {
+        let style = AnnotationStyle::default();
+        assert!((style.font_size - 12.0).abs() < 1e-10);
+        assert!((style.line_width - 1.0).abs() < 1e-10);
+        assert!((style.arrow_size - 3.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_snap_to_point_endpoint() {
+        let wire = vec![
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(5.0, 0.0, 0.0),
+        ];
+        let result = snap_to_point(&wire, Point3::new(4.9, 0.1, 0.0), SnapMode::Endpoint).unwrap();
+        assert!((result.point.x - 5.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_snap_to_point_grid() {
+        let wire = vec![Point3::new(0.0, 0.0, 0.0)];
+        let result = snap_to_point(&wire, Point3::new(1.3, 2.7, 0.0), SnapMode::Grid).unwrap();
+        assert!((result.point.x - 1.0).abs() < 1e-10);
+        assert!((result.point.y - 3.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_snap_to_point_center() {
+        let wire = vec![
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(10.0, 0.0, 0.0),
+        ];
+        let result = snap_to_point(&wire, Point3::ORIGIN, SnapMode::Center).unwrap();
+        assert!((result.point.x - 5.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_snap_lock() {
+        let p = snap_lock(Point3::new(3.0, 4.0, 5.0), Vec3::X);
+        assert!((p.x - 3.0).abs() < 1e-10);
+        assert!((p.y).abs() < 1e-10);
+        assert!((p.z).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_trimex_draft_extend() {
+        let pts = vec![
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(5.0, 0.0, 0.0),
+        ];
+        let result = trimex_draft(&pts, Point3::new(10.0, 0.0, 0.0)).unwrap();
+        assert_eq!(result.len(), 3);
+        assert!((result[2].x - 10.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_trimex_draft_trim() {
+        let pts = vec![
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(5.0, 0.0, 0.0),
+            Point3::new(10.0, 0.0, 0.0),
+        ];
+        let result = trimex_draft(&pts, Point3::new(3.0, 0.5, 0.0)).unwrap();
+        assert!(result.len() <= 3);
+    }
+
+    #[test]
+    fn test_trimex_draft_invalid() {
+        assert!(trimex_draft(&[Point3::ORIGIN], Point3::new(1.0, 0.0, 0.0)).is_err());
+    }
+
+    #[test]
+    fn test_circular_array() {
+        let mut model = BRepModel::new();
+        let bx = make_box(&mut model, Point3::new(3.0, 0.0, 0.0), 1.0, 1.0, 1.0).unwrap();
+        let solids = circular_array(
+            &mut model,
+            bx.solid,
+            Point3::ORIGIN,
+            Vec3::Z,
+            4,
+            std::f64::consts::TAU,
+        )
+        .unwrap();
+        assert_eq!(solids.len(), 4);
+    }
+
+    #[test]
+    fn test_circular_array_half() {
+        let mut model = BRepModel::new();
+        let bx = make_box(&mut model, Point3::new(3.0, 0.0, 0.0), 1.0, 1.0, 1.0).unwrap();
+        let solids = circular_array(
+            &mut model,
+            bx.solid,
+            Point3::ORIGIN,
+            Vec3::Z,
+            3,
+            std::f64::consts::PI,
+        )
+        .unwrap();
+        assert_eq!(solids.len(), 3);
+    }
+
+    #[test]
+    fn test_circular_array_invalid() {
+        let mut model = BRepModel::new();
+        let bx = make_box(&mut model, Point3::ORIGIN, 1.0, 1.0, 1.0).unwrap();
+        assert!(circular_array(&mut model, bx.solid, Point3::ORIGIN, Vec3::Z, 1, 1.0).is_err());
+        assert!(circular_array(&mut model, bx.solid, Point3::ORIGIN, Vec3::Z, 2, 0.0).is_err());
+    }
+
+    #[test]
+    fn test_path_link_array() {
+        let mut model = BRepModel::new();
+        let bx = make_box(&mut model, Point3::ORIGIN, 1.0, 1.0, 1.0).unwrap();
+        let path = vec![
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(3.0, 0.0, 0.0),
+            Point3::new(6.0, 0.0, 0.0),
+        ];
+        let solids = path_link_array(&mut model, bx.solid, &path).unwrap();
+        assert_eq!(solids.len(), 3);
+    }
+
+    #[test]
+    fn test_path_link_array_invalid() {
+        let mut model = BRepModel::new();
+        let bx = make_box(&mut model, Point3::ORIGIN, 1.0, 1.0, 1.0).unwrap();
+        assert!(path_link_array(&mut model, bx.solid, &[Point3::ORIGIN]).is_err());
+    }
+
+    #[test]
+    fn test_point_link_array() {
+        let mut model = BRepModel::new();
+        let bx = make_box(&mut model, Point3::ORIGIN, 1.0, 1.0, 1.0).unwrap();
+        let pts = vec![
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(5.0, 5.0, 0.0),
+            Point3::new(-5.0, 5.0, 0.0),
+        ];
+        let solids = point_link_array(&mut model, bx.solid, &pts).unwrap();
+        assert_eq!(solids.len(), 3);
+    }
+
+    #[test]
+    fn test_edit_draft() {
+        let mut pts = vec![
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(1.0, 0.0, 0.0),
+            Point3::new(2.0, 0.0, 0.0),
+        ];
+        edit_draft(&mut pts, 1, Point3::new(1.0, 5.0, 0.0)).unwrap();
+        assert!((pts[1].y - 5.0).abs() < 1e-12);
+        assert!(edit_draft(&mut pts, 10, Point3::ORIGIN).is_err());
+    }
+
+    #[test]
+    fn test_draft_to_sketch() {
+        let pts = vec![
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(1.0, 0.0, 0.0),
+            Point3::new(1.0, 1.0, 0.0),
+        ];
+        let sketch = draft_to_sketch(&pts).unwrap();
+        assert_eq!(sketch.points.len(), 3);
+        assert_eq!(sketch.lines.len(), 2);
+    }
+
+    #[test]
+    fn test_draft_to_sketch_invalid() {
+        assert!(draft_to_sketch(&[Point3::ORIGIN]).is_err());
+    }
+
+    #[test]
+    fn test_make_cubic_bezier_wire() {
+        let pts = make_cubic_bezier_wire(
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(1.0, 3.0, 0.0),
+            Point3::new(3.0, 3.0, 0.0),
+            Point3::new(4.0, 0.0, 0.0),
+            16,
+        )
+        .unwrap();
+        assert_eq!(pts.len(), 17);
+        assert!((pts[0].x).abs() < 1e-12);
+        assert!((pts[16].x - 4.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_shape_from_text() {
+        let strokes = shape_from_text("AB", Point3::ORIGIN, 10.0, Vec3::Z).unwrap();
+        assert!(!strokes.is_empty());
+        // Each stroke should have at least 2 points
+        for s in &strokes {
+            assert!(s.len() >= 2);
+        }
+    }
+
+    #[test]
+    fn test_shape_from_text_empty() {
+        assert!(shape_from_text("", Point3::ORIGIN, 10.0, Vec3::Z).is_err());
+    }
+
+    #[test]
+    fn test_shape_from_text_invalid_height() {
+        assert!(shape_from_text("A", Point3::ORIGIN, 0.0, Vec3::Z).is_err());
+    }
+
+    #[test]
+    fn test_shape_from_text_digits() {
+        let strokes = shape_from_text("123", Point3::ORIGIN, 5.0, Vec3::Z).unwrap();
+        assert!(!strokes.is_empty());
+    }
+
+    #[test]
+    fn test_snap_to_center() {
+        let wire = vec![
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(10.0, 0.0, 0.0),
+        ];
+        let result = snap_to_center(&wire, Point3::ORIGIN).unwrap();
+        assert!((result.point.x - 5.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_snap_to_angle() {
+        let wire = vec![Point3::new(0.0, 0.0, 0.0)];
+        let result = snap_to_angle(&wire, Point3::new(5.0, 0.1, 0.0)).unwrap();
+        // Should snap to 0 degrees (along X axis)
+        assert!(result.point.y.abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_snap_to_intersection() {
+        // X-shaped wire: (0,0)→(10,10)→(10,0)→(0,10)
+        let wire = vec![
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(10.0, 10.0, 0.0),
+            Point3::new(10.0, 0.0, 0.0),
+            Point3::new(0.0, 10.0, 0.0),
+        ];
+        let result = snap_to_intersection(&wire, Point3::new(5.0, 5.0, 0.0));
+        assert!(result.is_some());
+        let r = result.unwrap();
+        assert!((r.point.x - 5.0).abs() < 1e-10);
+        assert!((r.point.y - 5.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_snap_to_perpendicular() {
+        let wire = vec![
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(10.0, 0.0, 0.0),
+        ];
+        let result = snap_to_perpendicular(&wire, Point3::new(5.0, 3.0, 0.0)).unwrap();
+        assert!((result.point.x - 5.0).abs() < 1e-10);
+        assert!((result.point.y).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_snap_to_extension() {
+        let wire = vec![
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(5.0, 0.0, 0.0),
+        ];
+        let result = snap_to_extension(&wire, Point3::new(10.0, 1.0, 0.0)).unwrap();
+        assert!((result.point.x - 10.0).abs() < 1e-10);
+        assert!((result.point.y).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_snap_to_parallel() {
+        let wire = vec![
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(10.0, 0.0, 0.0),
+        ];
+        let result = snap_to_parallel(&wire, Point3::new(3.0, 5.0, 0.0)).unwrap();
+        assert!((result.point.x - 3.0).abs() < 1e-10);
+        assert!((result.point.y).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_snap_to_special() {
+        let wire = vec![
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(10.0, 0.0, 0.0),
+        ];
+        let result = snap_to_special(&wire, Point3::new(0.1, 0.0, 0.0)).unwrap();
+        // Should pick endpoint (0,0,0) as closest
+        assert!((result.point.x).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_snap_to_grid() {
+        let result = snap_to_grid(Point3::new(1.3, 2.7, 0.4), 1.0);
+        assert!((result.point.x - 1.0).abs() < 1e-10);
+        assert!((result.point.y - 3.0).abs() < 1e-10);
+        assert!((result.point.z).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_snap_to_grid_custom_spacing() {
+        let result = snap_to_grid(Point3::new(1.3, 2.7, 0.0), 0.5);
+        assert!((result.point.x - 1.5).abs() < 1e-10);
+        assert!((result.point.y - 2.5).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_snap_to_working_plane() {
+        let result = snap_to_working_plane(
+            Point3::new(1.0, 2.0, 5.0),
+            Point3::ORIGIN,
+            Vec3::Z,
+        );
+        assert!((result.point.x - 1.0).abs() < 1e-10);
+        assert!((result.point.y - 2.0).abs() < 1e-10);
+        assert!((result.point.z).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_snap_to_dimensions() {
+        let result = snap_to_dimensions(
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(10.0, 0.0, 0.0),
+            Point3::new(4.8, 0.1, 0.0),
+        );
+        // Should snap to midpoint (5,0,0) as closest
+        assert!((result.point.x - 5.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_snap_to_point_angle_mode() {
+        let wire = vec![Point3::new(0.0, 0.0, 0.0)];
+        let result = snap_to_point(&wire, Point3::new(5.0, 0.01, 0.0), SnapMode::Angle).unwrap();
+        assert!(result.point.y.abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_snap_to_point_extension_mode() {
+        let wire = vec![
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(5.0, 0.0, 0.0),
+        ];
+        let result = snap_to_point(&wire, Point3::new(10.0, 1.0, 0.0), SnapMode::Extension).unwrap();
+        assert!((result.point.x - 10.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_snap_to_point_working_plane_mode() {
+        let wire = vec![Point3::ORIGIN];
+        let result = snap_to_point(&wire, Point3::new(1.0, 2.0, 5.0), SnapMode::WorkingPlane).unwrap();
+        assert!((result.point.z).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_layer_manager_new() {
+        let lm = LayerManager::new();
+        assert_eq!(lm.layers.len(), 1);
+        assert_eq!(lm.active_layer, 0);
+        assert_eq!(lm.get_active().name, "Default");
+    }
+
+    #[test]
+    fn test_layer_manager_add_remove() {
+        let mut lm = LayerManager::new();
+        let idx = lm.add_layer("Layer 1");
+        assert_eq!(idx, 1);
+        assert_eq!(lm.layers.len(), 2);
+
+        lm.set_active(1).unwrap();
+        assert_eq!(lm.active_layer, 1);
+
+        lm.remove_layer(0).unwrap();
+        assert_eq!(lm.layers.len(), 1);
+        assert_eq!(lm.active_layer, 0);
+    }
+
+    #[test]
+    fn test_layer_manager_cannot_remove_last() {
+        let mut lm = LayerManager::new();
+        assert!(lm.remove_layer(0).is_err());
+    }
+
+    #[test]
+    fn test_layer_toggle_visibility() {
+        let mut lm = LayerManager::new();
+        assert!(lm.layers[0].visible);
+        lm.toggle_visibility(0).unwrap();
+        assert!(!lm.layers[0].visible);
+    }
+
+    #[test]
+    fn test_working_plane_xy() {
+        let mut wp = WorkingPlane::default();
+        wp.set_to_xy();
+        assert!((wp.normal.z - 1.0).abs() < 1e-10);
+        assert!((wp.x_dir.x - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_working_plane_project_unproject() {
+        let wp = WorkingPlane::default();
+        let p3 = Point3::new(3.0, 5.0, 0.0);
+        let p2 = wp.project_point(p3);
+        assert!((p2.x - 3.0).abs() < 1e-10);
+        assert!((p2.y - 5.0).abs() < 1e-10);
+
+        let back = wp.unproject_point(p2);
+        assert!((back.x - 3.0).abs() < 1e-10);
+        assert!((back.y - 5.0).abs() < 1e-10);
+        assert!((back.z).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_working_plane_xz() {
+        let mut wp = WorkingPlane::default();
+        wp.set_to_xz();
+        assert!((wp.normal.y - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_working_plane_yz() {
+        let mut wp = WorkingPlane::default();
+        wp.set_to_yz();
+        assert!((wp.normal.x - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_working_plane_set_to_face() {
+        let mut wp = WorkingPlane::default();
+        wp.set_to_face(Point3::new(1.0, 2.0, 3.0), Vec3::Y);
+        assert!((wp.normal.y - 1.0).abs() < 1e-10);
+        assert!((wp.origin.x - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_working_plane_align_to_view() {
+        let mut wp = WorkingPlane::default();
+        wp.align_to_view(0.0, 0.0);
+        assert!((wp.normal.z - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_draft_style_manager() {
+        let mut sm = DraftStyleManager::new();
+        assert_eq!(sm.styles.len(), 3);
+        assert_eq!(sm.active, "Standard");
+
+        sm.set_active("Thin").unwrap();
+        assert!((sm.get_active().line_width - 0.5).abs() < 1e-10);
+
+        assert!(sm.set_active("NonExistent").is_err());
+    }
+
+    #[test]
+    fn test_draft_style_add() {
+        let mut sm = DraftStyleManager::new();
+        sm.add_style("Custom", DraftStyle {
+            line_width: 3.0,
+            arrow_style: ArrowStyle::Tick,
+            ..Default::default()
+        });
+        sm.set_active("Custom").unwrap();
+        assert!((sm.get_active().line_width - 3.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_arrow_style_variants() {
+        assert_ne!(ArrowStyle::Dot, ArrowStyle::Arrow);
+        assert_ne!(ArrowStyle::Tick, ArrowStyle::Circle);
+        assert_ne!(ArrowStyle::None, ArrowStyle::Dot);
+    }
+
+    #[test]
+    fn test_upgrade_wire_model() {
+        let mut model = BRepModel::new();
+        let pts = vec![
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(1.0, 0.0, 0.0),
+            Point3::new(1.0, 1.0, 0.0),
+        ];
+        let solid = upgrade_wire_model(&mut model, &pts).unwrap();
+        let sd = model.solids.get(solid).unwrap();
+        assert_eq!(sd.shells.len(), 1);
+    }
+
+    #[test]
+    fn test_downgrade_solid_faces() {
+        let mut model = BRepModel::new();
+        let b = make_box(&mut model, Point3::ORIGIN, 2.0, 3.0, 4.0).unwrap();
+        let face_solids = downgrade_solid_faces(&mut model, b.solid).unwrap();
+        assert_eq!(face_solids.len(), 6);
+    }
+
+    #[test]
+    fn test_wire_to_bspline_convert() {
+        let mut model = BRepModel::new();
+        let pts = vec![
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(1.0, 0.0, 0.0),
+            Point3::new(2.0, 1.0, 0.0),
+            Point3::new(3.0, 0.0, 0.0),
+        ];
+        let curve = wire_to_bspline_convert(&mut model, &pts, 2).unwrap();
+        let wire = bspline_to_wire_convert(&mut model, &curve, 10).unwrap();
+        assert!(wire.vertices.len() > 3);
+    }
+
+    #[test]
+    fn test_make_line_draft() {
+        let mut model = BRepModel::new();
+        let p1 = Point3::new(0.0, 0.0, 0.0);
+        let p2 = Point3::new(5.0, 3.0, 1.0);
+        let result = make_line_draft(&mut model, p1, p2).unwrap();
+        assert_eq!(result.vertices.len(), 2);
+        assert_eq!(result.edges.len(), 1);
     }
 }

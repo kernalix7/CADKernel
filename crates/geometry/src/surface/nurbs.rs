@@ -7,7 +7,13 @@ use crate::curve::nurbs::NurbsCurve;
 
 /// A NURBS surface in 3D space.
 ///
-/// Control points are stored in row-major order: `control_points[v_index * count_u + u_index]`.
+/// Control points are stored in row-major order:
+/// `control_points[v_index * count_u + u_index]`. Supports knot insertion,
+/// refinement, degree elevation, analytical derivatives (with the rational
+/// quotient rule), and Newton-based point projection.
+///
+/// Invariant: `knots_u.len() == count_u + degree_u + 1` and
+/// `knots_v.len() == count_v + degree_v + 1`.
 #[derive(Debug, Clone)]
 pub struct NurbsSurface {
     pub degree_u: usize,
@@ -114,6 +120,47 @@ impl NurbsSurface {
         }
 
         skl
+    }
+
+    /// Evaluates the surface point using pre-computed basis function caches.
+    ///
+    /// Faster than `point_at` when many evaluations share the same U or V
+    /// parameters (e.g., during grid-based tessellation).
+    pub fn point_at_cached(
+        &self,
+        u: f64,
+        v: f64,
+        cache_u: &mut bspline_basis::BasisCache,
+        cache_v: &mut bspline_basis::BasisCache,
+    ) -> Point3 {
+        let (span_u, bf_u) = cache_u.get(u);
+        let (span_v, bf_v) = cache_v.get(v);
+
+        let mut sx = 0.0;
+        let mut sy = 0.0;
+        let mut sz = 0.0;
+        let mut sw = 0.0;
+
+        for (l, &nv) in bf_v.iter().enumerate().take(self.degree_v + 1) {
+            let vi = span_v - self.degree_v + l;
+            for (k, &nu) in bf_u.iter().enumerate().take(self.degree_u + 1) {
+                let ui = span_u - self.degree_u + k;
+                let idx = vi * self.count_u + ui;
+                let w = self.weights[idx];
+                let cp = &self.control_points[idx];
+                let nd = nu * nv * w;
+                sx += nd * cp.x;
+                sy += nd * cp.y;
+                sz += nd * cp.z;
+                sw += nd;
+            }
+        }
+
+        if sw.abs() < 1e-14 {
+            Point3::new(sx, sy, sz)
+        } else {
+            Point3::new(sx / sw, sy / sw, sz / sw)
+        }
     }
 
     /// Computes analytical partial derivative ∂S/∂u at (u,v).
@@ -973,6 +1020,26 @@ mod tests {
                 assert!(
                     p1.distance_to(p2) < 1e-10,
                     "biquadratic mismatch at ({u},{v}): {p1:?} vs {p2:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_point_at_cached_matches_point_at() {
+        let s = bilinear_patch();
+        let mut cache_u = bspline_basis::BasisCache::new(&s.knots_u, s.count_u, s.degree_u);
+        let mut cache_v = bspline_basis::BasisCache::new(&s.knots_v, s.count_v, s.degree_v);
+
+        for i in 0..=10 {
+            for j in 0..=10 {
+                let u = i as f64 / 10.0;
+                let v = j as f64 / 10.0;
+                let p_direct = s.point_at(u, v);
+                let p_cached = s.point_at_cached(u, v, &mut cache_u, &mut cache_v);
+                assert!(
+                    p_direct.distance_to(p_cached) < 1e-12,
+                    "cached mismatch at ({u},{v}): {p_direct:?} vs {p_cached:?}"
                 );
             }
         }

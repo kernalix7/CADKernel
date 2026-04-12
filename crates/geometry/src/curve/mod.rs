@@ -1,3 +1,10 @@
+//! Parametric curves in 3D space.
+//!
+//! This module defines the [`Curve`] trait and provides analytic
+//! ([`Line`](line::Line), [`Circle`](circle::Circle),
+//! [`Arc`](arc::Arc), [`Ellipse`](ellipse::Ellipse)) and free-form
+//! ([`NurbsCurve`](nurbs::NurbsCurve)) implementations.
+
 pub mod arc;
 pub mod blend;
 pub mod bspline_basis;
@@ -19,24 +26,31 @@ const PROJECT_SAMPLES: usize = 64;
 const NEWTON_ITERS: usize = 10;
 const BBOX_SAMPLES: usize = 32;
 
-/// A parametric curve in 3D space evaluated over a parameter `t`.
+/// A parametric curve in 3D space evaluated over a scalar parameter `t`.
 ///
-/// All implementations must be `Send + Sync` to allow safe usage
-/// inside `Arc<dyn Curve>` across threads.
+/// All implementations must be `Send + Sync` to allow safe usage inside
+/// `Arc<dyn Curve>` across threads.
+///
+/// Required methods: [`point_at`](Self::point_at),
+/// [`tangent_at`](Self::tangent_at), [`domain`](Self::domain),
+/// [`length`](Self::length), [`is_closed`](Self::is_closed).
+///
+/// Optional methods with default implementations: `second_derivative_at`,
+/// `curvature_at`, `reversed`, `project_point`, `bounding_box`.
 pub trait Curve: Send + Sync {
-    /// Evaluates the curve at parameter `t`.
+    /// Evaluates the curve position at parameter `t`.
     fn point_at(&self, t: f64) -> Point3;
 
-    /// Evaluates the tangent (first derivative) at parameter `t`.
+    /// Evaluates the tangent vector (first derivative) at parameter `t`.
     fn tangent_at(&self, t: f64) -> Vec3;
 
-    /// The valid parameter range `(t_min, t_max)`.
+    /// Returns the valid parameter range `(t_min, t_max)`.
     fn domain(&self) -> (f64, f64);
 
-    /// Approximate arc length of the curve.
+    /// Returns the approximate arc length of the curve.
     fn length(&self) -> f64;
 
-    /// Whether the curve forms a closed loop.
+    /// Returns `true` if the curve forms a closed loop.
     fn is_closed(&self) -> bool;
 
     /// Second derivative (acceleration) at parameter `t`.

@@ -296,6 +296,70 @@ pub fn extend_edge(sketch: &mut Sketch, line: LineId, target_x: f64, target_y: f
     }
 }
 
+/// Finds intersections of two polylines projected onto the sketch and adds
+/// them as point entities.
+///
+/// Computes segment-segment intersections between consecutive point pairs
+/// in `points_a` and `points_b`. Each intersection point is added to the
+/// sketch and its `PointId` is returned.
+pub fn external_intersection(
+    sketch: &mut Sketch,
+    points_a: &[cadkernel_math::Point2],
+    points_b: &[cadkernel_math::Point2],
+) -> cadkernel_core::KernelResult<Vec<PointId>> {
+    if points_a.len() < 2 || points_b.len() < 2 {
+        return Err(cadkernel_core::KernelError::InvalidArgument(
+            "external_intersection requires at least 2 points per curve".into(),
+        ));
+    }
+
+    let mut result = Vec::new();
+
+    for ai in 0..points_a.len() - 1 {
+        let a0 = points_a[ai];
+        let a1 = points_a[ai + 1];
+        for bi in 0..points_b.len() - 1 {
+            let b0 = points_b[bi];
+            let b1 = points_b[bi + 1];
+
+            if let Some((ix, iy)) = segment_intersect(a0, a1, b0, b1) {
+                result.push(sketch.add_point(ix, iy));
+            }
+        }
+    }
+
+    Ok(result)
+}
+
+/// Computes the intersection point of two line segments, if it exists.
+fn segment_intersect(
+    a0: cadkernel_math::Point2,
+    a1: cadkernel_math::Point2,
+    b0: cadkernel_math::Point2,
+    b1: cadkernel_math::Point2,
+) -> Option<(f64, f64)> {
+    let d1x = a1.x - a0.x;
+    let d1y = a1.y - a0.y;
+    let d2x = b1.x - b0.x;
+    let d2y = b1.y - b0.y;
+
+    let denom = d1x * d2y - d1y * d2x;
+    if denom.abs() < 1e-14 {
+        return None;
+    }
+
+    let t = ((b0.x - a0.x) * d2y - (b0.y - a0.y) * d2x) / denom;
+    let u = ((b0.x - a0.x) * d1y - (b0.y - a0.y) * d1x) / denom;
+
+    let eps = -1e-10;
+    let one_eps = 1.0 + 1e-10;
+    if t >= eps && t <= one_eps && u >= eps && u <= one_eps {
+        Some((a0.x + t * d1x, a0.y + t * d1y))
+    } else {
+        None
+    }
+}
+
 /// Finds the shared vertex between two line segments.
 fn find_shared_vertex(
     a_start: PointId,
@@ -390,5 +454,49 @@ mod tests {
         extend_edge(&mut sketch, l0, 10.0, 0.0);
         let ex = sketch.points[p1.0].position.x;
         assert!((ex - 10.0).abs() < 1e-10, "extended end = {ex}");
+    }
+
+    #[test]
+    fn test_external_intersection_crossing() {
+        let mut sketch = Sketch::new();
+        let a = vec![
+            cadkernel_math::Point2::new(0.0, 0.0),
+            cadkernel_math::Point2::new(10.0, 10.0),
+        ];
+        let b = vec![
+            cadkernel_math::Point2::new(10.0, 0.0),
+            cadkernel_math::Point2::new(0.0, 10.0),
+        ];
+        let result = external_intersection(&mut sketch, &a, &b).unwrap();
+        assert_eq!(result.len(), 1);
+        let p = &sketch.points[result[0].0].position;
+        assert!((p.x - 5.0).abs() < 1e-10, "ix = {}", p.x);
+        assert!((p.y - 5.0).abs() < 1e-10, "iy = {}", p.y);
+    }
+
+    #[test]
+    fn test_external_intersection_no_crossing() {
+        let mut sketch = Sketch::new();
+        let a = vec![
+            cadkernel_math::Point2::new(0.0, 0.0),
+            cadkernel_math::Point2::new(1.0, 0.0),
+        ];
+        let b = vec![
+            cadkernel_math::Point2::new(0.0, 5.0),
+            cadkernel_math::Point2::new(1.0, 5.0),
+        ];
+        let result = external_intersection(&mut sketch, &a, &b).unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_external_intersection_too_few_points() {
+        let mut sketch = Sketch::new();
+        let a = vec![cadkernel_math::Point2::new(0.0, 0.0)];
+        let b = vec![
+            cadkernel_math::Point2::new(0.0, 0.0),
+            cadkernel_math::Point2::new(1.0, 0.0),
+        ];
+        assert!(external_intersection(&mut sketch, &a, &b).is_err());
     }
 }

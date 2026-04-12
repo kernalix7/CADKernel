@@ -1,3 +1,10 @@
+//! Boolean (CSG) operations on B-Rep solids.
+//!
+//! Provides union, difference, intersection, and XOR. The pipeline consists
+//! of broad-phase AABB filtering, face classification, and result evaluation.
+//! [`boolean_op_exact`] adds a face-splitting preprocessing step for correct
+//! handling of partially overlapping geometry.
+
 pub mod broad_phase;
 pub mod classify;
 pub mod csg;

@@ -2,6 +2,12 @@ use crate::tolerance::is_zero;
 use crate::vector::Vec3;
 
 /// A unit quaternion for representing 3D rotations.
+///
+/// Quaternions avoid gimbal lock and provide smooth interpolation via
+/// [`slerp`](Self::slerp). Create rotations with
+/// [`from_axis_angle`](Self::from_axis_angle) and apply them to vectors with
+/// [`rotate_vec`](Self::rotate_vec). The Hamilton product is implemented via
+/// the `*` operator.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Quaternion {
     pub w: f64,

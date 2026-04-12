@@ -6,7 +6,9 @@ use cadkernel_math::{Point3, Vec3};
 use super::Surface;
 
 /// A cylinder with given center axis, radius, and height.
-/// Parameterized as u = angle [0, 2*PI], v = height [0, height].
+///
+/// Parameterized as `u = angle` in `[0, 2*pi]`, `v = height` in `[0, height]`.
+/// The local coordinate frame (x_axis, y_axis) is constructed from the axis.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Cylinder {
     pub base_center: Point3,

@@ -5,7 +5,10 @@ use cadkernel_math::{Point3, Vec3};
 
 use super::Surface;
 
-/// A sphere parameterized by u = longitude [0, 2*PI], v = latitude [-PI/2, PI/2].
+/// A sphere parameterized by `u = longitude` in `[0, 2*pi]` and
+/// `v = latitude` in `[-pi/2, pi/2]`.
+///
+/// Validated at construction: radius must be positive.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Sphere {
     pub center: Point3,

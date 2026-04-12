@@ -222,6 +222,9 @@ pub fn point_in_solid(
 /// Uses multi-sample majority voting: tests the face centroid plus edge
 /// midpoints offset inward. This handles near-boundary centroids that
 /// could be misclassified by a single-point test.
+///
+/// Returns `Outside` for degenerate faces (< 3 vertices, zero-area)
+/// rather than panicking.
 pub fn classify_face(
     model_a: &BRepModel,
     face: Handle<FaceData>,
@@ -231,6 +234,17 @@ pub fn classify_face(
     let centroid = face_centroid(model_a, face)?;
     let normal = face_normal_approx(model_a, face)?;
     let polygon = face_polygon(model_a, face)?;
+
+    // Degenerate face guard: faces with < 3 vertices cannot be classified
+    if polygon.len() < 3 {
+        return Ok(FacePosition::Outside);
+    }
+
+    // Check for zero-area (degenerate) face
+    let normal_len = normal.length();
+    if normal_len < 1e-14 {
+        return Ok(FacePosition::Outside);
+    }
 
     // Generate sample points: centroid + edge midpoints offset toward centroid
     let mut sample_points = vec![centroid + normal * 1e-6];

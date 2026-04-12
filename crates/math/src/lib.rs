@@ -2,6 +2,33 @@
 //!
 //! Provides points, vectors, matrices, transforms, bounding boxes, quaternions,
 //! rays, and geometric utility functions used by all higher-level crates.
+//!
+//! All geometric computations use `f64` precision. The tolerance constant
+//! [`EPSILON`] (1e-8) is used for approximate-equality comparisons throughout
+//! the kernel.
+//!
+//! # Key Types
+//!
+//! | Type | Description |
+//! |------|-------------|
+//! | [`Vec2`], [`Vec3`], [`Vec4`] | Direction vectors in 2D/3D/4D |
+//! | [`Point2`], [`Point3`] | Positions in 2D/3D Euclidean space |
+//! | [`Mat3`], [`Mat4`] | 3x3 and 4x4 matrices (wrapping `nalgebra`) |
+//! | [`Transform`] | Affine 3D transform (translate, rotate, scale, mirror) |
+//! | [`Quaternion`] | Unit quaternion for 3D rotations with SLERP |
+//! | [`Ray3`] | Ray origin + normalised direction for intersection tests |
+//! | [`BoundingBox`] | Axis-aligned bounding box (AABB) |
+//!
+//! # Examples
+//!
+//! ```
+//! use cadkernel_math::{Point3, Vec3, Transform};
+//!
+//! let p = Point3::new(1.0, 0.0, 0.0);
+//! let t = Transform::rotation_z(std::f64::consts::FRAC_PI_2);
+//! let rotated = t.apply_point(p);
+//! assert!(rotated.approx_eq(Point3::new(0.0, 1.0, 0.0)));
+//! ```
 
 pub mod bbox;
 pub mod interop;

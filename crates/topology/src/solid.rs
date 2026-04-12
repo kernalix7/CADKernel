@@ -5,6 +5,10 @@ use crate::naming::Tag;
 use crate::shell::ShellData;
 
 /// A topological solid bounded by one or more closed shells.
+///
+/// The first shell is typically the outer boundary; additional shells
+/// represent internal voids (e.g. a hollow part). Solids are the top-level
+/// entities produced by primitive constructors and feature operations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SolidData {
     pub shells: Vec<Handle<ShellData>>,

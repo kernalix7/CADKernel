@@ -1,3 +1,8 @@
+//! 3MF (3D Manufacturing Format) import and export.
+//!
+//! Produces and parses 3MF XML with `<vertex>` and `<triangle>` elements
+//! inside a single `<object>` / `<mesh>` structure. Units are millimeters.
+
 use std::fmt::Write;
 
 use cadkernel_core::{KernelError, KernelResult};
@@ -5,7 +10,11 @@ use cadkernel_math::{Point3, Vec3};
 
 use crate::tessellate::Mesh;
 
-/// Export mesh to 3MF format (XML).
+/// Exports a mesh to 3MF XML format string.
+///
+/// Produces a complete 3MF document with a single object containing
+/// vertex and triangle elements. Face normals are not stored (recomputed
+/// by the consuming application).
 pub fn export_3mf(mesh: &Mesh) -> KernelResult<String> {
     let mut xml = String::new();
     xml.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
@@ -38,7 +47,10 @@ pub fn export_3mf(mesh: &Mesh) -> KernelResult<String> {
     Ok(xml)
 }
 
-/// Import mesh from 3MF XML content.
+/// Imports a mesh from 3MF XML content string.
+///
+/// Parses `<vertex>` and `<triangle>` elements from the XML.
+/// Per-face normals are computed from vertex positions.
 pub fn import_3mf(content: &str) -> KernelResult<Mesh> {
     let mut vertices = Vec::new();
     let mut indices = Vec::new();
@@ -84,7 +96,7 @@ fn extract_attr_u32(line: &str, name: &str) -> Option<u32> {
     line[start..end].parse().ok()
 }
 
-/// Write 3MF XML string to file.
+/// Writes a 3MF XML string to a file at the given path.
 pub fn write_3mf(path: &str, content: &str) -> KernelResult<()> {
     std::fs::write(path, content)
         .map_err(|e| cadkernel_core::KernelError::IoError(e.to_string()))
@@ -158,5 +170,87 @@ mod tests {
         assert!(xml.contains("<vertices>"));
         assert!(xml.contains("</vertices>"));
         assert!(!xml.contains("<vertex x="));
+    }
+
+    #[test]
+    fn test_3mf_roundtrip_coordinates() {
+        let mesh = Mesh {
+            vertices: vec![
+                Point3::new(1.5, 2.5, 3.5),
+                Point3::new(4.0, 5.0, 6.0),
+                Point3::new(7.0, 8.0, 9.0),
+            ],
+            normals: vec![Vec3::Z],
+            indices: vec![[0, 1, 2]],
+        };
+        let xml = export_3mf(&mesh).unwrap();
+        let imported = import_3mf(&xml).unwrap();
+        assert!((imported.vertices[0].x - 1.5).abs() < 1e-6);
+        assert!((imported.vertices[0].y - 2.5).abs() < 1e-6);
+        assert!((imported.vertices[0].z - 3.5).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_3mf_roundtrip_indices() {
+        let mesh = make_triangle_mesh();
+        let xml = export_3mf(&mesh).unwrap();
+        let imported = import_3mf(&xml).unwrap();
+        assert_eq!(imported.indices[0], [0, 1, 2]);
+    }
+
+    #[test]
+    fn test_3mf_normals_computed_on_import() {
+        let mesh = make_triangle_mesh();
+        let xml = export_3mf(&mesh).unwrap();
+        let imported = import_3mf(&xml).unwrap();
+        assert_eq!(imported.normals.len(), 1);
+        assert!(imported.normals[0].z > 0.5);
+    }
+
+    #[test]
+    fn test_3mf_import_missing_data() {
+        let xml = "<?xml version=\"1.0\"?><model xmlns=\"http://schemas.microsoft.com/3dmanufacturing/core/2015/02\"><resources><object id=\"1\"><mesh><vertices></vertices><triangles></triangles></mesh></object></resources></model>";
+        let mesh = import_3mf(xml);
+        assert!(mesh.is_ok());
+        assert_eq!(mesh.unwrap().vertices.len(), 0);
+    }
+
+    #[test]
+    fn test_3mf_unit_annotation() {
+        let mesh = make_triangle_mesh();
+        let xml = export_3mf(&mesh).unwrap();
+        assert!(xml.contains("unit=\"millimeter\""));
+    }
+
+    #[test]
+    fn test_3mf_multiple_triangles() {
+        let mesh = Mesh {
+            vertices: vec![
+                Point3::new(0.0, 0.0, 0.0),
+                Point3::new(1.0, 0.0, 0.0),
+                Point3::new(1.0, 1.0, 0.0),
+                Point3::new(0.0, 1.0, 0.0),
+            ],
+            normals: vec![Vec3::Z, Vec3::Z],
+            indices: vec![[0, 1, 2], [0, 2, 3]],
+        };
+        let xml = export_3mf(&mesh).unwrap();
+        let imported = import_3mf(&xml).unwrap();
+        assert_eq!(imported.vertices.len(), 4);
+        assert_eq!(imported.indices.len(), 2);
+    }
+
+    #[test]
+    fn test_3mf_export_object_id() {
+        let mesh = make_triangle_mesh();
+        let xml = export_3mf(&mesh).unwrap();
+        assert!(xml.contains("id=\"1\""));
+    }
+
+    #[test]
+    fn test_3mf_build_item() {
+        let mesh = make_triangle_mesh();
+        let xml = export_3mf(&mesh).unwrap();
+        assert!(xml.contains("objectid=\"1\""));
     }
 }

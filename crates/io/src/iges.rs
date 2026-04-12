@@ -66,7 +66,10 @@ pub struct IgesEntity {
 // IGES Writer
 // ---------------------------------------------------------------------------
 
-/// IGES file writer.
+/// IGES file writer that accumulates entities and serializes to fixed-format records.
+///
+/// Produces a valid IGES file with Start, Global, Directory Entry, and Parameter
+/// Data sections. Each entity is assigned a sequential Directory Entry pointer.
 #[derive(Debug)]
 pub struct IgesWriter {
     entities: Vec<IgesEntity>,

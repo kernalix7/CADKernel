@@ -1,3 +1,9 @@
+//! CADKernel BREP text format import and export.
+//!
+//! A human-readable text format that serializes B-Rep topology: vertices,
+//! edges, faces (with outer-loop edges), shells, and solids. Each section
+//! lists entity counts followed by indexed data lines.
+
 use std::fmt::Write;
 
 use cadkernel_core::{KernelError, KernelResult};
@@ -102,7 +108,10 @@ pub fn export_brep(model: &BRepModel) -> KernelResult<String> {
     Ok(out)
 }
 
-/// Import B-Rep from text format.
+/// Imports a B-Rep model from the CADKernel BREP text format.
+///
+/// Validates the `"CADKernel BREP v1"` header, then reads VERTICES, EDGES,
+/// FACES, SHELLS, and SOLIDS sections to reconstruct the full topology.
 pub fn import_brep(content: &str) -> KernelResult<BRepModel> {
     let mut lines = content.lines();
 
@@ -286,7 +295,7 @@ fn parse_usize(s: &str) -> KernelResult<usize> {
         .map_err(|e| KernelError::IoError(format!("bad integer: {e}")))
 }
 
-/// Write BREP text to file.
+/// Writes a BREP format string to a file at the given path.
 pub fn write_brep(path: &str, content: &str) -> KernelResult<()> {
     std::fs::write(path, content).map_err(|e| KernelError::IoError(e.to_string()))
 }
@@ -347,5 +356,172 @@ mod tests {
     fn test_brep_import_empty() {
         let result = import_brep("");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_brep_roundtrip_vertex_count() {
+        let model = make_triangle_solid();
+        let brep = export_brep(&model).unwrap();
+        let imported = import_brep(&brep).unwrap();
+        assert_eq!(imported.vertices.len(), 3);
+    }
+
+    #[test]
+    fn test_brep_roundtrip_face_count() {
+        let model = make_triangle_solid();
+        let brep = export_brep(&model).unwrap();
+        let imported = import_brep(&brep).unwrap();
+        assert_eq!(imported.faces.len(), 1);
+    }
+
+    #[test]
+    fn test_brep_roundtrip_shell_count() {
+        let model = make_triangle_solid();
+        let brep = export_brep(&model).unwrap();
+        let imported = import_brep(&brep).unwrap();
+        assert_eq!(imported.shells.len(), 1);
+    }
+
+    #[test]
+    fn test_brep_roundtrip_solid_count() {
+        let model = make_triangle_solid();
+        let brep = export_brep(&model).unwrap();
+        let imported = import_brep(&brep).unwrap();
+        assert_eq!(imported.solids.len(), 1);
+    }
+
+    #[test]
+    fn test_brep_export_end_marker() {
+        let model = make_triangle_solid();
+        let brep = export_brep(&model).unwrap();
+        assert!(brep.ends_with("END\n"));
+    }
+
+    #[test]
+    fn test_brep_export_empty_model() {
+        let model = BRepModel::new();
+        let brep = export_brep(&model).unwrap();
+        assert!(brep.contains("VERTICES 0"));
+        assert!(brep.contains("EDGES 0"));
+        assert!(brep.contains("FACES 0"));
+        assert!(brep.contains("SOLIDS 0"));
+    }
+
+    #[test]
+    fn test_brep_import_missing_vertices_section() {
+        let result = import_brep("CADKernel BREP v1\n");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_brep_roundtrip_vertex_coordinates() {
+        let model = make_triangle_solid();
+        let brep = export_brep(&model).unwrap();
+        assert!(brep.contains("0 0 0"));
+        assert!(brep.contains("1 0 0"));
+    }
+
+    #[test]
+    fn test_brep_import_bad_vertex_data() {
+        let content = "CADKernel BREP v1\nVERTICES 1\n0 notanumber 0 0\nEDGES 0\nFACES 0\nSHELLS 0\nSOLIDS 0\n";
+        assert!(import_brep(content).is_err());
+    }
+
+    #[test]
+    fn test_brep_roundtrip_edge_count() {
+        let model = make_triangle_solid();
+        let brep = export_brep(&model).unwrap();
+        let imported = import_brep(&brep).unwrap();
+        assert_eq!(imported.edges.len(), 3);
+    }
+
+    #[test]
+    fn test_brep_import_truncated_vertex() {
+        let content = "CADKernel BREP v1\nVERTICES 2\n0 0.0 0.0 0.0\n";
+        assert!(import_brep(content).is_err());
+    }
+
+    #[test]
+    fn test_brep_contains_sections_in_order() {
+        let model = make_triangle_solid();
+        let brep = export_brep(&model).unwrap();
+        let vi = brep.find("VERTICES").unwrap();
+        let ei = brep.find("EDGES").unwrap();
+        let fi = brep.find("FACES").unwrap();
+        let si = brep.find("SHELLS").unwrap();
+        let soi = brep.find("SOLIDS").unwrap();
+        assert!(vi < ei && ei < fi && fi < si && si < soi);
+    }
+
+    #[test]
+    fn test_brep_export_two_faces() {
+        let mut model = BRepModel::new();
+        let v0 = model.add_vertex(Point3::new(0.0, 0.0, 0.0));
+        let v1 = model.add_vertex(Point3::new(1.0, 0.0, 0.0));
+        let v2 = model.add_vertex(Point3::new(0.5, 1.0, 0.0));
+        let v3 = model.add_vertex(Point3::new(2.0, 0.0, 0.0));
+
+        let (_, he01, _) = model.add_edge(v0, v1);
+        let (_, he12, _) = model.add_edge(v1, v2);
+        let (_, he20, _) = model.add_edge(v2, v0);
+        let (_, he13, _) = model.add_edge(v1, v3);
+        let (_, he32, _) = model.add_edge(v3, v2);
+
+        let lh1 = model.make_loop(&[he01, he12, he20]).unwrap();
+        let lh2 = model.make_loop(&[he13, he32, he12]).unwrap();
+        let f1 = model.make_face(lh1);
+        let f2 = model.make_face(lh2);
+        let shell = model.make_shell(&[f1, f2]);
+        model.make_solid(&[shell]);
+
+        let brep = export_brep(&model).unwrap();
+        assert!(brep.contains("FACES 2"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Edge case: topology preservation (full round-trip)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_brep_topology_preservation() {
+        let model = make_triangle_solid();
+        let brep = export_brep(&model).unwrap();
+        let imported = import_brep(&brep).unwrap();
+
+        // All topology counts must match exactly
+        assert_eq!(imported.vertices.len(), model.vertices.len());
+        assert_eq!(imported.edges.len(), model.edges.len());
+        assert_eq!(imported.faces.len(), model.faces.len());
+        assert_eq!(imported.shells.len(), model.shells.len());
+        assert_eq!(imported.solids.len(), model.solids.len());
+    }
+
+    // -----------------------------------------------------------------------
+    // Edge case: empty model round-trip
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_brep_empty_model_roundtrip() {
+        let model = BRepModel::new();
+        let brep = export_brep(&model).unwrap();
+        let imported = import_brep(&brep).unwrap();
+        assert_eq!(imported.vertices.len(), 0);
+        assert_eq!(imported.edges.len(), 0);
+        assert_eq!(imported.faces.len(), 0);
+        assert_eq!(imported.shells.len(), 0);
+        assert_eq!(imported.solids.len(), 0);
+    }
+
+    // -----------------------------------------------------------------------
+    // Edge case: export-import-export consistency
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_brep_export_import_export_consistency() {
+        let model = make_triangle_solid();
+        let brep1 = export_brep(&model).unwrap();
+        let imported = import_brep(&brep1).unwrap();
+        let brep2 = export_brep(&imported).unwrap();
+        assert_eq!(brep1, brep2);
     }
 }

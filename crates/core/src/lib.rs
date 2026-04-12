@@ -1,7 +1,25 @@
 //! Core error types for the CAD kernel.
 //!
 //! This crate defines [`KernelError`] and the [`KernelResult`] type alias used
-//! throughout every other crate in the workspace.
+//! throughout every other crate in the workspace. All public APIs in CADKernel
+//! return `KernelResult<T>` rather than panicking, ensuring that callers can
+//! handle failures gracefully.
+//!
+//! # Examples
+//!
+//! ```
+//! use cadkernel_core::{KernelError, KernelResult};
+//!
+//! fn validate_radius(r: f64) -> KernelResult<()> {
+//!     if r <= 0.0 {
+//!         return Err(KernelError::InvalidArgument("radius must be positive".into()));
+//!     }
+//!     Ok(())
+//! }
+//!
+//! assert!(validate_radius(1.0).is_ok());
+//! assert!(validate_radius(-1.0).is_err());
+//! ```
 
 pub mod error;
 

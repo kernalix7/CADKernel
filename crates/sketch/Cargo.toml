@@ -9,4 +9,5 @@ authors.workspace = true
 repository.workspace = true
 
 [dependencies]
+cadkernel-core.workspace = true
 cadkernel-math.workspace = true

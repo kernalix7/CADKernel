@@ -14,10 +14,12 @@ cadkernel-math.workspace = true
 cadkernel-geometry.workspace = true
 cadkernel-topology.workspace = true
 cadkernel-io.workspace = true
+cadkernel-sketch = { path = "../sketch" }
+rayon.workspace = true
+serde_json.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
-cadkernel-sketch = { path = "../sketch" }
 cadkernel-io = { path = "../io" }
 
 [[bench]]

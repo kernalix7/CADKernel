@@ -1,3 +1,11 @@
+//! Parametric surfaces in 3D space.
+//!
+//! This module defines the [`Surface`] trait and provides analytic
+//! ([`Plane`](plane::Plane), [`Cylinder`](cylinder::Cylinder),
+//! [`Sphere`](sphere::Sphere), [`Cone`](cone::Cone),
+//! [`Torus`](torus::Torus)) and free-form
+//! ([`NurbsSurface`](nurbs::NurbsSurface)) implementations.
+
 pub mod cone;
 pub mod continuity;
 pub mod curvature;
@@ -24,19 +32,26 @@ const GRID_SAMPLES: usize = 16;
 
 /// A parametric surface in 3D space evaluated over parameters `(u, v)`.
 ///
-/// All implementations must be `Send + Sync` to allow safe usage
-/// inside `Arc<dyn Surface>` across threads.
+/// All implementations must be `Send + Sync` to allow safe usage inside
+/// `Arc<dyn Surface>` across threads.
+///
+/// Required methods: [`point_at`](Self::point_at),
+/// [`normal_at`](Self::normal_at), [`domain_u`](Self::domain_u),
+/// [`domain_v`](Self::domain_v).
+///
+/// Optional methods with default implementations: `du`, `dv`,
+/// `project_point`, `bounding_box`.
 pub trait Surface: Send + Sync {
-    /// Evaluates the surface at parameter `(u, v)`.
+    /// Evaluates the surface position at parameters `(u, v)`.
     fn point_at(&self, u: f64, v: f64) -> Point3;
 
-    /// Evaluates the surface normal at parameter `(u, v)`.
+    /// Evaluates the outward surface normal at parameters `(u, v)`.
     fn normal_at(&self, u: f64, v: f64) -> Vec3;
 
-    /// The valid `u` parameter range.
+    /// Returns the valid `u` parameter range `(u_min, u_max)`.
     fn domain_u(&self) -> (f64, f64);
 
-    /// The valid `v` parameter range.
+    /// Returns the valid `v` parameter range `(v_min, v_max)`.
     fn domain_v(&self) -> (f64, f64);
 
     /// Partial derivative with respect to `u` at `(u, v)`.

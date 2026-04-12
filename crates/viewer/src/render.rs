@@ -1,6 +1,7 @@
 //! Low-level wgpu rendering primitives shared by both the simple viewer and the
 //! full GUI application.
 
+use crate::nav::BgPreset;
 use cadkernel_io::Mesh;
 use rayon::prelude::*;
 use std::ops::Range;
@@ -246,6 +247,10 @@ impl Camera {
         self.projection = Projection::Perspective;
     }
 
+    pub fn forward(&self) -> [f32; 3] {
+        normalize3(sub3(self.target, self.eye()))
+    }
+
     pub fn screen_right(&self) -> [f32; 3] {
         let f = normalize3(sub3(self.target, self.eye()));
         let up_z = if self.pitch.cos() >= 0.0 { 1.0 } else { -1.0 };
@@ -293,7 +298,19 @@ pub struct Uniforms {
     pub params: [f32; 4],
     /// Camera eye position in world space (xyz, w unused).
     pub eye_pos: [f32; 4],
+    /// Preselection hover highlight parameters:
+    ///   x = hover_object_id (f32-encoded, 0.0 = no hover),
+    ///   y = current_object_id (f32-encoded),
+    ///   z = hover_strength (0.0..1.0),
+    ///   w = unused.
+    pub hover_params: [f32; 4],
+    /// Clip plane: xyz = normal, w = offset.
+    /// When w > 999.0, clipping is disabled.
+    pub clip_params: [f32; 4],
 }
+
+/// Clip plane disabled sentinel: w > 999.0 means no clipping.
+pub const CLIP_DISABLED: [f32; 4] = [0.0, 0.0, 0.0, 1000.0];
 
 const UNIFORM_ALIGN: u64 = 256;
 const MAX_UNIFORM_SLOTS: u64 = 64;
@@ -329,6 +346,44 @@ pub(crate) fn normalize3(v: [f32; 3]) -> [f32; 3] {
         return [0.0, 0.0, 0.0];
     }
     [v[0] / len, v[1] / len, v[2] / len]
+}
+
+// ---------------------------------------------------------------------------
+// Preselection (hover) highlight constants
+// ---------------------------------------------------------------------------
+
+/// Light cyan tint applied to hovered (preselected) objects in the fragment shader.
+/// Matches the hardcoded `vec3(0.4, 0.8, 1.0)` in the WGSL fragment shader.
+#[allow(dead_code)]
+pub const PRESELECT_COLOR: [f32; 3] = [0.4, 0.8, 1.0];
+
+/// Blend strength for the hover highlight (0.0 = no tint, 1.0 = full tint).
+pub const PRESELECT_STRENGTH: f32 = 0.3;
+
+// ---------------------------------------------------------------------------
+// Selection highlight color helpers
+// ---------------------------------------------------------------------------
+
+/// Compute the color for a selected object: brighter green tint blend.
+#[allow(dead_code)]
+pub(crate) fn selection_color(base: [f32; 4]) -> [f32; 4] {
+    [
+        base[0] * 0.4 + 0.15,
+        base[1] * 0.4 + 0.45,
+        base[2] * 0.4 + 0.1,
+        base[3],
+    ]
+}
+
+/// Compute the color for a preselected (hovered) object: subtle yellow tint.
+#[allow(dead_code)]
+pub(crate) fn preselection_color(base: [f32; 4]) -> [f32; 4] {
+    [
+        base[0] * 0.7 + 0.2,
+        base[1] * 0.7 + 0.18,
+        base[2] * 0.5,
+        base[3],
+    ]
 }
 
 fn look_at(eye: [f32; 3], target: [f32; 3], up: [f32; 3]) -> [[f32; 4]; 4] {
@@ -378,44 +433,74 @@ fn orthographic(
     ]
 }
 
-/// 4x4 matrix inverse via cofactor expansion.
+/// 4x4 matrix inverse via cofactor expansion (column-major storage).
+///
+/// Based on GLM's `inverse()` — Laplace expansion with 2×2 cofactors.
 fn mat4_inv(m: [[f32; 4]; 4]) -> [[f32; 4]; 4] {
-    let m = |r: usize, c: usize| m[c][r]; // column-major access
-    let cf = |r0: usize, r1: usize, c0: usize, c1: usize| -> f32 {
-        m(r0, c0) * m(r1, c1) - m(r0, c1) * m(r1, c0)
-    };
-    let (s0, s1, s2, s3, s4, s5) = (
-        cf(0, 1, 0, 1), cf(0, 1, 0, 2), cf(0, 1, 0, 3),
-        cf(0, 1, 1, 2), cf(0, 1, 1, 3), cf(0, 1, 2, 3),
-    );
-    let (c5, c4, c3, c2, c1, c0) = (
-        cf(2, 3, 0, 1), cf(2, 3, 0, 2), cf(2, 3, 0, 3),
-        cf(2, 3, 1, 2), cf(2, 3, 1, 3), cf(2, 3, 2, 3),
-    );
-    let det = s0 * c5 - s1 * c4 + s2 * c3 + s3 * c2 - s4 * c1 + s5 * c0;
+    // m[col][row] — column-major access
+    let c00 = m[2][2] * m[3][3] - m[3][2] * m[2][3];
+    let c02 = m[1][2] * m[3][3] - m[3][2] * m[1][3];
+    let c03 = m[1][2] * m[2][3] - m[2][2] * m[1][3];
+
+    let c04 = m[2][1] * m[3][3] - m[3][1] * m[2][3];
+    let c06 = m[1][1] * m[3][3] - m[3][1] * m[1][3];
+    let c07 = m[1][1] * m[2][3] - m[2][1] * m[1][3];
+
+    let c08 = m[2][1] * m[3][2] - m[3][1] * m[2][2];
+    let c10 = m[1][1] * m[3][2] - m[3][1] * m[1][2];
+    let c11 = m[1][1] * m[2][2] - m[2][1] * m[1][2];
+
+    let c12 = m[2][0] * m[3][3] - m[3][0] * m[2][3];
+    let c14 = m[1][0] * m[3][3] - m[3][0] * m[1][3];
+    let c15 = m[1][0] * m[2][3] - m[2][0] * m[1][3];
+
+    let c16 = m[2][0] * m[3][2] - m[3][0] * m[2][2];
+    let c18 = m[1][0] * m[3][2] - m[3][0] * m[1][2];
+    let c19 = m[1][0] * m[2][2] - m[2][0] * m[1][2];
+
+    let c20 = m[2][0] * m[3][1] - m[3][0] * m[2][1];
+    let c22 = m[1][0] * m[3][1] - m[3][0] * m[1][1];
+    let c23 = m[1][0] * m[2][1] - m[2][0] * m[1][1];
+
+    let fac0 = [c00, c00, c02, c03];
+    let fac1 = [c04, c04, c06, c07];
+    let fac2 = [c08, c08, c10, c11];
+    let fac3 = [c12, c12, c14, c15];
+    let fac4 = [c16, c16, c18, c19];
+    let fac5 = [c20, c20, c22, c23];
+
+    let v0 = [m[1][0], m[0][0], m[0][0], m[0][0]];
+    let v1 = [m[1][1], m[0][1], m[0][1], m[0][1]];
+    let v2 = [m[1][2], m[0][2], m[0][2], m[0][2]];
+    let v3 = [m[1][3], m[0][3], m[0][3], m[0][3]];
+
+    // Adjugate columns (each is a vec4)
+    let inv0: [f32; 4] = std::array::from_fn(|i| v1[i]*fac0[i] - v2[i]*fac1[i] + v3[i]*fac2[i]);
+    let inv1: [f32; 4] = std::array::from_fn(|i| v0[i]*fac0[i] - v2[i]*fac3[i] + v3[i]*fac4[i]);
+    let inv2: [f32; 4] = std::array::from_fn(|i| v0[i]*fac1[i] - v1[i]*fac3[i] + v3[i]*fac5[i]);
+    let inv3: [f32; 4] = std::array::from_fn(|i| v0[i]*fac2[i] - v1[i]*fac4[i] + v2[i]*fac5[i]);
+
+    // Apply sign pattern (+−+−, −+−+, …)
+    let sa = [1.0_f32, -1.0, 1.0, -1.0];
+    let sb = [-1.0_f32, 1.0, -1.0, 1.0];
+    let col0: [f32; 4] = std::array::from_fn(|i| inv0[i] * sa[i]);
+    let col1: [f32; 4] = std::array::from_fn(|i| inv1[i] * sb[i]);
+    let col2: [f32; 4] = std::array::from_fn(|i| inv2[i] * sa[i]);
+    let col3: [f32; 4] = std::array::from_fn(|i| inv3[i] * sb[i]);
+
+    // Determinant = dot(m[0], first_row_of_adjugate)
+    let det = m[0][0]*col0[0] + m[0][1]*col1[0] + m[0][2]*col2[0] + m[0][3]*col3[0];
     if det.abs() < 1e-10 {
-        return [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0],
-                [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]];
+        return [[1.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0],
+                [0.0,0.0,1.0,0.0],[0.0,0.0,0.0,1.0]];
     }
     let inv_det = 1.0 / det;
-    let mut out = [[0.0f32; 4]; 4];
-    out[0][0] = ( m(1,1) * c5 - m(1,2) * c4 + m(1,3) * c3) * inv_det;
-    out[1][0] = (-m(1,0) * c5 + m(1,2) * c2 - m(1,3) * c1) * inv_det;
-    out[2][0] = ( m(1,0) * c4 - m(1,1) * c2 + m(1,3) * c0) * inv_det;
-    out[3][0] = (-m(1,0) * c3 + m(1,1) * c1 - m(1,2) * c0) * inv_det;
-    out[0][1] = (-m(0,1) * c5 + m(0,2) * c4 - m(0,3) * c3) * inv_det;
-    out[1][1] = ( m(0,0) * c5 - m(0,2) * c2 + m(0,3) * c1) * inv_det;
-    out[2][1] = (-m(0,0) * c4 + m(0,1) * c2 - m(0,3) * c0) * inv_det;
-    out[3][1] = ( m(0,0) * c3 - m(0,1) * c1 + m(0,2) * c0) * inv_det;
-    out[0][2] = ( m(0,1) * s5 - m(0,2) * s4 + m(0,3) * s3) * inv_det;
-    out[1][2] = (-m(0,0) * s5 + m(0,2) * s2 - m(0,3) * s1) * inv_det;
-    out[2][2] = ( m(0,0) * s4 - m(0,1) * s2 + m(0,3) * s0) * inv_det;
-    out[3][2] = (-m(0,0) * s3 + m(0,1) * s1 - m(0,2) * s0) * inv_det;
-    out[0][3] = (-m(3,1) * s5 + m(3,2) * s4 - m(3,3) * s3) * inv_det;
-    out[1][3] = ( m(3,0) * s5 - m(3,2) * s2 + m(3,3) * s1) * inv_det;
-    out[2][3] = (-m(3,0) * s4 + m(3,1) * s2 - m(3,3) * s0) * inv_det;
-    out[3][3] = ( m(3,0) * s3 - m(3,1) * s1 + m(3,2) * s0) * inv_det;
-    out
+    [
+        [col0[0]*inv_det, col0[1]*inv_det, col0[2]*inv_det, col0[3]*inv_det],
+        [col1[0]*inv_det, col1[1]*inv_det, col1[2]*inv_det, col1[3]*inv_det],
+        [col2[0]*inv_det, col2[1]*inv_det, col2[2]*inv_det, col2[3]*inv_det],
+        [col3[0]*inv_det, col3[1]*inv_det, col3[2]*inv_det, col3[3]*inv_det],
+    ]
 }
 
 fn mat4_mul(a: [[f32; 4]; 4], b: [[f32; 4]; 4]) -> [[f32; 4]; 4] {
@@ -626,6 +711,8 @@ struct Uniforms {
     base_color: vec4<f32>,
     params: vec4<f32>,
     eye_pos: vec4<f32>,
+    hover_params: vec4<f32>,
+    clip_params: vec4<f32>,
 }
 @group(0) @binding(0) var<uniform> uniforms: Uniforms;
 
@@ -651,6 +738,17 @@ fn vs_main(vin: VertexInput) -> VertexOutput {
 
 @fragment
 fn fs_main(fin: VertexOutput) -> @location(0) vec4<f32> {
+    // Clip plane discard: when w < 999.0, the plane is active.
+    let clip_n = uniforms.clip_params.xyz;
+    let clip_d = uniforms.clip_params.w;
+    var clip_dist = 0.0;
+    if (clip_d < 999.0) {
+        clip_dist = dot(fin.world_pos, clip_n) - clip_d;
+        if (clip_dist < 0.0) {
+            discard;
+        }
+    }
+
     var color = uniforms.base_color.rgb;
     if (uniforms.params.x > 0.5) {
         let light = normalize(uniforms.light_dir.xyz);
@@ -671,18 +769,51 @@ fn fs_main(fin: VertexOutput) -> @location(0) vec4<f32> {
             color = color + vec3<f32>(spec * spec_strength);
         }
     }
+
+    // Cross-section edge highlight: orange band near the cut surface.
+    if (clip_d < 999.0 && clip_dist < 0.002) {
+        color = vec3<f32>(1.0, 0.5, 0.0);
+    }
+
+    // Preselection hover highlight: when hover_params.x > 0 and matches
+    // the current object ID (hover_params.y), blend with highlight color.
+    let hover_id = uniforms.hover_params.x;
+    let obj_id = uniforms.hover_params.y;
+    let hover_strength = uniforms.hover_params.z;
+    if (hover_id > 0.0 && abs(hover_id - obj_id) < 0.5) {
+        let highlight = vec3<f32>(0.4, 0.8, 1.0);
+        color = mix(color, highlight, hover_strength);
+    }
+
     return vec4<f32>(clamp(color, vec3<f32>(0.0), vec3<f32>(1.0)), uniforms.base_color.a);
 }
 "#;
 
-pub(crate) const GRADIENT_SHADER_SRC: &str = r#"
-struct GradientOutput {
-    @builtin(position) pos: vec4<f32>,
-    @location(0) uv: vec2<f32>,
+fn gradient_colors(preset: BgPreset, custom_top: [f32; 3], custom_bottom: [f32; 3]) -> ([f32; 3], [f32; 3]) {
+    match preset {
+        BgPreset::Dark => ([0.16, 0.17, 0.20], [0.08, 0.08, 0.10]),
+        BgPreset::Medium => ([0.28, 0.30, 0.34], [0.14, 0.15, 0.18]),
+        BgPreset::Light => ([0.75, 0.78, 0.82], [0.55, 0.58, 0.62]),
+        BgPreset::Blueprint => ([0.08, 0.12, 0.22], [0.04, 0.06, 0.14]),
+        BgPreset::Custom => (custom_top, custom_bottom),
+    }
 }
 
+fn gradient_shader_src(preset: BgPreset) -> String {
+    let (top, bottom) = gradient_colors(preset, [0.20, 0.22, 0.28], [0.08, 0.08, 0.10]);
+    gradient_shader_src_colors(top, bottom)
+}
+
+fn gradient_shader_src_colors(top: [f32; 3], bottom: [f32; 3]) -> String {
+    format!(
+        r#"
+struct GradientOutput {{
+    @builtin(position) pos: vec4<f32>,
+    @location(0) uv: vec2<f32>,
+}}
+
 @vertex
-fn vs_gradient(@builtin(vertex_index) idx: u32) -> GradientOutput {
+fn vs_gradient(@builtin(vertex_index) idx: u32) -> GradientOutput {{
     var positions = array<vec2<f32>, 3>(
         vec2<f32>(-1.0, -1.0),
         vec2<f32>( 3.0, -1.0),
@@ -692,16 +823,19 @@ fn vs_gradient(@builtin(vertex_index) idx: u32) -> GradientOutput {
     out.pos = vec4<f32>(positions[idx], 0.999, 1.0);
     out.uv = positions[idx] * 0.5 + 0.5;
     return out;
-}
+}}
 
 @fragment
-fn fs_gradient(fin: GradientOutput) -> @location(0) vec4<f32> {
-    let top    = vec3<f32>(0.16, 0.17, 0.20);
-    let bottom = vec3<f32>(0.08, 0.08, 0.10);
+fn fs_gradient(fin: GradientOutput) -> @location(0) vec4<f32> {{
+    let top    = vec3<f32>({}, {}, {});
+    let bottom = vec3<f32>({}, {}, {});
     let color  = mix(bottom, top, fin.uv.y);
     return vec4<f32>(color, 1.0);
+}}
+"#,
+        top[0], top[1], top[2], bottom[0], bottom[1], bottom[2]
+    )
 }
-"#;
 
 // ---------------------------------------------------------------------------
 // Grid overlay (dynamic – adapts to camera distance)
@@ -764,18 +898,17 @@ impl GridConfig {
         let new_minor = GRID_LEVELS[new_level];
 
         // --- Extent: conservative, object-aware ---
-        // Base extent: enough for the object or a sensible default.
         let base = if self.obj_extent > 0.1 {
             self.obj_extent * 1.5
         } else {
             30.0
         };
         let major = new_minor * 10.0;
-        // At least 5 major cells, but don't exceed what's useful.
-        let min_half = major * 5.0;
-        // Cap at 60% of visible area — grid should NOT fill the screen.
-        let max_visible = visible * 0.6;
-        let new_half_raw = base.max(min_half).min(max_visible).max(min_half);
+        // At most 3 major cells each side — keeps grid compact and clean.
+        let min_half = major * 3.0;
+        // Cap at 40% of visible area — grid should NOT fill the screen.
+        let max_visible = visible * 0.4;
+        let new_half_raw = base.max(min_half).min(max_visible);
         // Snap to major-step multiples for clean edges.
         let new_half = (new_half_raw / major).ceil() * major;
 
@@ -843,7 +976,7 @@ fn build_dynamic_grid(cfg: &GridConfig) -> GridRanges {
 
     let minor_step = cfg.minor_step;
     let major_step = cfg.major_step;
-    let minor_count = (half / minor_step).ceil() as i32;
+    let minor_count = ((half / minor_step).ceil() as i32).min(30);
     let major_i = if minor_step > 0.0 {
         (major_step / minor_step).round() as i32
     } else {
@@ -925,11 +1058,11 @@ fn build_dynamic_grid(cfg: &GridConfig) -> GridRanges {
     // Axis Z (blue, vertical)
     let az = v.len() as u32;
     v.push(Vertex {
-        position: [0.0, 0.0, 0.0],
+        position: [0.0, 0.0, -half],
         normal: n,
     });
     v.push(Vertex {
-        position: [0.0, 0.0, half * 0.3],
+        position: [0.0, 0.0, half],
         normal: n,
     });
     let end = v.len() as u32;
@@ -961,6 +1094,8 @@ pub(crate) struct GpuState {
     pub wire_pipeline: wgpu::RenderPipeline,
     pub transparent_pipeline: wgpu::RenderPipeline,
     pub gradient_pipeline: wgpu::RenderPipeline,
+    pub bg_preset: BgPreset,
+    bg_colors: ([f32; 3], [f32; 3]),
     pub vertex_buffer: wgpu::Buffer,
     pub edge_index_buffer: wgpu::Buffer,
     pub num_edge_indices: u32,
@@ -970,6 +1105,11 @@ pub(crate) struct GpuState {
     pub depth_view: wgpu::TextureView,
     pub msaa_view: wgpu::TextureView,
     pub grid: GridOverlay,
+    /// Object ID currently hovered by the mouse (0 = nothing hovered).
+    /// Set by the application before rendering; the shader uses this to
+    /// apply a preselection highlight tint via `hover_params`.
+    #[allow(dead_code)]
+    pub hover_object_id: u32,
 }
 
 fn build_edge_indices(num_vertices: u32) -> Vec<u32> {
@@ -1009,6 +1149,7 @@ impl GpuState {
             .get_default_config(&adapter, size.width.max(1), size.height.max(1))
             .expect("surface not supported by adapter");
         config.present_mode = wgpu::PresentMode::AutoVsync;
+        config.alpha_mode = wgpu::CompositeAlphaMode::Opaque;
         surface.configure(&device, &config);
 
         // -- shaders ------------------------------------------------------
@@ -1016,9 +1157,11 @@ impl GpuState {
             label: Some("shader"),
             source: wgpu::ShaderSource::Wgsl(SHADER_SRC.into()),
         });
+        let bg_preset = BgPreset::Dark;
+        let grad_src = gradient_shader_src(bg_preset);
         let grad_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("gradient_shader"),
-            source: wgpu::ShaderSource::Wgsl(GRADIENT_SHADER_SRC.into()),
+            source: wgpu::ShaderSource::Wgsl(grad_src.as_str().into()),
         });
 
         // -- vertex / edge buffers ----------------------------------------
@@ -1270,6 +1413,8 @@ impl GpuState {
             wire_pipeline,
             transparent_pipeline,
             gradient_pipeline,
+            bg_preset,
+            bg_colors: gradient_colors(bg_preset, [0.20, 0.22, 0.28], [0.08, 0.08, 0.10]),
             vertex_buffer,
             edge_index_buffer,
             num_edge_indices,
@@ -1279,7 +1424,67 @@ impl GpuState {
             depth_view,
             msaa_view,
             grid,
+            hover_object_id: 0,
         }
+    }
+
+    /// Rebuild the gradient background pipeline for a new preset / custom colors.
+    pub fn update_bg(&mut self, preset: BgPreset, custom_top: [f32; 3], custom_bottom: [f32; 3]) {
+        let new_colors = gradient_colors(preset, custom_top, custom_bottom);
+        if self.bg_colors == new_colors {
+            return;
+        }
+        self.bg_preset = preset;
+        self.bg_colors = new_colors;
+        let (top, bot) = new_colors;
+        let src = gradient_shader_src_colors(top, bot);
+        let grad_shader = self.device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("gradient_shader"),
+            source: wgpu::ShaderSource::Wgsl(src.as_str().into()),
+        });
+        let layout = self.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("gradient_pipeline_layout"),
+            bind_group_layouts: &[],
+            push_constant_ranges: &[],
+        });
+        self.gradient_pipeline = self.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("gradient_pipeline"),
+            layout: Some(&layout),
+            vertex: wgpu::VertexState {
+                module: &grad_shader,
+                entry_point: Some("vs_gradient"),
+                buffers: &[],
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &grad_shader,
+                entry_point: Some("fs_gradient"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: self.config.format,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                ..Default::default()
+            },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: DEPTH_FORMAT,
+                depth_write_enabled: false,
+                depth_compare: wgpu::CompareFunction::Always,
+                stencil: Default::default(),
+                bias: Default::default(),
+            }),
+            multisample: wgpu::MultisampleState {
+                count: MSAA_SAMPLES,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            multiview: None,
+            cache: None,
+        });
     }
 
     pub fn resize(&mut self, size: winit::dpi::PhysicalSize<u32>, camera: &mut Camera) {
@@ -1390,6 +1595,8 @@ impl GpuState {
                     base_color: GRID_MINOR_COLOR,
                     params: unlit_params,
                     eye_pos,
+                    hover_params: [0.0; 4],
+                    clip_params: CLIP_DISABLED,
                 },
             );
             self.write_slot(
@@ -1400,6 +1607,8 @@ impl GpuState {
                     base_color: GRID_MAJOR_COLOR,
                     params: unlit_params,
                     eye_pos,
+                    hover_params: [0.0; 4],
+                    clip_params: CLIP_DISABLED,
                 },
             );
             self.write_slot(
@@ -1410,6 +1619,8 @@ impl GpuState {
                     base_color: AXIS_X_COLOR,
                     params: unlit_params,
                     eye_pos,
+                    hover_params: [0.0; 4],
+                    clip_params: CLIP_DISABLED,
                 },
             );
             self.write_slot(
@@ -1420,6 +1631,8 @@ impl GpuState {
                     base_color: AXIS_Y_COLOR,
                     params: unlit_params,
                     eye_pos,
+                    hover_params: [0.0; 4],
+                    clip_params: CLIP_DISABLED,
                 },
             );
             self.write_slot(
@@ -1430,6 +1643,8 @@ impl GpuState {
                     base_color: AXIS_Z_COLOR,
                     params: unlit_params,
                     eye_pos,
+                    hover_params: [0.0; 4],
+                    clip_params: CLIP_DISABLED,
                 },
             );
         }
@@ -1449,6 +1664,8 @@ impl GpuState {
                         base_color: SOLID_COLOR,
                         params: lit_params,
                         eye_pos,
+                        hover_params: [0.0; 4],
+                        clip_params: CLIP_DISABLED,
                     },
                 );
             }
@@ -1461,6 +1678,8 @@ impl GpuState {
                         base_color: POINT_COLOR,
                         params: unlit_params,
                         eye_pos,
+                        hover_params: [0.0; 4],
+                        clip_params: CLIP_DISABLED,
                     },
                 );
             }
@@ -1473,6 +1692,8 @@ impl GpuState {
                         base_color: WIRE_COLOR,
                         params: unlit_params,
                         eye_pos,
+                        hover_params: [0.0; 4],
+                        clip_params: CLIP_DISABLED,
                     },
                 );
             }
@@ -1485,6 +1706,8 @@ impl GpuState {
                         base_color: HIDDEN_LINE_COLOR,
                         params: lit_params,
                         eye_pos,
+                        hover_params: [0.0; 4],
+                        clip_params: CLIP_DISABLED,
                     },
                 );
                 self.write_slot(
@@ -1495,6 +1718,8 @@ impl GpuState {
                         base_color: EDGE_OVERLAY_COLOR,
                         params: unlit_params,
                         eye_pos,
+                        hover_params: [0.0; 4],
+                        clip_params: CLIP_DISABLED,
                     },
                 );
             }
@@ -1507,6 +1732,8 @@ impl GpuState {
                         base_color: NO_SHADE_COLOR,
                         params: lit_params,
                         eye_pos,
+                        hover_params: [0.0; 4],
+                        clip_params: CLIP_DISABLED,
                     },
                 );
             }
@@ -1519,6 +1746,8 @@ impl GpuState {
                         base_color: TRANSPARENT_COLOR,
                         params: lit_params,
                         eye_pos,
+                        hover_params: [0.0; 4],
+                        clip_params: CLIP_DISABLED,
                     },
                 );
             }
@@ -1531,6 +1760,8 @@ impl GpuState {
                         base_color: SOLID_COLOR,
                         params: lit_params,
                         eye_pos,
+                        hover_params: [0.0; 4],
+                        clip_params: CLIP_DISABLED,
                     },
                 );
                 self.write_slot(
@@ -1541,6 +1772,8 @@ impl GpuState {
                         base_color: EDGE_OVERLAY_COLOR,
                         params: unlit_params,
                         eye_pos,
+                        hover_params: [0.0; 4],
+                        clip_params: CLIP_DISABLED,
                     },
                 );
             }
@@ -1788,13 +2021,13 @@ impl GpuState {
 pub(crate) const SOLID_COLOR: [f32; 4] = [0.7, 0.75, 0.8, 1.0];
 pub(crate) const WIRE_COLOR: [f32; 4] = [0.1, 0.9, 0.1, 1.0];
 pub(crate) const TRANSPARENT_COLOR: [f32; 4] = [0.5, 0.6, 0.8, 0.35];
-pub(crate) const EDGE_OVERLAY_COLOR: [f32; 4] = [0.05, 0.05, 0.05, 1.0];
+pub(crate) const EDGE_OVERLAY_COLOR: [f32; 4] = [0.08, 0.08, 0.10, 1.0];
 pub(crate) const POINT_COLOR: [f32; 4] = [1.0, 0.85, 0.2, 1.0];
 pub(crate) const NO_SHADE_COLOR: [f32; 4] = [0.75, 0.78, 0.82, 1.0];
 pub(crate) const HIDDEN_LINE_COLOR: [f32; 4] = [0.9, 0.9, 0.9, 1.0];
 
-pub(crate) const GRID_MINOR_COLOR: [f32; 4] = [0.22, 0.22, 0.24, 0.25];
-pub(crate) const GRID_MAJOR_COLOR: [f32; 4] = [0.42, 0.42, 0.44, 0.75];
+pub(crate) const GRID_MINOR_COLOR: [f32; 4] = [0.20, 0.20, 0.22, 0.10];
+pub(crate) const GRID_MAJOR_COLOR: [f32; 4] = [0.35, 0.35, 0.38, 0.30];
 pub(crate) const AXIS_X_COLOR: [f32; 4] = [0.8, 0.2, 0.2, 1.0];
 pub(crate) const AXIS_Y_COLOR: [f32; 4] = [0.2, 0.8, 0.2, 1.0];
 pub(crate) const AXIS_Z_COLOR: [f32; 4] = [0.3, 0.3, 0.9, 1.0];

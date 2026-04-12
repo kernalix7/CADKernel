@@ -4,6 +4,21 @@ use crate::quaternion::Quaternion;
 use crate::vector::Vec3;
 
 /// An affine transformation in 3D space, stored as a 4x4 matrix.
+///
+/// Provides factory methods for common transforms (translation, rotation,
+/// scale, mirror) and a `then` combinator for composition. Transforms are
+/// applied to points via [`apply_point`](Self::apply_point) and to direction
+/// vectors via [`apply_vec`](Self::apply_vec).
+///
+/// # Examples
+///
+/// ```
+/// use cadkernel_math::{Point3, Transform};
+///
+/// let t = Transform::translation(1.0, 2.0, 3.0);
+/// let p = t.apply_point(Point3::ORIGIN);
+/// assert!(p.approx_eq(Point3::new(1.0, 2.0, 3.0)));
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Transform {
     mat: Mat4,

@@ -3,13 +3,20 @@
 use crate::Sketch;
 
 /// Result of sketch validation.
+///
+/// Contains a validity flag and a list of specific issues found.
 #[derive(Debug, Clone)]
 pub struct SketchValidation {
+    /// `true` if no errors were found.
     pub valid: bool,
+    /// All issues detected during validation.
     pub issues: Vec<SketchValidationIssue>,
 }
 
 /// A specific issue found during sketch validation.
+///
+/// Categorises problems such as invalid references, degenerate geometry,
+/// and under/over-constrained systems.
 #[derive(Debug, Clone)]
 pub enum SketchValidationIssue {
     /// A constraint references a non-existent point.
@@ -134,6 +141,7 @@ fn constraint_references(c: &crate::Constraint) -> (Vec<usize>, Vec<usize>) {
         Midpoint(p, l) => (vec![p.0], vec![l.0]),
         Concentric(a, b) => (vec![a.0, b.0], vec![]),
         HorizontalDistance(a, b, _) | VerticalDistance(a, b, _) => (vec![a.0, b.0], vec![]),
+        crate::Constraint::Refraction { line1, line2, .. } => (vec![], vec![line1.0, line2.0]),
     }
 }
 

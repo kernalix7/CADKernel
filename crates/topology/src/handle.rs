@@ -4,6 +4,11 @@ use serde::{Deserialize, Serialize};
 
 /// A generational handle that serves as a type-safe, dangling-proof reference
 /// to an entity in an [`EntityStore`](super::store::EntityStore).
+///
+/// `Handle<T>` is `Copy`, `Eq`, and `Hash`, so it can be used in collections.
+/// A stale handle (one whose entity has been removed and the slot reused)
+/// will return `None` from `EntityStore::get` because the generation counter
+/// will no longer match.
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct Handle<T> {

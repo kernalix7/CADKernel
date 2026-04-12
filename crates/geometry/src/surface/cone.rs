@@ -3,9 +3,11 @@ use cadkernel_math::{Point3, Vec3};
 
 use super::Surface;
 
-/// A conical surface defined by an apex, axis, and half-angle.
+/// A conical surface defined by an apex, axis direction, and half-angle.
 ///
-/// Parameterisation: `u` = angle around axis, `v` = distance from apex along slant.
+/// Parameterisation: `u` = angle around axis in `[0, 2*pi]`,
+/// `v` = distance from apex along the slant in `[0, 1]`.
+/// Validated at construction: axis must be non-zero, half-angle in `(0, pi/2)`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Cone {
     pub apex: Point3,

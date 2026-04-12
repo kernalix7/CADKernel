@@ -6,6 +6,9 @@ use crate::naming::Tag;
 use crate::solid::SolidData;
 
 /// A connected set of faces forming a manifold (or non-manifold) sheet.
+///
+/// A closed shell bounds a solid volume. Open shells represent sheet bodies.
+/// Faces within a shell share edges.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShellData {
     pub faces: Vec<Handle<FaceData>>,

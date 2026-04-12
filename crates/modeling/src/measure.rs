@@ -4,7 +4,11 @@ use cadkernel_core::{KernelError, KernelResult};
 use cadkernel_math::{Point3, Vec3};
 use cadkernel_topology::{BRepModel, EdgeData, FaceData, Handle, SolidData, VertexData};
 
-/// Mass properties of a solid body.
+/// Mass properties of a solid body computed from its tessellated mesh.
+///
+/// Volume is computed via the divergence theorem on triangle faces.
+/// Surface area is the sum of triangle areas. The centroid is the
+/// volume-weighted center of mass.
 #[derive(Debug, Clone)]
 pub struct MassProperties {
     /// Volume of the solid.
@@ -305,5 +309,67 @@ mod tests {
             "centroid z should be ~2, got {}",
             com.z
         );
+    }
+
+    #[test]
+    fn test_measure_edge_length_unit() {
+        let mut model = BRepModel::new();
+        let b = crate::make_box(&mut model, Point3::ORIGIN, 1.0, 1.0, 1.0).unwrap();
+        let edges = model.edges_of_face(b.faces[0]).unwrap();
+        let len = measure_edge_length(&model, edges[0]).unwrap();
+        assert!((len - 1.0).abs() < 0.01, "unit cube edge should be 1.0, got {len}");
+    }
+
+    #[test]
+    fn test_measure_distance_same_vertex() {
+        let (model, b) = make_test_box();
+        let v0 = b.vertices[0];
+        let dist = measure_distance(&model, v0, v0).unwrap();
+        assert!(dist.abs() < 1e-10, "distance to self should be 0");
+    }
+
+    #[test]
+    fn test_measure_volume_cylinder() {
+        let mut model = BRepModel::new();
+        let cyl = crate::primitives::make_cylinder(&mut model, Point3::ORIGIN, 1.0, 1.0, 64).unwrap();
+        let vol = measure_solid_volume(&model, cyl.solid).unwrap();
+        let expected = std::f64::consts::PI * 1.0 * 1.0 * 1.0;
+        assert!((vol - expected).abs() < 0.1, "cylinder vol ~PI, got {vol}");
+    }
+
+    #[test]
+    fn test_compute_mass_properties_empty() {
+        use cadkernel_io::tessellate::Mesh;
+        let mesh = Mesh { vertices: vec![], normals: vec![], indices: vec![] };
+        let props = compute_mass_properties(&mesh);
+        assert!(props.volume.abs() < 1e-12);
+    }
+
+    #[test]
+    fn test_measure_face_area_unit_square() {
+        let mut model = BRepModel::new();
+        let b = crate::make_box(&mut model, Point3::ORIGIN, 1.0, 1.0, 1.0).unwrap();
+        let area = measure_face_area(&model, b.faces[0]).unwrap();
+        assert!(area > 0.0);
+    }
+
+    #[test]
+    fn test_measure_solid_volume_unit_cube() {
+        let mut model = BRepModel::new();
+        let b = crate::make_box(&mut model, Point3::ORIGIN, 1.0, 1.0, 1.0).unwrap();
+        let vol = measure_solid_volume(&model, b.solid).unwrap();
+        assert!((vol - 1.0).abs() < 0.05, "unit cube vol ~1.0, got {vol}");
+    }
+
+    #[test]
+    fn test_measure_angle_perpendicular_edges() {
+        let mut model = BRepModel::new();
+        let b = crate::make_box(&mut model, Point3::ORIGIN, 2.0, 3.0, 4.0).unwrap();
+        let face_edges = model.edges_of_face(b.faces[0]).unwrap();
+        assert!(face_edges.len() >= 2);
+        // Adjacent edges on a rectangular face are perpendicular
+        let angle = measure_angle(&model, face_edges[0], face_edges[1]).unwrap();
+        let diff = (angle - std::f64::consts::FRAC_PI_2).abs();
+        assert!(diff < 0.1, "adjacent box edges should be ~90deg, got {angle}");
     }
 }

@@ -1,3 +1,10 @@
+//! B-Rep face and solid tessellation into indexed triangle meshes.
+//!
+//! Converts B-Rep topology into renderable triangle meshes. Supports adaptive
+//! tessellation for curved surfaces (when geometry is bound via the
+//! `geometry-binding` feature), parallel tessellation using rayon, multi-LOD
+//! generation, and per-face index mapping for picking.
+
 use cadkernel_geometry::Surface;
 use cadkernel_geometry::surface::parametric_wire::ParametricWire2D;
 use cadkernel_geometry::tessellate::{TessellationOptions, adaptive_tessellate_surface};
@@ -212,6 +219,128 @@ pub fn tessellate_solid(model: &BRepModel, solid: Handle<SolidData>) -> Mesh {
     mesh
 }
 
+/// Tessellates all faces of a solid into a single indexed [`Mesh`], plus a
+/// face-to-triangle mapping.
+///
+/// Each entry in the returned vector is `(face_handle, start_triangle_index,
+/// triangle_count)`, giving the range of triangles in `mesh.indices` that
+/// belong to that face.  The mapping order matches the iteration order over
+/// shells and faces.
+pub fn tessellate_solid_with_face_map(
+    model: &BRepModel,
+    solid: Handle<SolidData>,
+) -> (Mesh, Vec<(Handle<FaceData>, usize, usize)>) {
+    let mut mesh = Mesh::new();
+    let mut vmap: HashMap<(u64, u64, u64), u32> = HashMap::new();
+    let mut face_map: Vec<(Handle<FaceData>, usize, usize)> = Vec::new();
+
+    let Some(solid_data) = model.solids.get(solid) else {
+        return (mesh, face_map);
+    };
+    for &shell_h in &solid_data.shells {
+        let Some(shell_data) = model.shells.get(shell_h) else {
+            continue;
+        };
+        for &face_h in &shell_data.faces {
+            let tri_start = mesh.indices.len();
+
+            let face_data = model.faces.get(face_h);
+            let use_surface_tess = face_data.is_some_and(|fd| {
+                fd.surface.as_ref().is_some_and(|s| {
+                    let p00 = s.point_at(0.0, 0.0);
+                    let p10 = s.point_at(1.0, 0.0);
+                    let p01 = s.point_at(0.0, 1.0);
+                    let p11 = s.point_at(1.0, 1.0);
+                    let n1 = (p10 - p00).cross(p01 - p00);
+                    let d = (p11 - p00).dot(n1);
+                    d.abs() > 1e-6
+                })
+            });
+
+            if use_surface_tess {
+                let fd = face_data.unwrap();
+                let surface = fd.surface.as_ref().unwrap();
+                let boundary = collect_face_points(model, face_h);
+                let tess_result = tessellate_surface_with_trim(
+                    surface.as_ref(),
+                    &boundary,
+                    fd.outer_trim.as_ref(),
+                    &fd.inner_trims,
+                );
+                let tess_ok = tess_result.as_ref().is_some_and(|tm| {
+                    if boundary.is_empty() || tm.vertices.is_empty() { return false; }
+                    let (mut mn, mut mx) = (boundary[0], boundary[0]);
+                    for p in &boundary {
+                        mn = Point3::new(mn.x.min(p.x), mn.y.min(p.y), mn.z.min(p.z));
+                        mx = Point3::new(mx.x.max(p.x), mx.y.max(p.y), mx.z.max(p.z));
+                    }
+                    let diag = ((mx.x-mn.x).powi(2) + (mx.y-mn.y).powi(2) + (mx.z-mn.z).powi(2)).sqrt();
+                    let margin = diag * 0.5 + 1.0;
+                    tm.vertices.iter().all(|v| {
+                        v.x >= mn.x - margin && v.x <= mx.x + margin &&
+                        v.y >= mn.y - margin && v.y <= mx.y + margin &&
+                        v.z >= mn.z - margin && v.z <= mx.z + margin
+                    })
+                });
+                if let Some(tess_mesh) = tess_result.filter(|_| tess_ok) {
+                    let remap: Vec<u32> = tess_mesh
+                        .vertices
+                        .iter()
+                        .map(|p| {
+                            let key = (p.x.to_bits(), p.y.to_bits(), p.z.to_bits());
+                            *vmap.entry(key).or_insert_with(|| {
+                                let i = mesh.vertices.len() as u32;
+                                mesh.vertices.push(*p);
+                                i
+                            })
+                        })
+                        .collect();
+                    for idx in &tess_mesh.indices {
+                        let a = tess_mesh.vertices[idx[0] as usize];
+                        let b = tess_mesh.vertices[idx[1] as usize];
+                        let c = tess_mesh.vertices[idx[2] as usize];
+                        let n = triangle_normal(a, b, c);
+                        mesh.normals.push(n);
+                        mesh.indices
+                            .push([remap[idx[0] as usize], remap[idx[1] as usize], remap[idx[2] as usize]]);
+                    }
+                    let tri_count = mesh.indices.len() - tri_start;
+                    face_map.push((face_h, tri_start, tri_count));
+                    continue;
+                }
+            }
+
+            let points = collect_face_points(model, face_h);
+            if points.len() < 3 {
+                let tri_count = mesh.indices.len() - tri_start;
+                face_map.push((face_h, tri_start, tri_count));
+                continue;
+            }
+            let face_idx: Vec<u32> = points
+                .iter()
+                .map(|p| {
+                    let key = (p.x.to_bits(), p.y.to_bits(), p.z.to_bits());
+                    *vmap.entry(key).or_insert_with(|| {
+                        let i = mesh.vertices.len() as u32;
+                        mesh.vertices.push(*p);
+                        i
+                    })
+                })
+                .collect();
+            for i in 1..(face_idx.len() - 1) {
+                let n = triangle_normal(points[0], points[i], points[i + 1]);
+                mesh.normals.push(n);
+                mesh.indices
+                    .push([face_idx[0], face_idx[i], face_idx[i + 1]]);
+            }
+            let tri_count = mesh.indices.len() - tri_start;
+            face_map.push((face_h, tri_start, tri_count));
+        }
+    }
+
+    (mesh, face_map)
+}
+
 /// Merges multiple [`Mesh`] objects into a single mesh.
 ///
 /// Vertices and normals are concatenated. Triangle indices are offset so
@@ -299,6 +428,194 @@ fn tessellate_face_to_mesh(model: &BRepModel, face_h: Handle<FaceData>) -> Mesh 
         mesh.normals.push(n);
         mesh.indices.push([0, i as u32, (i + 1) as u32]);
     }
+    mesh
+}
+
+/// Tessellates a solid with configurable level of detail.
+///
+/// Uses `TessellationOptions::from_lod()` to select chord/angle tolerances.
+/// `Coarse` produces fewer triangles (good for interactive preview),
+/// `Fine` produces more (good for export/rendering).
+pub fn tessellate_solid_lod(
+    model: &BRepModel,
+    solid: Handle<SolidData>,
+    lod: cadkernel_geometry::tessellate::LevelOfDetail,
+) -> Mesh {
+    let opts = TessellationOptions::from_lod(lod);
+    tessellate_solid_with_options(model, solid, &opts)
+}
+
+/// Tessellates a solid with explicit tessellation options.
+///
+/// Chord tolerance and angular tolerance from `opts` control adaptive
+/// surface tessellation. Vertices are shared across faces via bit-exact
+/// position deduplication.
+pub fn tessellate_solid_with_options(
+    model: &BRepModel,
+    solid: Handle<SolidData>,
+    opts: &TessellationOptions,
+) -> Mesh {
+    let mut mesh = Mesh::new();
+    let mut vmap: HashMap<(u64, u64, u64), u32> = HashMap::new();
+
+    let Some(solid_data) = model.solids.get(solid) else {
+        return mesh;
+    };
+    for &shell_h in &solid_data.shells {
+        let Some(shell_data) = model.shells.get(shell_h) else {
+            continue;
+        };
+        for &face_h in &shell_data.faces {
+            let face_data = model.faces.get(face_h);
+            let use_surface_tess = face_data.is_some_and(|fd| {
+                fd.surface.as_ref().is_some_and(|s| {
+                    let p00 = s.point_at(0.0, 0.0);
+                    let p10 = s.point_at(1.0, 0.0);
+                    let p01 = s.point_at(0.0, 1.0);
+                    let p11 = s.point_at(1.0, 1.0);
+                    let n1 = (p10 - p00).cross(p01 - p00);
+                    let d = (p11 - p00).dot(n1);
+                    d.abs() > 1e-6
+                })
+            });
+
+            if use_surface_tess {
+                let fd = face_data.unwrap();
+                let surface = fd.surface.as_ref().unwrap();
+                let boundary = collect_face_points(model, face_h);
+
+                let (u_lo, u_hi) = surface.domain_u();
+                let (v_lo, v_hi) = surface.domain_v();
+                let (u_domain, v_domain) =
+                    if u_lo.is_finite() && u_hi.is_finite() && v_lo.is_finite() && v_hi.is_finite() {
+                        ((u_lo, u_hi), (v_lo, v_hi))
+                    } else {
+                        let mut u_min = f64::INFINITY;
+                        let mut u_max = f64::NEG_INFINITY;
+                        let mut v_min = f64::INFINITY;
+                        let mut v_max = f64::NEG_INFINITY;
+                        for pt in &boundary {
+                            let (u, v, _) = surface.project_point(*pt);
+                            if u.is_finite() && v.is_finite() {
+                                u_min = u_min.min(u);
+                                u_max = u_max.max(u);
+                                v_min = v_min.min(v);
+                                v_max = v_max.max(v);
+                            }
+                        }
+                        if !u_min.is_finite() || !u_max.is_finite() || !v_min.is_finite() || !v_max.is_finite() {
+                            continue;
+                        }
+                        let u_margin = (u_max - u_min) * 0.01;
+                        let v_margin = (v_max - v_min) * 0.01;
+                        ((u_min - u_margin, u_max + u_margin), (v_min - v_margin, v_max + v_margin))
+                    };
+
+                let tess = adaptive_tessellate_surface(
+                    |u, v| surface.point_at(u, v),
+                    |u, v| surface.normal_at(u, v),
+                    u_domain,
+                    v_domain,
+                    opts,
+                );
+
+                // Apply trim filtering
+                let tess_mesh = if fd.outer_trim.is_none() && fd.inner_trims.is_empty() {
+                    tess
+                } else {
+                    let mut filtered = Vec::new();
+                    for idx in &tess.indices {
+                        let a = tess.vertices[idx[0] as usize];
+                        let b = tess.vertices[idx[1] as usize];
+                        let c = tess.vertices[idx[2] as usize];
+                        let centroid = Point3::new(
+                            (a.x + b.x + c.x) / 3.0,
+                            (a.y + b.y + c.y) / 3.0,
+                            (a.z + b.z + c.z) / 3.0,
+                        );
+                        let (u, v, _) = surface.project_point(centroid);
+                        if fd.outer_trim.as_ref().is_some_and(|t| !t.contains_point(u, v)) {
+                            continue;
+                        }
+                        if fd.inner_trims.iter().any(|hole| hole.contains_point(u, v)) {
+                            continue;
+                        }
+                        filtered.push(*idx);
+                    }
+                    cadkernel_geometry::tessellate::TessMesh {
+                        vertices: tess.vertices,
+                        indices: filtered,
+                    }
+                };
+
+                // Validate boundary containment
+                if !boundary.is_empty() && !tess_mesh.vertices.is_empty() {
+                    let (mut mn, mut mx) = (boundary[0], boundary[0]);
+                    for p in &boundary {
+                        mn = Point3::new(mn.x.min(p.x), mn.y.min(p.y), mn.z.min(p.z));
+                        mx = Point3::new(mx.x.max(p.x), mx.y.max(p.y), mx.z.max(p.z));
+                    }
+                    let diag = ((mx.x - mn.x).powi(2) + (mx.y - mn.y).powi(2) + (mx.z - mn.z).powi(2)).sqrt();
+                    let margin = diag * 0.5 + 1.0;
+                    let valid = tess_mesh.vertices.iter().all(|v| {
+                        v.x >= mn.x - margin && v.x <= mx.x + margin
+                            && v.y >= mn.y - margin && v.y <= mx.y + margin
+                            && v.z >= mn.z - margin && v.z <= mx.z + margin
+                    });
+                    if valid {
+                        let remap: Vec<u32> = tess_mesh
+                            .vertices
+                            .iter()
+                            .map(|p| {
+                                let key = (p.x.to_bits(), p.y.to_bits(), p.z.to_bits());
+                                *vmap.entry(key).or_insert_with(|| {
+                                    let i = mesh.vertices.len() as u32;
+                                    mesh.vertices.push(*p);
+                                    i
+                                })
+                            })
+                            .collect();
+                        for idx in &tess_mesh.indices {
+                            let a = tess_mesh.vertices[idx[0] as usize];
+                            let b = tess_mesh.vertices[idx[1] as usize];
+                            let c = tess_mesh.vertices[idx[2] as usize];
+                            let n = triangle_normal(a, b, c);
+                            mesh.normals.push(n);
+                            mesh.indices.push([
+                                remap[idx[0] as usize],
+                                remap[idx[1] as usize],
+                                remap[idx[2] as usize],
+                            ]);
+                        }
+                        continue;
+                    }
+                }
+            }
+
+            // Fallback: fan triangulation
+            let points = collect_face_points(model, face_h);
+            if points.len() < 3 {
+                continue;
+            }
+            let face_idx: Vec<u32> = points
+                .iter()
+                .map(|p| {
+                    let key = (p.x.to_bits(), p.y.to_bits(), p.z.to_bits());
+                    *vmap.entry(key).or_insert_with(|| {
+                        let i = mesh.vertices.len() as u32;
+                        mesh.vertices.push(*p);
+                        i
+                    })
+                })
+                .collect();
+            for i in 1..(face_idx.len() - 1) {
+                let n = triangle_normal(points[0], points[i], points[i + 1]);
+                mesh.normals.push(n);
+                mesh.indices.push([face_idx[0], face_idx[i], face_idx[i + 1]]);
+            }
+        }
+    }
+
     mesh
 }
 
@@ -695,6 +1012,61 @@ mod tests {
         // Both should have 2 triangles (one per face).
         assert_eq!(serial.triangle_count(), 2);
         assert_eq!(parallel.triangle_count(), 2);
+    }
+
+    #[test]
+    fn test_tessellate_solid_lod_coarse_vs_fine() {
+        use cadkernel_geometry::tessellate::LevelOfDetail;
+
+        let mut model = BRepModel::new();
+        let v0 = model.add_vertex(Point3::new(0.0, 0.0, 0.0));
+        let v1 = model.add_vertex(Point3::new(1.0, 0.0, 0.0));
+        let v2 = model.add_vertex(Point3::new(1.0, 1.0, 0.0));
+        let v3 = model.add_vertex(Point3::new(0.0, 1.0, 0.0));
+
+        let (_, he01, _) = model.add_edge(v0, v1);
+        let (_, he12, _) = model.add_edge(v1, v2);
+        let (_, he23, _) = model.add_edge(v2, v3);
+        let (_, he30, _) = model.add_edge(v3, v0);
+
+        let loop_h = model.make_loop(&[he01, he12, he23, he30]).unwrap();
+        let face = model.make_face(loop_h);
+        let shell = model.make_shell(&[face]);
+        let solid = model.make_solid(&[shell]);
+
+        let coarse = tessellate_solid_lod(&model, solid, LevelOfDetail::Coarse);
+        let fine = tessellate_solid_lod(&model, solid, LevelOfDetail::Fine);
+
+        // Both should produce non-empty meshes (fan tessellation for non-surface faces)
+        assert!(coarse.triangle_count() > 0);
+        assert!(fine.triangle_count() > 0);
+    }
+
+    #[test]
+    fn test_tessellate_solid_with_options_custom() {
+        let opts = TessellationOptions {
+            chord_tolerance: 0.05,
+            angle_tolerance: 20.0_f64.to_radians(),
+            min_segments: 3,
+            max_depth: 6,
+        };
+
+        let mut model = BRepModel::new();
+        let v0 = model.add_vertex(Point3::new(0.0, 0.0, 0.0));
+        let v1 = model.add_vertex(Point3::new(1.0, 0.0, 0.0));
+        let v2 = model.add_vertex(Point3::new(0.5, 1.0, 0.0));
+
+        let (_, he01, _) = model.add_edge(v0, v1);
+        let (_, he12, _) = model.add_edge(v1, v2);
+        let (_, he20, _) = model.add_edge(v2, v0);
+
+        let loop_h = model.make_loop(&[he01, he12, he20]).unwrap();
+        let face = model.make_face(loop_h);
+        let shell = model.make_shell(&[face]);
+        let solid = model.make_solid(&[shell]);
+
+        let mesh = tessellate_solid_with_options(&model, solid, &opts);
+        assert!(mesh.triangle_count() > 0);
     }
 
     #[test]

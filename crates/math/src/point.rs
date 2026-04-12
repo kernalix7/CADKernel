@@ -7,17 +7,40 @@ use crate::tolerance::EPSILON;
 use crate::vector::{Vec2, Vec3};
 
 /// A 2D point in Euclidean space.
+///
+/// Unlike [`Vec2`], a `Point2` represents a position, not a direction.
+/// Subtracting two points yields a [`Vec2`]; adding a `Vec2` to a point
+/// yields a new point.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Point2 {
+    /// X coordinate.
     pub x: f64,
+    /// Y coordinate.
     pub y: f64,
 }
 
 /// A 3D point in Euclidean space.
+///
+/// The primary position type in CADKernel. Subtracting two points yields a
+/// [`Vec3`]; adding a `Vec3` to a point yields a new point. Interop with
+/// `nalgebra::Point3` is provided via `to_nalgebra` / `from_nalgebra`.
+///
+/// # Examples
+///
+/// ```
+/// use cadkernel_math::Point3;
+///
+/// let a = Point3::new(1.0, 2.0, 3.0);
+/// let b = Point3::new(4.0, 2.0, 3.0);
+/// assert!((a.distance_to(b) - 3.0).abs() < 1e-8);
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Point3 {
+    /// X coordinate.
     pub x: f64,
+    /// Y coordinate.
     pub y: f64,
+    /// Z coordinate.
     pub z: f64,
 }
 

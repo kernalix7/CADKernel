@@ -2,7 +2,10 @@ use cadkernel_math::{Point3, Vec3};
 
 use super::Curve;
 
-/// A full ellipse in 3D space.
+/// A full ellipse in 3D space, parameterized over `[0, 2*pi)`.
+///
+/// Defined by center, plane normal, major-axis direction, and the two
+/// semi-axis lengths. The minor axis is derived as `normal x major_axis`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Ellipse {
     pub center: Point3,

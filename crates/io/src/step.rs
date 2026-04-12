@@ -11,20 +11,34 @@ use std::collections::HashMap;
 // Token types
 // ---------------------------------------------------------------------------
 
+/// A lexical token from the ISO 10303-21 STEP file format.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
+    /// Entity reference (`#123`).
     EntityRef(u64),
+    /// Keyword or entity type name.
     Keyword(String),
+    /// Quoted string literal.
     String(String),
+    /// Integer literal.
     Integer(i64),
+    /// Real (floating-point) literal.
     Real(f64),
+    /// Enumeration value (`.ENUM_NAME.`).
     Enum(String),
+    /// Unset/derived marker (`*`).
     Star,
+    /// Unset marker (`$`).
     Dollar,
+    /// Left parenthesis.
     LParen,
+    /// Right parenthesis.
     RParen,
+    /// Comma separator.
     Comma,
+    /// Statement terminator (`;`).
     Semi,
+    /// Assignment operator (`=`).
     Eq,
 }
 
@@ -32,6 +46,10 @@ pub enum Token {
 // Tokenizer
 // ---------------------------------------------------------------------------
 
+/// Tokenizes a STEP file string into a list of [`Token`]s.
+///
+/// Handles entity references (`#N`), quoted strings, enumerations (`.NAME.`),
+/// integers, reals (with optional exponent), and block comments (`/* ... */`).
 pub fn tokenize(input: &str) -> KernelResult<Vec<Token>> {
     let mut tokens = Vec::new();
     let chars: Vec<char> = input.chars().collect();
@@ -182,17 +200,26 @@ pub struct ParsedStepEntity {
     pub params: Vec<StepParam>,
 }
 
-/// A STEP parameter value.
+/// A STEP parameter value within an entity definition.
 #[derive(Debug, Clone)]
 pub enum StepParam {
+    /// Reference to another entity (`#N`).
     EntityRef(u64),
+    /// Integer literal.
     Integer(i64),
+    /// Real (floating-point) literal.
     Real(f64),
+    /// Quoted string literal.
     String(String),
+    /// Enumeration value (`.NAME.`).
     Enum(String),
+    /// Parenthesized list of parameters.
     List(Vec<StepParam>),
+    /// Unset value (`$`).
     Unset,
+    /// Derived value (`*`).
     Derived,
+    /// Sub-entity (compound entity type with nested parameters).
     Sub(String, Vec<StepParam>),
 }
 
@@ -668,6 +695,7 @@ pub struct StepFile {
 }
 
 impl StepFile {
+    /// Retrieves a `CartesianPoint` by entity ID, returning `ORIGIN` if not found.
     pub fn get_point(&self, id: u64) -> Point3 {
         match self.entities.get(&id) {
             Some(StepEntity::CartesianPoint(p)) => *p,
@@ -675,6 +703,7 @@ impl StepFile {
         }
     }
 
+    /// Retrieves a `Direction` by entity ID, returning `Vec3::Z` if not found.
     pub fn get_direction(&self, id: u64) -> Vec3 {
         match self.entities.get(&id) {
             Some(StepEntity::Direction(d)) => Vec3::new(d[0], d[1], d[2]),
@@ -812,7 +841,10 @@ pub fn import_step(content: &str) -> KernelResult<BRepModel> {
 // STEP file writer
 // ---------------------------------------------------------------------------
 
-/// STEP file writer.
+/// STEP file writer that accumulates entities and serializes to ISO 10303-21.
+///
+/// Entities are assigned sequential IDs starting from `#1`. Call [`Self::write`]
+/// to produce the final STEP string, or [`Self::export`] to write directly to disk.
 #[derive(Debug)]
 pub struct StepWriter {
     entities: Vec<(u64, StepEntity)>,
@@ -820,6 +852,7 @@ pub struct StepWriter {
 }
 
 impl StepWriter {
+    /// Creates a new empty STEP writer.
     pub fn new() -> Self {
         Self {
             entities: Vec::new(),
@@ -827,6 +860,7 @@ impl StepWriter {
         }
     }
 
+    /// Adds an entity and returns its assigned ID (`#N`).
     pub fn add_entity(&mut self, entity: StepEntity) -> u64 {
         let id = self.next_id;
         self.next_id += 1;
@@ -864,6 +898,7 @@ impl StepWriter {
         Ok(out)
     }
 
+    /// Writes the STEP data to a file at the given path.
     pub fn export(&self, path: &str) -> KernelResult<()> {
         let content = self.write()?;
         std::fs::write(path, content)

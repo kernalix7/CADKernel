@@ -3,6 +3,7 @@
 //! Provides parallel offset of open polylines ([`offset_polyline_2d`]) and
 //! closed polygons ([`offset_polygon_2d`]).
 
+use cadkernel_core::{KernelError, KernelResult};
 use cadkernel_math::Point2;
 
 /// Offsets a closed 2D polygon by `distance`.
@@ -28,6 +29,60 @@ pub fn offset_polygon_2d(polygon: &[Point2], distance: f64) -> Vec<Point2> {
     }
 
     result
+}
+
+/// Offsets a closed 2D polygon with input validation and self-intersection removal.
+///
+/// Returns `Err` if the polygon has fewer than 3 vertices. For concave
+/// polygons, applies the same miter-join offset as [`offset_polygon_2d`] and
+/// then removes any self-intersecting vertices that cross over each other
+/// (detected by winding sign reversal).
+pub fn offset_polygon_2d_checked(polygon: &[Point2], distance: f64) -> KernelResult<Vec<Point2>> {
+    if polygon.len() < 3 {
+        return Err(KernelError::InvalidArgument(
+            "offset_polygon_2d requires at least 3 vertices".into(),
+        ));
+    }
+    let mut result = offset_polygon_2d(polygon, distance);
+
+    // Remove self-intersecting segments caused by concave corners.
+    // A vertex is invalid if the local triangle winding reverses compared to its neighbours.
+    if result.len() > 3 && distance.abs() > 1e-14 {
+        let orig_sign = signed_area(polygon);
+        let new_sign = signed_area(&result);
+        // If overall winding didn't flip, check per-vertex local winding
+        if orig_sign * new_sign > 0.0 {
+            let mut cleaned = Vec::with_capacity(result.len());
+            let n = result.len();
+            for i in 0..n {
+                let prev = result[(i + n - 1) % n];
+                let curr = result[i];
+                let next = result[(i + 1) % n];
+                let cross = (curr.x - prev.x) * (next.y - prev.y)
+                    - (curr.y - prev.y) * (next.x - prev.x);
+                // Keep vertex only if it preserves the original winding direction
+                if cross * orig_sign >= -1e-14 {
+                    cleaned.push(curr);
+                }
+            }
+            if cleaned.len() >= 3 {
+                result = cleaned;
+            }
+        }
+    }
+
+    Ok(result)
+}
+
+/// Computes twice the signed area of a polygon (positive for CCW).
+fn signed_area(polygon: &[Point2]) -> f64 {
+    let n = polygon.len();
+    let mut area = 0.0;
+    for i in 0..n {
+        let j = (i + 1) % n;
+        area += polygon[i].x * polygon[j].y - polygon[j].x * polygon[i].y;
+    }
+    area
 }
 
 /// Offsets an open 2D polyline by `distance`.
@@ -189,5 +244,34 @@ mod tests {
         for (a, b) in result.iter().zip(square.iter()) {
             assert!(approx_eq_2d(*a, *b));
         }
+    }
+
+    #[test]
+    fn test_offset_polygon_2d_checked_triangle() {
+        let tri = vec![
+            Point2::new(0.0, 0.0),
+            Point2::new(4.0, 0.0),
+            Point2::new(2.0, 3.0),
+        ];
+        let result = offset_polygon_2d_checked(&tri, 0.5).unwrap();
+        assert!(result.len() >= 3);
+    }
+
+    #[test]
+    fn test_offset_polygon_2d_checked_too_few() {
+        let pts = vec![Point2::new(0.0, 0.0), Point2::new(1.0, 0.0)];
+        assert!(offset_polygon_2d_checked(&pts, 1.0).is_err());
+    }
+
+    #[test]
+    fn test_offset_polygon_2d_checked_zero_distance() {
+        let square = vec![
+            Point2::new(0.0, 0.0),
+            Point2::new(1.0, 0.0),
+            Point2::new(1.0, 1.0),
+            Point2::new(0.0, 1.0),
+        ];
+        let result = offset_polygon_2d_checked(&square, 0.0).unwrap();
+        assert_eq!(result.len(), 4);
     }
 }

@@ -5,19 +5,37 @@ use crate::constraint::{ConstraintEval, ConstraintWithCtx};
 use crate::entity::PointId;
 
 /// Outcome of a solver run.
+///
+/// Check `converged` to determine whether the constraints were satisfied
+/// within tolerance. `remaining_dof` indicates how many degrees of freedom
+/// remain after solving (0 = fully constrained).
 #[derive(Debug, Clone)]
 pub struct SolverResult {
+    /// `true` if the residual dropped below the tolerance.
     pub converged: bool,
+    /// Number of Newton-Raphson iterations performed.
     pub iterations: usize,
+    /// Final L2 norm of the residual vector.
     pub residual: f64,
-    /// Remaining degrees of freedom (n_vars - rank(J)). None if not computed.
+    /// Remaining degrees of freedom (`n_vars - rank(J)`). `None` if not computed.
     pub remaining_dof: Option<usize>,
-    /// Whether the system is over-constrained (more independent equations than variables).
+    /// `true` if the system has more independent equations than variables.
     pub over_constrained: bool,
 }
 
-/// Solve the constraint system attached to `sketch` using Newton-Raphson
+/// Solves the constraint system attached to `sketch` using Newton-Raphson
 /// with Armijo backtracking line search.
+///
+/// # Parameters
+///
+/// * `sketch` - The sketch whose point positions will be updated in place.
+/// * `max_iter` - Maximum number of Newton iterations.
+/// * `tol` - Convergence tolerance on the L2 residual norm.
+///
+/// # Returns
+///
+/// A [`SolverResult`] indicating convergence status, iteration count, and
+/// remaining degrees of freedom.
 pub fn solve(sketch: &mut Sketch, max_iter: usize, tol: f64) -> SolverResult {
     let n_vars = sketch.points.len() * 2;
     if n_vars == 0 {
@@ -182,6 +200,33 @@ fn jacobian_rank(jac: &DMatrix<f64>, tol: f64) -> usize {
         }
     }
     rank
+}
+
+/// Compute per-constraint residual norms (how "violated" each constraint is).
+/// Returns a `Vec<f64>` parallel to `sketch.constraints`, each entry is the L2 norm
+/// of that constraint's residual equations.
+pub fn constraint_residuals(sketch: &Sketch) -> Vec<f64> {
+    let n_vars = sketch.points.len() * 2;
+    if n_vars == 0 {
+        return vec![0.0; sketch.constraints.len()];
+    }
+    let mut vars = DVector::zeros(n_vars);
+    sketch_to_vars(sketch, &mut vars);
+    let lines: Vec<(PointId, PointId)> = sketch.lines.iter().map(|l| (l.start, l.end)).collect();
+
+    let mut result = Vec::with_capacity(sketch.constraints.len());
+    for c in &sketch.constraints {
+        let ctx = ConstraintWithCtx {
+            constraint: c,
+            lines: &lines,
+        };
+        let neq = ctx.num_equations();
+        let mut local_res = vec![0.0; neq];
+        ctx.residual(vars.as_slice(), &mut local_res);
+        let norm = local_res.iter().map(|r| r * r).sum::<f64>().sqrt();
+        result.push(norm);
+    }
+    result
 }
 
 /// Drag a point while maintaining all existing constraints.

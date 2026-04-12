@@ -4,14 +4,18 @@ use cadkernel_core::{KernelError, KernelResult};
 use cadkernel_math::{Point3, Vec3};
 use cadkernel_topology::{BRepModel, FaceData, Handle, SolidData, VertexData};
 
-/// Result of a closest-point query.
+/// Result of a closest-point query on a solid surface.
 #[derive(Debug, Clone)]
 pub struct ClosestPointResult {
+    /// The closest point on the solid's surface.
     pub point: Point3,
+    /// Euclidean distance from the query point to `point`.
     pub distance: f64,
 }
 
 /// Containment classification of a point with respect to a solid.
+///
+/// Determined by ray-casting and counting crossings with the solid boundary.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Containment {
     Inside,
@@ -267,5 +271,47 @@ mod tests {
         assert!((cp.z).abs() < 1e-10);
         assert!((cp.x - 0.25).abs() < 1e-10);
         assert!((cp.y - 0.25).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_point_at_origin_inside() {
+        let mut model = BRepModel::new();
+        let b = crate::make_box(&mut model, Point3::new(-1.0, -1.0, -1.0), 2.0, 2.0, 2.0).unwrap();
+        let c = point_in_solid(&model, b.solid, Point3::ORIGIN).unwrap();
+        assert_eq!(c, Containment::Inside);
+    }
+
+    #[test]
+    fn test_closest_point_below_box() {
+        let mut model = BRepModel::new();
+        let b = crate::make_box(&mut model, Point3::ORIGIN, 2.0, 2.0, 2.0).unwrap();
+        let result = closest_point_on_solid(&model, b.solid, Point3::new(1.0, 1.0, -3.0)).unwrap();
+        assert!((result.point.z).abs() < 1e-6);
+        assert!(result.distance > 0.0);
+    }
+
+    #[test]
+    fn test_closest_point_on_side() {
+        let mut model = BRepModel::new();
+        let b = crate::make_box(&mut model, Point3::ORIGIN, 4.0, 4.0, 4.0).unwrap();
+        let result = closest_point_on_solid(&model, b.solid, Point3::new(8.0, 2.0, 2.0)).unwrap();
+        assert!((result.point.x - 4.0).abs() < 1e-6);
+        assert!((result.distance - 4.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_point_far_outside() {
+        let mut model = BRepModel::new();
+        let b = crate::make_box(&mut model, Point3::ORIGIN, 1.0, 1.0, 1.0).unwrap();
+        let c = point_in_solid(&model, b.solid, Point3::new(100.0, 100.0, 100.0)).unwrap();
+        assert_eq!(c, Containment::Outside);
+    }
+
+    #[test]
+    fn test_containment_negative_coords() {
+        let mut model = BRepModel::new();
+        let b = crate::make_box(&mut model, Point3::new(-2.0, -2.0, -2.0), 4.0, 4.0, 4.0).unwrap();
+        let c = point_in_solid(&model, b.solid, Point3::new(-1.0, -1.0, -1.0)).unwrap();
+        assert_eq!(c, Containment::Inside);
     }
 }

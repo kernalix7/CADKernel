@@ -1,3 +1,9 @@
+//! PLY (Polygon File Format / Stanford Triangle Format) import and export.
+//!
+//! Supports ASCII PLY with vertex positions, optional per-vertex normals,
+//! and triangular face elements. Vertex colors are tolerated on import
+//! but not exported.
+
 use std::fmt::Write;
 
 use cadkernel_core::{KernelError, KernelResult};
@@ -5,7 +11,11 @@ use cadkernel_math::{Point3, Vec3};
 
 use crate::tessellate::Mesh;
 
-/// Export mesh to PLY format (ASCII).
+/// Exports a mesh to PLY ASCII format string.
+///
+/// Writes vertex positions with per-vertex normals (if available, per-face
+/// normals are used for vertices that lack individual normals) and
+/// triangular face elements with `vertex_indices` property lists.
 pub fn export_ply(mesh: &Mesh) -> KernelResult<String> {
     let mut out = String::new();
     out.push_str("ply\nformat ascii 1.0\n");
@@ -30,7 +40,11 @@ pub fn export_ply(mesh: &Mesh) -> KernelResult<String> {
     Ok(out)
 }
 
-/// Import PLY file (ASCII format).
+/// Imports a PLY ASCII string into a [`Mesh`].
+///
+/// Parses the PLY header for vertex/face counts and property declarations.
+/// If per-vertex normals (`nx`, `ny`, `nz`) are declared, they are read;
+/// otherwise per-face normals are computed from vertex positions.
 pub fn import_ply(content: &str) -> KernelResult<Mesh> {
     let mut lines = content.lines();
     let mut vertex_count: usize = 0;
@@ -154,7 +168,7 @@ pub fn import_ply(content: &str) -> KernelResult<Mesh> {
     })
 }
 
-/// Write PLY string to file.
+/// Writes a PLY format string to a file at the given path.
 pub fn write_ply(path: &str, content: &str) -> KernelResult<()> {
     std::fs::write(path, content).map_err(|e| KernelError::IoError(e.to_string()))
 }
@@ -222,6 +236,158 @@ mod tests {
     #[test]
     fn test_import_ply_error_truncated() {
         let result = import_ply("ply\nformat ascii 1.0\n");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_ply_header_contains_format() {
+        let mesh = make_triangle_mesh();
+        let ply = export_ply(&mesh).unwrap();
+        assert!(ply.contains("format ascii 1.0"));
+    }
+
+    #[test]
+    fn test_ply_normals_in_export() {
+        let mesh = make_triangle_mesh();
+        let ply = export_ply(&mesh).unwrap();
+        assert!(ply.contains("property float nx"));
+        assert!(ply.contains("property float nz"));
+    }
+
+    #[test]
+    fn test_ply_roundtrip_normals() {
+        let mesh = make_triangle_mesh();
+        let ply = export_ply(&mesh).unwrap();
+        let imported = import_ply(&ply).unwrap();
+        assert!(!imported.normals.is_empty());
+    }
+
+    #[test]
+    fn test_ply_vertex_property_order() {
+        let mesh = make_triangle_mesh();
+        let ply = export_ply(&mesh).unwrap();
+        let x_pos = ply.find("property float x").unwrap();
+        let y_pos = ply.find("property float y").unwrap();
+        let z_pos = ply.find("property float z").unwrap();
+        assert!(x_pos < y_pos && y_pos < z_pos);
+    }
+
+    #[test]
+    fn test_ply_face_list_property() {
+        let mesh = make_triangle_mesh();
+        let ply = export_ply(&mesh).unwrap();
+        assert!(ply.contains("property list uchar int vertex_indices"));
+    }
+
+    #[test]
+    fn test_ply_roundtrip_large_coordinates() {
+        let mesh = Mesh {
+            vertices: vec![
+                Point3::new(100.0, 200.0, 300.0),
+                Point3::new(400.0, 500.0, 600.0),
+                Point3::new(700.0, 800.0, 900.0),
+            ],
+            normals: vec![Vec3::Z, Vec3::Z, Vec3::Z],
+            indices: vec![[0, 1, 2]],
+        };
+        let ply = export_ply(&mesh).unwrap();
+        let imported = import_ply(&ply).unwrap();
+        assert!((imported.vertices[0].x - 100.0).abs() < 1e-6);
+        assert!((imported.vertices[2].z - 900.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn test_ply_export_face_indices() {
+        let mesh = make_triangle_mesh();
+        let ply = export_ply(&mesh).unwrap();
+        assert!(ply.contains("3 0 1 2"));
+    }
+
+    #[test]
+    fn test_ply_import_no_normals_computes_face_normals() {
+        let ply = "ply\nformat ascii 1.0\n\
+            element vertex 3\nproperty float x\nproperty float y\nproperty float z\n\
+            element face 1\nproperty list uchar int vertex_indices\n\
+            end_header\n\
+            0.0 0.0 0.0\n1.0 0.0 0.0\n0.0 1.0 0.0\n\
+            3 0 1 2\n";
+        let imported = import_ply(ply).unwrap();
+        assert_eq!(imported.normals.len(), 1);
+        assert!(imported.normals[0].z.abs() > 0.5);
+    }
+
+    #[test]
+    fn test_ply_roundtrip_negative_coordinates() {
+        let mesh = Mesh {
+            vertices: vec![
+                Point3::new(-1.0, -2.0, -3.0),
+                Point3::new(0.0, 0.0, 0.0),
+                Point3::new(1.0, 2.0, 3.0),
+            ],
+            normals: vec![Vec3::Z, Vec3::Z, Vec3::Z],
+            indices: vec![[0, 1, 2]],
+        };
+        let ply = export_ply(&mesh).unwrap();
+        let imported = import_ply(&ply).unwrap();
+        assert!((imported.vertices[0].x - (-1.0)).abs() < 1e-6);
+    }
+
+    // -----------------------------------------------------------------------
+    // Edge case: PLY with vertex colors
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_ply_import_with_vertex_colors() {
+        let ply = "ply\nformat ascii 1.0\n\
+            element vertex 3\nproperty float x\nproperty float y\nproperty float z\n\
+            property uchar red\nproperty uchar green\nproperty uchar blue\n\
+            element face 1\nproperty list uchar int vertex_indices\n\
+            end_header\n\
+            0.0 0.0 0.0 255 0 0\n\
+            1.0 0.0 0.0 0 255 0\n\
+            0.0 1.0 0.0 0 0 255\n\
+            3 0 1 2\n";
+        let imported = import_ply(ply).unwrap();
+        assert_eq!(imported.vertices.len(), 3);
+        assert_eq!(imported.triangle_count(), 1);
+    }
+
+    // -----------------------------------------------------------------------
+    // Edge case: empty mesh
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_ply_empty_mesh() {
+        let mesh = Mesh::new();
+        let ply = export_ply(&mesh).unwrap();
+        assert!(ply.contains("element vertex 0"));
+        assert!(ply.contains("element face 0"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Edge case: export-import-export consistency
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_ply_export_import_export_consistency() {
+        let mesh = make_triangle_mesh();
+        let ply1 = export_ply(&mesh).unwrap();
+        let reimported = import_ply(&ply1).unwrap();
+        let ply2 = export_ply(&reimported).unwrap();
+
+        let v1_count = ply1.lines().filter(|l| l.contains("element vertex")).count();
+        let v2_count = ply2.lines().filter(|l| l.contains("element vertex")).count();
+        assert_eq!(v1_count, v2_count);
+    }
+
+    // -----------------------------------------------------------------------
+    // Edge case: malformed header
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_ply_malformed_missing_end_header() {
+        let ply = "ply\nformat ascii 1.0\nelement vertex 3\n";
+        let result = import_ply(ply);
         assert!(result.is_err());
     }
 }

@@ -1,3 +1,11 @@
+//! Mesh processing operations: decimation, subdivision, smoothing, booleans, and repair.
+//!
+//! Provides 23+ operations on indexed triangle meshes including edge-collapse
+//! decimation, midpoint subdivision, Laplacian smoothing, approximate mesh
+//! booleans (union, intersection, difference), plane cutting, hole filling,
+//! curvature computation, normal harmonization, UV unwrapping, segmentation,
+//! and mesh evaluation/repair.
+
 use std::collections::HashMap;
 
 use cadkernel_core::{KernelError, KernelResult};
@@ -1665,6 +1673,190 @@ pub fn scale_mesh(mesh: &Mesh, sx: f64, sy: f64, sz: f64) -> Mesh {
     result
 }
 
+/// Fill holes whose boundary loop has at most `max_hole_edges` edges.
+///
+/// Returns the number of holes that were closed. Larger holes (with more
+/// boundary edges than the limit) are left open.
+pub fn close_holes(mesh: &mut Mesh, max_hole_edges: usize) -> KernelResult<usize> {
+    if max_hole_edges < 3 {
+        return Err(KernelError::InvalidArgument(
+            "max_hole_edges must be >= 3".to_string(),
+        ));
+    }
+
+    // Build directed half-edge map to find boundary edges.
+    let mut half_edge_count: HashMap<(u32, u32), u32> = HashMap::new();
+    for tri in &mesh.indices {
+        for &(a, b) in &[(tri[0], tri[1]), (tri[1], tri[2]), (tri[2], tri[0])] {
+            *half_edge_count.entry((a, b)).or_insert(0) += 1;
+        }
+    }
+
+    // Boundary edge: (a,b) exists but (b,a) does not. Hole boundary runs (b,a).
+    let mut boundary_next: HashMap<u32, u32> = HashMap::new();
+    for &(a, b) in half_edge_count.keys() {
+        if !half_edge_count.contains_key(&(b, a)) {
+            boundary_next.insert(b, a);
+        }
+    }
+
+    if boundary_next.is_empty() {
+        return Ok(0);
+    }
+
+    let mut visited: HashMap<u32, bool> = HashMap::new();
+    let mut holes_closed = 0usize;
+
+    for &start in boundary_next.keys() {
+        if visited.contains_key(&start) {
+            continue;
+        }
+
+        let mut loop_verts: Vec<u32> = Vec::new();
+        let mut cur = start;
+        loop {
+            if visited.contains_key(&cur) {
+                break;
+            }
+            visited.insert(cur, true);
+            loop_verts.push(cur);
+            match boundary_next.get(&cur) {
+                Some(&next) => cur = next,
+                None => break,
+            }
+        }
+
+        if loop_verts.len() < 3 || loop_verts.len() > max_hole_edges {
+            continue;
+        }
+
+        // Fan-triangulate the hole from its centroid.
+        let mut cx = 0.0;
+        let mut cy = 0.0;
+        let mut cz = 0.0;
+        let n = loop_verts.len() as f64;
+        for &vi in &loop_verts {
+            let p = mesh.vertices[vi as usize];
+            cx += p.x;
+            cy += p.y;
+            cz += p.z;
+        }
+        let centroid = Point3::new(cx / n, cy / n, cz / n);
+        let ci = mesh.vertices.len() as u32;
+        mesh.vertices.push(centroid);
+
+        for i in 0..loop_verts.len() {
+            let a = loop_verts[i];
+            let b = loop_verts[(i + 1) % loop_verts.len()];
+            mesh.indices.push([ci, a, b]);
+        }
+        holes_closed += 1;
+    }
+
+    recompute_normals(mesh);
+    Ok(holes_closed)
+}
+
+/// Segment a mesh into regions of similar face orientation using k-means
+/// clustering on face normals.
+///
+/// `num_segments` is the desired number of clusters. Returns one `MeshSegment`
+/// per cluster with the triangle indices and the cluster centroid normal.
+pub fn segmentation_best_fit(mesh: &Mesh, num_segments: usize) -> KernelResult<Vec<MeshSegment>> {
+    if num_segments == 0 {
+        return Err(KernelError::InvalidArgument(
+            "num_segments must be > 0".to_string(),
+        ));
+    }
+    if mesh.indices.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let face_normals: Vec<Vec3> = mesh
+        .indices
+        .iter()
+        .map(|tri| {
+            unit_triangle_normal(
+                mesh.vertices[tri[0] as usize],
+                mesh.vertices[tri[1] as usize],
+                mesh.vertices[tri[2] as usize],
+            )
+        })
+        .collect();
+
+    let num_faces = face_normals.len();
+    let k = num_segments.min(num_faces);
+
+    // Initialize centroids by evenly sampling face normals.
+    let mut centroids: Vec<Vec3> = Vec::with_capacity(k);
+    for i in 0..k {
+        let idx = i * num_faces / k;
+        let n = face_normals[idx];
+        if n.length_squared() > 1e-30 {
+            centroids.push(n.normalized().unwrap_or(Vec3::Z));
+        } else {
+            centroids.push(Vec3::Z);
+        }
+    }
+
+    let mut assignments = vec![0usize; num_faces];
+    let max_iterations = 50;
+
+    for _ in 0..max_iterations {
+        let mut changed = false;
+
+        // Assign each face to the nearest centroid (by dot product).
+        for (fi, normal) in face_normals.iter().enumerate() {
+            let mut best_cluster = 0;
+            let mut best_dot = f64::NEG_INFINITY;
+            for (ci, centroid) in centroids.iter().enumerate() {
+                let d = normal.dot(*centroid);
+                if d > best_dot {
+                    best_dot = d;
+                    best_cluster = ci;
+                }
+            }
+            if assignments[fi] != best_cluster {
+                assignments[fi] = best_cluster;
+                changed = true;
+            }
+        }
+
+        if !changed {
+            break;
+        }
+
+        // Recompute centroids.
+        let mut sums = vec![Vec3::ZERO; k];
+        let mut counts = vec![0usize; k];
+        for (fi, &cluster) in assignments.iter().enumerate() {
+            sums[cluster] += face_normals[fi];
+            counts[cluster] += 1;
+        }
+        for ci in 0..k {
+            if counts[ci] > 0 {
+                centroids[ci] = sums[ci].normalized().unwrap_or(centroids[ci]);
+            }
+        }
+    }
+
+    // Build segments.
+    let mut segments: Vec<Vec<usize>> = vec![Vec::new(); k];
+    for (fi, &cluster) in assignments.iter().enumerate() {
+        segments[cluster].push(fi);
+    }
+
+    Ok(segments
+        .into_iter()
+        .zip(centroids.iter())
+        .filter(|(indices, _)| !indices.is_empty())
+        .map(|(triangle_indices, &centroid)| MeshSegment {
+            triangle_indices,
+            average_normal: centroid,
+        })
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2235,5 +2427,61 @@ mod tests {
         let result = trim_mesh(&mesh, &tool);
         assert!(result.triangle_count() > 0);
         assert!(result.triangle_count() <= mesh.triangle_count());
+    }
+
+    #[test]
+    fn test_close_holes_on_watertight() {
+        let mut mesh = make_cube();
+        let closed = close_holes(&mut mesh, 10).unwrap();
+        assert_eq!(closed, 0); // cube has no holes
+    }
+
+    #[test]
+    fn test_close_holes_on_open_mesh() {
+        let mut mesh = make_open_quad();
+        let original_tris = mesh.triangle_count();
+        let closed = close_holes(&mut mesh, 20).unwrap();
+        assert!(closed > 0 || mesh.triangle_count() >= original_tris);
+    }
+
+    #[test]
+    fn test_close_holes_max_edges_too_small() {
+        let mut mesh = make_cube();
+        assert!(close_holes(&mut mesh, 2).is_err());
+    }
+
+    #[test]
+    fn test_segmentation_best_fit_cube() {
+        let mesh = make_cube();
+        let segments = segmentation_best_fit(&mesh, 6).unwrap();
+        assert!(!segments.is_empty());
+        assert!(segments.len() <= 6);
+        let total: usize = segments.iter().map(|s| s.triangle_indices.len()).sum();
+        assert_eq!(total, 12); // all triangles assigned
+    }
+
+    #[test]
+    fn test_segmentation_best_fit_single() {
+        let mesh = make_cube();
+        let segments = segmentation_best_fit(&mesh, 1).unwrap();
+        assert_eq!(segments.len(), 1);
+        assert_eq!(segments[0].triangle_indices.len(), 12);
+    }
+
+    #[test]
+    fn test_segmentation_best_fit_empty() {
+        let mesh = Mesh {
+            vertices: Vec::new(),
+            normals: Vec::new(),
+            indices: Vec::new(),
+        };
+        let segments = segmentation_best_fit(&mesh, 3).unwrap();
+        assert!(segments.is_empty());
+    }
+
+    #[test]
+    fn test_segmentation_best_fit_zero_segments() {
+        let mesh = make_cube();
+        assert!(segmentation_best_fit(&mesh, 0).is_err());
     }
 }

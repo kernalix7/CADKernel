@@ -1,10 +1,16 @@
 use nalgebra::{Matrix3 as NaMat3, Matrix4 as NaMat4};
 
 /// A 3x3 matrix (rotations, 2D transforms).
+///
+/// Wraps `nalgebra::Matrix3<f64>`. Provides determinant, inverse, and matrix
+/// multiplication.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Mat3(pub NaMat3<f64>);
 
-/// A 4x4 matrix (full 3D affine/projective transforms).
+/// A 4x4 matrix for full 3D affine and projective transforms.
+///
+/// Wraps `nalgebra::Matrix4<f64>`. Supports point transformation (with
+/// perspective division), matrix multiplication, determinant, and inverse.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Mat4(pub NaMat4<f64>);
 

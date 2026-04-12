@@ -1,6 +1,13 @@
-use cadkernel_core::{KernelError, KernelResult};
+//! PDF export for technical drawings.
+//!
+//! Converts SVG drawing content to a minimal PDF 1.4 document with
+//! line and text rendering. Dimensions are converted from millimeters
+//! to PDF points (1 mm = 2.83465 pt).
 
-/// Export a TechDraw SVG string to a minimal PDF file.
+use cadkernel_core::{KernelError, KernelResult};
+use cadkernel_math::Point2;
+
+/// Exports a TechDraw SVG string to a minimal PDF file.
 ///
 /// Generates a PDF/A-compatible document that embeds the SVG content
 /// as a rendered page. The SVG is stored as a stream in the content object.
@@ -131,6 +138,336 @@ fn extract_svg_attr(line: &str, name: &str) -> Option<f64> {
     line[start..end].parse().ok()
 }
 
+// ---------------------------------------------------------------------------
+// PDF Import
+// ---------------------------------------------------------------------------
+
+/// Extracted text from a PDF page.
+#[derive(Debug, Clone)]
+pub struct PdfText {
+    pub position: Point2,
+    pub text: String,
+    pub font_size: f64,
+}
+
+/// A single vector path command.
+#[derive(Debug, Clone)]
+pub enum PdfPathCmd {
+    MoveTo(Point2),
+    LineTo(Point2),
+    CurveTo(Point2, Point2, Point2),
+    ClosePath,
+}
+
+/// Extracted vector content from a PDF page.
+#[derive(Debug, Clone)]
+pub struct PdfVector {
+    pub commands: Vec<PdfPathCmd>,
+}
+
+/// A single page from an imported PDF.
+#[derive(Debug, Clone)]
+pub struct PdfPage {
+    pub width: f64,
+    pub height: f64,
+    pub text_content: Vec<PdfText>,
+    pub vector_content: Vec<PdfVector>,
+}
+
+/// Result of importing a PDF file.
+#[derive(Debug, Clone)]
+pub struct PdfImportResult {
+    pub pages: Vec<PdfPage>,
+}
+
+/// Import a PDF file (basic uncompressed PDF 1.4 support).
+///
+/// Parses the PDF header, cross-reference table, page objects, and
+/// content streams. Extracts vector drawing commands (m/l/c/h) and
+/// text operators (Tj/TJ). Encrypted or compressed PDFs return an error.
+pub fn import_pdf(content: &[u8]) -> KernelResult<PdfImportResult> {
+    if content.len() < 8 {
+        return Err(KernelError::InvalidArgument("content too short for PDF".into()));
+    }
+    if !content.starts_with(b"%PDF-") {
+        return Err(KernelError::IoError("not a PDF file (missing %PDF- header)".into()));
+    }
+
+    let text = String::from_utf8_lossy(content);
+
+    // Check for encryption
+    if text.contains("/Encrypt") {
+        return Err(KernelError::IoError("encrypted PDF not supported".into()));
+    }
+
+    // Extract page dimensions from MediaBox
+    let (page_w, page_h) = extract_media_box(&text).unwrap_or((612.0, 792.0));
+
+    // Find content streams (between "stream" and "endstream")
+    let streams = extract_streams(&text);
+
+    let mut text_content = Vec::new();
+    let mut vector_content = Vec::new();
+
+    for stream in &streams {
+        // Check if it looks compressed (starts with binary)
+        if stream.bytes().take(4).any(|b| b > 127) {
+            continue;
+        }
+
+        let (texts, vectors) = parse_content_stream(stream);
+        text_content.extend(texts);
+        vector_content.extend(vectors);
+    }
+
+    let page = PdfPage {
+        width: page_w,
+        height: page_h,
+        text_content,
+        vector_content,
+    };
+
+    Ok(PdfImportResult {
+        pages: vec![page],
+    })
+}
+
+fn extract_media_box(text: &str) -> Option<(f64, f64)> {
+    let marker = "/MediaBox";
+    let pos = text.find(marker)?;
+    let after = &text[pos + marker.len()..];
+    let bracket_start = after.find('[')?;
+    let bracket_end = after[bracket_start..].find(']')? + bracket_start;
+    let inner = &after[bracket_start + 1..bracket_end];
+    let nums: Vec<f64> = inner
+        .split_whitespace()
+        .filter_map(|s| s.parse().ok())
+        .collect();
+    if nums.len() >= 4 {
+        Some((nums[2] - nums[0], nums[3] - nums[1]))
+    } else {
+        None
+    }
+}
+
+fn extract_streams(text: &str) -> Vec<String> {
+    let mut streams = Vec::new();
+    let mut search_from = 0;
+    loop {
+        let Some(start) = text[search_from..].find("stream\n").or_else(|| text[search_from..].find("stream\r\n")) else {
+            break;
+        };
+        let abs_start = search_from + start;
+        // Find start of stream content (after "stream\n" or "stream\r\n")
+        let content_start = if text[abs_start..].starts_with("stream\r\n") {
+            abs_start + 8
+        } else {
+            abs_start + 7
+        };
+
+        let Some(end_offset) = text[content_start..].find("endstream") else {
+            break;
+        };
+        let content_end = content_start + end_offset;
+
+        // Trim trailing whitespace from the stream content
+        let stream_content = text[content_start..content_end].trim_end();
+        streams.push(stream_content.to_string());
+
+        search_from = content_end + 9;
+    }
+    streams
+}
+
+fn parse_content_stream(stream: &str) -> (Vec<PdfText>, Vec<PdfVector>) {
+    let mut texts = Vec::new();
+    let mut vectors = Vec::new();
+
+    let mut current_path: Vec<PdfPathCmd> = Vec::new();
+    let mut num_stack: Vec<f64> = Vec::new();
+
+    // Text state
+    let mut text_x = 0.0_f64;
+    let mut text_y = 0.0_f64;
+    let mut font_size = 12.0_f64;
+    let mut in_text = false;
+
+    for token in tokenize_pdf_stream(stream) {
+        match token.as_str() {
+            // Vector path operators
+            "m" => {
+                if num_stack.len() >= 2 {
+                    let y = num_stack.pop().unwrap();
+                    let x = num_stack.pop().unwrap();
+                    current_path.push(PdfPathCmd::MoveTo(Point2::new(x, y)));
+                }
+                num_stack.clear();
+            }
+            "l" if !in_text => {
+                if num_stack.len() >= 2 {
+                    let y = num_stack.pop().unwrap();
+                    let x = num_stack.pop().unwrap();
+                    current_path.push(PdfPathCmd::LineTo(Point2::new(x, y)));
+                }
+                num_stack.clear();
+            }
+            "c" => {
+                if num_stack.len() >= 6 {
+                    let y3 = num_stack.pop().unwrap();
+                    let x3 = num_stack.pop().unwrap();
+                    let y2 = num_stack.pop().unwrap();
+                    let x2 = num_stack.pop().unwrap();
+                    let y1 = num_stack.pop().unwrap();
+                    let x1 = num_stack.pop().unwrap();
+                    current_path.push(PdfPathCmd::CurveTo(
+                        Point2::new(x1, y1),
+                        Point2::new(x2, y2),
+                        Point2::new(x3, y3),
+                    ));
+                }
+                num_stack.clear();
+            }
+            "h" => {
+                current_path.push(PdfPathCmd::ClosePath);
+                num_stack.clear();
+            }
+            "S" | "s" | "f" | "F" | "B" | "b" | "n" => {
+                if !current_path.is_empty() {
+                    vectors.push(PdfVector {
+                        commands: std::mem::take(&mut current_path),
+                    });
+                }
+                num_stack.clear();
+            }
+            "re" => {
+                if num_stack.len() >= 4 {
+                    let rh = num_stack.pop().unwrap();
+                    let rw = num_stack.pop().unwrap();
+                    let ry = num_stack.pop().unwrap();
+                    let rx = num_stack.pop().unwrap();
+                    current_path.push(PdfPathCmd::MoveTo(Point2::new(rx, ry)));
+                    current_path.push(PdfPathCmd::LineTo(Point2::new(rx + rw, ry)));
+                    current_path.push(PdfPathCmd::LineTo(Point2::new(rx + rw, ry + rh)));
+                    current_path.push(PdfPathCmd::LineTo(Point2::new(rx, ry + rh)));
+                    current_path.push(PdfPathCmd::ClosePath);
+                }
+                num_stack.clear();
+            }
+            // Text operators
+            "BT" => {
+                in_text = true;
+                text_x = 0.0;
+                text_y = 0.0;
+                num_stack.clear();
+            }
+            "ET" => {
+                in_text = false;
+                num_stack.clear();
+            }
+            "Tf" => {
+                if !num_stack.is_empty() {
+                    font_size = num_stack.pop().unwrap();
+                }
+                num_stack.clear();
+            }
+            "Td" | "TD" => {
+                if num_stack.len() >= 2 {
+                    let ty = num_stack.pop().unwrap();
+                    let tx = num_stack.pop().unwrap();
+                    text_x += tx;
+                    text_y += ty;
+                }
+                num_stack.clear();
+            }
+            "Tj" => {
+                // Text string was on the stack as a string (handled below)
+                num_stack.clear();
+            }
+            _ => {
+                // Try to parse as number
+                if let Ok(n) = token.parse::<f64>() {
+                    num_stack.push(n);
+                } else if token.starts_with('(') && token.ends_with(')') {
+                    // PDF string literal — extract text
+                    let inner = &token[1..token.len() - 1];
+                    if !inner.is_empty() && in_text {
+                        texts.push(PdfText {
+                            position: Point2::new(text_x, text_y),
+                            text: inner.to_string(),
+                            font_size,
+                        });
+                    }
+                } else if token.starts_with('/') {
+                    // Name token — ignore
+                    num_stack.clear();
+                }
+            }
+        }
+    }
+
+    // Flush remaining path
+    if !current_path.is_empty() {
+        vectors.push(PdfVector {
+            commands: current_path,
+        });
+    }
+
+    (texts, vectors)
+}
+
+fn tokenize_pdf_stream(stream: &str) -> Vec<String> {
+    let mut tokens = Vec::new();
+    let bytes = stream.as_bytes();
+    let len = bytes.len();
+    let mut i = 0;
+
+    while i < len {
+        let ch = bytes[i];
+
+        // Skip whitespace
+        if ch.is_ascii_whitespace() {
+            i += 1;
+            continue;
+        }
+
+        // String literal
+        if ch == b'(' {
+            let start = i;
+            let mut depth = 1;
+            i += 1;
+            while i < len && depth > 0 {
+                if bytes[i] == b'(' && (i == 0 || bytes[i - 1] != b'\\') {
+                    depth += 1;
+                } else if bytes[i] == b')' && (i == 0 || bytes[i - 1] != b'\\') {
+                    depth -= 1;
+                }
+                i += 1;
+            }
+            tokens.push(String::from_utf8_lossy(&bytes[start..i]).to_string());
+            continue;
+        }
+
+        // Comment
+        if ch == b'%' {
+            while i < len && bytes[i] != b'\n' && bytes[i] != b'\r' {
+                i += 1;
+            }
+            continue;
+        }
+
+        // Regular token (number, operator, name)
+        let start = i;
+        while i < len && !bytes[i].is_ascii_whitespace() && bytes[i] != b'(' && bytes[i] != b')' {
+            i += 1;
+        }
+        if i > start {
+            tokens.push(String::from_utf8_lossy(&bytes[start..i]).to_string());
+        }
+    }
+
+    tokens
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -155,5 +492,56 @@ mod tests {
         let text = String::from_utf8_lossy(&pdf);
         assert!(text.contains("stream"));
         assert!(text.contains("endstream"));
+    }
+
+    #[test]
+    fn test_import_pdf_roundtrip() {
+        let svg = "<svg><line x1=\"10\" y1=\"20\" x2=\"100\" y2=\"20\" /></svg>";
+        let pdf_bytes = export_pdf(svg, 297.0, 210.0).unwrap();
+        let result = import_pdf(&pdf_bytes).unwrap();
+        assert_eq!(result.pages.len(), 1);
+        let page = &result.pages[0];
+        assert!(page.width > 0.0);
+        assert!(page.height > 0.0);
+    }
+
+    #[test]
+    fn test_import_pdf_vectors() {
+        let svg = "<svg><line x1=\"10\" y1=\"20\" x2=\"100\" y2=\"50\" /></svg>";
+        let pdf_bytes = export_pdf(svg, 297.0, 210.0).unwrap();
+        let result = import_pdf(&pdf_bytes).unwrap();
+        let page = &result.pages[0];
+        assert!(!page.vector_content.is_empty());
+    }
+
+    #[test]
+    fn test_import_pdf_text() {
+        let svg = r#"<svg><text x="10" y="20" font-size="12">Hello</text></svg>"#;
+        let pdf_bytes = export_pdf(svg, 297.0, 210.0).unwrap();
+        let result = import_pdf(&pdf_bytes).unwrap();
+        let page = &result.pages[0];
+        // Should extract the title block text at minimum
+        assert!(!page.text_content.is_empty());
+    }
+
+    #[test]
+    fn test_import_pdf_invalid() {
+        assert!(import_pdf(b"not a pdf").is_err());
+    }
+
+    #[test]
+    fn test_import_pdf_too_short() {
+        assert!(import_pdf(b"short").is_err());
+    }
+
+    #[test]
+    fn test_pdf_import_result_types() {
+        let svg = "<svg><line x1=\"0\" y1=\"0\" x2=\"50\" y2=\"50\" /></svg>";
+        let pdf_bytes = export_pdf(svg, 297.0, 210.0).unwrap();
+        let result = import_pdf(&pdf_bytes).unwrap();
+        let page = &result.pages[0];
+        // Verify page dimensions (A4 landscape in points)
+        assert!((page.width - 297.0 * 2.834_645_669_3).abs() < 1.0);
+        assert!((page.height - 210.0 * 2.834_645_669_3).abs() < 1.0);
     }
 }

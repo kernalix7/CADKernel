@@ -13,11 +13,11 @@ use crate::naming::Tag;
 use crate::vertex::VertexData;
 
 /// A topological edge connecting two vertices.
-/// It owns two half-edges (one for each direction).
 ///
-/// When the `geometry-binding` feature is enabled (default), the edge can
-/// carry the underlying 3D curve, parameter domain, and UV pcurves for
-/// adjacent faces.
+/// Each edge owns a pair of twin half-edges (one for each traversal
+/// direction). When the `geometry-binding` feature is enabled (default), the
+/// edge can also carry the underlying 3D [`Curve`](cadkernel_geometry::Curve),
+/// its parameter domain, and UV pcurves for the adjacent faces.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct EdgeData {
     pub start: Handle<VertexData>,

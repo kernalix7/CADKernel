@@ -19,8 +19,10 @@ pub enum Orientation {
 
 /// A topological face bounded by one outer loop and zero or more inner loops (holes).
 ///
-/// When `geometry-binding` is enabled (default), the face can carry the
-/// underlying surface, orientation flag, and UV trim boundaries.
+/// When `geometry-binding` is enabled (default), the face carries the
+/// underlying [`Surface`](cadkernel_geometry::Surface), an orientation flag
+/// indicating whether the face normal agrees with the surface normal, and
+/// optional UV trim boundaries.
 #[derive(Clone, Serialize, Deserialize)]
 pub struct FaceData {
     /// The outer boundary loop.

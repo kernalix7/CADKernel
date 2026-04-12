@@ -5,7 +5,10 @@ use cadkernel_math::{Point3, Vec3};
 
 use super::Curve;
 
-/// A full circle in 3D space.
+/// A full circle in 3D space, parameterized over `[0, 2*pi)`.
+///
+/// Defined by center, normal, and radius. The local coordinate frame
+/// (x_axis, y_axis) is constructed automatically from the normal.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Circle {
     pub center: Point3,

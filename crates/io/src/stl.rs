@@ -1,3 +1,10 @@
+//! STL (STereoLithography) file format import and export.
+//!
+//! Supports both ASCII and binary STL variants with parallel serialization.
+//! Binary reader validates sizes and caps allocations at 50 million triangles.
+//! Vertices are deduplicated on import using quantized keys (0.1 mm tolerance)
+//! to enable cross-face smooth normal computation.
+
 use std::collections::HashMap;
 use std::io::{self, Write};
 use std::path::Path;
@@ -9,6 +16,9 @@ use rayon::prelude::*;
 use crate::tessellate::Mesh;
 
 /// Renders the mesh as an ASCII STL string.
+///
+/// Facets are formatted in parallel using rayon. The output follows the
+/// standard `solid <name> / endsolid <name>` envelope.
 pub fn write_stl_ascii(mesh: &Mesh, name: &str) -> String {
     let tris = mesh.to_triangles();
 
@@ -41,6 +51,9 @@ pub fn write_stl_ascii(mesh: &Mesh, name: &str) -> String {
 }
 
 /// Renders the mesh as a binary STL byte buffer.
+///
+/// Returns an 80-byte header, 4-byte triangle count (little-endian u32),
+/// followed by 50 bytes per triangle. Fails if the triangle count exceeds `u32::MAX`.
 pub fn write_stl_binary(mesh: &Mesh) -> KernelResult<Vec<u8>> {
     let tris = mesh.to_triangles();
     if tris.len() > u32::MAX as usize {
@@ -145,6 +158,10 @@ impl VertexDedup {
 }
 
 /// Parses an ASCII STL string into a [`Mesh`].
+///
+/// Vertices are deduplicated with 0.1 mm quantization tolerance. Normals are
+/// recomputed from vertex positions (stored normals are ignored).
+/// Returns an error if no triangles are found or vertex lines are malformed.
 pub fn read_stl_ascii(input: &str) -> KernelResult<Mesh> {
     let raw_tris: Vec<[Point3; 3]> = parse_ascii_triangles(input)?;
     if raw_tris.is_empty() {
@@ -251,6 +268,10 @@ fn parse_binary_triangle(data: &[u8], base: usize) -> [Point3; 3] {
 }
 
 /// Parses a binary STL byte slice into a [`Mesh`].
+///
+/// Validates header size, triangle count (capped at 50 million), and total
+/// byte length. Vertices are deduplicated with 0.1 mm tolerance.
+/// Normals are recomputed from vertex positions.
 pub fn read_stl_binary(data: &[u8]) -> KernelResult<Mesh> {
     if data.len() < 84 {
         return Err(KernelError::IoError(
@@ -304,6 +325,9 @@ pub fn read_stl_binary(data: &[u8]) -> KernelResult<Mesh> {
 }
 
 /// Imports an STL file from disk, auto-detecting ASCII vs binary format.
+///
+/// Heuristic: if the file starts with `"solid "` and contains `"facet"`, it
+/// is tried as ASCII first, falling back to binary on parse failure.
 pub fn import_stl(path: &str) -> KernelResult<Mesh> {
     let data = std::fs::read(path)?;
 
@@ -486,5 +510,166 @@ mod tests {
         data[80] = 1;
         let result = read_stl_binary(&data);
         assert!(result.is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // Edge case: empty mesh
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_stl_empty_mesh_ascii() {
+        let mesh = Mesh::new();
+        let stl = write_stl_ascii(&mesh, "empty");
+        assert!(stl.contains("solid empty"));
+        assert!(stl.contains("endsolid empty"));
+        // Parser returns error on empty STL (no triangles)
+        assert!(read_stl_ascii(&stl).is_err());
+    }
+
+    #[test]
+    fn test_stl_empty_mesh_binary() {
+        let mesh = Mesh::new();
+        let data = write_stl_binary(&mesh).unwrap();
+        assert_eq!(data.len(), 84);
+        let count = u32::from_le_bytes([data[80], data[81], data[82], data[83]]);
+        assert_eq!(count, 0);
+        let parsed = read_stl_binary(&data).unwrap();
+        assert_eq!(parsed.triangle_count(), 0);
+    }
+
+    // -----------------------------------------------------------------------
+    // Edge case: large mesh (sphere tessellation, > 10000 triangles)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_stl_large_mesh_roundtrip() {
+        let segments = 128;
+        let stacks = 80;
+        let mut vertices = Vec::new();
+        let mut normals = Vec::new();
+        let mut indices = Vec::new();
+        let mut idx = 0u32;
+
+        for i in 0..stacks {
+            let theta1 = std::f64::consts::PI * i as f64 / stacks as f64;
+            let theta2 = std::f64::consts::PI * (i + 1) as f64 / stacks as f64;
+            for j in 0..segments {
+                let phi1 = 2.0 * std::f64::consts::PI * j as f64 / segments as f64;
+                let phi2 = 2.0 * std::f64::consts::PI * (j + 1) as f64 / segments as f64;
+
+                let p00 = Point3::new(
+                    theta1.sin() * phi1.cos(),
+                    theta1.sin() * phi1.sin(),
+                    theta1.cos(),
+                );
+                let p10 = Point3::new(
+                    theta2.sin() * phi1.cos(),
+                    theta2.sin() * phi1.sin(),
+                    theta2.cos(),
+                );
+                let p11 = Point3::new(
+                    theta2.sin() * phi2.cos(),
+                    theta2.sin() * phi2.sin(),
+                    theta2.cos(),
+                );
+                let p01 = Point3::new(
+                    theta1.sin() * phi2.cos(),
+                    theta1.sin() * phi2.sin(),
+                    theta1.cos(),
+                );
+
+                let n = Vec3::new(
+                    (p00.x + p10.x + p11.x) / 3.0,
+                    (p00.y + p10.y + p11.y) / 3.0,
+                    (p00.z + p10.z + p11.z) / 3.0,
+                );
+
+                vertices.push(p00);
+                vertices.push(p10);
+                vertices.push(p11);
+                normals.push(n);
+                indices.push([idx, idx + 1, idx + 2]);
+                idx += 3;
+
+                vertices.push(p00);
+                vertices.push(p11);
+                vertices.push(p01);
+                normals.push(n);
+                indices.push([idx, idx + 1, idx + 2]);
+                idx += 3;
+            }
+        }
+
+        let mesh = Mesh { vertices, normals, indices };
+        assert!(mesh.triangle_count() > 10000);
+
+        // Binary round-trip
+        let bin_data = write_stl_binary(&mesh).unwrap();
+        let parsed_bin = read_stl_binary(&bin_data).unwrap();
+        assert_eq!(parsed_bin.triangle_count(), mesh.triangle_count());
+
+        // ASCII round-trip
+        let ascii_data = write_stl_ascii(&mesh, "large_sphere");
+        let parsed_ascii = read_stl_ascii(&ascii_data).unwrap();
+        assert_eq!(parsed_ascii.triangle_count(), mesh.triangle_count());
+    }
+
+    // -----------------------------------------------------------------------
+    // Edge case: binary vs ASCII cross-round-trip
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_stl_binary_ascii_cross_roundtrip() {
+        let mesh = Mesh {
+            vertices: vec![
+                Point3::new(0.0, 0.0, 0.0),
+                Point3::new(1.0, 0.0, 0.0),
+                Point3::new(0.5, 1.0, 0.0),
+                Point3::new(0.5, 0.5, 1.0),
+            ],
+            normals: vec![Vec3::Z, Vec3::new(0.0, -1.0, 0.0)],
+            indices: vec![[0, 1, 2], [0, 1, 3]],
+        };
+
+        // Export binary, import, export ASCII, import, compare
+        let bin = write_stl_binary(&mesh).unwrap();
+        let from_bin = read_stl_binary(&bin).unwrap();
+        let ascii = write_stl_ascii(&from_bin, "cross");
+        let from_ascii = read_stl_ascii(&ascii).unwrap();
+
+        assert_eq!(from_ascii.triangle_count(), mesh.triangle_count());
+    }
+
+    // -----------------------------------------------------------------------
+    // Edge case: malformed ASCII
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_stl_ascii_malformed_no_endsolid() {
+        let bad = "solid test\nfacet normal 0 0 1\nouter loop\nvertex 0 0 0\nvertex 1 0 0\nvertex 0 1 0\nendloop\nendfacet\n";
+        let result = read_stl_ascii(bad);
+        // Should still parse the triangle even without endsolid
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap().triangle_count(), 1);
+    }
+
+    #[test]
+    fn test_stl_ascii_malformed_garbage() {
+        let bad = "not a valid stl file at all";
+        let result = read_stl_ascii(bad);
+        assert!(result.is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // Export-import-export consistency
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_stl_export_import_export_consistency() {
+        let mesh = make_single_triangle_mesh();
+        let ascii1 = write_stl_ascii(&mesh, "consistency");
+        let reimported = read_stl_ascii(&ascii1).unwrap();
+        let ascii2 = write_stl_ascii(&reimported, "consistency");
+        assert_eq!(ascii1, ascii2);
     }
 }

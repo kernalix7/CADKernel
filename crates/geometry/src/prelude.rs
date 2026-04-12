@@ -11,7 +11,7 @@ pub use crate::curve::ellipse::Ellipse;
 pub use crate::curve::line::{Line, LineSegment};
 pub use crate::curve::nurbs::NurbsCurve;
 
-pub use crate::offset::{offset_polygon_2d, offset_polyline_2d};
+pub use crate::offset::{offset_polygon_2d, offset_polygon_2d_checked, offset_polyline_2d};
 
 pub use crate::surface::Surface;
 pub use crate::surface::cone::Cone;

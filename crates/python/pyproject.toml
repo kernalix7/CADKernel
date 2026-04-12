@@ -1,0 +1,43 @@
+[build-system]
+requires = ["maturin>=1.0,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "cadkernel"
+version = "0.1.0"
+description = "Open-source CAD kernel with B-Rep modeling, NURBS, and Python scripting"
+license = {text = "Apache-2.0"}
+authors = [{name = "Kim DaeHyun", email = "kernalix7@kodenet.io"}]
+requires-python = ">=3.10"
+readme = "README_PYPI.md"
+keywords = ["cad", "geometry", "3d-modeling", "brep", "nurbs", "mesh"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Manufacturing",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: MacOS",
+    "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Rust",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Visualization",
+    "Topic :: Multimedia :: Graphics :: 3D Modeling",
+]
+
+[project.urls]
+Homepage = "https://github.com/kernalix7/CADKernel"
+Repository = "https://github.com/kernalix7/CADKernel"
+Issues = "https://github.com/kernalix7/CADKernel/issues"
+
+[tool.maturin]
+features = ["pyo3/extension-module"]
+module-name = "cadkernel._native"
+python-source = "python"
+manifest-path = "Cargo.toml"

@@ -27,6 +27,11 @@ pub struct EvolutionRecord {
 }
 
 /// Tracks the complete construction history of a [`BRepModel`](super::super::BRepModel).
+///
+/// Each modeling operation (extrude, fillet, boolean, etc.) allocates an
+/// [`OperationId`] via [`next_operation`](Self::next_operation) and records
+/// [`Evolution`] entries describing which entities were created, modified,
+/// split, or deleted.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShapeHistory {
     next_op_id: u64,

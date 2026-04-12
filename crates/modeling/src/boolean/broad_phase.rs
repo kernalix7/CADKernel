@@ -1,3 +1,5 @@
+use rayon::prelude::*;
+
 use cadkernel_core::{KernelError, KernelResult};
 use cadkernel_geometry::bvh::{Aabb, Bvh};
 use cadkernel_math::BoundingBox;
@@ -57,13 +59,16 @@ pub fn find_overlapping_face_pairs(
         .collect();
     let bvh = Bvh::build(&bvh_items);
 
-    let mut pairs = Vec::new();
-    for &(fa, ref ba) in &bboxes_a {
-        let query = Aabb::new(ba.min, ba.max);
-        for idx in bvh.query_aabb(&query) {
-            pairs.push((fa, bboxes_b[idx].0));
-        }
-    }
+    let bb_ref = &bboxes_b;
+    let pairs: Vec<(Handle<FaceData>, Handle<FaceData>)> = bboxes_a
+        .par_iter()
+        .flat_map_iter(|&(fa, ref ba)| {
+            let query = Aabb::new(ba.min, ba.max);
+            bvh.query_aabb(&query)
+                .into_iter()
+                .map(move |idx| (fa, bb_ref[idx].0))
+        })
+        .collect();
     Ok(pairs)
 }
 

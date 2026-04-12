@@ -82,6 +82,23 @@ pub fn simplify_solid(
     rebuild_solid_from_faces(model, &remaining, op)
 }
 
+/// Automatically removes small features from a solid based on a size threshold.
+///
+/// Detects faces with area below `size_threshold` and rebuilds the solid
+/// without them. This is a convenience wrapper around `simplify_solid`.
+pub fn auto_defeaturing(
+    model: &mut BRepModel,
+    solid: Handle<SolidData>,
+    size_threshold: f64,
+) -> KernelResult<Handle<SolidData>> {
+    if size_threshold <= 0.0 {
+        return Err(KernelError::InvalidArgument(
+            "size_threshold must be positive".into(),
+        ));
+    }
+    simplify_solid(model, solid, size_threshold)
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -192,5 +209,23 @@ mod tests {
         let sd = model.solids.get(new_solid).unwrap();
         let shell = model.shells.get(sd.shells[0]).unwrap();
         assert_eq!(shell.faces.len(), 6);
+    }
+
+    #[test]
+    fn test_auto_defeaturing_no_removal() {
+        let mut model = BRepModel::new();
+        let b = crate::make_box(&mut model, Point3::ORIGIN, 10.0, 10.0, 10.0).unwrap();
+        let result = auto_defeaturing(&mut model, b.solid, 0.01).unwrap();
+        let sd = model.solids.get(result).unwrap();
+        let shell = model.shells.get(sd.shells[0]).unwrap();
+        assert_eq!(shell.faces.len(), 6);
+    }
+
+    #[test]
+    fn test_auto_defeaturing_invalid_threshold() {
+        let mut model = BRepModel::new();
+        let b = crate::make_box(&mut model, Point3::ORIGIN, 1.0, 1.0, 1.0).unwrap();
+        assert!(auto_defeaturing(&mut model, b.solid, 0.0).is_err());
+        assert!(auto_defeaturing(&mut model, b.solid, -1.0).is_err());
     }
 }

@@ -19,6 +19,20 @@ pub fn project_points_on_surface(
         .collect()
 }
 
+/// Projects a series of 3D curves (as polylines) onto a surface.
+///
+/// Each input curve is a slice of 3D points. For each point in each curve,
+/// the closest point on the surface is computed via `Surface::project_point`.
+pub fn project_curves_on_surface(
+    surface: &dyn Surface,
+    curves: &[Vec<Point3>],
+) -> Vec<Vec<Point3>> {
+    curves
+        .iter()
+        .map(|curve| project_points_on_surface(surface, curve))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -58,5 +72,23 @@ mod tests {
         let plane = Plane::new(Point3::ORIGIN, Vec3::X, Vec3::Y).unwrap();
         let projected = project_points_on_surface(&plane, &[]);
         assert!(projected.is_empty());
+    }
+
+    #[test]
+    fn test_project_curves_on_surface() {
+        let plane = Plane::new(Point3::ORIGIN, Vec3::X, Vec3::Y).unwrap();
+        let curves = vec![
+            vec![Point3::new(1.0, 0.0, 5.0), Point3::new(2.0, 0.0, 5.0)],
+            vec![Point3::new(0.0, 1.0, 3.0), Point3::new(0.0, 2.0, 3.0)],
+        ];
+        let result = project_curves_on_surface(&plane, &curves);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].len(), 2);
+        assert_eq!(result[1].len(), 2);
+        for curve in &result {
+            for p in curve {
+                assert!(p.z.abs() < 1e-10, "z should be 0, got {}", p.z);
+            }
+        }
     }
 }

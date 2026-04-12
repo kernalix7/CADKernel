@@ -1,3 +1,9 @@
+//! Wavefront OBJ file format import and export.
+//!
+//! Supports vertices (`v`), vertex normals (`vn`), and face elements (`f`)
+//! with `v`, `v/vt`, `v/vt/vn`, and `v//vn` index formats.
+//! Polygon faces with more than 3 vertices are fan-triangulated on import.
+
 use std::io;
 use std::path::Path;
 
@@ -8,6 +14,9 @@ use rayon::prelude::*;
 use crate::tessellate::Mesh;
 
 /// Renders the mesh as a Wavefront OBJ string.
+///
+/// Writes vertex positions, per-face normals, and face indices with
+/// `vertex//normal` format. Vertices and normals are serialized in parallel.
 pub fn write_obj(mesh: &Mesh) -> String {
     let vert_lines: Vec<String> = mesh
         .vertices
@@ -101,6 +110,10 @@ fn compute_normal(a: Point3, b: Point3, c: Point3) -> Vec3 {
 }
 
 /// Parses a Wavefront OBJ string into a [`Mesh`].
+///
+/// Handles `v/vt`, `v/vt/vn`, `v//vn`, and plain `v` face index formats.
+/// Polygon faces (4+ vertices) are fan-triangulated from the first vertex.
+/// Negative indices are supported (counting backwards from vertex list end).
 pub fn read_obj(input: &str) -> KernelResult<Mesh> {
     let lines: Vec<&str> = input.lines().collect();
 
@@ -335,5 +348,87 @@ f 1 2 3 4 5
         let parsed = import_obj(path.to_str().unwrap()).unwrap();
         assert_eq!(parsed.triangle_count(), 1);
         std::fs::remove_file(&path).ok();
+    }
+
+    // -----------------------------------------------------------------------
+    // Edge case: empty mesh
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_obj_empty_mesh() {
+        let mesh = Mesh::new();
+        let obj = write_obj(&mesh);
+        assert!(obj.contains("# CADKernel OBJ export"));
+        let f_count = obj.lines().filter(|l| l.starts_with("f ")).count();
+        assert_eq!(f_count, 0);
+    }
+
+    // -----------------------------------------------------------------------
+    // Edge case: multiple objects (groups)
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_obj_multiple_groups() {
+        let input = "\
+g group1
+v 0 0 0
+v 1 0 0
+v 0 1 0
+f 1 2 3
+g group2
+v 2 0 0
+v 3 0 0
+v 2 1 0
+f 4 5 6
+";
+        let mesh = read_obj(input).unwrap();
+        assert_eq!(mesh.triangle_count(), 2);
+        assert_eq!(mesh.vertices.len(), 6);
+    }
+
+    // -----------------------------------------------------------------------
+    // Edge case: comments and blank lines
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_obj_comments_and_blanks() {
+        let input = "\
+# This is a comment
+v 0 0 0
+# Another comment
+v 1 0 0
+
+v 0 1 0
+f 1 2 3
+";
+        let mesh = read_obj(input).unwrap();
+        assert_eq!(mesh.triangle_count(), 1);
+    }
+
+    // -----------------------------------------------------------------------
+    // Edge case: export-import-export consistency
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_obj_export_import_export_consistency() {
+        let mesh = Mesh {
+            vertices: vec![
+                Point3::new(0.0, 0.0, 0.0),
+                Point3::new(1.0, 0.0, 0.0),
+                Point3::new(0.0, 1.0, 0.0),
+            ],
+            normals: vec![Vec3::Z],
+            indices: vec![[0, 1, 2]],
+        };
+        let obj1 = write_obj(&mesh);
+        let reimported = read_obj(&obj1).unwrap();
+        let obj2 = write_obj(&reimported);
+        // Both exports should have the same vertex and face count
+        let v1 = obj1.lines().filter(|l| l.starts_with("v ")).count();
+        let v2 = obj2.lines().filter(|l| l.starts_with("v ")).count();
+        assert_eq!(v1, v2);
+        let f1 = obj1.lines().filter(|l| l.starts_with("f ")).count();
+        let f2 = obj2.lines().filter(|l| l.starts_with("f ")).count();
+        assert_eq!(f1, f2);
     }
 }

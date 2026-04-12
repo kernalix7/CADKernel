@@ -2,9 +2,9 @@ use criterion::{Criterion, criterion_group, criterion_main};
 
 use cadkernel_math::{Point3, Vec3};
 use cadkernel_modeling::{
-    BooleanOp, boolean_op, check_geometry, check_watertight, compute_mass_properties, extrude,
-    fillet_edge, make_box, make_cone, make_cylinder, make_sphere, make_torus, mirror_solid,
-    scale_solid,
+    Assembly, BooleanOp, boolean_op, check_geometry, check_watertight, compute_mass_properties,
+    extrude, fillet_edge, make_box, make_cone, make_cylinder, make_sphere, make_torus,
+    mirror_solid, scale_solid,
 };
 use cadkernel_topology::BRepModel;
 
@@ -279,6 +279,192 @@ fn bench_boolean_intersection(c: &mut Criterion) {
     });
 }
 
+// ---------------------------------------------------------------------------
+// Assembly (large, BVH-accelerated)
+// ---------------------------------------------------------------------------
+
+fn bench_assembly_500_parts_bvh_interference(c: &mut Criterion) {
+    let mut model = BRepModel::new();
+    let b = make_box(&mut model, Point3::ORIGIN, 1.0, 1.0, 1.0).unwrap();
+
+    let mut asm = Assembly::new("Bench 500");
+    for i in 0..500 {
+        let id = asm.add_component(&format!("P{i}"), b.solid);
+        let x = (i % 50) as f64 * 5.0;
+        let y = (i / 50) as f64 * 5.0;
+        asm.set_placement(id, cadkernel_modeling::translation(x, y, 0.0))
+            .unwrap();
+    }
+
+    c.bench_function("assembly_500_bvh_interference", |bench| {
+        bench.iter(|| asm.check_all_interferences(&model).unwrap());
+    });
+}
+
+fn bench_assembly_500_parts_bom(c: &mut Criterion) {
+    let mut model = BRepModel::new();
+    let b = make_box(&mut model, Point3::ORIGIN, 1.0, 1.0, 1.0).unwrap();
+
+    let mut asm = Assembly::new("BOM Bench");
+    for i in 0..500 {
+        // Reuse some names so BOM groups them
+        let name = format!("Type_{}", i % 20);
+        asm.add_component(&name, b.solid);
+    }
+
+    c.bench_function("assembly_500_bom", |bench| {
+        bench.iter(|| asm.bill_of_materials());
+    });
+}
+
+fn bench_assembly_1000_parts_bvh_interference(c: &mut Criterion) {
+    let mut model = BRepModel::new();
+    let b = make_box(&mut model, Point3::ORIGIN, 1.0, 1.0, 1.0).unwrap();
+
+    let mut asm = Assembly::new("Bench 1000");
+    for i in 0..1000 {
+        let id = asm.add_component(&format!("P{i}"), b.solid);
+        let x = (i % 50) as f64 * 5.0;
+        let y = (i / 50) as f64 * 5.0;
+        asm.set_placement(id, cadkernel_modeling::translation(x, y, 0.0))
+            .unwrap();
+    }
+
+    c.bench_function("assembly_1000_bvh_interference", |bench| {
+        bench.iter(|| asm.check_all_interferences(&model).unwrap());
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Boolean chain (5 solids)
+// ---------------------------------------------------------------------------
+
+fn bench_boolean_chain_5(c: &mut Criterion) {
+    c.bench_function("boolean_chain (5 boxes union)", |b| {
+        b.iter(|| {
+            let mut current_model = BRepModel::new();
+            let first = make_box(&mut current_model, Point3::ORIGIN, 10.0, 10.0, 10.0).unwrap();
+            let mut cur_solid = first.solid;
+            let mut cur_model = current_model;
+
+            for i in 1..5 {
+                let mut next = BRepModel::new();
+                let nb = make_box(&mut next, Point3::new(i as f64 * 8.0, 0.0, 0.0), 10.0, 10.0, 10.0).unwrap();
+                let result = boolean_op(&cur_model, cur_solid, &next, nb.solid, BooleanOp::Union).unwrap();
+                let s = result.solids.iter().next().map(|(h, _)| h).unwrap();
+                cur_solid = s;
+                cur_model = result;
+            }
+        });
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Large pattern (50 copies)
+// ---------------------------------------------------------------------------
+
+fn bench_linear_pattern_50(c: &mut Criterion) {
+    c.bench_function("linear_pattern (50 copies)", |b| {
+        b.iter(|| {
+            let mut m = BRepModel::new();
+            let r = make_box(&mut m, Point3::ORIGIN, 2.0, 2.0, 2.0).unwrap();
+            cadkernel_modeling::linear_pattern(&mut m, r.solid, Vec3::X, 5.0, 50).unwrap();
+        });
+    });
+}
+
+fn bench_circular_pattern_36(c: &mut Criterion) {
+    c.bench_function("circular_pattern (36 copies)", |b| {
+        b.iter(|| {
+            let mut m = BRepModel::new();
+            let r = make_box(&mut m, Point3::new(10.0, 0.0, 0.0), 2.0, 2.0, 2.0).unwrap();
+            cadkernel_modeling::circular_pattern(&mut m, r.solid, Point3::ORIGIN, Vec3::Z, 36).unwrap();
+        });
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Large assembly creation (100 parts)
+// ---------------------------------------------------------------------------
+
+fn bench_assembly_100_parts_creation(c: &mut Criterion) {
+    let mut model = BRepModel::new();
+    let b = make_box(&mut model, Point3::ORIGIN, 1.0, 1.0, 1.0).unwrap();
+
+    c.bench_function("assembly_100_parts_creation", |bench| {
+        bench.iter(|| {
+            let mut asm = Assembly::new("Bench100");
+            for i in 0..100 {
+                let id = asm.add_component(&format!("P{i}"), b.solid);
+                let x = (i % 10) as f64 * 5.0;
+                let y = (i / 10) as f64 * 5.0;
+                asm.set_placement(id, cadkernel_modeling::translation(x, y, 0.0))
+                    .unwrap();
+            }
+            asm
+        });
+    });
+}
+
+// ---------------------------------------------------------------------------
+// BVH nearest query
+// ---------------------------------------------------------------------------
+
+fn bench_bvh_nearest_1000(c: &mut Criterion) {
+    use cadkernel_geometry::bvh::{Aabb, Bvh};
+
+    let items: Vec<(Aabb, usize)> = (0..1000)
+        .map(|i| {
+            let x = (i % 50) as f64 * 3.0;
+            let y = (i / 50) as f64 * 3.0;
+            (Aabb::new(
+                Point3::new(x, y, 0.0),
+                Point3::new(x + 1.0, y + 1.0, 1.0),
+            ), i)
+        })
+        .collect();
+    let bvh = Bvh::build(&items);
+
+    c.bench_function("bvh_nearest (1000 items)", |bench| {
+        bench.iter(|| bvh.query_nearest(Point3::new(75.0, 30.0, 0.5)));
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Multi-transform chain
+// ---------------------------------------------------------------------------
+
+fn bench_multi_transform_5(c: &mut Criterion) {
+    c.bench_function("multi_transform (5 chained)", |b| {
+        b.iter(|| {
+            let mut m = BRepModel::new();
+            let r = make_box(&mut m, Point3::ORIGIN, 5.0, 5.0, 5.0).unwrap();
+            cadkernel_modeling::multi_transform(
+                &mut m,
+                r.solid,
+                &[
+                    cadkernel_modeling::Transform::Translation(Vec3::new(10.0, 0.0, 0.0)),
+                    cadkernel_modeling::Transform::Rotation {
+                        axis_origin: Point3::ORIGIN,
+                        axis_dir: Vec3::Z,
+                        angle: std::f64::consts::FRAC_PI_4,
+                    },
+                    cadkernel_modeling::Transform::Scale {
+                        center: Point3::ORIGIN,
+                        factor: 1.5,
+                    },
+                    cadkernel_modeling::Transform::Mirror {
+                        plane_point: Point3::ORIGIN,
+                        plane_normal: Vec3::X,
+                    },
+                    cadkernel_modeling::Transform::Translation(Vec3::new(0.0, 5.0, 0.0)),
+                ],
+            )
+            .unwrap();
+        });
+    });
+}
+
 criterion_group!(
     benches,
     bench_make_box,
@@ -305,5 +491,14 @@ criterion_group!(
     bench_tessellate_sphere_64x32,
     bench_tessellate_torus_64x32,
     bench_boolean_intersection,
+    bench_assembly_500_parts_bvh_interference,
+    bench_assembly_500_parts_bom,
+    bench_assembly_1000_parts_bvh_interference,
+    bench_boolean_chain_5,
+    bench_linear_pattern_50,
+    bench_circular_pattern_36,
+    bench_assembly_100_parts_creation,
+    bench_bvh_nearest_1000,
+    bench_multi_transform_5,
 );
 criterion_main!(benches);

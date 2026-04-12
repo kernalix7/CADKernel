@@ -3,10 +3,15 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 /// Unique identifier for a modeling operation in the construction history.
+///
+/// Allocated by [`ShapeHistory::next_operation`](super::ShapeHistory::next_operation).
+/// Operation IDs start at 1 and increment monotonically.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct OperationId(pub u64);
 
 /// The kind of topological entity a [`Tag`] refers to.
+///
+/// Mirrors the entity type hierarchy in the B-Rep model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum EntityKind {
     Vertex,

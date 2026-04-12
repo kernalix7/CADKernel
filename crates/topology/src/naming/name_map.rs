@@ -8,7 +8,10 @@ use crate::{
     EdgeData, FaceData, HalfEdgeData, LoopData, ShellData, SolidData, VertexData, WireData,
 };
 
-/// A type-erased entity reference used in the name map.
+/// A type-erased entity reference used in the [`NameMap`].
+///
+/// Wraps a [`Handle`] for any entity type so that a single map can store
+/// references to vertices, edges, faces, etc.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum EntityRef {
     Vertex(Handle<VertexData>),

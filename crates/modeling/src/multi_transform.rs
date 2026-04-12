@@ -6,7 +6,10 @@ use cadkernel_topology::{BRepModel, FaceData, Handle, SolidData};
 
 use crate::features::copy_utils::copy_solid_transformed;
 
-/// A transformation that can be applied to a solid.
+/// A transformation step in a [`multi_transform`] chain.
+///
+/// Each variant describes one atomic transformation. Multiple transforms
+/// are composed in order by [`multi_transform`].
 #[derive(Debug, Clone)]
 pub enum Transform {
     /// Translate by a vector.
@@ -26,7 +29,7 @@ pub enum Transform {
     },
 }
 
-/// Result of a multi-transform operation.
+/// Result of a [`multi_transform`] operation containing the transformed solid.
 pub struct MultiTransformResult {
     pub solid: Handle<SolidData>,
     pub faces: Vec<Handle<FaceData>>,
@@ -213,6 +216,124 @@ mod tests {
         .unwrap();
 
         assert!(model.solids.is_alive(result.solid));
+        assert_eq!(result.faces.len(), 6);
+    }
+
+    #[test]
+    fn test_empty_transforms() {
+        let mut model = BRepModel::new();
+        let r = make_box(&mut model, Point3::ORIGIN, 1.0, 1.0, 1.0).unwrap();
+        let result = multi_transform(&mut model, r.solid, &[]).unwrap();
+        assert!(model.solids.is_alive(result.solid));
+    }
+
+    #[test]
+    fn test_double_mirror_restores_winding() {
+        let mut model = BRepModel::new();
+        let r = make_box(&mut model, Point3::new(1.0, 0.0, 0.0), 1.0, 1.0, 1.0).unwrap();
+        let result = multi_transform(
+            &mut model,
+            r.solid,
+            &[
+                Transform::Mirror { plane_point: Point3::ORIGIN, plane_normal: Vec3::X },
+                Transform::Mirror { plane_point: Point3::ORIGIN, plane_normal: Vec3::Y },
+            ],
+        )
+        .unwrap();
+        assert_eq!(result.faces.len(), 6);
+    }
+
+    #[test]
+    fn test_scale_and_translate() {
+        let mut model = BRepModel::new();
+        let r = make_box(&mut model, Point3::ORIGIN, 1.0, 1.0, 1.0).unwrap();
+        let result = multi_transform(
+            &mut model,
+            r.solid,
+            &[
+                Transform::Scale { center: Point3::ORIGIN, factor: 3.0 },
+                Transform::Translation(Vec3::new(10.0, 0.0, 0.0)),
+            ],
+        )
+        .unwrap();
+        assert!(model.solids.is_alive(result.solid));
+        assert_eq!(result.faces.len(), 6);
+    }
+
+    #[test]
+    fn test_rotation_full_circle() {
+        let mut model = BRepModel::new();
+        let r = make_box(&mut model, Point3::new(1.0, 0.0, 0.0), 1.0, 1.0, 1.0).unwrap();
+        let result = multi_transform(
+            &mut model,
+            r.solid,
+            &[Transform::Rotation {
+                axis_origin: Point3::ORIGIN,
+                axis_dir: Vec3::Z,
+                angle: std::f64::consts::PI * 2.0,
+            }],
+        )
+        .unwrap();
+        assert!(model.solids.is_alive(result.solid));
+    }
+
+    #[test]
+    fn test_scale_zero_factor() {
+        let mut model = BRepModel::new();
+        let r = make_box(&mut model, Point3::ORIGIN, 2.0, 2.0, 2.0).unwrap();
+        let result = multi_transform(
+            &mut model,
+            r.solid,
+            &[Transform::Scale { center: Point3::ORIGIN, factor: 0.0 }],
+        )
+        .unwrap();
+        assert!(model.solids.is_alive(result.solid));
+    }
+
+    #[test]
+    fn test_mirror_along_y() {
+        let mut model = BRepModel::new();
+        let r = make_box(&mut model, Point3::new(0.0, 2.0, 0.0), 1.0, 1.0, 1.0).unwrap();
+        let result = multi_transform(
+            &mut model,
+            r.solid,
+            &[Transform::Mirror { plane_point: Point3::ORIGIN, plane_normal: Vec3::Y }],
+        )
+        .unwrap();
+        assert_eq!(result.faces.len(), 6);
+    }
+
+    #[test]
+    fn test_translation_y_z() {
+        let mut model = BRepModel::new();
+        let r = make_box(&mut model, Point3::ORIGIN, 1.0, 1.0, 1.0).unwrap();
+        let result = multi_transform(
+            &mut model,
+            r.solid,
+            &[Transform::Translation(Vec3::new(0.0, 3.0, 7.0))],
+        )
+        .unwrap();
+        assert!(model.solids.is_alive(result.solid));
+    }
+
+    #[test]
+    fn test_three_transforms_chain() {
+        let mut model = BRepModel::new();
+        let r = make_box(&mut model, Point3::ORIGIN, 1.0, 1.0, 1.0).unwrap();
+        let result = multi_transform(
+            &mut model,
+            r.solid,
+            &[
+                Transform::Translation(Vec3::new(5.0, 0.0, 0.0)),
+                Transform::Rotation {
+                    axis_origin: Point3::ORIGIN,
+                    axis_dir: Vec3::Z,
+                    angle: std::f64::consts::FRAC_PI_4,
+                },
+                Transform::Scale { center: Point3::ORIGIN, factor: 2.0 },
+            ],
+        )
+        .unwrap();
         assert_eq!(result.faces.len(), 6);
     }
 }

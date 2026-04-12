@@ -1,3 +1,9 @@
+//! glTF 2.0 file format import and export.
+//!
+//! Produces a single JSON file with embedded base64 buffer data (no separate
+//! `.bin` file). Positions and normals are stored as `VEC3` float accessors;
+//! indices are stored as unsigned 32-bit scalars.
+
 use cadkernel_core::{KernelError, KernelResult};
 use cadkernel_math::{Point3, Vec3};
 use rayon::prelude::*;
@@ -72,6 +78,10 @@ fn compute_per_vertex_normals(
 }
 
 /// Writes a Mesh to glTF 2.0 JSON format with embedded base64 data.
+///
+/// Generates per-vertex normals by averaging face normals at shared vertices.
+/// The buffer contains positions, normals, and indices as three buffer views.
+/// Returns an error if the mesh is empty.
 pub fn write_gltf(mesh: &super::Mesh) -> KernelResult<String> {
     if mesh.vertices.is_empty() || mesh.indices.is_empty() {
         return Err(KernelError::InvalidArgument(
@@ -219,7 +229,7 @@ pub fn write_gltf(mesh: &super::Mesh) -> KernelResult<String> {
     serde_json::to_string_pretty(&json).map_err(|e| KernelError::IoError(e.to_string()))
 }
 
-/// Exports a Mesh to a .gltf file.
+/// Exports a Mesh to a `.gltf` file at the given path.
 pub fn export_gltf(mesh: &super::Mesh, path: &str) -> KernelResult<()> {
     let content = write_gltf(mesh)?;
     std::fs::write(path, content).map_err(|e| KernelError::IoError(e.to_string()))
@@ -258,7 +268,11 @@ fn base64_decode(input: &str) -> KernelResult<Vec<u8>> {
     Ok(out)
 }
 
-/// Import a glTF 2.0 JSON file (with embedded base64 data) into a Mesh.
+/// Imports a glTF 2.0 JSON string (with embedded base64 data) into a [`Mesh`].
+///
+/// Reads the first mesh primitive's POSITION accessor and optional NORMAL accessor.
+/// Supports UNSIGNED_BYTE, UNSIGNED_SHORT, and UNSIGNED_INT index component types.
+/// Only embedded base64 data URIs are supported (no external `.bin` files).
 pub fn import_gltf(content: &str) -> KernelResult<super::Mesh> {
     let val: serde_json::Value = serde_json::from_str(content)
         .map_err(|e| KernelError::IoError(format!("glTF JSON parse error: {e}")))?;
@@ -460,5 +474,68 @@ mod tests {
         let imported = import_gltf(&gltf).unwrap();
         assert_eq!(imported.vertices.len(), mesh.vertices.len());
         assert_eq!(imported.indices.len(), mesh.indices.len());
+    }
+
+    // -----------------------------------------------------------------------
+    // Edge case: JSON structure validation
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_gltf_json_structure() {
+        let mesh = make_cube_mesh();
+        let gltf = write_gltf(&mesh).unwrap();
+        let val: serde_json::Value = serde_json::from_str(&gltf).unwrap();
+
+        // Required top-level fields
+        assert!(val["asset"].is_object());
+        assert!(val["meshes"].is_array());
+        assert!(val["accessors"].is_array());
+        assert!(val["bufferViews"].is_array());
+        assert!(val["buffers"].is_array());
+        assert!(val["nodes"].is_array());
+        assert!(val["scenes"].is_array());
+
+        // Asset version must be "2.0"
+        assert_eq!(val["asset"]["version"].as_str().unwrap(), "2.0");
+
+        // Buffer must have byteLength and URI
+        let buf = &val["buffers"][0];
+        assert!(buf["byteLength"].as_u64().unwrap() > 0);
+        assert!(buf["uri"].as_str().unwrap().starts_with("data:application/octet-stream;base64,"));
+    }
+
+    // -----------------------------------------------------------------------
+    // Edge case: malformed input
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_gltf_import_malformed_json() {
+        let result = import_gltf("not valid json {{{");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_gltf_import_empty_json() {
+        let result = import_gltf("{}");
+        assert!(result.is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // Edge case: export-import-export consistency
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_gltf_export_import_export_consistency() {
+        let mesh = make_cube_mesh();
+        let gltf1 = write_gltf(&mesh).unwrap();
+        let reimported = import_gltf(&gltf1).unwrap();
+        let gltf2 = write_gltf(&reimported).unwrap();
+
+        let val1: serde_json::Value = serde_json::from_str(&gltf1).unwrap();
+        let val2: serde_json::Value = serde_json::from_str(&gltf2).unwrap();
+
+        let count1 = val1["accessors"][0]["count"].as_u64().unwrap();
+        let count2 = val2["accessors"][0]["count"].as_u64().unwrap();
+        assert_eq!(count1, count2);
     }
 }

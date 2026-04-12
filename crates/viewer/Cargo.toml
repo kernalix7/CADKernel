@@ -25,3 +25,4 @@ egui-winit = "0.31"
 rfd = "0.15"
 serde.workspace = true
 serde_json.workspace = true
+mlua.workspace = true

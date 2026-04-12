@@ -7,7 +7,11 @@ use super::Surface;
 /// in sampling-based algorithms (bounding_box, project_point).
 const FINITE_FALLBACK: f64 = 1e6;
 
-/// An infinite plane defined by origin, u-axis, and v-axis.
+/// An infinite plane defined by an origin point and two tangent vectors.
+///
+/// The normal is computed as `u_axis x v_axis`. The domain is `(-inf, +inf)`
+/// in both `u` and `v`. For finite bounding-box queries, the domain is
+/// clamped to a large fallback range.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Plane {
     pub origin: Point3,

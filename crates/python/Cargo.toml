@@ -9,7 +9,7 @@ repository = "https://github.com/kernalix7/CADKernel"
 description = "Python bindings for CADKernel via PyO3"
 
 [lib]
-name = "cadkernel_python"
+name = "_native"
 crate-type = ["cdylib"]
 
 [dependencies]

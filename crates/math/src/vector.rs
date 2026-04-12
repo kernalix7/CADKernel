@@ -6,22 +6,44 @@ use serde::{Deserialize, Serialize};
 
 use crate::tolerance::{EPSILON, is_zero};
 
-/// A 2D vector.
+/// A 2D vector with `f64` components.
+///
+/// Supports standard arithmetic (`+`, `-`, `*`, `/`), dot product, 2D cross
+/// product, normalization, and conversion from arrays and tuples.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Vec2 {
+    /// X component.
     pub x: f64,
+    /// Y component.
     pub y: f64,
 }
 
-/// A 3D vector.
+/// A 3D vector with `f64` components.
+///
+/// The workhorse type for directions, normals, and displacements in the kernel.
+/// Supports dot/cross product, normalization, and interop with `nalgebra`.
+///
+/// # Examples
+///
+/// ```
+/// use cadkernel_math::Vec3;
+///
+/// let a = Vec3::new(1.0, 0.0, 0.0);
+/// let b = Vec3::new(0.0, 1.0, 0.0);
+/// let c = a.cross(b);
+/// assert!(c.approx_eq(Vec3::Z));
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Vec3 {
+    /// X component.
     pub x: f64,
+    /// Y component.
     pub y: f64,
+    /// Z component.
     pub z: f64,
 }
 
-/// A 4D vector (homogeneous coordinates).
+/// A 4D vector used for homogeneous coordinates and NURBS weighted points.
 #[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Vec4 {
     pub x: f64,

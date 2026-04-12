@@ -1,3 +1,10 @@
+//! Persistent naming system for B-Rep entities.
+//!
+//! Provides [`Tag`] (hierarchical name), [`OperationId`] (operation counter),
+//! [`ShapeHistory`] (construction history), and [`NameMap`] (tag-to-handle
+//! bidirectional lookup). Together they ensure that external references remain
+//! stable when a parametric model is rebuilt.
+
 pub mod history;
 pub mod name_map;
 pub mod tag;

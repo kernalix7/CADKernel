@@ -3,6 +3,10 @@
 use cadkernel_topology::{Handle, SolidData};
 
 /// A compound groups multiple solids without performing boolean operations.
+///
+/// Used for grouping related solids that do not physically intersect (e.g.
+/// the results of a linear pattern). Call [`explode`](Self::explode) to
+/// retrieve the individual solids.
 #[derive(Debug)]
 pub struct Compound {
     pub solids: Vec<Handle<SolidData>>,

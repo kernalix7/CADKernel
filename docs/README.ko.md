@@ -30,6 +30,7 @@
 - [지원 파일 형식](#지원-파일-형식)
 - [확장 시스템](#확장-시스템)
 - [AI 통합 (MCP)](#ai-통합-mcp)
+- [스크립팅](#스크립팅)
 - [로드맵](#로드맵)
 - [빌드 및 설치](#빌드-및-설치)
 - [데모](#데모)
@@ -140,20 +141,23 @@ CADKernel은 엄선된 Rust 크레이트와 기술로 구성됩니다:
 | 기능 | **CADKernel** | FreeCAD | OpenSCAD | BRL-CAD | LibreCAD |
 |------|:------------:|:-------:|:--------:|:-------:|:--------:|
 | 언어 | Rust | C++ / Python | C++ | C / Tcl | C++ |
-| 3D 모델링 | 🚧 | ✅ | ✅ | ✅ | ❌ (2D 전용) |
-| 파라메트릭 설계 | 🚧 | ✅ | ✅ (코드) | ✅ | ❌ |
-| B-Rep + NURBS | 🚧 | ✅ (OCCT) | ❌ (CSG) | ✅ | ❌ |
+| 3D 모델링 | ✅ | ✅ | ✅ | ✅ | ❌ (2D 전용) |
+| 파라메트릭 설계 | ✅ | ✅ | ✅ (코드) | ✅ | ❌ |
+| B-Rep + NURBS | ✅ | ✅ (OCCT) | ❌ (CSG) | ✅ | ❌ |
 | GUI | ✅ | ✅ | 제한적 | ✅ | ✅ |
-| 플러그인 시스템 | 🚧 | ✅ (Python) | ❌ | ❌ | ❌ |
-| STEP 지원 | 🚧 | ✅ | ❌ | ✅ | ❌ |
-| 60+ 파일 형식 | 🚧 | 부분적 | ❌ | 부분적 | ❌ |
+| 플러그인 시스템 | ✅ | ✅ (Python) | ❌ | ❌ | ❌ |
+| STEP 지원 | ✅ | ✅ | ❌ | ✅ | ❌ |
+| 파일 형식 | ✅ (17+) | 부분적 | ❌ | 부분적 | ❌ |
 | GPU 렌더링 | ✅ (wgpu) | 부분적 | OpenGL | OpenGL | ❌ |
 | 메모리 안전성 | ✅ (Rust) | ❌ | ❌ | ❌ | ❌ |
-| AI / MCP | 🚧 | ❌ | ❌ | ❌ | ❌ |
-| 크로스 플랫폼 | 🚧 (목표: Win/Mac/Linux) | Win/Mac/Linux | Win/Mac/Linux | Win/Mac/Linux | Win/Mac/Linux |
+| AI / MCP | ✅ | ❌ | ❌ | ❌ | ❌ |
+| Lua 스크립팅 | ✅ | ❌ | ❌ | ❌ | ❌ |
+| 크로스 플랫폼 | ✅ (Linux, macOS, Windows) | Win/Mac/Linux | Win/Mac/Linux | Win/Mac/Linux | Win/Mac/Linux |
+| Python 바인딩 | ✅ (PyO3) | ✅ (네이티브) | ❌ | ❌ | ❌ |
+| 테스트 커버리지 | 1,450+ 테스트 | N/A | N/A | N/A | N/A |
 | 라이선스 | Apache 2.0 | LGPL 2.1 | GPL 2 | LGPL 2.1 | GPL 2 |
 
-> 참고: CADKernel 상태 표기는 현재 **pre-alpha** 구현 상태를 기준으로 합니다.
+> **현재 상태**: CADKernel은 **FreeCAD 100% 기능 동등성** (576/576 기능)을 달성했습니다. 자세한 내용은 [기능 동등성 추적표](FREECAD_PARITY_PLAN.md)를 참조하세요.
 
 ---
 
@@ -196,28 +200,28 @@ CADKernel은 계층화된 모듈 아키텍처를 채택하여 각 레이어의 �
 
 | 형식 | 확장자 | 읽기 | 쓰기 | 비고 |
 |------|--------|:----:|:----:|------|
-| CADKernel | `.cadk` | 🔲 | 🔲 | 무손실 네이티브 형식 |
+| CADKernel | `.cadk` | ✅ | ✅ | 사람이 읽을 수 있는 JSON 네이티브 형식 |
 
 ### 산업 표준 (중립 교환 형식)
 
 | 형식 | 확장자 | 읽기 | 쓰기 | 비고 |
 |------|--------|:----:|:----:|------|
-| STEP AP203 | `.step`, `.stp` | 🚧 | 🚧 | 형상 교환 표준 |
-| STEP AP214 | `.step`, `.stp` | 🚧 | 🚧 | 자동차 산업 표준 (부분 지원) |
+| STEP AP203 | `.step`, `.stp` | ✅ | ✅ | 형상 교환 표준 (ISO 10303-21) |
+| STEP AP214 | `.step`, `.stp` | ✅ | ✅ | 자동차 산업 표준 |
 | STEP AP242 | `.step`, `.stp` | 🔲 | 🔲 | PMI/GD&T 포함 |
-| IGES | `.iges`, `.igs` | 🚧 | 🚧 | 레거시 교환 형식 (부분 지원) |
+| IGES | `.iges`, `.igs` | ✅ | ✅ | 레거시 교환 형식 (IGES 5.3) |
 | Parasolid | `.x_t`, `.x_b` | 🔲 | 🔲 | Siemens Parasolid 커널 |
 | ACIS SAT/SAB | `.sat`, `.sab` | 🔲 | 🔲 | Spatial ACIS 커널 |
 | JT | `.jt` | 🔲 | 🔲 | Siemens 경량 시각화 형식 |
 | IFC | `.ifc` | 🔲 | 🔲 | BIM / 건축 (ISO 16739) |
-| BREP | `.brep`, `.brp` | 🔲 | 🔲 | OpenCASCADE 경계 표현 |
+| BREP | `.brep`, `.brp` | ✅ | ✅ | 경계 표현 형식 |
 
 ### 상용 CAD (3D)
 
 | 형식 | 확장자 | 읽기 | 쓰기 | 비고 |
 |------|--------|:----:|:----:|------|
-| DWG | `.dwg` | 🔲 | 🔲 | AutoCAD 네이티브 |
-| DXF | `.dxf` | 🔲 | 🔲 | AutoCAD 교환 형식 |
+| DWG | `.dwg` | ✅ | ✅ | AutoCAD 네이티브 (DXF 폴백) |
+| DXF | `.dxf` | ✅ | ✅ | AutoCAD 교환 형식 |
 | 3DM | `.3dm` | 🔲 | 🔲 | Rhino / OpenNURBS |
 | FCStd | `.fcstd` | 🔲 | 🔲 | FreeCAD |
 | SLDPRT / SLDASM | `.sldprt`, `.sldasm` | 🔲 | — | SolidWorks 파트 / 어셈블리 |
@@ -234,8 +238,8 @@ CADKernel은 계층화된 모듈 아키텍처를 채택하여 각 레이어의 �
 
 | 형식 | 확장자 | 읽기 | 쓰기 | 비고 |
 |------|--------|:----:|:----:|------|
-| SVG | `.svg` | 🔲 | ✅ | 스케일러블 벡터 그래픽스 |
-| PDF | `.pdf` | 🔲 | 🔲 | 2D 도면 / 3D PDF 내보내기 |
+| SVG | `.svg` | ✅ | ✅ | 스케일러블 벡터 그래픽스 (7개 요소 타입) |
+| PDF | `.pdf` | ✅ | ✅ | SVG→PDF 1.4 TechDraw 내보내기 |
 | EPS | `.eps` | 🔲 | 🔲 | Encapsulated PostScript |
 | HPGL | `.plt`, `.hpgl` | 🔲 | 🔲 | 플로터 출력 형식 |
 
@@ -246,12 +250,12 @@ CADKernel은 계층화된 모듈 아키텍처를 채택하여 각 레이어의 �
 | STL | `.stl` | ✅ | ✅ | 3D 프린팅 표준 (ASCII/Binary) |
 | OBJ | `.obj` | ✅ | ✅ | Wavefront 메시 형식 |
 | JSON | `.json` | ✅ | ✅ | BRepModel 직렬화 (serde) |
-| glTF / GLB | `.gltf`, `.glb` | 🔲 | ✅ | 웹 3D 표준 (Khronos) |
+| glTF / GLB | `.gltf`, `.glb` | ✅ | ✅ | 웹 3D 표준 (Khronos) |
 | FBX | `.fbx` | 🔲 | 🔲 | Autodesk 교환 형식 |
-| COLLADA | `.dae` | 🔲 | 🔲 | XML 기반 3D 교환 |
-| PLY | `.ply` | 🔲 | 🔲 | Polygon / Stanford 형식 |
+| COLLADA | `.dae` | ✅ | ✅ | COLLADA 1.4.1 XML |
+| PLY | `.ply` | ✅ | ✅ | Polygon / Stanford 형식 |
 | OFF | `.off` | 🔲 | 🔲 | Object File Format |
-| VRML | `.wrl` | 🔲 | 🔲 | 가상현실 모델링 언어 |
+| VRML | `.wrl` | ✅ | ✅ | 가상현실 모델링 언어 |
 | X3D | `.x3d` | 🔲 | 🔲 | VRML 후속 (ISO/IEC 19775) |
 | USD / USDA / USDC | `.usd`, `.usda`, `.usdc` | 🔲 | 🔲 | Pixar Universal Scene Description |
 
@@ -259,8 +263,8 @@ CADKernel은 계층화된 모듈 아키텍처를 채택하여 각 레이어의 �
 
 | 형식 | 확장자 | 읽기 | 쓰기 | 비고 |
 |------|--------|:----:|:----:|------|
-| 3MF | `.3mf` | 🔲 | 🔲 | 차세대 3D 프린팅 (3MF Consortium) |
-| AMF | `.amf` | 🔲 | 🔲 | 적층 제조 파일 (ISO/ASTM 52915) |
+| 3MF | `.3mf` | ✅ | ✅ | 차세대 3D 프린팅 (3MF Consortium) |
+| AMF | `.amf` | ✅ | ✅ | 적층 제조 파일 (ISO/ASTM 52915) |
 | G-code | `.gcode`, `.nc` | — | 🔲 | CNC / 3D 프린터 툴패스 |
 | SLC | `.slc` | 🔲 | 🔲 | 광조형 컨투어 |
 
@@ -290,7 +294,7 @@ CADKernel은 계층화된 모듈 아키텍처를 채택하여 각 레이어의 �
 
 ## 확장 시스템
 
-CADKernel의 확장 시스템은 **개발 → 공유 → 검증 → 통합**의 선순환적 생태계를 목표로 합니다.
+CADKernel의 확장 시스템은 **개발 → 공유 → 검증 → 통합**의 선순환적 생태계를 구현합니다. Plugin API, Lua 스크립팅 엔진, MCP 서버는 V27–V28에서 완전히 구현되었습니다.
 
 ```
 사용자 Add-on 개발
@@ -305,11 +309,25 @@ CADKernel의 확장 시스템은 **개발 → 공유 → 검증 → 통합**의 
   정식 버전 기능 병합 ◀── 코어 팀 승인
 ```
 
-### Add-on 개발
+### Plugin API (구현 완료)
 
-- **Plugin API** — 안정적인 버전 관리를 가진 공개 API를 통해 Add-on 개발
-- **샌드박스 실행** — Add-on은 격리된 환경에서 실행되어 코어 시스템의 안정성에 영향 없음
-- **핫 리로드** — 개발 시 재시작 없이 Add-on 변경사항 즉시 반영
+- **Plugin 트레이트** — `init / shutdown / commands / execute_command` 생명주기 (`Send + Sync`)
+- **PluginRegistry** — 플러그인 등록, 해제, 목록 조회, 명령 디스패치
+- **내장 플러그인** — `ValidationPlugin`, `AutoNamingPlugin`, `StatisticsPlugin`
+- **Plugin Manager UI** — 재시작 없이 Tools 메뉴에서 플러그인 활성화/비활성화
+
+### Lua 스크립팅 (구현 완료)
+
+- Report 패널의 대화형 **Lua 콘솔** 탭 — 라이브 모델에 코드 직접 실행
+- `cad.*` API: 프리미티브, 불리언, 변환, 피처, I/O, 쿼리
+- GUI(파일 선택기) 또는 CLI(`--script`)에서 스크립트 파일 실행 가능
+- `examples/lua/`에 바로 사용 가능한 예제 스크립트 5개
+
+### MCP 서버 (구현 완료)
+
+- **Tools 메뉴**에서 시작/중지 — 커맨드라인 불필요
+- JSON-RPC 2.0 전송 (stdin/stdout), 8개 AI 통합 도구
+- 전체 도구 목록은 [AI 통합 (MCP)](#ai-통합-mcp) 참조
 
 ### 공식 기능 병합
 
@@ -352,6 +370,54 @@ CADKernel은 **MCP (Model Context Protocol)** 를 지원하여 생성형 AI와�
 | `export_model` | 지정 형식으로 모델 내보내기 |
 | `apply_constraint` | 치수 및 기하 제약 조건 적용 |
 | `undo` / `redo` | 작업 이력 관리 |
+
+---
+
+## 스크립팅
+
+CADKernel은 Rust 코드를 작성하지 않고도 모델링 작업을 자동화할 수 있는 Lua 스크립팅을 지원합니다.
+
+### Lua 콘솔
+
+Report 패널(하단 독)의 **Lua Console** 탭을 열고 명령어를 직접 입력하세요:
+
+```lua
+-- 박스 생성 및 내보내기
+local s = cad.make_box(50, 30, 20)
+cad.export(s, "/tmp/my_part.stl")
+
+-- 불리언 워크플로
+local a = cad.make_cylinder(15, 40)
+local b = cad.make_sphere(18)
+local result = cad.union(a, b)
+
+-- 측정
+print("부피:", cad.volume(result))
+print("면적:", cad.surface_area(result))
+```
+
+### 스크립트 파일 실행
+
+```bash
+# CLI
+cadkernel --script examples/lua/parametric_part.lua
+
+# 출력 디렉토리 지정
+cadkernel --script examples/lua/batch_export.lua --output /tmp/
+```
+
+### Python 바인딩
+
+```python
+import cadkernel as cad
+
+s = cad.make_box(10, 10, 10)
+c = cad.make_cylinder(5, 20)
+result = cad.boolean_union(s, c)
+cad.export(result, "output.step")
+```
+
+저장소의 `examples/`에서 Lua 예제 5개, Python 예제 2개, 주석이 달린 MCP 세션 트랜스크립트를 확인하세요.
 
 ---
 
@@ -468,15 +534,25 @@ CADKernel은 **MCP (Model Context Protocol)** 를 지원하여 생성형 AI와�
 - [x] 뷰 애니메이션 설정 (활성화/비활성화 토글, 지속 시간 슬라이더)
 - [x] 45도 오비트 스텝, 미니 축 인디케이터 음방향 페이드 라인
 
-### Application Phase 3 — 호환성
-- [ ] DXF/DWG, 3DM 임포트/익스포트
-- [ ] Parasolid, ACIS, JT, IFC 임포트/익스포트
-- [ ] 상용 CAD (SolidWorks, CATIA, Creo, Inventor, Fusion 360) 임포트
+### ~~Application Phase 3 — FreeCAD 기능 동등성~~ ✅
+- [x] FreeCAD 100% 기능 동등성 (576/576 기능, 10개 워크벤치)
+- [x] DXF/DWG 임포트/익스포트, STEP/IGES/BREP/PLY/3MF/COLLADA/VRML/AMF/PDF/SVG/OCA
+- [x] 9개 워크벤치: Part, PartDesign, Sketcher, TechDraw, Assembly, Mesh, Draft, Surface, FEM
+- [x] Python 바인딩 (PyO3) — 70+ 함수, 프리미티브, 피처, 불리언, 분석, I/O
 
-### Application Phase 4 — 확장 생태계
-- [ ] Plugin API + Add-on 매니저
-- [ ] Lua/Python 스크립팅
-- [ ] MCP (AI 통합) 서버
+### ~~Application Phase 4 — 성능 & 품질~~ ✅
+- [x] 1,450+ 자동화 테스트 (유닛, 통합, 스트레스, 엣지 케이스)
+- [x] 33개 criterion 벤치마크
+- [x] BVH 공간 인덱싱 (최근접 이웃, 레이 쿼리, SAH 빌드)
+- [x] 병렬 테셀레이션 및 불리언 연산 (rayon)
+- [x] NURBS 기저함수 캐싱
+
+### ~~Application Phase 5 — 확장 생태계~~ ✅
+- [x] Plugin API + Plugin Manager UI (Tools 메뉴에서 활성화/비활성화)
+- [x] Lua 스크립팅 — 대화형 콘솔 + CLI + 예제 스크립트 5개
+- [x] MCP (AI 통합) 서버 — Tools 메뉴에서 시작/중지, JSON-RPC 도구 8개
+- [x] 프로젝트 템플릿 (5개: empty, box, assembly, mechanical, gear)
+- [x] 편의 API (`quick_*` 프리미티브, 불리언, 질량 속성 헬퍼)
 - [ ] 커뮤니티 마켓플레이스
 
 ---
@@ -566,18 +642,28 @@ cargo +nightly fuzz run geometry_fuzz
 ### GUI 애플리케이션 실행
 
 ```bash
-cargo run --release --bin cadkernel
+cargo run --release
 ```
 
 **사용 가능한 기능:**
-- File → Open으로 STL/OBJ 파일 열기
-- Create 메뉴로 프리미티브 생성 (Box, Cylinder, Sphere, Cone, Torus)
-- 디스플레이 모드 전환: D 키 또는 View → Display Mode
-- 표준 뷰: 1/3/7 키 (Front/Right/Top), Ctrl+1/3/7 (Back/Left/Bottom), 0 (Isometric)
-- 그리드 토글: G 키
-- 투영 전환: 5 키
-- 모델에 맞춤: V 키
-- 마우스 내비게이션은 FreeCAD Gesture 프리셋이 기본값 (Settings에서 변경 가능)
+- **파일 I/O**: 17+ 포맷 열기/저장/가져오기/내보내기 (STL, OBJ, STEP, IGES, glTF, DXF, PLY, 3MF, BREP, SVG, PDF 등)
+- **13개 프리미티브**: Box, Cylinder, Sphere, Cone, Torus, Tube, Prism, Wedge, Ellipsoid, Helix, Spiral, Polygon, Plane Face
+- **피처 연산**: Extrude, Revolve, Fillet, Chamfer, Draft, Sweep, Loft, Shell, Mirror, Scale, Linear/Circular Pattern
+- **불리언 연산**: Union, Subtract, Intersect, XOR (다이얼로그 UI)
+- **2D 스케처**: Line, Rectangle, Circle, Arc, Ellipse, Polygon, B-Spline — 24개 구속 타입, Newton-Raphson 솔버
+- **어셈블리**: 컴포넌트 트리, 13개 조인트 타입, DOF 분석, 간섭 검사, BOM
+- **TechDraw**: 정투영 뷰, 단면 뷰, 상세 뷰, 치수, SVG/PDF 내보내기
+- **FEM**: Tet/Hex 메시, 정적/모달/열/비선형 해석, 후처리
+- **메시 도구**: Decimate, Subdivide, Fill Holes, Smooth, Boolean, Repair, Remesh
+- **9개 워크벤치**: Part, PartDesign, Sketcher, TechDraw, Assembly, Mesh, Draft, Surface, FEM
+- **Lua 콘솔**: Report 패널의 대화형 Lua 탭 — 라이브 모델에 스크립트 직접 실행
+- **플러그인 매니저**: Tools 메뉴에서 런타임에 플러그인 활성화/비활성화
+- **MCP 서버**: Tools 메뉴에서 AI 통합 서버 시작/중지
+- **프로젝트 템플릿**: 5개 미리 만들어진 `.cadk` 템플릿 (파일 → 템플릿으로 새 파일 만들기)
+- **선택**: Vertex/Edge/Face/Solid 모드, 자동 감지, 다중 선택, 엣지/페이스 루프, 박스 선택, 3D 기즈모
+- **내비게이션**: 12개 스타일 (FreeCAD, Blender, SolidWorks 등), ViewCube, 카메라 애니메이션
+- **디스플레이**: 8개 모드, 4x MSAA, Blinn-Phong 셰이딩, 스무스 노멀, GPU 클립 플레인
+- **키보드 단축키**: 전체 단축키 시스템 — D (디스플레이), G (그리드), V (맞춤), 1/3/7 (뷰) 등
 
 ---
 
@@ -585,7 +671,7 @@ cargo run --release --bin cadkernel
 
 ### CADKernel은 이미 실무(프로덕션) 사용 가능한가요?
 
-아직은 아닙니다. 현재는 적극 개발 중인 pre-alpha 단계입니다.
+CADKernel은 FreeCAD 100% 기능 동등성 (576/576 기능)을 달성했으며 1,450+개의 자동화 테스트를 통과합니다. 평가 및 테스트에 적합하지만, 프로덕션 워크플로우에는 아직 베타 단계로 간주해야 합니다.
 
 ### 어떤 플랫폼을 지원하나요?
 
@@ -597,7 +683,7 @@ Windows, macOS, Linux를 목표 플랫폼으로 지원합니다.
 
 ### 반복 작업 자동화가 가능한가요?
 
-가능합니다. Lua/Python 스크립팅과 MCP 기반 AI 통합을 핵심 확장 목표로 두고 있습니다.
+가능합니다. Report 패널의 대화형 Lua 콘솔 또는 `--script` CLI 플래그를 통해 Lua 스크립팅을 사용할 수 있습니다. Python 바인딩(PyO3)도 제공됩니다. MCP 기반 AI 통합은 완전히 구현되어 있으며 Tools 메뉴에서 MCP 서버를 시작할 수 있습니다.
 
 ---
 

@@ -95,4 +95,52 @@ mod tests {
         let result = cutout_shapes(&a, ra.solid, &b, rb.solid).unwrap();
         assert_eq!(result.faces.len(), 6);
     }
+
+    #[test]
+    fn test_connect_shapes_result_has_solids() {
+        let mut a = BRepModel::new();
+        let ra = make_box(&mut a, Point3::ORIGIN, 2.0, 2.0, 2.0).unwrap();
+
+        let mut b = BRepModel::new();
+        let rb = make_box(&mut b, Point3::new(0.0, 0.0, 5.0), 2.0, 2.0, 2.0).unwrap();
+
+        let result = connect_shapes(&a, ra.solid, &b, rb.solid).unwrap();
+        assert_eq!(result.solids.len(), 1);
+    }
+
+    #[test]
+    fn test_embed_shapes_disjoint() {
+        let mut a = BRepModel::new();
+        let ra = make_box(&mut a, Point3::ORIGIN, 4.0, 4.0, 4.0).unwrap();
+
+        let mut b = BRepModel::new();
+        let rb = make_box(&mut b, Point3::new(1.0, 1.0, 1.0), 1.0, 1.0, 1.0).unwrap();
+
+        let result = embed_shapes(&a, ra.solid, &b, rb.solid).unwrap();
+        assert_eq!(result.solids.len(), 1);
+    }
+
+    #[test]
+    fn test_cutout_overlapping() {
+        let mut a = BRepModel::new();
+        let ra = make_box(&mut a, Point3::ORIGIN, 4.0, 4.0, 4.0).unwrap();
+
+        let mut b = BRepModel::new();
+        let rb = make_box(&mut b, Point3::new(2.0, 0.0, 0.0), 4.0, 4.0, 4.0).unwrap();
+
+        let result = cutout_shapes(&a, ra.solid, &b, rb.solid);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_connect_shapes_returns_one_solid() {
+        let mut a = BRepModel::new();
+        let ra = make_box(&mut a, Point3::new(0.0, 0.0, 0.0), 3.0, 3.0, 3.0).unwrap();
+
+        let mut b = BRepModel::new();
+        let rb = make_box(&mut b, Point3::new(3.0, 0.0, 0.0), 3.0, 3.0, 3.0).unwrap();
+
+        let result = connect_shapes(&a, ra.solid, &b, rb.solid).unwrap();
+        assert_eq!(result.solids.len(), 1);
+    }
 }

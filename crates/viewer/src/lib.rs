@@ -14,6 +14,7 @@ pub mod nav;
 pub mod picking;
 mod render;
 pub mod scene;
+pub mod scripting;
 
 pub use nav::{NavConfig, NavStyle};
 pub use render::{
@@ -123,12 +124,27 @@ impl ApplicationHandler for ViewerApp {
                         self.mouse.right_pressed,
                         self.mouse.shift_held,
                         self.mouse.ctrl_held,
+                        self.mouse.alt_held,
                     );
 
                     match action {
                         NavAction::Orbit => {
-                            self.camera.yaw -= dx as f32 * self.nav.orbit_sensitivity;
-                            self.camera.pitch -= dy as f32 * self.nav.orbit_sensitivity;
+                            let (sw, sh) = if let Some(gpu) = &self.gpu {
+                                let s = gpu.window.inner_size();
+                                (s.width as f32, s.height as f32)
+                            } else {
+                                (1280.0, 720.0)
+                            };
+                            self.nav.apply_orbit(
+                                &mut self.camera.yaw,
+                                &mut self.camera.pitch,
+                                dx as f32,
+                                dy as f32,
+                                position.x as f32,
+                                position.y as f32,
+                                sw,
+                                sh,
+                            );
                         }
                         NavAction::Pan => {
                             let speed = self.camera.distance * self.nav.pan_sensitivity;
@@ -141,7 +157,7 @@ impl ApplicationHandler for ViewerApp {
                             self.camera.target[2] += r[2] * mx + u[2] * my;
                         }
                         NavAction::Zoom => {
-                            let factor = self.nav.scroll_zoom_factor(-dy as f32 * 0.05);
+                            let factor = self.nav.drag_zoom_factor(-dy as f32 * 0.05);
                             self.camera.distance *= factor;
                             self.camera.distance = self.camera.distance.max(0.01);
                         }

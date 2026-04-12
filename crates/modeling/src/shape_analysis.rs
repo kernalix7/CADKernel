@@ -4,6 +4,8 @@ use cadkernel_math::Vec3;
 use cadkernel_topology::{BRepModel, FaceData, Handle, SolidData};
 
 /// Classification of a solid based on geometry heuristics.
+///
+/// Determined by face count, planarity, and cylindrical-face detection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SolidType {
     Box,
@@ -256,5 +258,72 @@ mod tests {
         .unwrap();
         let st = classify_solid(&model, cyl.solid);
         assert_eq!(st, SolidType::Cylinder);
+    }
+
+    #[test]
+    fn test_find_planar_faces_cylinder() {
+        let mut model = BRepModel::new();
+        let cyl = make_cylinder(&mut model, Point3::ORIGIN, 1.0, 2.0, 64).unwrap();
+        let planar = find_planar_faces(&model, cyl.solid);
+        assert!(planar.len() >= 2, "cylinder should have at least 2 planar-like faces, got {}", planar.len());
+    }
+
+    #[test]
+    fn test_find_cylindrical_faces_cylinder() {
+        let mut model = BRepModel::new();
+        let cyl = make_cylinder(&mut model, Point3::ORIGIN, 2.0, 5.0, 64).unwrap();
+        let cyl_faces = find_cylindrical_faces(&model, cyl.solid);
+        assert!(!cyl_faces.is_empty(), "cylinder should have cylindrical faces");
+    }
+
+    #[test]
+    fn test_classify_box_non_square() {
+        let mut model = BRepModel::new();
+        let bx = make_box(&mut model, Point3::ORIGIN, 1.0, 2.0, 3.0).unwrap();
+        assert_eq!(classify_solid(&model, bx.solid), SolidType::Box);
+    }
+
+    #[test]
+    fn test_find_planar_faces_box_nonzero() {
+        let mut model = BRepModel::new();
+        let bx = make_box(&mut model, Point3::ORIGIN, 1.0, 1.0, 1.0).unwrap();
+        let planar = find_planar_faces(&model, bx.solid);
+        assert!(!planar.is_empty());
+    }
+
+    #[test]
+    fn test_find_cylindrical_faces_box_classification() {
+        let mut model = BRepModel::new();
+        let bx = make_box(&mut model, Point3::ORIGIN, 2.0, 2.0, 2.0).unwrap();
+        let cyl_faces = find_cylindrical_faces(&model, bx.solid);
+        // The heuristic may or may not detect cylindrical faces for a box,
+        // but the full classify_solid should still return Box.
+        assert_eq!(classify_solid(&model, bx.solid), SolidType::Box);
+        let _ = cyl_faces;
+    }
+
+    #[test]
+    fn test_classify_box_cube() {
+        let mut model = BRepModel::new();
+        let bx = make_box(&mut model, Point3::ORIGIN, 5.0, 5.0, 5.0).unwrap();
+        assert_eq!(classify_solid(&model, bx.solid), SolidType::Box);
+    }
+
+    #[test]
+    fn test_multiple_solids_independent_classification() {
+        let mut model = BRepModel::new();
+        let bx = make_box(&mut model, Point3::ORIGIN, 2.0, 2.0, 2.0).unwrap();
+        let mut m2 = BRepModel::new();
+        let cyl = make_cylinder(&mut m2, Point3::ORIGIN, 1.0, 3.0, 32).unwrap();
+        assert_eq!(classify_solid(&model, bx.solid), SolidType::Box);
+        assert_eq!(classify_solid(&m2, cyl.solid), SolidType::Cylinder);
+    }
+
+    #[test]
+    fn test_classify_box_all_faces_planar() {
+        let mut model = BRepModel::new();
+        let bx = make_box(&mut model, Point3::new(1.0, 2.0, 3.0), 2.0, 3.0, 4.0).unwrap();
+        let planar = find_planar_faces(&model, bx.solid);
+        assert_eq!(planar.len(), 6, "all 6 box faces must be planar");
     }
 }

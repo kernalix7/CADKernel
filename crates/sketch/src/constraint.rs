@@ -1,6 +1,10 @@
 use crate::entity::{LineId, PointId};
 
-/// Every constraint the sketch solver supports.
+/// Every constraint the sketch solver supports (24 types).
+///
+/// Each variant produces one or more residual equations that the Newton-Raphson
+/// solver drives to zero. Analytical Jacobians are provided for all constraint
+/// types for fast convergence.
 #[derive(Debug, Clone)]
 pub enum Constraint {
     /// Two points share the same location.
@@ -74,6 +78,17 @@ pub enum Constraint {
 
     /// A point lies on an edge/line (same as PointOnLine but conceptually for any curve).
     PointOnObject(PointId, LineId),
+
+    /// Snell's law refraction: `ratio * sin(angle_of_line1_to_normal) - sin(angle_of_line2_to_normal) = 0`.
+    ///
+    /// Models refraction at an interface where `ratio = n1/n2`.
+    /// Both lines share a common endpoint at the interface, and the normal is
+    /// defined as perpendicular to the interface (vertical by convention).
+    Refraction {
+        line1: LineId,
+        line2: LineId,
+        ratio: f64,
+    },
 }
 
 /// Trait implemented by each constraint variant so the solver can evaluate
@@ -129,6 +144,7 @@ impl ConstraintEval for ConstraintWithCtx<'_> {
             Constraint::HorizontalDistance(..) => 1,
             Constraint::VerticalDistance(..) => 1,
             Constraint::PointOnObject(..) => 1,
+            Constraint::Refraction { .. } => 1,
         }
     }
 
@@ -296,6 +312,22 @@ impl ConstraintEval for ConstraintWithCtx<'_> {
                 let dpx = vars[px(p)] - vars[px(s)];
                 let dpy = vars[py(p)] - vars[py(s)];
                 out[0] = dpx * dy - dpy * dx;
+            }
+            Constraint::Refraction { line1, line2, ratio } => {
+                // Snell's law: ratio * sin(theta1) - sin(theta2) = 0
+                // theta_i = angle between line_i direction and vertical (Y axis)
+                let (s1, e1) = self.lines[line1.0];
+                let (s2, e2) = self.lines[line2.0];
+                let dx1 = vars[px(e1)] - vars[px(s1)];
+                let dy1 = vars[py(e1)] - vars[py(s1)];
+                let dx2 = vars[px(e2)] - vars[px(s2)];
+                let dy2 = vars[py(e2)] - vars[py(s2)];
+                let len1 = (dx1 * dx1 + dy1 * dy1).sqrt().max(1e-15);
+                let len2 = (dx2 * dx2 + dy2 * dy2).sqrt().max(1e-15);
+                // sin of angle to Y axis = |dx| / len (using dx component)
+                let sin1 = dx1.abs() / len1;
+                let sin2 = dx2.abs() / len2;
+                out[0] = ratio * sin1 - sin2;
             }
         }
     }
@@ -576,6 +608,39 @@ impl ConstraintEval for ConstraintWithCtx<'_> {
                 out.push((row, py(s), dx - dpx));
                 out.push((row, px(e), -dpy));
                 out.push((row, py(e), dpx));
+            }
+            Constraint::Refraction { line1, line2, ratio } => {
+                // Numerical Jacobian for Snell's law via finite differences
+                let (s1, e1) = self.lines[line1.0];
+                let (s2, e2) = self.lines[line2.0];
+                let h = 1e-8;
+                let indices = [px(s1), py(s1), px(e1), py(e1), px(s2), py(s2), px(e2), py(e2)];
+
+                let eval = |v: &[f64]| -> f64 {
+                    let dx1 = v[px(e1)] - v[px(s1)];
+                    let dy1 = v[py(e1)] - v[py(s1)];
+                    let dx2 = v[px(e2)] - v[px(s2)];
+                    let dy2 = v[py(e2)] - v[py(s2)];
+                    let len1 = (dx1 * dx1 + dy1 * dy1).sqrt().max(1e-15);
+                    let len2 = (dx2 * dx2 + dy2 * dy2).sqrt().max(1e-15);
+                    let sin1 = dx1.abs() / len1;
+                    let sin2 = dx2.abs() / len2;
+                    ratio * sin1 - sin2
+                };
+
+                let f0 = eval(vars);
+                let mut perturbed = vars.to_vec();
+                for &idx in &indices {
+                    if idx < perturbed.len() {
+                        perturbed[idx] += h;
+                        let f1 = eval(&perturbed);
+                        let deriv = (f1 - f0) / h;
+                        if deriv.abs() > 1e-14 {
+                            out.push((row, idx, deriv));
+                        }
+                        perturbed[idx] = vars[idx];
+                    }
+                }
             }
         }
     }

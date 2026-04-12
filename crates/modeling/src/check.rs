@@ -2,10 +2,15 @@
 
 use cadkernel_topology::{BRepModel, Handle, SolidData};
 
-/// Result of a geometry check.
+/// Result of a geometry/topology validation check.
+///
+/// Contains a boolean validity flag and a list of human-readable issue
+/// descriptions for diagnostic purposes.
 #[derive(Debug)]
 pub struct CheckResult {
+    /// `true` if no errors were found (warnings may still be present).
     pub is_valid: bool,
+    /// Descriptions of all issues found.
     pub issues: Vec<String>,
 }
 

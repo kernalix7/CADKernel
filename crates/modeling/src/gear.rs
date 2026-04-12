@@ -13,6 +13,9 @@ use cadkernel_topology::{
 use crate::primitives::{EdgeCache, bind_edge_line_segments, next_edge_tag};
 
 /// Handles returned from [`make_involute_gear`].
+///
+/// Contains the solid handle and the list of face handles that make up
+/// the gear body.
 pub struct GearResult {
     pub solid: Handle<SolidData>,
     pub faces: Vec<Handle<FaceData>>,
@@ -308,5 +311,46 @@ mod tests {
         assert!(make_involute_gear(&mut model, 2.0, 2, pa, 10.0).is_err());
         assert!(make_involute_gear(&mut model, 2.0, 20, 0.0, 10.0).is_err());
         assert!(make_involute_gear(&mut model, 2.0, 20, pa, -1.0).is_err());
+    }
+
+    #[test]
+    fn test_gear_8_teeth() {
+        let mut model = BRepModel::new();
+        let pa = 20.0_f64.to_radians();
+        let r = make_involute_gear(&mut model, 3.0, 8, pa, 8.0).unwrap();
+        assert!(model.solids.is_alive(r.solid));
+        assert!(r.faces.len() > 2);
+    }
+
+    #[test]
+    fn test_gear_high_pressure_angle() {
+        let mut model = BRepModel::new();
+        let pa = 25.0_f64.to_radians();
+        let r = make_involute_gear(&mut model, 2.0, 12, pa, 6.0).unwrap();
+        assert!(model.solids.is_alive(r.solid));
+    }
+
+    #[test]
+    fn test_gear_face_count() {
+        let mut model = BRepModel::new();
+        let pa = 20.0_f64.to_radians();
+        let teeth = 10;
+        let r = make_involute_gear(&mut model, 2.0, teeth, pa, 5.0).unwrap();
+        assert!(r.faces.len() >= teeth, "should have at least {} faces, got {}", teeth, r.faces.len());
+    }
+
+    #[test]
+    fn test_gear_zero_module_fails() {
+        let mut model = BRepModel::new();
+        let pa = 20.0_f64.to_radians();
+        assert!(make_involute_gear(&mut model, 0.0, 20, pa, 10.0).is_err());
+    }
+
+    #[test]
+    fn test_gear_15_degree_pressure_angle() {
+        let mut model = BRepModel::new();
+        let pa = 15.0_f64.to_radians();
+        let r = make_involute_gear(&mut model, 2.0, 10, pa, 5.0).unwrap();
+        assert!(model.solids.is_alive(r.solid));
     }
 }

@@ -1,6 +1,10 @@
 use cadkernel_math::{Point3, Vec3};
 
 /// A work plane in 3D space on which sketches are drawn.
+///
+/// Defines an origin, normal, and orthonormal X/Y axes. Used to map 2D
+/// sketch coordinates to 3D world coordinates via
+/// [`to_world`](Self::to_world) and back via [`to_local`](Self::to_local).
 #[derive(Debug, Clone, Copy)]
 pub struct WorkPlane {
     pub origin: Point3,
@@ -49,6 +53,12 @@ impl WorkPlane {
     /// Maps a 2D sketch point to a 3D world point on this plane.
     pub fn to_world(&self, x: f64, y: f64) -> Point3 {
         self.origin + self.x_axis * x + self.y_axis * y
+    }
+
+    /// Projects a 3D world point onto this plane, returning the 2D local coordinates.
+    pub fn to_local(&self, pt: Point3) -> cadkernel_math::Point2 {
+        let d = pt - self.origin;
+        cadkernel_math::Point2::new(d.dot(self.x_axis), d.dot(self.y_axis))
     }
 }
 

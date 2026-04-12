@@ -6,14 +6,17 @@ use super::Curve;
 /// in sampling-based algorithms (bounding_box, project_point).
 const FINITE_FALLBACK: f64 = 1e6;
 
-/// An infinite line defined by origin + direction.
+/// An infinite line defined by an origin point and a direction vector.
+///
+/// The domain is `(-inf, +inf)`. For a bounded segment, use [`LineSegment`].
+/// Implements the [`Curve`] trait with constant tangent and zero curvature.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Line {
     pub origin: Point3,
     pub direction: Vec3,
 }
 
-/// A bounded line segment from `start` to `end`.
+/// A bounded line segment from `start` to `end`, parameterized over `[0, 1]`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct LineSegment {
     pub start: Point3,

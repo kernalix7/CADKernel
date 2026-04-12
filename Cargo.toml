@@ -27,6 +27,7 @@ cadkernel-sketch = { path = "crates/sketch" }
 cadkernel-io = { path = "crates/io" }
 cadkernel-viewer = { path = "crates/viewer" }
 cadkernel-python = { path = "crates/python" }
+mlua = { version = "0.10", features = ["lua54", "vendored", "send"] }
 
 [package]
 name = "cadkernel"

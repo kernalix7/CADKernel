@@ -156,6 +156,47 @@ pub fn ders_basis_funs(knots: &[f64], span: usize, t: f64, p: usize, k: usize) -
     ders
 }
 
+/// Cache for B-spline basis function evaluations.
+///
+/// Memoizes `find_span + basis_funs` results keyed by parameter bit pattern.
+/// Useful during tessellation where the same U or V parameter values are
+/// evaluated repeatedly across a grid.
+pub struct BasisCache {
+    knots: Vec<f64>,
+    n: usize,
+    degree: usize,
+    entries: std::collections::HashMap<u64, (usize, Vec<f64>)>,
+}
+
+impl BasisCache {
+    /// Creates a new cache for the given knot vector, control point count, and degree.
+    pub fn new(knots: &[f64], n: usize, degree: usize) -> Self {
+        Self {
+            knots: knots.to_vec(),
+            n,
+            degree,
+            entries: std::collections::HashMap::new(),
+        }
+    }
+
+    /// Returns `(span, basis_funs)` for parameter `t`, using the cache.
+    pub fn get(&mut self, t: f64) -> (usize, &[f64]) {
+        let key = t.to_bits();
+        self.entries.entry(key).or_insert_with(|| {
+            let span = find_span(&self.knots, self.n, self.degree, t);
+            let bf = basis_funs(&self.knots, span, t, self.degree);
+            (span, bf)
+        });
+        let entry = &self.entries[&key];
+        (entry.0, &entry.1)
+    }
+
+    /// Clears all cached entries.
+    pub fn clear(&mut self) {
+        self.entries.clear();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -295,6 +336,38 @@ mod tests {
                 (sum - 1.0).abs() < 1e-12,
                 "partition of unity violated at t={t}: sum={sum}"
             );
+        }
+    }
+
+    #[test]
+    fn test_basis_cache_matches_direct() {
+        let knots = vec![0.0, 0.0, 0.0, 0.0, 0.25, 0.5, 0.75, 1.0, 1.0, 1.0, 1.0];
+        let p = 3;
+        let n = 7;
+        let mut cache = BasisCache::new(&knots, n, p);
+
+        for i in 0..=20 {
+            let t = i as f64 / 20.0;
+
+            // Direct computation
+            let span_direct = find_span(&knots, n, p, t);
+            let bf_direct = basis_funs(&knots, span_direct, t, p);
+
+            // Cached computation
+            let (span_cached, bf_cached) = cache.get(t);
+            let bf_cached: Vec<f64> = bf_cached.to_vec();
+            assert_eq!(span_direct, span_cached, "span mismatch at t={t}");
+            for j in 0..=p {
+                assert!(
+                    (bf_direct[j] - bf_cached[j]).abs() < 1e-14,
+                    "basis mismatch at t={t}, j={j}"
+                );
+            }
+
+            // Second call should return same result (cache hit)
+            let (span2, bf2) = cache.get(t);
+            assert_eq!(span_cached, span2);
+            assert_eq!(bf_cached.as_slice(), bf2);
         }
     }
 }
