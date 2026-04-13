@@ -716,14 +716,14 @@ pub(crate) fn extract_frustum_planes(vp: &[[f32; 4]; 4]) -> [[f32; 4]; 6] {
     // Right:  row3 - row0
     // Bottom: row3 + row1
     // Top:    row3 - row1
-    // Near:   row3 + row2
+    // Near:   row2           (wgpu clip z ∈ [0,1])
     // Far:    row3 - row2
     for i in 0..4 {
         planes[0][i] = r3[i] + r0[i];
         planes[1][i] = r3[i] - r0[i];
         planes[2][i] = r3[i] + r1[i];
         planes[3][i] = r3[i] - r1[i];
-        planes[4][i] = r3[i] + r2[i];
+        planes[4][i] = r2[i];
         planes[5][i] = r3[i] - r2[i];
     }
     // Normalize each plane
@@ -748,7 +748,7 @@ pub(crate) fn aabb_in_frustum(planes: &[[f32; 4]; 6], aabb_min: [f32; 3], aabb_m
         let py = if p[1] >= 0.0 { aabb_max[1] } else { aabb_min[1] };
         let pz = if p[2] >= 0.0 { aabb_max[2] } else { aabb_min[2] };
         // If the p-vertex is outside the plane, the entire AABB is outside
-        if p[0] * px + p[1] * py + p[2] * pz + p[3] < 0.0 {
+        if p[0] * px + p[1] * py + p[2] * pz + p[3] < -1e-6 {
             return false;
         }
     }

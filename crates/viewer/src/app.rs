@@ -230,6 +230,14 @@ impl CadApp {
 
     /// Rebuild the GPU vertex buffer from the entire scene (all visible objects).
     fn rebuild_scene_gpu(&mut self) {
+        // Recalculate AABBs for all objects (transforms change vertex positions)
+        for obj in &mut self.scene.objects {
+            let (mn, mx) = crate::scene::compute_aabb(&obj.vertices);
+            obj.aabb_min = mn;
+            obj.aabb_max = mx;
+        }
+        // Refresh picking data from current model state
+        self.scene.refresh_picking_data();
         let (combined, ranges) = self.scene.build_combined_vertices();
         // Store per-object ranges with color and selection state
         self.object_ranges = ranges.iter().map(|&(id, start, count)| {
@@ -2399,21 +2407,28 @@ impl CadApp {
                     if let Some(obj) = self.scene.get_mut(id) {
                         let angle = angle_deg.to_radians();
                         let (ca, sa) = (angle.cos(), angle.sin());
-                        for v in &mut obj.mesh.vertices {
-                            let p = *v;
-                            *v = match axis {
+                        let rotate_pt = |p: cadkernel_math::Point3| -> cadkernel_math::Point3 {
+                            match axis {
                                 0 => cadkernel_math::Point3::new(p.x, p.y * ca - p.z * sa, p.y * sa + p.z * ca),
                                 1 => cadkernel_math::Point3::new(p.x * ca + p.z * sa, p.y, -p.x * sa + p.z * ca),
                                 _ => cadkernel_math::Point3::new(p.x * ca - p.y * sa, p.x * sa + p.y * ca, p.z),
-                            };
-                        }
-                        for n in &mut obj.mesh.normals {
-                            let v = *n;
-                            *n = match axis {
+                            }
+                        };
+                        let rotate_vec = |v: cadkernel_math::Vec3| -> cadkernel_math::Vec3 {
+                            match axis {
                                 0 => cadkernel_math::Vec3::new(v.x, v.y * ca - v.z * sa, v.y * sa + v.z * ca),
                                 1 => cadkernel_math::Vec3::new(v.x * ca + v.z * sa, v.y, -v.x * sa + v.z * ca),
                                 _ => cadkernel_math::Vec3::new(v.x * ca - v.y * sa, v.x * sa + v.y * ca, v.z),
-                            };
+                            }
+                        };
+                        for v in &mut obj.mesh.vertices {
+                            *v = rotate_pt(*v);
+                        }
+                        for n in &mut obj.mesh.normals {
+                            *n = rotate_vec(*n);
+                        }
+                        for v in obj.model.vertices.iter_mut() {
+                            v.1.point = rotate_pt(v.1.point);
                         }
                         obj.vertices = crate::render::mesh_to_vertices(&obj.mesh);
                         let axis_name = ["X", "Y", "Z"][axis.min(2) as usize];
@@ -2427,6 +2442,10 @@ impl CadApp {
                     if let Some(obj) = self.scene.get_mut(id) {
                         for v in &mut obj.mesh.vertices {
                             *v = cadkernel_math::Point3::new(v.x * factor, v.y * factor, v.z * factor);
+                        }
+                        for v in obj.model.vertices.iter_mut() {
+                            let p = &mut v.1.point;
+                            *p = cadkernel_math::Point3::new(p.x * factor, p.y * factor, p.z * factor);
                         }
                         obj.vertices = crate::render::mesh_to_vertices(&obj.mesh);
                         let name = obj.name.clone();
@@ -5339,7 +5358,7 @@ impl CadApp {
 
                 // Determine which objects are visible (frustum test)
                 let visible: Vec<bool> = object_ranges.iter().map(|&(id, _start, _count, _color, _selected)| {
-                    scene.get(id).is_none_or(|obj| {
+                    scene.get(id).is_some_and(|obj| {
                         aabb_in_frustum(&frustum, obj.aabb_min, obj.aabb_max)
                     })
                 }).collect();

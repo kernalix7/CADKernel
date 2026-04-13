@@ -95,9 +95,9 @@ pub struct SceneObject {
     pub aabb_max: [f32; 3],
 }
 
-fn compute_aabb(vertices: &[Vertex]) -> ([f32; 3], [f32; 3]) {
+pub fn compute_aabb(vertices: &[Vertex]) -> ([f32; 3], [f32; 3]) {
     if vertices.is_empty() {
-        return ([0.0; 3], [0.0; 3]);
+        return ([f32::MIN; 3], [f32::MAX; 3]);
     }
     let mut mn = [f32::MAX; 3];
     let mut mx = [f32::MIN; 3];
@@ -260,6 +260,19 @@ impl Scene {
     /// Iterate visible objects.
     pub fn visible_objects(&self) -> impl Iterator<Item = &SceneObject> {
         self.objects.iter().filter(|o| o.visible)
+    }
+
+    /// Refresh picking data (edge_positions, vertex_positions) for all objects
+    /// from their current model state. Call after transforms that modify geometry.
+    pub fn refresh_picking_data(&mut self) {
+        for obj in &mut self.objects {
+            let (ep, eh) = collect_edge_data(&obj.model, obj.solid);
+            let (vp, vh) = collect_vertex_data(&obj.model, obj.solid);
+            obj.edge_positions = ep;
+            obj.edge_handles = eh;
+            obj.vertex_positions = vp;
+            obj.vertex_handles = vh;
+        }
     }
 
     /// Collect all visible vertices into a single buffer for GPU upload.
