@@ -11,6 +11,38 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### V29: Performance, Testing & Packaging (2026-04-13)
+
+**Frustum Culling & Per-Object AABB:**
+- Per-object axis-aligned bounding box (AABB) computed at tessellation time in `SceneObject`
+- View frustum plane extraction from view-projection matrix (`extract_frustum_planes`)
+- AABB-frustum intersection test (`aabb_in_frustum`) skips off-screen objects
+- Per-object frustum culling in all solid display modes (Shading, NoShading, Transparent)
+- Reduces GPU draw calls for large assemblies where objects are outside the camera view
+
+**Format Roundtrip Integration Tests:**
+- 22 integration tests in `crates/io/tests/format_roundtrip.rs`
+- Covers STEP, IGES, STL (ascii/binary), OBJ, PLY, BREP, JSON roundtrips
+- Mesh processing tests: decimation, subdivision, smoothing
+- Tessellation validation: serial, parallel, face-map variants
+- Multi-solid and vertex coordinate preservation tests
+
+**Python Wheel CI:**
+- `.github/workflows/python-release.yml` — automated wheel building via `PyO3/maturin-action`
+- 5-target matrix: Linux (x86_64, aarch64), macOS (x86_64, aarch64), Windows (x86_64)
+- Source distribution (sdist) for source-only installs
+- Automated PyPI publishing on version tags
+
+**Community Contribution Onboarding:**
+- Enhanced `CONTRIBUTING.md` with architecture overview, crate dependency diagram
+- "Good First Issues" section with concrete contribution areas
+- Coding conventions summary for new contributors
+- Korean translation updated in `docs/CONTRIBUTING.ko.md`
+
+### Changed
+- Per-object rendering extended to NoShading, Transparent modes (previously only Shading)
+- 1,612 tests passing across all crates (up from 1,606)
+
 #### V28: Viewer Integration & Production Polish (2026-04-08)
 
 **Lua Console:**

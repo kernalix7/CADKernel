@@ -1519,6 +1519,28 @@ cadkernel --script batch_export.lua --output /tmp/
 1. `actions/download-artifact@v4` — 전체 플랫폼 아티팩트 다운로드
 2. `softprops/action-gh-release@v2` — 모든 바이너리 포함 GitHub 릴리즈 생성, 릴리즈 노트 자동 생성
 
+### Python 휠 워크플로우 (`.github/workflows/python-release.yml`)
+
+`v*` 형식의 태그 푸시 및 수동 디스패치에서 실행됩니다.
+
+**빌드 매트릭스**:
+
+| 잡 | OS | 타깃 |
+|-----|-----|------|
+| linux | ubuntu-latest | x86_64, aarch64 |
+| macos | macos-13 / macos-latest | x86_64-apple-darwin, aarch64-apple-darwin |
+| windows | windows-latest | x86_64-pc-windows-msvc |
+| sdist | ubuntu-latest | 소스 배포 |
+
+**타깃별 단계**:
+1. 체크아웃 + `actions/setup-python@v5` (Python 3.13)
+2. `PyO3/maturin-action@v1` — `crates/python/dist`에 휠 빌드
+3. `actions/upload-artifact@v4` — 플랫폼별 아티팩트
+
+**퍼블리시 잡** (모든 빌드 완료 후, 태그만):
+1. 전체 휠 아티팩트 다운로드
+2. `pypa/gh-action-pypi-publish@release/v1` — 신뢰할 수 있는 퍼블리셔를 사용하여 PyPI에 배포
+
 ### 로컬 실행
 
 ```bash

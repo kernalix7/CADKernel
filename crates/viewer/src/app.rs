@@ -11,8 +11,8 @@ use crate::render::{
     AXIS_X_COLOR, AXIS_Y_COLOR, AXIS_Z_COLOR, CLIP_DISABLED, Camera, DisplayMode,
     EDGE_OVERLAY_COLOR, GRID_MAJOR_COLOR, GRID_MINOR_COLOR, GpuState, GridConfig,
     HIDDEN_LINE_COLOR, MouseState, NO_SHADE_COLOR, POINT_COLOR, PRESELECT_STRENGTH, SOLID_COLOR,
-    StandardView, TRANSPARENT_COLOR, Uniforms, Vertex, WIRE_COLOR, compute_bounds, cross3, dot3,
-    mesh_to_vertices, normalize3, sub3,
+    StandardView, TRANSPARENT_COLOR, Uniforms, Vertex, WIRE_COLOR, aabb_in_frustum, compute_bounds,
+    cross3, dot3, extract_frustum_planes, mesh_to_vertices, normalize3, sub3,
 };
 use cadkernel_io::{
     Mesh, export_3mf, export_brep, export_dxf, export_gltf, export_iges, export_ply, export_step,
@@ -5330,14 +5330,25 @@ impl CadApp {
                 }
             }
 
-            // Mesh — per-object rendering with individual colors
+            // Mesh — per-object rendering with frustum culling
             if rt.gpu.num_vertices > 0 {
                 pass.set_vertex_buffer(0, rt.gpu.vertex_buffer.slice(..));
+
+                // Extract frustum planes for per-object culling
+                let frustum = extract_frustum_planes(&vp);
+
+                // Determine which objects are visible (frustum test)
+                let visible: Vec<bool> = object_ranges.iter().map(|&(id, _start, _count, _color, _selected)| {
+                    scene.get(id).is_none_or(|obj| {
+                        aabb_in_frustum(&frustum, obj.aabb_min, obj.aabb_max)
+                    })
+                }).collect();
 
                 // Write per-object uniform slots (starting after grid+mesh slots)
                 let obj_slot_base = slot + 1;
                 let presel = *preselected_object;
                 for (i, &(id, _start, _count, color, selected)) in object_ranges.iter().enumerate() {
+                    if !visible[i] { continue; }
                     let obj_slot = obj_slot_base + i as u32;
                     if obj_slot >= 62 { break; } // leave room
                     let obj_color = if selected {
@@ -5369,11 +5380,11 @@ impl CadApp {
                     DisplayMode::AsIs | DisplayMode::Shading => {
                         pass.set_pipeline(&rt.gpu.solid_pipeline);
                         if object_ranges.is_empty() {
-                            // Legacy: single mesh fallback
                             pass.set_bind_group(0, &rt.gpu.uniform_bind_group, &[GpuState::slot_offset(mesh_slot)]);
                             pass.draw(0..rt.gpu.num_vertices, 0..1);
                         } else {
                             for (i, &(_id, start, count, _color, _sel)) in object_ranges.iter().enumerate() {
+                                if !visible[i] { continue; }
                                 let obj_slot = obj_slot_base + i as u32;
                                 if obj_slot >= 62 || count == 0 { continue; }
                                 pass.set_bind_group(0, &rt.gpu.uniform_bind_group, &[GpuState::slot_offset(obj_slot)]);
@@ -5381,84 +5392,75 @@ impl CadApp {
                             }
                         }
                     }
+                    DisplayMode::NoShading => {
+                        pass.set_pipeline(&rt.gpu.solid_pipeline);
+                        if object_ranges.is_empty() {
+                            pass.set_bind_group(0, &rt.gpu.uniform_bind_group, &[GpuState::slot_offset(mesh_slot)]);
+                            pass.draw(0..rt.gpu.num_vertices, 0..1);
+                        } else {
+                            for (i, &(_id, start, count, _color, _sel)) in object_ranges.iter().enumerate() {
+                                if !visible[i] { continue; }
+                                let obj_slot = obj_slot_base + i as u32;
+                                if obj_slot >= 62 || count == 0 { continue; }
+                                rt.gpu.write_slot(obj_slot, &Uniforms {
+                                    view_proj: vp, light_dir: no_light, base_color: NO_SHADE_COLOR,
+                                    params: lit_params, eye_pos, hover_params: [0.0; 4], clip_params: clip,
+                                });
+                                pass.set_bind_group(0, &rt.gpu.uniform_bind_group, &[GpuState::slot_offset(obj_slot)]);
+                                pass.draw(start..start + count, 0..1);
+                            }
+                        }
+                    }
+                    DisplayMode::Transparent => {
+                        pass.set_pipeline(&rt.gpu.transparent_pipeline);
+                        if object_ranges.is_empty() {
+                            pass.set_bind_group(0, &rt.gpu.uniform_bind_group, &[GpuState::slot_offset(mesh_slot)]);
+                            pass.draw(0..rt.gpu.num_vertices, 0..1);
+                        } else {
+                            for (i, &(_id, start, count, _color, _sel)) in object_ranges.iter().enumerate() {
+                                if !visible[i] { continue; }
+                                let obj_slot = obj_slot_base + i as u32;
+                                if obj_slot >= 62 || count == 0 { continue; }
+                                let obj_color = {
+                                    let c = object_ranges[i].3;
+                                    [c[0], c[1], c[2], TRANSPARENT_COLOR[3]]
+                                };
+                                rt.gpu.write_slot(obj_slot, &Uniforms {
+                                    view_proj: vp, light_dir: light, base_color: obj_color,
+                                    params: lit_params, eye_pos, hover_params: [0.0; 4], clip_params: clip,
+                                });
+                                pass.set_bind_group(0, &rt.gpu.uniform_bind_group, &[GpuState::slot_offset(obj_slot)]);
+                                pass.draw(start..start + count, 0..1);
+                            }
+                        }
+                    }
                     DisplayMode::Points => {
-                        pass.set_bind_group(
-                            0,
-                            &rt.gpu.uniform_bind_group,
-                            &[GpuState::slot_offset(mesh_slot)],
-                        );
+                        pass.set_bind_group(0, &rt.gpu.uniform_bind_group, &[GpuState::slot_offset(mesh_slot)]);
                         pass.set_pipeline(&rt.gpu.wire_pipeline);
                         pass.draw(0..rt.gpu.num_vertices, 0..1);
                     }
                     DisplayMode::Wireframe => {
-                        pass.set_bind_group(
-                            0,
-                            &rt.gpu.uniform_bind_group,
-                            &[GpuState::slot_offset(mesh_slot)],
-                        );
+                        pass.set_bind_group(0, &rt.gpu.uniform_bind_group, &[GpuState::slot_offset(mesh_slot)]);
                         pass.set_pipeline(&rt.gpu.wire_pipeline);
-                        pass.set_index_buffer(
-                            rt.gpu.edge_index_buffer.slice(..),
-                            wgpu::IndexFormat::Uint32,
-                        );
+                        pass.set_index_buffer(rt.gpu.edge_index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                         pass.draw_indexed(0..rt.gpu.num_edge_indices, 0, 0..1);
                     }
                     DisplayMode::HiddenLine => {
-                        pass.set_bind_group(
-                            0,
-                            &rt.gpu.uniform_bind_group,
-                            &[GpuState::slot_offset(mesh_slot)],
-                        );
+                        pass.set_bind_group(0, &rt.gpu.uniform_bind_group, &[GpuState::slot_offset(mesh_slot)]);
                         pass.set_pipeline(&rt.gpu.solid_pipeline);
                         pass.draw(0..rt.gpu.num_vertices, 0..1);
-                        pass.set_bind_group(
-                            0,
-                            &rt.gpu.uniform_bind_group,
-                            &[GpuState::slot_offset(wire_slot)],
-                        );
+                        pass.set_bind_group(0, &rt.gpu.uniform_bind_group, &[GpuState::slot_offset(wire_slot)]);
                         pass.set_pipeline(&rt.gpu.wire_pipeline);
-                        pass.set_index_buffer(
-                            rt.gpu.edge_index_buffer.slice(..),
-                            wgpu::IndexFormat::Uint32,
-                        );
+                        pass.set_index_buffer(rt.gpu.edge_index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                         pass.draw_indexed(0..rt.gpu.num_edge_indices, 0, 0..1);
                     }
-                    DisplayMode::NoShading => {
-                        pass.set_bind_group(
-                            0,
-                            &rt.gpu.uniform_bind_group,
-                            &[GpuState::slot_offset(mesh_slot)],
-                        );
-                        pass.set_pipeline(&rt.gpu.solid_pipeline);
-                        pass.draw(0..rt.gpu.num_vertices, 0..1);
-                    }
-                    DisplayMode::Transparent => {
-                        pass.set_bind_group(
-                            0,
-                            &rt.gpu.uniform_bind_group,
-                            &[GpuState::slot_offset(mesh_slot)],
-                        );
-                        pass.set_pipeline(&rt.gpu.transparent_pipeline);
-                        pass.draw(0..rt.gpu.num_vertices, 0..1);
-                    }
                     DisplayMode::FlatLines => {
-                        pass.set_bind_group(
-                            0,
-                            &rt.gpu.uniform_bind_group,
-                            &[GpuState::slot_offset(mesh_slot)],
-                        );
+                        pass.set_bind_group(0, &rt.gpu.uniform_bind_group, &[GpuState::slot_offset(mesh_slot)]);
                         pass.set_pipeline(&rt.gpu.solid_pipeline);
                         pass.draw(0..rt.gpu.num_vertices, 0..1);
-                        pass.set_bind_group(
-                            0,
-                            &rt.gpu.uniform_bind_group,
-                            &[GpuState::slot_offset(wire_slot)],
-                        );
+                        pass.set_bind_group(0, &rt.gpu.uniform_bind_group, &[GpuState::slot_offset(wire_slot)]);
                         pass.set_pipeline(&rt.gpu.wire_pipeline);
-                        pass.set_index_buffer(
-                            rt.gpu.edge_index_buffer.slice(..),
-                            wgpu::IndexFormat::Uint32,
-                        );
+                        pass.set_index_buffer(rt.gpu.edge_index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                         pass.draw_indexed(0..rt.gpu.num_edge_indices, 0, 0..1);
                     }
                 }

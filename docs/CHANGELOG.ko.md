@@ -11,6 +11,38 @@
 
 ### 추가됨
 
+#### V29: 성능, 테스트 & 패키징 (2026-04-13)
+
+**프러스텀 컬링 & 오브젝트별 AABB:**
+- 테셀레이션 시점에 `SceneObject`에 축 정렬 바운딩 박스(AABB) 계산
+- 뷰-프로젝션 행렬에서 뷰 프러스텀 평면 추출 (`extract_frustum_planes`)
+- AABB-프러스텀 교차 테스트 (`aabb_in_frustum`)로 화면 밖 오브젝트 스킵
+- 모든 솔리드 디스플레이 모드에서 오브젝트별 프러스텀 컬링 (Shading, NoShading, Transparent)
+- 카메라 뷰 밖의 오브젝트가 있는 대규모 어셈블리에서 GPU 드로우 콜 감소
+
+**형식 라운드트립 통합 테스트:**
+- `crates/io/tests/format_roundtrip.rs`에 22개 통합 테스트
+- STEP, IGES, STL (ascii/binary), OBJ, PLY, BREP, JSON 라운드트립 커버
+- 메쉬 처리 테스트: 데시메이션, 세분화, 스무딩
+- 테셀레이션 검증: 직렬, 병렬, 페이스 맵 변형
+- 멀티 솔리드 및 꼭짓점 좌표 보존 테스트
+
+**Python 휠 CI:**
+- `.github/workflows/python-release.yml` — `PyO3/maturin-action`을 통한 자동 휠 빌드
+- 5개 타겟 매트릭스: Linux (x86_64, aarch64), macOS (x86_64, aarch64), Windows (x86_64)
+- 소스 배포(sdist)
+- 버전 태그 시 PyPI 자동 배포
+
+**커뮤니티 기여 온보딩:**
+- `CONTRIBUTING.md`에 아키텍처 개요, 크레이트 의존성 다이어그램 추가
+- 구체적 기여 영역이 포함된 "처음 기여하기 좋은 영역" 섹션
+- 신규 기여자를 위한 코딩 규칙 요약
+- `docs/CONTRIBUTING.ko.md` 한국어 번역 업데이트
+
+### 변경됨
+- NoShading, Transparent 모드에서도 오브젝트별 렌더링 확장 (기존 Shading만)
+- 전체 크레이트에서 1,612개 테스트 통과 (기존 1,606개)
+
 #### V28: 뷰어 통합 & 프로덕션 폴리시 (2026-04-08)
 
 **Lua 콘솔:**

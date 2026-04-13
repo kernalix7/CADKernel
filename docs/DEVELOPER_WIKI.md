@@ -942,6 +942,28 @@ Triggers on tag push matching `v*` (e.g. `v0.2.0`).
 1. `actions/download-artifact@v4` — downloads all platform artifacts
 2. `softprops/action-gh-release@v2` — creates GitHub release with all binaries, auto-generates release notes
 
+### Python Wheel Workflow (`.github/workflows/python-release.yml`)
+
+Triggers on tag push matching `v*` and manual dispatch.
+
+**Build matrix**:
+
+| Job | OS | Target(s) |
+|-----|----|-----------|
+| linux | ubuntu-latest | x86_64, aarch64 |
+| macos | macos-13 / macos-latest | x86_64-apple-darwin, aarch64-apple-darwin |
+| windows | windows-latest | x86_64-pc-windows-msvc |
+| sdist | ubuntu-latest | source distribution |
+
+**Steps per target**:
+1. Checkout + `actions/setup-python@v5` (Python 3.13)
+2. `PyO3/maturin-action@v1` — builds wheels in `crates/python/dist`
+3. `actions/upload-artifact@v4` — artifact per platform
+
+**Publish job** (after all builds pass, tags only):
+1. Download all wheel artifacts
+2. `pypa/gh-action-pypi-publish@release/v1` — publish to PyPI using trusted publishing
+
 ### Running Locally
 
 ```bash

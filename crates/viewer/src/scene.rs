@@ -89,6 +89,25 @@ pub struct SceneObject {
     pub vertex_handles: Vec<Handle<VertexData>>,
     /// Group id this object belongs to (0 = ungrouped).
     pub group_id: u32,
+    /// Axis-aligned bounding box minimum (for frustum culling).
+    pub aabb_min: [f32; 3],
+    /// Axis-aligned bounding box maximum (for frustum culling).
+    pub aabb_max: [f32; 3],
+}
+
+fn compute_aabb(vertices: &[Vertex]) -> ([f32; 3], [f32; 3]) {
+    if vertices.is_empty() {
+        return ([0.0; 3], [0.0; 3]);
+    }
+    let mut mn = [f32::MAX; 3];
+    let mut mx = [f32::MIN; 3];
+    for v in vertices {
+        for i in 0..3 {
+            mn[i] = mn[i].min(v.position[i]);
+            mx[i] = mx[i].max(v.position[i]);
+        }
+    }
+    (mn, mx)
 }
 
 /// Default color palette (rotating, similar to FreeCAD).
@@ -147,6 +166,7 @@ impl Scene {
         let vertices = mesh_to_vertices(&mesh);
         let (edge_positions, edge_handles) = collect_edge_data(&model, solid);
         let (vertex_positions, vertex_handles) = collect_vertex_data(&model, solid);
+        let (aabb_min, aabb_max) = compute_aabb(&vertices);
         let id = self.next_id;
         self.next_id += 1;
         let color_idx = (id as usize - 1) % DEFAULT_COLORS.len();
@@ -173,6 +193,8 @@ impl Scene {
             vertex_positions,
             vertex_handles,
             group_id: 0,
+            aabb_min,
+            aabb_max,
         });
         id
     }
@@ -185,6 +207,7 @@ impl Scene {
         params: Option<CreationParams>,
     ) -> ObjectId {
         let vertices = mesh_to_vertices(&mesh);
+        let (aabb_min, aabb_max) = compute_aabb(&vertices);
         let id = self.next_id;
         self.next_id += 1;
         let color_idx = (id as usize - 1) % DEFAULT_COLORS.len();
@@ -211,6 +234,8 @@ impl Scene {
             vertex_positions: Vec::new(),
             vertex_handles: Vec::new(),
             group_id: 0,
+            aabb_min,
+            aabb_max,
         });
         id
     }

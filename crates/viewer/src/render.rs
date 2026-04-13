@@ -700,6 +700,61 @@ pub fn compute_bounds(vertices: &[Vertex]) -> ([f32; 3], [f32; 3]) {
         )
 }
 
+/// Extract 6 frustum planes from a column-major view-projection matrix.
+/// Each plane is [A, B, C, D] where Ax+By+Cz+D >= 0 is inside.
+/// Order: left, right, bottom, top, near, far.
+pub(crate) fn extract_frustum_planes(vp: &[[f32; 4]; 4]) -> [[f32; 4]; 6] {
+    // Row-access helper: vp is column-major, so row i = [vp[0][i], vp[1][i], vp[2][i], vp[3][i]]
+    let row = |i: usize| -> [f32; 4] { [vp[0][i], vp[1][i], vp[2][i], vp[3][i]] };
+    let r0 = row(0);
+    let r1 = row(1);
+    let r2 = row(2);
+    let r3 = row(3);
+
+    let mut planes = [[0.0f32; 4]; 6];
+    // Left:   row3 + row0
+    // Right:  row3 - row0
+    // Bottom: row3 + row1
+    // Top:    row3 - row1
+    // Near:   row3 + row2
+    // Far:    row3 - row2
+    for i in 0..4 {
+        planes[0][i] = r3[i] + r0[i];
+        planes[1][i] = r3[i] - r0[i];
+        planes[2][i] = r3[i] + r1[i];
+        planes[3][i] = r3[i] - r1[i];
+        planes[4][i] = r3[i] + r2[i];
+        planes[5][i] = r3[i] - r2[i];
+    }
+    // Normalize each plane
+    for p in &mut planes {
+        let len = (p[0] * p[0] + p[1] * p[1] + p[2] * p[2]).sqrt();
+        if len > 1e-10 {
+            p[0] /= len;
+            p[1] /= len;
+            p[2] /= len;
+            p[3] /= len;
+        }
+    }
+    planes
+}
+
+/// Test whether an AABB is at least partially inside the frustum.
+/// Returns false only if the box is completely outside any single plane.
+pub(crate) fn aabb_in_frustum(planes: &[[f32; 4]; 6], aabb_min: [f32; 3], aabb_max: [f32; 3]) -> bool {
+    for p in planes {
+        // Find the AABB corner that is most in the direction of the plane normal (p-vertex)
+        let px = if p[0] >= 0.0 { aabb_max[0] } else { aabb_min[0] };
+        let py = if p[1] >= 0.0 { aabb_max[1] } else { aabb_min[1] };
+        let pz = if p[2] >= 0.0 { aabb_max[2] } else { aabb_min[2] };
+        // If the p-vertex is outside the plane, the entire AABB is outside
+        if p[0] * px + p[1] * py + p[2] * pz + p[3] < 0.0 {
+            return false;
+        }
+    }
+    true
+}
+
 // ---------------------------------------------------------------------------
 // WGSL shaders
 // ---------------------------------------------------------------------------
