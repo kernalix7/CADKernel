@@ -536,6 +536,7 @@ dependencies = [
  "cadkernel-core",
  "cadkernel-geometry",
  "cadkernel-math",
+ "cadkernel-modeling",
  "cadkernel-topology",
  "rayon",
  "serde",
