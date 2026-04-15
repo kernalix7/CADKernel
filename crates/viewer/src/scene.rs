@@ -97,7 +97,7 @@ pub struct SceneObject {
 
 pub fn compute_aabb(vertices: &[Vertex]) -> ([f32; 3], [f32; 3]) {
     if vertices.is_empty() {
-        return ([f32::MIN; 3], [f32::MAX; 3]);
+        return ([0.0; 3], [0.0; 3]);
     }
     let mut mn = [f32::MAX; 3];
     let mut mx = [f32::MIN; 3];
@@ -465,22 +465,23 @@ fn collect_edge_data(
         let Some(shell) = model.shells.get(sh) else { continue };
         for &fh in &shell.faces {
             let Some(face) = model.faces.get(fh) else { continue };
-            let loop_h = face.outer_loop;
-            let hes = model.loop_half_edges(model.loops.get(loop_h).map_or(
-                Handle::from_raw_parts(0, 0),
-                |l| l.half_edge,
-            ));
-            for heh in hes {
-                let Some(he) = model.half_edges.get(heh) else { continue };
-                let Some(eh) = he.edge else { continue };
-                if !seen.insert(eh) { continue; }
-                let Some(ed) = model.edges.get(eh) else { continue };
-                let Some(sv) = model.vertices.get(ed.start) else { continue };
-                let Some(ev) = model.vertices.get(ed.end) else { continue };
-                let sp = [sv.point.x as f32, sv.point.y as f32, sv.point.z as f32];
-                let ep = [ev.point.x as f32, ev.point.y as f32, ev.point.z as f32];
-                positions.push((sp, ep));
-                handles.push(eh);
+            for loop_h in std::iter::once(face.outer_loop).chain(face.inner_loops.iter().copied()) {
+                let hes = model.loop_half_edges(model.loops.get(loop_h).map_or(
+                    Handle::from_raw_parts(0, 0),
+                    |l| l.half_edge,
+                ));
+                for heh in hes {
+                    let Some(he) = model.half_edges.get(heh) else { continue };
+                    let Some(eh) = he.edge else { continue };
+                    if !seen.insert(eh) { continue; }
+                    let Some(ed) = model.edges.get(eh) else { continue };
+                    let Some(sv) = model.vertices.get(ed.start) else { continue };
+                    let Some(ev) = model.vertices.get(ed.end) else { continue };
+                    let sp = [sv.point.x as f32, sv.point.y as f32, sv.point.z as f32];
+                    let ep = [ev.point.x as f32, ev.point.y as f32, ev.point.z as f32];
+                    positions.push((sp, ep));
+                    handles.push(eh);
+                }
             }
         }
     }
@@ -503,17 +504,18 @@ fn collect_vertex_data(
         let Some(shell) = model.shells.get(sh) else { continue };
         for &fh in &shell.faces {
             let Some(face) = model.faces.get(fh) else { continue };
-            let loop_h = face.outer_loop;
-            let hes = model.loop_half_edges(model.loops.get(loop_h).map_or(
-                Handle::from_raw_parts(0, 0),
-                |l| l.half_edge,
-            ));
-            for heh in hes {
-                let Some(he) = model.half_edges.get(heh) else { continue };
-                if !seen.insert(he.origin) { continue; }
-                let Some(vd) = model.vertices.get(he.origin) else { continue };
-                positions.push([vd.point.x as f32, vd.point.y as f32, vd.point.z as f32]);
-                handles.push(he.origin);
+            for loop_h in std::iter::once(face.outer_loop).chain(face.inner_loops.iter().copied()) {
+                let hes = model.loop_half_edges(model.loops.get(loop_h).map_or(
+                    Handle::from_raw_parts(0, 0),
+                    |l| l.half_edge,
+                ));
+                for heh in hes {
+                    let Some(he) = model.half_edges.get(heh) else { continue };
+                    if !seen.insert(he.origin) { continue; }
+                    let Some(vd) = model.vertices.get(he.origin) else { continue };
+                    positions.push([vd.point.x as f32, vd.point.y as f32, vd.point.z as f32]);
+                    handles.push(he.origin);
+                }
             }
         }
     }

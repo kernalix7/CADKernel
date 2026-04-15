@@ -1,7 +1,7 @@
 # CADKernel Developer Wiki
 
 > **Version**: 0.1.0 (pre-alpha)  
-> **Last updated**: 2026-04-08
+> **Last updated**: 2026-04-13
 > **Audience**: CADKernel kernel developers and contributors
 
 [한국어](DEVELOPER_WIKI.ko.md) | **English**
@@ -205,7 +205,9 @@ Native desktop GUI application (egui 0.31 + wgpu 24.x + winit 0.30).
 
 **Camera View Bookmarks**: `ViewBookmark` struct (name, yaw, pitch, roll, distance, target) in `nav.rs`. `view_bookmarks: Vec<ViewBookmark>` in NavConfig (max 20). View > Bookmarks submenu (220px width): hint text input, enabled/disabled Save button, numbered entries with camera angle tooltips (yaw°/pitch°/dist), right-aligned delete, "X/20 bookmarks" count. Save uses name match for overwrite. Restore uses `.cloned()` to avoid borrow conflict, then animates. Bookmark info mirrored to GuiState each frame.
 
-**Preselection Highlight**: `draw_selection_overlay()` shows edge/face/vertex preselection on hover even with no active selection. Configurable colors: `nav.preselection_color`/`nav.selection_color` ([u8; 3]). Cursor-following entity type label. Edge highlight: 8px glow + 3.5px core line. Vertex: 10px glow ring + 6px marker + 2px center dot.
+**Preselection Highlight**: `draw_selection_overlay()` shows edge/face/vertex preselection on hover even with no active selection. Configurable colors: `nav.preselection_color`/`nav.selection_color` ([u8; 3]). Cursor-following entity type label. Edge highlight: 8px glow + 3.5px core line. Vertex: 10px glow ring + 6px marker + 2px center dot. Runtime hover/preselection updates stay off the full scene rebuild path, and nearest-hit selection now uses depth ordering rather than first-object traversal.
+
+**Display Mode Rendering**: `DisplayMode::Points` renders with a dedicated `PointList` GPU pipeline. Per-object shaded draws reuse one dynamic uniform slot per draw call, removing the previous silent object-count cap in large scenes.
 
 **Object Grouping**: `ObjectGroup` struct in `scene.rs` with id/name/visibility. Objects have `group_id` field (0 = ungrouped). Scene methods: `create_group()`, `group_selected()`, `ungroup_object()`, `toggle_group_visibility()`, `delete_group()`, `group_members()`. Edit > Groups submenu: eye icons (◉/○) with color coding, member count "(N)", hint text input. Model tree groups section: header with eye toggle, folder icon, name, count, delete; indented member names.
 
@@ -847,6 +849,13 @@ echo '{"jsonrpc":"2.0","id":1,"method":"create_primitive","params":{"shape":"box
 
 CADKernel embeds a Lua scripting engine for automation and batch processing.
 
+### Security Sandbox
+
+The scripting engine removes dangerous Lua standard library globals on initialization:
+`os`, `io`, `require`, `dofile`, `loadfile`, `package`. Scripts have access to `string`,
+`table`, `math`, and the `cad.*` API only. File I/O is only available through the `cad.export()`
+and `cad.import()` functions which operate within validated paths.
+
 ### API Surface
 
 ```lua
@@ -916,6 +925,9 @@ Triggers on push to `main` and all pull requests.
 4. `cargo build --workspace`
 5. `cargo clippy --workspace --all-targets --all-features -- -D warnings`
 6. `cargo test --workspace`
+
+**Additional job**:
+- `python-bindings` (ubuntu-latest) builds and tests `crates/python` explicitly via `cargo build/test --manifest-path crates/python/Cargo.toml`
 
 Cache keys are keyed on `Cargo.lock` hash per OS, with OS-level fallback restore keys.
 

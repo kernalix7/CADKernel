@@ -11,12 +11,22 @@ use cadkernel_math::{Point3, Vec3};
 
 use crate::tessellate::Mesh;
 
+const MAX_PLY_VERTICES: usize = 50_000_000;
+const MAX_PLY_FACES: usize = 50_000_000;
+
 /// Exports a mesh to PLY ASCII format string.
 ///
 /// Writes vertex positions with per-vertex normals (if available, per-face
 /// normals are used for vertices that lack individual normals) and
 /// triangular face elements with `vertex_indices` property lists.
 pub fn export_ply(mesh: &Mesh) -> KernelResult<String> {
+    for (i, v) in mesh.vertices.iter().enumerate() {
+        if !v.x.is_finite() || !v.y.is_finite() || !v.z.is_finite() {
+            return Err(KernelError::IoError(format!(
+                "vertex {i} contains non-finite coordinate"
+            )));
+        }
+    }
     let mut out = String::new();
     out.push_str("ply\nformat ascii 1.0\n");
     let _ = writeln!(out, "element vertex {}", mesh.vertices.len());
@@ -66,6 +76,11 @@ pub fn import_ply(content: &str) -> KernelResult<Mesh> {
                 vertex_count = parts[2]
                     .parse()
                     .map_err(|e| KernelError::IoError(format!("bad vertex count: {e}")))?;
+                if vertex_count > MAX_PLY_VERTICES {
+                    return Err(KernelError::IoError(format!(
+                        "vertex count {vertex_count} exceeds limit {MAX_PLY_VERTICES}"
+                    )));
+                }
             }
         } else if trimmed.starts_with("element face") {
             let parts: Vec<&str> = trimmed.split_whitespace().collect();
@@ -73,6 +88,11 @@ pub fn import_ply(content: &str) -> KernelResult<Mesh> {
                 face_count = parts[2]
                     .parse()
                     .map_err(|e| KernelError::IoError(format!("bad face count: {e}")))?;
+                if face_count > MAX_PLY_FACES {
+                    return Err(KernelError::IoError(format!(
+                        "face count {face_count} exceeds limit {MAX_PLY_FACES}"
+                    )));
+                }
             }
         } else if trimmed == "property float nx" {
             has_normals = true;
@@ -131,6 +151,14 @@ pub fn import_ply(content: &str) -> KernelResult<Mesh> {
                 "malformed PLY face line: {line}"
             )));
         }
+        let arity: usize = parts[0]
+            .parse()
+            .map_err(|e| KernelError::IoError(format!("bad face vertex count: {e}")))?;
+        if arity != 3 || parts.len() < 4 {
+            return Err(KernelError::IoError(format!(
+                "only triangular PLY faces are supported: {line}"
+            )));
+        }
         let i0: u32 = parts[1]
             .parse()
             .map_err(|e| KernelError::IoError(format!("bad index: {e}")))?;
@@ -140,6 +168,13 @@ pub fn import_ply(content: &str) -> KernelResult<Mesh> {
         let i2: u32 = parts[3]
             .parse()
             .map_err(|e| KernelError::IoError(format!("bad index: {e}")))?;
+        for idx in [i0, i1, i2] {
+            if idx as usize >= vertex_count {
+                return Err(KernelError::IoError(format!(
+                    "PLY face index {idx} out of bounds for {vertex_count} vertices"
+                )));
+            }
+        }
         indices.push([i0, i1, i2]);
     }
 
@@ -237,6 +272,12 @@ mod tests {
     fn test_import_ply_error_truncated() {
         let result = import_ply("ply\nformat ascii 1.0\n");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_import_ply_error_invalid_face_index() {
+        let content = "ply\nformat ascii 1.0\nelement vertex 3\nproperty float x\nproperty float y\nproperty float z\nelement face 1\nproperty list uchar int vertex_indices\nend_header\n0 0 0\n1 0 0\n0 1 0\n3 0 1 99\n";
+        assert!(import_ply(content).is_err());
     }
 
     #[test]

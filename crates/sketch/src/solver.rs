@@ -115,7 +115,6 @@ pub fn solve(sketch: &mut Sketch, max_iter: usize, tol: f64) -> SolverResult {
             }
             alpha *= 0.5;
             if alpha < 1e-12 {
-                vars -= &dx * alpha;
                 break;
             }
         }
@@ -185,21 +184,10 @@ fn build_system(
     (residual, jac)
 }
 
-/// Estimate the numerical rank of a matrix via singular value thresholding.
-///
-/// Counts singular values above `tol` using the eigenvalues of J^T J.
+/// Estimate the numerical rank of a matrix via SVD singular value thresholding.
 fn jacobian_rank(jac: &DMatrix<f64>, tol: f64) -> usize {
-    let jtj = jac.transpose() * jac;
-    let n = jtj.nrows();
-    // Use diagonal dominance as a fast rank estimate
-    // (full SVD is expensive; this is good enough for sketch-sized systems)
-    let mut rank = 0;
-    for i in 0..n {
-        if jtj[(i, i)] > tol * tol {
-            rank += 1;
-        }
-    }
-    rank
+    let svd = jac.clone().svd(false, false);
+    svd.singular_values.iter().filter(|&&s| s > tol).count()
 }
 
 /// Compute per-constraint residual norms (how "violated" each constraint is).

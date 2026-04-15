@@ -46,6 +46,17 @@ impl NurbsCurve {
         knots: Vec<f64>,
     ) -> KernelResult<Self> {
         let n = control_points.len();
+        if degree < 1 {
+            return Err(KernelError::InvalidArgument(
+                "NURBS degree must be >= 1".into(),
+            ));
+        }
+        if n < degree + 1 {
+            return Err(KernelError::InvalidArgument(format!(
+                "need at least {} control points for degree {}, got {}",
+                degree + 1, degree, n
+            )));
+        }
         if weights.len() != n {
             return Err(KernelError::InvalidArgument(format!(
                 "weights.len() ({}) must equal control_points.len() ({})",
@@ -53,12 +64,22 @@ impl NurbsCurve {
                 n
             )));
         }
+        if weights.iter().any(|&w| w <= 0.0) {
+            return Err(KernelError::InvalidArgument(
+                "all NURBS weights must be positive".into(),
+            ));
+        }
         if knots.len() != n + degree + 1 {
             return Err(KernelError::InvalidArgument(format!(
                 "knots.len() ({}) must equal n + degree + 1 ({})",
                 knots.len(),
                 n + degree + 1
             )));
+        }
+        if knots.windows(2).any(|w| w[1] < w[0]) {
+            return Err(KernelError::InvalidArgument(
+                "knot vector must be non-decreasing".into(),
+            ));
         }
         Ok(Self {
             degree,

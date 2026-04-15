@@ -10,6 +10,8 @@ use cadkernel_core::{KernelError, KernelResult};
 use cadkernel_math::Point3;
 use cadkernel_topology::BRepModel;
 
+const MAX_BREP_SECTION_COUNT: usize = 5_000_000;
+
 /// Export B-Rep model to text format.
 ///
 /// Format:
@@ -33,6 +35,13 @@ use cadkernel_topology::BRepModel;
 /// END
 /// ```
 pub fn export_brep(model: &BRepModel) -> KernelResult<String> {
+    for (_, vd) in model.vertices.iter() {
+        if !vd.point.x.is_finite() || !vd.point.y.is_finite() || !vd.point.z.is_finite() {
+            return Err(KernelError::IoError(
+                "model contains vertex with non-finite coordinates".into(),
+            ));
+        }
+    }
     let mut out = String::new();
     out.push_str("CADKernel BREP v1\n");
 
@@ -51,8 +60,12 @@ pub fn export_brep(model: &BRepModel) -> KernelResult<String> {
     let _ = writeln!(out, "EDGES {}", edge_entries.len());
     for (i, &(eh, ed)) in edge_entries.iter().enumerate() {
         edge_index.insert(eh, i);
-        let si = vert_index.get(&ed.start).copied().unwrap_or(0);
-        let ei = vert_index.get(&ed.end).copied().unwrap_or(0);
+        let si = vert_index.get(&ed.start).copied().ok_or_else(|| {
+            KernelError::IoError(format!("edge {i} references missing start vertex"))
+        })?;
+        let ei = vert_index.get(&ed.end).copied().ok_or_else(|| {
+            KernelError::IoError(format!("edge {i} references missing end vertex"))
+        })?;
         let _ = writeln!(out, "{} {} {}", i, si, ei);
     }
 
@@ -282,7 +295,13 @@ fn parse_section_count(line: &str, expected_name: &str) -> KernelResult<usize> {
             "expected '{expected_name}' section, got: {line}"
         )));
     }
-    parse_usize(parts[1])
+    let count = parse_usize(parts[1])?;
+    if count > MAX_BREP_SECTION_COUNT {
+        return Err(KernelError::IoError(format!(
+            "{expected_name} count {count} exceeds limit {MAX_BREP_SECTION_COUNT}"
+        )));
+    }
+    Ok(count)
 }
 
 fn parse_f64(s: &str) -> KernelResult<f64> {
@@ -410,6 +429,12 @@ mod tests {
     #[test]
     fn test_brep_import_missing_vertices_section() {
         let result = import_brep("CADKernel BREP v1\n");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_brep_import_excessive_section_count() {
+        let result = import_brep("CADKernel BREP v1\nVERTICES 99999999\n");
         assert!(result.is_err());
     }
 

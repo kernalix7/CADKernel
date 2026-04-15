@@ -11,6 +11,56 @@
 
 ### 추가됨
 
+#### V31: 포괄적 코드 감사 — 정확성, 보안 & 성능 (2026-04-13)
+
+**치명적/높은 정확성 수정:**
+- `compute_mass_properties()` 중심점 계산 수정 — 4.0으로 나누던 것을 발산 정리 공식(1/24 정규화)으로 변경
+- 스케치 솔버 Jacobian 랭크 추정 수정 — 신뢰할 수 없는 대각선 검사를 SVD 특이값 임계값으로 교체
+- Armijo 선형 탐색 폴백 수정 — alpha가 임계값 이하일 때 거부된 근소 스텝을 적용하지 않도록 변경
+- glTF import에서 NORMAL accessor의 per-vertex 법선을 읽도록 수정 (이전에는 무시)
+- 빈 vertex의 AABB 센티넬 수정 — `[MIN,MAX]` 대신 `[0,0,0]` 반환 (절두체 컬링 오류 방지)
+
+**보안 하드닝:**
+- Lua 스크립팅 엔진 샌드박스 — `os`, `io`, `require`, `dofile`, `loadfile`, `package` 전역 제거
+- STEP 토크나이저가 종료되지 않은 주석/문자열/열거형에서 무음 OOB 대신 오류 반환하도록 수정
+- 입력 크기 제한 추가: STEP (512MB), ASCII STL (256MB), OBJ (256MB)
+- MCP 서버 solid 개수 제한(1000) 추가 — 반복적 `create_primitive` 호출로 인한 메모리 소진 방지
+- 3MF, PLY, BREP export 시 NaN/무한대 좌표 검증 추가
+
+**정확성 개선:**
+- NurbsCurve 생성자 검증 추가: 양수 가중치, 비감소 매듭 벡터, 최소 차수/제어점 수
+- Lua `cad.scale`에서 비균일(sx≠sy≠sz) 스케일링을 무음 평균 대신 명확한 오류로 거부하도록 수정
+- glTF `compute_per_vertex_normals`가 per-face/per-vertex 법선 배열 모두 처리하도록 수정
+
+**성능 최적화:**
+- 적응적 곡선 테셀레이션을 O(n²) Vec::insert에서 O(n) 배치 스윕으로 재작성
+
+#### V30: 감사 기반 하드닝 & 뷰어 선택 수정 (2026-04-13)
+
+**뷰어 선택 & 렌더링 안정성:**
+- 자동 피킹과 프리셀렉션이 씬에서 처음 만난 객체가 아니라 가장 가까운 vertex/edge/face 히트를 선택하도록 수정
+- 커서 hover 변경 시 전체 scene GPU 데이터 재빌드를 수행하지 않도록 수정
+- 오브젝트별 솔리드 렌더링이 단일 dynamic uniform slot을 재사용하도록 변경되어, shaded per-object 모드의 조용한 객체 수 상한 제거
+- edge/vertex 피킹이 outer loop뿐 아니라 inner loop(홀)도 포함하도록 수정
+- 선택 토글 시 결합된 scene geometry를 재생성하지 않고 오브젝트 메타데이터만 갱신하도록 수정
+- `DisplayMode::Points`가 wireframe line pipeline이 아니라 전용 GPU point pipeline을 사용하도록 수정
+
+**I/O 검증 하드닝:**
+- `import_ply()`가 vertex/face 개수 상한을 적용하고 범위를 벗어난 face index를 거부하도록 수정
+- `import_gltf()`가 accessor/bufferView 인덱스, 바이트 범위, index-to-vertex 참조를 디코딩 전에 검증하도록 수정
+- 과도하게 큰 MCP JSON-RPC 요청은 파싱 전에 크기 제한으로 거부하도록 수정
+- `import_3mf()`가 범위를 벗어난 triangle index를 거부하고 vertex/triangle 개수 상한을 적용하도록 수정
+- `import_step()`가 해석할 수 없는 필수 point 참조를 오류로 처리하고, STEP entity 해석 실패 시 파싱을 중단하도록 수정
+- `export_step()`과 `export_brep()`가 끊어진 topology 참조를 기본값으로 직렬화하지 않고 오류를 반환하도록 수정
+
+**CI 커버리지 개선:**
+- `.github/workflows/ci.yml`이 제외되어 있던 `crates/python` 바인딩 크레이트를 별도 빌드/테스트하도록 수정
+- `.github/workflows/python-release.yml` publish job을 단순화해 잘못된 workflow environment 검증 문제를 제거
+
+### 변경됨
+
+- 감사 기반 검증 범위가 workspace 1,616개 테스트와 Python 바인딩 42개 테스트까지 확장됨
+
 #### V29: 성능, 테스트 & 패키징 (2026-04-13)
 
 **프러스텀 컬링 & 오브젝트별 AABB:**
@@ -40,6 +90,7 @@
 - `docs/CONTRIBUTING.ko.md` 한국어 번역 업데이트
 
 ### 변경됨
+- 감사 기반 수정이 `cargo build`, `cargo clippy -D warnings`, `cargo test --workspace`, `cargo test --manifest-path crates/python/Cargo.toml`로 검증됨
 - NoShading, Transparent 모드에서도 오브젝트별 렌더링 확장 (기존 Shading만)
 - 전체 크레이트에서 1,612개 테스트 통과 (기존 1,606개)
 

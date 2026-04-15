@@ -56,14 +56,23 @@ fn base64_encode(data: &[u8]) -> String {
 }
 
 /// Computes per-vertex normals by averaging face normals that share each vertex.
+/// If normals are already per-vertex (same length as vertices), returns them directly.
 fn compute_per_vertex_normals(
     vertices: &[Point3],
     normals: &[Vec3],
     indices: &[[u32; 3]],
 ) -> Vec<Vec3> {
+    // If normals are already per-vertex, return them as-is
+    if normals.len() == vertices.len() {
+        return normals.to_vec();
+    }
     let mut accum = vec![(0.0_f64, 0.0_f64, 0.0_f64); vertices.len()];
     for (tri_idx, tri) in indices.iter().enumerate() {
-        let n = normals[tri_idx];
+        let n = if tri_idx < normals.len() {
+            normals[tri_idx]
+        } else {
+            Vec3::Z
+        };
         for &vi in tri {
             let a = &mut accum[vi as usize];
             a.0 += n.x;
@@ -277,8 +286,17 @@ pub fn import_gltf(content: &str) -> KernelResult<super::Mesh> {
     let val: serde_json::Value = serde_json::from_str(content)
         .map_err(|e| KernelError::IoError(format!("glTF JSON parse error: {e}")))?;
 
+    let accessors = val["accessors"].as_array()
+        .ok_or_else(|| KernelError::IoError("no accessors".into()))?;
+    let buffer_views = val["bufferViews"].as_array()
+        .ok_or_else(|| KernelError::IoError("no bufferViews".into()))?;
+    let buffers = val["buffers"].as_array()
+        .ok_or_else(|| KernelError::IoError("no buffers".into()))?;
+    let meshes = val["meshes"].as_array()
+        .ok_or_else(|| KernelError::IoError("no meshes".into()))?;
+
     // Decode buffer
-    let uri = val["buffers"][0]["uri"].as_str()
+    let uri = buffers.first().and_then(|b| b["uri"].as_str())
         .ok_or_else(|| KernelError::IoError("no buffer URI".into()))?;
     let b64_prefix = "data:application/octet-stream;base64,";
     let b64_data = if let Some(stripped) = uri.strip_prefix(b64_prefix) {
@@ -289,57 +307,122 @@ pub fn import_gltf(content: &str) -> KernelResult<super::Mesh> {
     let buffer = base64_decode(b64_data)?;
 
     // Find the first mesh primitive
-    let prim = &val["meshes"][0]["primitives"][0];
+    let prim = meshes.first()
+        .and_then(|m| m["primitives"].as_array())
+        .and_then(|prims| prims.first())
+        .ok_or_else(|| KernelError::IoError("no mesh primitive".into()))?;
     let pos_accessor_idx = prim["attributes"]["POSITION"].as_u64()
         .ok_or_else(|| KernelError::IoError("no POSITION accessor".into()))? as usize;
     let idx_accessor_idx = prim["indices"].as_u64()
         .map(|v| v as usize);
 
-    let accessors = val["accessors"].as_array()
-        .ok_or_else(|| KernelError::IoError("no accessors".into()))?;
-    let buffer_views = val["bufferViews"].as_array()
-        .ok_or_else(|| KernelError::IoError("no bufferViews".into()))?;
+    let accessor = |idx: usize| -> KernelResult<&serde_json::Value> {
+        accessors.get(idx)
+            .ok_or_else(|| KernelError::IoError(format!("accessor index {idx} out of bounds")))
+    };
+    let buffer_view = |idx: usize| -> KernelResult<&serde_json::Value> {
+        buffer_views.get(idx)
+            .ok_or_else(|| KernelError::IoError(format!("bufferView index {idx} out of bounds")))
+    };
 
     // Read positions
-    let pos_acc = &accessors[pos_accessor_idx];
-    let pos_bv_idx = pos_acc["bufferView"].as_u64().unwrap_or(0) as usize;
-    let pos_count = pos_acc["count"].as_u64().unwrap_or(0) as usize;
-    let pos_bv = &buffer_views[pos_bv_idx];
-    let pos_offset = pos_bv["byteOffset"].as_u64().unwrap_or(0) as usize;
+    let pos_acc = accessor(pos_accessor_idx)?;
+    let pos_bv_idx = pos_acc["bufferView"].as_u64()
+        .ok_or_else(|| KernelError::IoError("POSITION accessor missing bufferView".into()))? as usize;
+    let pos_count = pos_acc["count"].as_u64()
+        .ok_or_else(|| KernelError::IoError("POSITION accessor missing count".into()))? as usize;
+    let pos_bv = buffer_view(pos_bv_idx)?;
+    let pos_offset = pos_bv["byteOffset"].as_u64().unwrap_or(0) as usize
+        + pos_acc["byteOffset"].as_u64().unwrap_or(0) as usize;
     let pos_component = pos_acc["componentType"].as_u64().unwrap_or(5126);
 
     let mut vertices = Vec::with_capacity(pos_count);
-    if pos_component == 5126 { // FLOAT
-        for i in 0..pos_count {
-            let base = pos_offset + i * 12;
-            if base + 12 > buffer.len() { break; }
-            let x = f32::from_le_bytes([buffer[base], buffer[base+1], buffer[base+2], buffer[base+3]]);
-            let y = f32::from_le_bytes([buffer[base+4], buffer[base+5], buffer[base+6], buffer[base+7]]);
-            let z = f32::from_le_bytes([buffer[base+8], buffer[base+9], buffer[base+10], buffer[base+11]]);
-            vertices.push(Point3::new(x as f64, y as f64, z as f64));
-        }
+    if pos_component != 5126 {
+        return Err(KernelError::IoError(format!(
+            "unsupported POSITION component type {pos_component}"
+        )));
+    }
+    let pos_len = pos_count
+        .checked_mul(12)
+        .ok_or_else(|| KernelError::IoError("POSITION accessor byte range overflow".into()))?;
+    let pos_end = pos_offset
+        .checked_add(pos_len)
+        .ok_or_else(|| KernelError::IoError("POSITION accessor byte range overflow".into()))?;
+    if pos_end > buffer.len() {
+        return Err(KernelError::IoError("POSITION accessor exceeds buffer length".into()));
+    }
+    for i in 0..pos_count {
+        let base = pos_offset + i * 12;
+        let x = f32::from_le_bytes([buffer[base], buffer[base+1], buffer[base+2], buffer[base+3]]);
+        let y = f32::from_le_bytes([buffer[base+4], buffer[base+5], buffer[base+6], buffer[base+7]]);
+        let z = f32::from_le_bytes([buffer[base+8], buffer[base+9], buffer[base+10], buffer[base+11]]);
+        vertices.push(Point3::new(x as f64, y as f64, z as f64));
     }
 
     // Read normals (optional)
     let norm_acc_idx = prim["attributes"]["NORMAL"].as_u64().map(|v| v as usize);
     let mut normals = Vec::new();
+    if let Some(ni) = norm_acc_idx {
+        let norm_acc = accessor(ni)?;
+        if let (Some(bv_idx), Some(count)) = (
+            norm_acc["bufferView"].as_u64().map(|v| v as usize),
+            norm_acc["count"].as_u64().map(|v| v as usize),
+        ) {
+            let norm_bv = buffer_view(bv_idx)?;
+            let norm_offset = norm_bv["byteOffset"].as_u64().unwrap_or(0) as usize
+                + norm_acc["byteOffset"].as_u64().unwrap_or(0) as usize;
+            let norm_len = count.checked_mul(12).unwrap_or(0);
+            let norm_end = norm_offset.checked_add(norm_len).unwrap_or(0);
+            if norm_end <= buffer.len() {
+                normals.reserve(count);
+                for i in 0..count {
+                    let base = norm_offset + i * 12;
+                    let nx = f32::from_le_bytes([buffer[base], buffer[base+1], buffer[base+2], buffer[base+3]]);
+                    let ny = f32::from_le_bytes([buffer[base+4], buffer[base+5], buffer[base+6], buffer[base+7]]);
+                    let nz = f32::from_le_bytes([buffer[base+8], buffer[base+9], buffer[base+10], buffer[base+11]]);
+                    normals.push(Vec3::new(nx as f64, ny as f64, nz as f64));
+                }
+            }
+        }
+    }
 
     // Read indices
     let mut indices = Vec::new();
     if let Some(idx_ai) = idx_accessor_idx {
-        let idx_acc = &accessors[idx_ai];
-        let idx_bv_idx = idx_acc["bufferView"].as_u64().unwrap_or(0) as usize;
-        let idx_count = idx_acc["count"].as_u64().unwrap_or(0) as usize;
-        let idx_bv = &buffer_views[idx_bv_idx];
-        let idx_offset = idx_bv["byteOffset"].as_u64().unwrap_or(0) as usize;
+        let idx_acc = accessor(idx_ai)?;
+        let idx_bv_idx = idx_acc["bufferView"].as_u64()
+            .ok_or_else(|| KernelError::IoError("index accessor missing bufferView".into()))? as usize;
+        let idx_count = idx_acc["count"].as_u64()
+            .ok_or_else(|| KernelError::IoError("index accessor missing count".into()))? as usize;
+        let idx_bv = buffer_view(idx_bv_idx)?;
+        let idx_offset = idx_bv["byteOffset"].as_u64().unwrap_or(0) as usize
+            + idx_acc["byteOffset"].as_u64().unwrap_or(0) as usize;
         let idx_component = idx_acc["componentType"].as_u64().unwrap_or(5125);
 
         let stride = match idx_component {
             5121 => 1usize, // UNSIGNED_BYTE
             5123 => 2,      // UNSIGNED_SHORT
             5125 => 4,      // UNSIGNED_INT
-            _ => 4,
+            _ => {
+                return Err(KernelError::IoError(format!(
+                    "unsupported index component type {idx_component}"
+                )));
+            }
         };
+
+        if idx_count % 3 != 0 {
+            return Err(KernelError::IoError("index accessor count is not divisible by 3".into()));
+        }
+
+        let idx_len = idx_count
+            .checked_mul(stride)
+            .ok_or_else(|| KernelError::IoError("index accessor byte range overflow".into()))?;
+        let idx_end = idx_offset
+            .checked_add(idx_len)
+            .ok_or_else(|| KernelError::IoError("index accessor byte range overflow".into()))?;
+        if idx_end > buffer.len() {
+            return Err(KernelError::IoError("index accessor exceeds buffer length".into()));
+        }
 
         let read_idx = |i: usize| -> u32 {
             let base = idx_offset + i * stride;
@@ -351,7 +434,13 @@ pub fn import_gltf(content: &str) -> KernelResult<super::Mesh> {
         };
 
         for t in 0..idx_count / 3 {
-            indices.push([read_idx(t * 3), read_idx(t * 3 + 1), read_idx(t * 3 + 2)]);
+            let tri = [read_idx(t * 3), read_idx(t * 3 + 1), read_idx(t * 3 + 2)];
+            if tri.iter().any(|&idx| idx as usize >= vertices.len()) {
+                return Err(KernelError::IoError(format!(
+                    "index accessor references vertex outside POSITION range: {:?}", tri
+                )));
+            }
+            indices.push(tri);
         }
     } else {
         // Non-indexed: every 3 vertices form a triangle
@@ -424,6 +513,17 @@ mod tests {
             normals,
             indices,
         }
+    }
+
+    #[test]
+    fn test_import_gltf_error_invalid_accessor_index() {
+        let content = r#"{
+            "buffers": [{"uri": "data:application/octet-stream;base64,AAAAAA=="}],
+            "bufferViews": [{"buffer": 0, "byteOffset": 0, "byteLength": 4}],
+            "accessors": [],
+            "meshes": [{"primitives": [{"attributes": {"POSITION": 0}}]}]
+        }"#;
+        assert!(import_gltf(content).is_err());
     }
 
     #[test]

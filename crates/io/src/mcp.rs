@@ -69,6 +69,7 @@ const PARSE_ERROR: i64 = -32700;
 const INVALID_REQUEST: i64 = -32600;
 const METHOD_NOT_FOUND: i64 = -32601;
 const INVALID_PARAMS: i64 = -32602;
+const MAX_REQUEST_SIZE: usize = 1024 * 1024;
 
 // ---------------------------------------------------------------------------
 // MCP Server
@@ -193,6 +194,21 @@ impl McpServer {
     /// Handles a single JSON-RPC 2.0 request string and returns the response
     /// as a JSON string.
     pub fn handle_request(&mut self, json: &str) -> KernelResult<String> {
+        if json.len() > MAX_REQUEST_SIZE {
+            return ok_response(
+                Value::Null,
+                Err(McpError {
+                    code: INVALID_REQUEST,
+                    message: format!(
+                        "request too large: {} bytes exceeds {} byte limit",
+                        json.len(),
+                        MAX_REQUEST_SIZE
+                    ),
+                    data: None,
+                }),
+            );
+        }
+
         let req: McpRequest = match serde_json::from_str(json) {
             Ok(r) => r,
             Err(e) => {
@@ -282,22 +298,30 @@ impl McpServer {
     // Solid store helpers
     // -----------------------------------------------------------------------
 
-    fn store_solid(&mut self, model: BRepModel, solid: Handle<SolidData>, label: String) -> usize {
+    fn store_solid(&mut self, model: BRepModel, solid: Handle<SolidData>, label: String) -> Result<usize, McpError> {
+        const MAX_SOLIDS: usize = 1000;
+        let live = self.solids.iter().filter(|s| s.is_some()).count();
+        if live >= MAX_SOLIDS {
+            return Err(McpError {
+                code: INVALID_PARAMS,
+                message: format!("solid limit reached ({MAX_SOLIDS})"),
+                data: None,
+            });
+        }
         let entry = SolidEntry {
             model,
             solid,
             label,
         };
-        // Find a free slot or push
         for (i, slot) in self.solids.iter_mut().enumerate() {
             if slot.is_none() {
                 *slot = Some(entry);
-                return i;
+                return Ok(i);
             }
         }
         let id = self.solids.len();
         self.solids.push(Some(entry));
-        id
+        Ok(id)
     }
 
     fn get_solid(&self, id: usize) -> Result<&SolidEntry, McpError> {
@@ -393,7 +417,7 @@ impl McpServer {
         };
 
         let counts = solid_counts(&model, solid);
-        let id = self.store_solid(model, solid, label);
+        let id = self.store_solid(model, solid, label)?;
         Ok(serde_json::json!({
             "id": id,
             "faces": counts.0,
@@ -453,7 +477,7 @@ impl McpServer {
 
         let label = format!("{op_str}({target_id},{tool_id})");
         let counts = solid_counts(&result, result_solid);
-        let id = self.store_solid(result, result_solid, label);
+        let id = self.store_solid(result, result_solid, label)?;
 
         Ok(serde_json::json!({
             "id": id,

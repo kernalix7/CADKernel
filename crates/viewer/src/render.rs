@@ -1146,6 +1146,7 @@ pub(crate) struct GpuState {
     pub queue: wgpu::Queue,
     pub config: wgpu::SurfaceConfiguration,
     pub solid_pipeline: wgpu::RenderPipeline,
+    pub points_pipeline: wgpu::RenderPipeline,
     pub wire_pipeline: wgpu::RenderPipeline,
     pub transparent_pipeline: wgpu::RenderPipeline,
     pub gradient_pipeline: wgpu::RenderPipeline,
@@ -1336,6 +1337,45 @@ impl GpuState {
             cache: None,
         });
 
+        let points_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("points_pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_main"),
+                buffers: &[Vertex::layout()],
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: config.format,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::PointList,
+                ..Default::default()
+            },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: DEPTH_FORMAT,
+                depth_write_enabled: false,
+                depth_compare: wgpu::CompareFunction::LessEqual,
+                stencil: Default::default(),
+                bias: Default::default(),
+            }),
+            multisample: wgpu::MultisampleState {
+                count: MSAA_SAMPLES,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            multiview: None,
+            cache: None,
+        });
+
         let wire_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("wire_pipeline"),
             layout: Some(&pipeline_layout),
@@ -1465,6 +1505,7 @@ impl GpuState {
             queue,
             config,
             solid_pipeline,
+            points_pipeline,
             wire_pipeline,
             transparent_pipeline,
             gradient_pipeline,
@@ -1950,7 +1991,7 @@ impl GpuState {
                             &self.uniform_bind_group,
                             &[Self::slot_offset(mesh_slot)],
                         );
-                        pass.set_pipeline(&self.wire_pipeline);
+                        pass.set_pipeline(&self.points_pipeline);
                         pass.draw(0..self.num_vertices, 0..1);
                     }
                     DisplayMode::Wireframe => {

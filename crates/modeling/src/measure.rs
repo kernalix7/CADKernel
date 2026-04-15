@@ -47,29 +47,26 @@ pub fn compute_mass_properties(mesh: &cadkernel_io::Mesh) -> MassProperties {
         let area_2 = (cross_x * cross_x + cross_y * cross_y + cross_z * cross_z).sqrt();
         area += area_2;
 
-        // Centroid weighted by volume contribution
-        let mid_x = (v0.x + v1.x + v2.x) / 4.0;
-        let mid_y = (v0.y + v1.y + v2.y) / 4.0;
-        let mid_z = (v0.z + v1.z + v2.z) / 4.0;
-        cx += tri_vol * mid_x;
-        cy += tri_vol * mid_y;
-        cz += tri_vol * mid_z;
+        // Centroid via divergence theorem: accumulate (v0+v1+v2) weighted by tri_vol
+        cx += tri_vol * (v0.x + v1.x + v2.x);
+        cy += tri_vol * (v0.y + v1.y + v2.y);
+        cz += tri_vol * (v0.z + v1.z + v2.z);
     }
 
     volume /= 6.0;
     area /= 2.0;
     let abs_vol = volume.abs();
     if abs_vol < 1e-12 {
-        // Degenerate mesh — centroid undefined.
         return MassProperties {
             volume: abs_vol,
             surface_area: area,
             centroid: Point3::ORIGIN,
         };
     }
-    cx /= 6.0 * abs_vol;
-    cy /= 6.0 * abs_vol;
-    cz /= 6.0 * abs_vol;
+    // Normalize: tri_vol lacks 1/6, centroid needs 1/4 per vertex → total 1/24
+    cx /= 24.0 * volume;
+    cy /= 24.0 * volume;
+    cz /= 24.0 * volume;
 
     MassProperties {
         volume: volume.abs(),

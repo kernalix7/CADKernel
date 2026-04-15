@@ -121,51 +121,57 @@ where
     // Clamp the last value exactly to t_end.
     *params.last_mut().unwrap() = t_end;
 
-    // Adaptive refinement pass.
+    // Adaptive refinement pass using batch insertion to avoid O(n²) shifts.
     let cos_angle_tol = opts.angle_tolerance.cos();
-    let mut i = 0;
-    while i + 1 < params.len() {
-        let t0 = params[i];
-        let t1 = params[i + 1];
-        let depth = depth_from_spacing(t0, t1, t_start, t_end, opts);
-        if depth >= opts.max_depth {
-            i += 1;
-            continue;
-        }
-
-        let t_mid = 0.5 * (t0 + t1);
-        let p0 = eval(t0);
-        let p1 = eval(t1);
-        let p_mid = eval(t_mid);
-
-        let chord_mid = Point3::new(
-            0.5 * (p0.x + p1.x),
-            0.5 * (p0.y + p1.y),
-            0.5 * (p0.z + p1.z),
-        );
-        let chord_err = p_mid.distance_to(chord_mid);
-
-        let needs_split = if chord_err > opts.chord_tolerance {
-            true
-        } else {
-            let tan0 = tangent(t0);
-            let tan1 = tangent(t1);
-            let len0 = (tan0.x * tan0.x + tan0.y * tan0.y + tan0.z * tan0.z).sqrt();
-            let len1 = (tan1.x * tan1.x + tan1.y * tan1.y + tan1.z * tan1.z).sqrt();
-            if len0 < 1e-14 || len1 < 1e-14 {
-                false
-            } else {
-                let dot = (tan0.x * tan1.x + tan0.y * tan1.y + tan0.z * tan1.z) / (len0 * len1);
-                dot < cos_angle_tol
+    let mut changed = true;
+    while changed {
+        changed = false;
+        let mut new_params = Vec::with_capacity(params.len() * 2);
+        for i in 0..params.len() {
+            new_params.push(params[i]);
+            if i + 1 >= params.len() {
+                continue;
             }
-        };
+            let t0 = params[i];
+            let t1 = params[i + 1];
+            let depth = depth_from_spacing(t0, t1, t_start, t_end, opts);
+            if depth >= opts.max_depth {
+                continue;
+            }
 
-        if needs_split {
-            params.insert(i + 1, t_mid);
-            // Don't advance i — re-check the first half.
-        } else {
-            i += 1;
+            let t_mid = 0.5 * (t0 + t1);
+            let p0 = eval(t0);
+            let p1 = eval(t1);
+            let p_mid = eval(t_mid);
+
+            let chord_mid = Point3::new(
+                0.5 * (p0.x + p1.x),
+                0.5 * (p0.y + p1.y),
+                0.5 * (p0.z + p1.z),
+            );
+            let chord_err = p_mid.distance_to(chord_mid);
+
+            let needs_split = if chord_err > opts.chord_tolerance {
+                true
+            } else {
+                let tan0 = tangent(t0);
+                let tan1 = tangent(t1);
+                let len0 = (tan0.x * tan0.x + tan0.y * tan0.y + tan0.z * tan0.z).sqrt();
+                let len1 = (tan1.x * tan1.x + tan1.y * tan1.y + tan1.z * tan1.z).sqrt();
+                if len0 < 1e-14 || len1 < 1e-14 {
+                    false
+                } else {
+                    let dot = (tan0.x * tan1.x + tan0.y * tan1.y + tan0.z * tan1.z) / (len0 * len1);
+                    dot < cos_angle_tol
+                }
+            };
+
+            if needs_split {
+                new_params.push(t_mid);
+                changed = true;
+            }
         }
+        params = new_params;
     }
 
     params.iter().map(|&t| eval(t)).collect()

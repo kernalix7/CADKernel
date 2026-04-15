@@ -263,6 +263,16 @@ impl CadApp {
         self.gui.invalidate_cache();
     }
 
+    fn sync_object_ranges_metadata(&mut self) {
+        for (id, _start, _count, color, selected) in &mut self.object_ranges {
+            if let Some(obj) = self.scene.get(*id) {
+                *color = obj.color;
+                *selected = obj.selected;
+            }
+        }
+        self.gui.invalidate_cache();
+    }
+
     /// Add a newly created solid to the scene and update GPU.
     fn add_to_scene(
         &mut self,
@@ -660,42 +670,45 @@ impl CadApp {
         vert_threshold: f32,
     ) {
         // Gather pick results without borrowing self mutably
-        let mut vert_hit: Option<(crate::scene::ObjectId, Handle<VertexData>, usize, String)> = None;
-        let mut edge_hit: Option<(crate::scene::ObjectId, Handle<EdgeData>, usize, String)> = None;
-        let mut face_hit: Option<(crate::scene::ObjectId, Handle<FaceData>, String)> = None;
+        let mut vert_hit: Option<(crate::scene::ObjectId, Handle<VertexData>, usize, f32, String)> = None;
+        let mut edge_hit: Option<(crate::scene::ObjectId, Handle<EdgeData>, usize, f32, String)> = None;
+        let mut face_hit: Option<(crate::scene::ObjectId, Handle<FaceData>, f32, String)> = None;
 
         for obj in self.scene.visible_objects() {
-            if vert_hit.is_none() {
-                if let Some((idx, _t)) = crate::picking::pick_vertex(
-                    origin, dir, &obj.vertex_positions, vert_threshold,
-                ) {
-                    if let Some(&vh) = obj.vertex_handles.get(idx) {
-                        vert_hit = Some((obj.id, vh, idx, obj.name.clone()));
+            if let Some((idx, t)) = crate::picking::pick_vertex(
+                origin, dir, &obj.vertex_positions, vert_threshold,
+            ) {
+                if let Some(&vh) = obj.vertex_handles.get(idx) {
+                    let is_closer = vert_hit.as_ref().is_none_or(|(_, _, _, best_t, _)| t < *best_t);
+                    if is_closer {
+                        vert_hit = Some((obj.id, vh, idx, t, obj.name.clone()));
                     }
                 }
             }
-            if edge_hit.is_none() {
-                if let Some((idx, _t)) = crate::picking::pick_edge(
-                    origin, dir, &obj.edge_positions, edge_threshold,
-                ) {
-                    if let Some(&eh) = obj.edge_handles.get(idx) {
-                        edge_hit = Some((obj.id, eh, idx, obj.name.clone()));
+            if let Some((idx, t)) = crate::picking::pick_edge(
+                origin, dir, &obj.edge_positions, edge_threshold,
+            ) {
+                if let Some(&eh) = obj.edge_handles.get(idx) {
+                    let is_closer = edge_hit.as_ref().is_none_or(|(_, _, _, best_t, _)| t < *best_t);
+                    if is_closer {
+                        edge_hit = Some((obj.id, eh, idx, t, obj.name.clone()));
                     }
                 }
             }
-            if face_hit.is_none() {
-                if let Some(hit) = crate::picking::pick_triangle(
-                    origin, dir, &obj.mesh.vertices, &obj.mesh.indices,
-                ) {
-                    if let Some(fh) = lookup_face(hit.triangle_index, &obj.face_tri_map) {
-                        face_hit = Some((obj.id, fh, obj.name.clone()));
+            if let Some(hit) = crate::picking::pick_triangle(
+                origin, dir, &obj.mesh.vertices, &obj.mesh.indices,
+            ) {
+                if let Some(fh) = lookup_face(hit.triangle_index, &obj.face_tri_map) {
+                    let is_closer = face_hit.as_ref().is_none_or(|(_, _, best_t, _)| hit.distance < *best_t);
+                    if is_closer {
+                        face_hit = Some((obj.id, fh, hit.distance, obj.name.clone()));
                     }
                 }
             }
         }
 
         // Apply result: vertex > edge > face > solid
-        if let Some((obj_id, vert_h, idx, name)) = vert_hit {
+        if let Some((obj_id, vert_h, idx, _t, name)) = vert_hit {
             self.select_object_for_pick(obj_id);
             let entity = SelectedEntity::Vertex(vert_h);
             if self.mouse.ctrl_held {
@@ -704,8 +717,8 @@ impl CadApp {
                 self.gui.selected_entities = vec![entity];
             }
             self.gui.status_message = format!("Vertex {idx} of {name}");
-            self.rebuild_scene_gpu();
-        } else if let Some((obj_id, edge_h, idx, name)) = edge_hit {
+            self.sync_object_ranges_metadata();
+        } else if let Some((obj_id, edge_h, idx, _t, name)) = edge_hit {
             self.select_object_for_pick(obj_id);
             let entity = SelectedEntity::Edge(edge_h);
             if self.mouse.ctrl_held {
@@ -714,8 +727,8 @@ impl CadApp {
                 self.gui.selected_entities = vec![entity];
             }
             self.gui.status_message = format!("Edge {idx} of {name}");
-            self.rebuild_scene_gpu();
-        } else if let Some((obj_id, face_h, name)) = face_hit {
+            self.sync_object_ranges_metadata();
+        } else if let Some((obj_id, face_h, _t, name)) = face_hit {
             self.select_object_for_pick(obj_id);
             let entity = SelectedEntity::Face(face_h);
             if self.mouse.ctrl_held {
@@ -724,7 +737,7 @@ impl CadApp {
                 self.gui.selected_entities = vec![entity];
             }
             self.gui.status_message = format!("Face of {name}");
-            self.rebuild_scene_gpu();
+            self.sync_object_ranges_metadata();
         } else {
             self.pick_solid(origin, dir);
         }
@@ -770,12 +783,12 @@ impl CadApp {
                     format!("Selected: {} (dist {dist:.2})", obj.name)
                 };
             }
-            self.rebuild_scene_gpu();
+            self.sync_object_ranges_metadata();
         } else {
             self.scene.deselect_all();
             self.gui.selected_entities.clear();
             self.gui.status_message = "Selection cleared".into();
-            self.rebuild_scene_gpu();
+            self.sync_object_ranges_metadata();
         }
     }
 
@@ -810,39 +823,49 @@ impl CadApp {
 
         let mut new_presel: Option<crate::scene::ObjectId> = None;
         let mut new_entity: Option<SelectedEntity> = None;
+        let mut best_vertex: Option<(crate::scene::ObjectId, SelectedEntity, f32)> = None;
+        let mut best_edge: Option<(crate::scene::ObjectId, SelectedEntity, f32)> = None;
+        let mut best_face: Option<(crate::scene::ObjectId, SelectedEntity, f32)> = None;
+        let mut best_solid: Option<(crate::scene::ObjectId, f32)> = None;
 
         // Auto-preselection: vertex > edge > face > solid (same as auto-pick)
         for obj in self.scene.visible_objects() {
-            if new_entity.is_none() {
-                if let Some((idx, _t)) = crate::picking::pick_vertex(origin, dir, &obj.vertex_positions, vert_threshold) {
-                    if let Some(&vh) = obj.vertex_handles.get(idx) {
-                        new_presel = Some(obj.id);
-                        new_entity = Some(SelectedEntity::Vertex(vh));
-                        break;
+            if let Some((idx, t)) = crate::picking::pick_vertex(origin, dir, &obj.vertex_positions, vert_threshold) {
+                if let Some(&vh) = obj.vertex_handles.get(idx) {
+                    let is_closer = best_vertex.as_ref().is_none_or(|(_, _, best_t)| t < *best_t);
+                    if is_closer {
+                        best_vertex = Some((obj.id, SelectedEntity::Vertex(vh), t));
                     }
                 }
             }
-            if new_entity.is_none() {
-                if let Some((idx, _t)) = crate::picking::pick_edge(origin, dir, &obj.edge_positions, edge_threshold) {
-                    if let Some(&eh) = obj.edge_handles.get(idx) {
-                        new_presel = Some(obj.id);
-                        new_entity = Some(SelectedEntity::Edge(eh));
-                        break;
+            if let Some((idx, t)) = crate::picking::pick_edge(origin, dir, &obj.edge_positions, edge_threshold) {
+                if let Some(&eh) = obj.edge_handles.get(idx) {
+                    let is_closer = best_edge.as_ref().is_none_or(|(_, _, best_t)| t < *best_t);
+                    if is_closer {
+                        best_edge = Some((obj.id, SelectedEntity::Edge(eh), t));
                     }
                 }
             }
-            if new_entity.is_none() {
-                if let Some(hit) = crate::picking::pick_triangle(origin, dir, &obj.mesh.vertices, &obj.mesh.indices) {
-                    if let Some(fh) = lookup_face(hit.triangle_index, &obj.face_tri_map) {
-                        new_presel = Some(obj.id);
-                        new_entity = Some(SelectedEntity::Face(fh));
-                        break;
+            if let Some(hit) = crate::picking::pick_triangle(origin, dir, &obj.mesh.vertices, &obj.mesh.indices) {
+                if let Some(fh) = lookup_face(hit.triangle_index, &obj.face_tri_map) {
+                    let is_closer = best_face.as_ref().is_none_or(|(_, _, best_t)| hit.distance < *best_t);
+                    if is_closer {
+                        best_face = Some((obj.id, SelectedEntity::Face(fh), hit.distance));
                     }
-                    // Fallback: solid-level preselection (no sub-element)
-                    new_presel = Some(obj.id);
-                    break;
+                } else {
+                    let is_closer = best_solid.as_ref().is_none_or(|(_, best_t)| hit.distance < *best_t);
+                    if is_closer {
+                        best_solid = Some((obj.id, hit.distance));
+                    }
                 }
             }
+        }
+
+        if let Some((obj_id, entity, _)) = best_vertex.or(best_edge).or(best_face) {
+            new_presel = Some(obj_id);
+            new_entity = Some(entity);
+        } else if let Some((obj_id, _)) = best_solid {
+            new_presel = Some(obj_id);
         }
 
         let obj_changed = new_presel != self.preselected_object;
@@ -850,7 +873,6 @@ impl CadApp {
         if obj_changed {
             self.preselected_object = new_presel;
             self.gui.preselected_object_id = new_presel;
-            self.rebuild_scene_gpu();
         }
         if entity_changed {
             self.preselected_entity = new_entity.clone();
@@ -2457,7 +2479,7 @@ impl CadApp {
                 // -- Multi-select --
                 GuiAction::ToggleSelect(id) => {
                     self.scene.toggle_select(id);
-                    self.rebuild_scene_gpu();
+                    self.sync_object_ranges_metadata();
                 }
 
                 // -- Scene boolean operations --
@@ -5363,37 +5385,9 @@ impl CadApp {
                     })
                 }).collect();
 
-                // Write per-object uniform slots (starting after grid+mesh slots)
-                let obj_slot_base = slot + 1;
+                // Reuse a single per-object uniform slot to avoid hard object-count limits.
+                let obj_slot = slot + 1;
                 let presel = *preselected_object;
-                for (i, &(id, _start, _count, color, selected)) in object_ranges.iter().enumerate() {
-                    if !visible[i] { continue; }
-                    let obj_slot = obj_slot_base + i as u32;
-                    if obj_slot >= 62 { break; } // leave room
-                    let obj_color = if selected {
-                        // Selection highlight: green tint
-                        [color[0] * 0.5 + 0.15, color[1] * 0.5 + 0.35, color[2] * 0.5 + 0.1, color[3]]
-                    } else if presel == Some(id) {
-                        // Preselection highlight: warm yellow tint
-                        [color[0] * 0.6 + 0.3, color[1] * 0.6 + 0.25, color[2] * 0.4, color[3]]
-                    } else {
-                        color
-                    };
-                    let obj_hover = if presel == Some(id) {
-                        [hover_id, id as f32, PRESELECT_STRENGTH, 0.0]
-                    } else {
-                        [hover_id, id as f32, 0.0, 0.0]
-                    };
-                    rt.gpu.write_slot(obj_slot, &Uniforms {
-                        view_proj: vp,
-                        light_dir: light,
-                        base_color: obj_color,
-                        params: lit_params,
-                        eye_pos,
-                        hover_params: obj_hover,
-                        clip_params: clip,
-                    });
-                }
 
                 match dm {
                     DisplayMode::AsIs | DisplayMode::Shading => {
@@ -5402,10 +5396,30 @@ impl CadApp {
                             pass.set_bind_group(0, &rt.gpu.uniform_bind_group, &[GpuState::slot_offset(mesh_slot)]);
                             pass.draw(0..rt.gpu.num_vertices, 0..1);
                         } else {
-                            for (i, &(_id, start, count, _color, _sel)) in object_ranges.iter().enumerate() {
+                            for (i, &(id, start, count, color, selected)) in object_ranges.iter().enumerate() {
                                 if !visible[i] { continue; }
-                                let obj_slot = obj_slot_base + i as u32;
-                                if obj_slot >= 62 || count == 0 { continue; }
+                                if count == 0 { continue; }
+                                let obj_color = if selected {
+                                    [color[0] * 0.5 + 0.15, color[1] * 0.5 + 0.35, color[2] * 0.5 + 0.1, color[3]]
+                                } else if presel == Some(id) {
+                                    [color[0] * 0.6 + 0.3, color[1] * 0.6 + 0.25, color[2] * 0.4, color[3]]
+                                } else {
+                                    color
+                                };
+                                let obj_hover = if presel == Some(id) {
+                                    [hover_id, id as f32, PRESELECT_STRENGTH, 0.0]
+                                } else {
+                                    [hover_id, id as f32, 0.0, 0.0]
+                                };
+                                rt.gpu.write_slot(obj_slot, &Uniforms {
+                                    view_proj: vp,
+                                    light_dir: light,
+                                    base_color: obj_color,
+                                    params: lit_params,
+                                    eye_pos,
+                                    hover_params: obj_hover,
+                                    clip_params: clip,
+                                });
                                 pass.set_bind_group(0, &rt.gpu.uniform_bind_group, &[GpuState::slot_offset(obj_slot)]);
                                 pass.draw(start..start + count, 0..1);
                             }
@@ -5419,8 +5433,7 @@ impl CadApp {
                         } else {
                             for (i, &(_id, start, count, _color, _sel)) in object_ranges.iter().enumerate() {
                                 if !visible[i] { continue; }
-                                let obj_slot = obj_slot_base + i as u32;
-                                if obj_slot >= 62 || count == 0 { continue; }
+                                if count == 0 { continue; }
                                 rt.gpu.write_slot(obj_slot, &Uniforms {
                                     view_proj: vp, light_dir: no_light, base_color: NO_SHADE_COLOR,
                                     params: lit_params, eye_pos, hover_params: [0.0; 4], clip_params: clip,
@@ -5436,14 +5449,10 @@ impl CadApp {
                             pass.set_bind_group(0, &rt.gpu.uniform_bind_group, &[GpuState::slot_offset(mesh_slot)]);
                             pass.draw(0..rt.gpu.num_vertices, 0..1);
                         } else {
-                            for (i, &(_id, start, count, _color, _sel)) in object_ranges.iter().enumerate() {
+                            for (i, &(_id, start, count, color, _sel)) in object_ranges.iter().enumerate() {
                                 if !visible[i] { continue; }
-                                let obj_slot = obj_slot_base + i as u32;
-                                if obj_slot >= 62 || count == 0 { continue; }
-                                let obj_color = {
-                                    let c = object_ranges[i].3;
-                                    [c[0], c[1], c[2], TRANSPARENT_COLOR[3]]
-                                };
+                                if count == 0 { continue; }
+                                let obj_color = [color[0], color[1], color[2], TRANSPARENT_COLOR[3]];
                                 rt.gpu.write_slot(obj_slot, &Uniforms {
                                     view_proj: vp, light_dir: light, base_color: obj_color,
                                     params: lit_params, eye_pos, hover_params: [0.0; 4], clip_params: clip,
@@ -5455,7 +5464,7 @@ impl CadApp {
                     }
                     DisplayMode::Points => {
                         pass.set_bind_group(0, &rt.gpu.uniform_bind_group, &[GpuState::slot_offset(mesh_slot)]);
-                        pass.set_pipeline(&rt.gpu.wire_pipeline);
+                        pass.set_pipeline(&rt.gpu.points_pipeline);
                         pass.draw(0..rt.gpu.num_vertices, 0..1);
                     }
                     DisplayMode::Wireframe => {

@@ -56,3 +56,30 @@ jobs:
 
       - name: Test
         run: cargo test --workspace
+
+  python-bindings:
+    name: Python Bindings Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Build Python bindings
+        env:
+          PYO3_PYTHON: python3
+        run: cargo build --manifest-path crates/python/Cargo.toml
+
+      - name: Test Python bindings
+        env:
+          PYO3_PYTHON: python3
+        run: cargo test --manifest-path crates/python/Cargo.toml

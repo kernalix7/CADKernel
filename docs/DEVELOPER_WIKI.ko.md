@@ -1,7 +1,7 @@
 # CADKernel Developer Wiki
 
 > **버전**: 0.1.0 (pre-alpha)  
-> **최종 업데이트**: 2026-04-08
+> **최종 업데이트**: 2026-04-13
 > **대상 독자**: CADKernel 커널 개발자, 기여자
 
 ---
@@ -679,7 +679,9 @@ let result_model = boolean_op(&model_a, solid_a, &model_b, solid_b, BooleanOp::U
 
 **카메라 뷰 북마크**: `nav.rs`의 `ViewBookmark` 구조체 (이름, yaw, pitch, roll, distance, target). NavConfig에 `view_bookmarks` (최대 20개). View > Bookmarks 서브메뉴 (220px 너비): 힌트 텍스트 입력, 활성/비활성 Save 버튼, 카메라 각도 툴팁(yaw°/pitch°/dist)이 있는 번호 항목, 우측 정렬 삭제, "X/20 bookmarks" 카운트. 저장 시 이름 매칭으로 덮어쓰기. 복원은 `.cloned()`로 빌림 충돌 방지 후 애니메이션. 북마크 정보 매 프레임 GuiState에 미러링.
 
-**프리셀렉션 하이라이트**: `draw_selection_overlay()`가 선택 없이도 엣지/페이스/버텍스 프리셀렉션 표시. `nav.preselection_color`/`nav.selection_color` ([u8; 3])로 설정 가능. 커서 따라다니는 엔티티 타입 라벨. 엣지: 8px 글로우 + 3.5px 코어. 버텍스: 10px 글로우 링 + 6px 마커 + 2px 중심점.
+**프리셀렉션 하이라이트**: `draw_selection_overlay()`가 선택 없이도 엣지/페이스/버텍스 프리셀렉션 표시. `nav.preselection_color`/`nav.selection_color` ([u8; 3])로 설정 가능. 커서 따라다니는 엔티티 타입 라벨. 엣지: 8px 글로우 + 3.5px 코어. 버텍스: 10px 글로우 링 + 6px 마커 + 2px 중심점. hover/프리셀렉션 갱신은 이제 전체 scene 재빌드와 분리되며, 선택은 씬 순회 첫 객체가 아니라 깊이 기준 nearest-hit를 사용합니다.
+
+**디스플레이 모드 렌더링**: `DisplayMode::Points`는 전용 `PointList` GPU 파이프라인으로 렌더링됩니다. 오브젝트별 shaded draw는 draw call마다 하나의 dynamic uniform slot을 재사용하여 대규모 씬에서의 조용한 객체 누락을 방지합니다.
 
 **오브젝트 그룹핑**: `scene.rs`의 `ObjectGroup` 구조체. `group_id` 필드 (0 = 미지정). Scene 메서드: `create_group()`, `group_selected()`, `ungroup_object()`, `toggle_group_visibility()`, `delete_group()`, `group_members()`. Edit > Groups 서브메뉴: 눈 아이콘 (◉/○) 색상 코딩, 멤버 수 "(N)", 힌트 텍스트 입력. 모델 트리 그룹 섹션: 헤더에 눈 토글/폴더 아이콘/이름/카운트/삭제; 인덴트된 멤버 이름.
 
@@ -1424,6 +1426,13 @@ echo '{"jsonrpc":"2.0","id":1,"method":"create_primitive","params":{"shape":"box
 
 CADKernel은 자동화 및 배치 처리를 위해 Lua 스크립팅 엔진을 임베드합니다.
 
+### 보안 샌드박스
+
+스크립팅 엔진은 초기화 시 위험한 Lua 표준 라이브러리 전역을 제거합니다:
+`os`, `io`, `require`, `dofile`, `loadfile`, `package`. 스크립트는 `string`,
+`table`, `math` 및 `cad.*` API에만 접근 가능합니다. 파일 I/O는 검증된 경로 내에서
+동작하는 `cad.export()`와 `cad.import()` 함수를 통해서만 사용할 수 있습니다.
+
 ### API 범위
 
 ```lua
@@ -1493,6 +1502,9 @@ cadkernel --script batch_export.lua --output /tmp/
 4. `cargo build --workspace`
 5. `cargo clippy --workspace --all-targets --all-features -- -D warnings`
 6. `cargo test --workspace`
+
+**추가 잡**:
+- `python-bindings` (ubuntu-latest) — `cargo build/test --manifest-path crates/python/Cargo.toml`로 `crates/python`을 별도 빌드 및 테스트
 
 캐시 키는 OS별 `Cargo.lock` 해시를 기반으로 하며, OS 수준의 폴백 복원 키를 사용합니다.
 

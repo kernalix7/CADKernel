@@ -51,6 +51,12 @@ pub enum Token {
 /// Handles entity references (`#N`), quoted strings, enumerations (`.NAME.`),
 /// integers, reals (with optional exponent), and block comments (`/* ... */`).
 pub fn tokenize(input: &str) -> KernelResult<Vec<Token>> {
+    const MAX_STEP_SIZE: usize = 512 * 1024 * 1024; // 512 MB
+    if input.len() > MAX_STEP_SIZE {
+        return Err(KernelError::IoError(format!(
+            "STEP input too large ({} bytes, max {})", input.len(), MAX_STEP_SIZE
+        )));
+    }
     let mut tokens = Vec::new();
     let chars: Vec<char> = input.chars().collect();
     let mut i = 0;
@@ -62,10 +68,18 @@ pub fn tokenize(input: &str) -> KernelResult<Vec<Token>> {
             }
             '/' if i + 1 < chars.len() && chars[i + 1] == '*' => {
                 i += 2;
-                while i + 1 < chars.len() && !(chars[i] == '*' && chars[i + 1] == '/') {
+                let mut closed = false;
+                while i + 1 < chars.len() {
+                    if chars[i] == '*' && chars[i + 1] == '/' {
+                        closed = true;
+                        i += 2;
+                        break;
+                    }
                     i += 1;
                 }
-                i += 2;
+                if !closed {
+                    return Err(KernelError::IoError("unterminated block comment".into()));
+                }
             }
             '#' => {
                 i += 1;
@@ -86,6 +100,9 @@ pub fn tokenize(input: &str) -> KernelResult<Vec<Token>> {
                 while i < chars.len() && chars[i] != '\'' {
                     i += 1;
                 }
+                if i >= chars.len() {
+                    return Err(KernelError::IoError("unterminated string literal".into()));
+                }
                 let s: String = chars[start..i].iter().collect();
                 i += 1;
                 tokens.push(Token::String(s));
@@ -95,6 +112,9 @@ pub fn tokenize(input: &str) -> KernelResult<Vec<Token>> {
                 let start = i;
                 while i < chars.len() && chars[i] != '.' {
                     i += 1;
+                }
+                if i >= chars.len() {
+                    return Err(KernelError::IoError("unterminated enumeration literal".into()));
                 }
                 let s: String = chars[start..i].iter().collect();
                 i += 1;
@@ -703,6 +723,16 @@ impl StepFile {
         }
     }
 
+    /// Retrieves a `CartesianPoint` by entity ID, returning an error if missing.
+    pub fn try_get_point(&self, id: u64) -> KernelResult<Point3> {
+        match self.entities.get(&id) {
+            Some(StepEntity::CartesianPoint(p)) => Ok(*p),
+            _ => Err(KernelError::IoError(format!(
+                "missing mandatory CARTESIAN_POINT reference #{id}"
+            ))),
+        }
+    }
+
     /// Retrieves a `Direction` by entity ID, returning `Vec3::Z` if not found.
     pub fn get_direction(&self, id: u64) -> Vec3 {
         match self.entities.get(&id) {
@@ -719,18 +749,17 @@ pub fn parse_step(content: &str) -> KernelResult<StepFile> {
     let raw = parser.parse_entities()?;
     let mut entities = HashMap::new();
     for e in &raw {
-        // Error recovery: skip entities that fail to resolve instead of aborting
         let resolved = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             resolve_entity(e)
         }));
         match resolved {
             Ok(entity) => { entities.insert(e.id, entity); }
             Err(_) => {
-                // Skip malformed entity — store as Other for traceability
-                entities.insert(e.id, StepEntity::Other {
-                    entity_type: e.entity_type.clone(),
-                    params: e.params.clone(),
-                });
+                return Err(KernelError::IoError(format!(
+                    "failed to resolve STEP entity #{} ({})",
+                    e.id,
+                    e.entity_type
+                )));
             }
         }
     }
@@ -766,7 +795,12 @@ pub fn import_step(content: &str) -> KernelResult<BRepModel> {
     // First pass: create vertices from VERTEX_POINT entities
     for (&id, entity) in &file.entities {
         if let StepEntity::VertexPoint(point_id) = entity {
-            let p = file.get_point(*point_id);
+            if *point_id == 0 {
+                return Err(KernelError::IoError(format!(
+                    "VERTEX_POINT #{id} missing point reference"
+                )));
+            }
+            let p = file.try_get_point(*point_id)?;
             let vh = model.add_vertex(p);
             vertex_map.insert(id, vh);
         }
@@ -928,19 +962,19 @@ pub fn export_step(model: &BRepModel) -> KernelResult<String> {
     // Export edges as LINE geometry + EDGE_CURVE
     let mut edge_step_ids: HashMap<u32, u64> = HashMap::new();
     for (eh, ed) in model.edges.iter() {
-        let start_vp = vert_step_ids.get(&ed.start.index()).copied().unwrap_or(0);
-        let end_vp = vert_step_ids.get(&ed.end.index()).copied().unwrap_or(0);
+        let start_vp = vert_step_ids.get(&ed.start.index()).copied().ok_or_else(|| {
+            KernelError::IoError(format!("missing STEP vertex export mapping for edge {} start", eh.index()))
+        })?;
+        let end_vp = vert_step_ids.get(&ed.end.index()).copied().ok_or_else(|| {
+            KernelError::IoError(format!("missing STEP vertex export mapping for edge {} end", eh.index()))
+        })?;
 
-        let p1 = model
-            .vertices
-            .get(ed.start)
-            .map(|v| v.point)
-            .unwrap_or(Point3::ORIGIN);
-        let p2 = model
-            .vertices
-            .get(ed.end)
-            .map(|v| v.point)
-            .unwrap_or(Point3::ORIGIN);
+        let p1 = model.vertices.get(ed.start).map(|v| v.point).ok_or_else(|| {
+            KernelError::IoError(format!("edge {} start vertex handle is invalid", eh.index()))
+        })?;
+        let p2 = model.vertices.get(ed.end).map(|v| v.point).ok_or_else(|| {
+            KernelError::IoError(format!("edge {} end vertex handle is invalid", eh.index()))
+        })?;
         let dir = (p2 - p1).normalized().unwrap_or(Vec3::X);
 
         let pt_id = w.add_point(p1);

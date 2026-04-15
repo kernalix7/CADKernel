@@ -11,6 +11,56 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### V31: Comprehensive Code Audit — Correctness, Security & Performance (2026-04-13)
+
+**Critical/High Correctness Fixes:**
+- Fix centroid calculation in `compute_mass_properties()` — was dividing by 4.0 instead of correct divergence theorem formula (1/24 normalization)
+- Fix Jacobian rank estimation in sketch solver — replaced unreliable diagonal check with proper SVD singular value thresholding
+- Fix Armijo line search fallback — no longer applies near-zero rejected step when alpha falls below threshold
+- Fix glTF import to read per-vertex normals from NORMAL accessor instead of silently discarding them
+- Fix inverted AABB sentinel for empty vertices — returns `[0,0,0]` instead of `[MIN,MAX]` which broke frustum culling
+
+**Security Hardening:**
+- Sandbox Lua scripting engine — remove `os`, `io`, `require`, `dofile`, `loadfile`, `package` globals
+- Fix STEP tokenizer to error on unterminated comments, strings, and enumerations instead of silent OOB
+- Add input size limits: STEP (512MB), ASCII STL (256MB), OBJ (256MB)
+- Add MCP server solid count limit (1000) to prevent memory exhaustion via repeated `create_primitive`
+- Add NaN/infinity validation on 3MF, PLY, and BREP export to prevent corrupt output
+
+**Correctness Improvements:**
+- Add NurbsCurve constructor validation: positive weights, non-decreasing knots, minimum degree/control points
+- Fix Lua `cad.scale` to reject non-uniform (sx≠sy≠sz) scaling with a clear error instead of silent averaging
+- Fix glTF `compute_per_vertex_normals` to handle both per-face and per-vertex normal arrays
+
+**Performance Optimization:**
+- Rewrite adaptive curve tessellation from O(n²) Vec::insert to O(n) batch sweep per refinement pass
+
+#### V30: Audit-Driven Hardening & Viewer Selection Fixes (2026-04-13)
+
+**Viewer Selection & Rendering Stability:**
+- Auto-pick and preselection now choose the nearest vertex, edge, or face hit instead of the first scene object encountered
+- Hover updates no longer rebuild the entire scene GPU data path on every cursor move
+- Per-object solid rendering now reuses a single dynamic uniform slot, removing the silent object-count cap in shaded per-object modes
+- Edge and vertex picking now includes inner loops (holes), not just outer face loops
+- Selection toggles now update per-object metadata without rebuilding combined scene geometry
+- `DisplayMode::Points` now uses a dedicated GPU point pipeline instead of the wireframe line pipeline
+
+**I/O Validation Hardening:**
+- `import_ply()` now enforces vertex/face count caps and rejects out-of-range face indices
+- `import_gltf()` now validates accessor indices, buffer view indices, byte ranges, and index-to-vertex references before decoding
+- Oversized MCP JSON-RPC requests are rejected early with a size limit instead of being parsed unbounded
+- `import_3mf()` now rejects out-of-range triangle indices and applies vertex/triangle count caps
+- `import_step()` now errors on unresolved mandatory point references, and STEP entity resolution failures abort parsing
+- `export_step()` and `export_brep()` now fail on dangling topology references instead of silently serializing fallback IDs or origin points
+
+**CI Coverage Improvements:**
+- `.github/workflows/ci.yml` now builds and tests the excluded `crates/python` bindings crate explicitly
+- `.github/workflows/python-release.yml` publish job simplified to avoid invalid workflow environment validation
+
+### Changed
+
+- Workspace audit verification now covers 1,616 passing workspace tests plus 42 passing Python binding tests
+
 #### V29: Performance, Testing & Packaging (2026-04-13)
 
 **Frustum Culling & Per-Object AABB:**
@@ -40,6 +90,7 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 - Korean translation updated in `docs/CONTRIBUTING.ko.md`
 
 ### Changed
+- Workspace audit fixes verified with `cargo build`, `cargo clippy -D warnings`, `cargo test --workspace`, and `cargo test --manifest-path crates/python/Cargo.toml`
 - Per-object rendering extended to NoShading, Transparent modes (previously only Shading)
 - 1,612 tests passing across all crates (up from 1,606)
 

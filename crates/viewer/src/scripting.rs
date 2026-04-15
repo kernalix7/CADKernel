@@ -57,6 +57,17 @@ impl ScriptEngine {
     /// initialisation fails.
     pub fn new() -> KernelResult<Self> {
         let lua = Lua::new();
+
+        // Sandbox: remove dangerous standard library globals
+        lua.load(r#"
+            os = nil
+            io = nil
+            require = nil
+            dofile = nil
+            loadfile = nil
+            package = nil
+        "#).exec().map_err(|e| KernelError::InvalidArgument(format!("lua sandbox: {e}")))?;
+
         let store: SolidStore = Arc::new(Mutex::new(Vec::new()));
 
         register_cad_table(&lua, Arc::clone(&store))
@@ -351,11 +362,16 @@ fn register_scale(lua: &Lua, cad: &Table, store: SolidStore) -> LuaResult<()> {
             (e.model.clone(), e.solid)
         };
 
-        // Use average scale factor for uniform scale via multi_transform.
-        let avg = (sx + sy + sz) / 3.0;
+        // Validate uniform scale: non-uniform scaling not supported on B-Rep
+        let eps = 1e-9;
+        if (sx - sy).abs() > eps || (sy - sz).abs() > eps {
+            return Err(mlua::Error::external(
+                "non-uniform scaling not supported; sx, sy, sz must be equal",
+            ));
+        }
         let transforms = [cadkernel_modeling::Transform::Scale {
             center: Point3::ORIGIN,
-            factor: avg,
+            factor: sx,
         }];
         let result = cadkernel_modeling::multi_transform(&mut model, solid, &transforms)
             .map_err(|e| mlua::Error::external(e.to_string()))?;

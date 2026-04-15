@@ -115,6 +115,12 @@ fn compute_normal(a: Point3, b: Point3, c: Point3) -> Vec3 {
 /// Polygon faces (4+ vertices) are fan-triangulated from the first vertex.
 /// Negative indices are supported (counting backwards from vertex list end).
 pub fn read_obj(input: &str) -> KernelResult<Mesh> {
+    const MAX_OBJ_SIZE: usize = 256 * 1024 * 1024; // 256 MB
+    if input.len() > MAX_OBJ_SIZE {
+        return Err(KernelError::IoError(format!(
+            "OBJ input too large ({} bytes, max {})", input.len(), MAX_OBJ_SIZE
+        )));
+    }
     let lines: Vec<&str> = input.lines().collect();
 
     let v_lines: Vec<&str> = lines

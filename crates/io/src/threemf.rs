@@ -10,12 +10,22 @@ use cadkernel_math::{Point3, Vec3};
 
 use crate::tessellate::Mesh;
 
+const MAX_3MF_VERTICES: usize = 50_000_000;
+const MAX_3MF_TRIANGLES: usize = 50_000_000;
+
 /// Exports a mesh to 3MF XML format string.
 ///
 /// Produces a complete 3MF document with a single object containing
 /// vertex and triangle elements. Face normals are not stored (recomputed
 /// by the consuming application).
 pub fn export_3mf(mesh: &Mesh) -> KernelResult<String> {
+    for (i, v) in mesh.vertices.iter().enumerate() {
+        if !v.x.is_finite() || !v.y.is_finite() || !v.z.is_finite() {
+            return Err(KernelError::IoError(format!(
+                "vertex {i} contains non-finite coordinate"
+            )));
+        }
+    }
     let mut xml = String::new();
     xml.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
     xml.push_str("<model unit=\"millimeter\" xmlns=\"http://schemas.microsoft.com/3dmanufacturing/core/2015/02\">\n");
@@ -58,14 +68,32 @@ pub fn import_3mf(content: &str) -> KernelResult<Mesh> {
     for line in content.lines() {
         let trimmed = line.trim();
         if trimmed.starts_with("<vertex ") {
+            if vertices.len() >= MAX_3MF_VERTICES {
+                return Err(KernelError::IoError(format!(
+                    "3MF vertex count exceeds limit {MAX_3MF_VERTICES}"
+                )));
+            }
             let x = extract_attr(trimmed, "x").ok_or_else(|| KernelError::IoError("3MF: missing vertex x".into()))?;
             let y = extract_attr(trimmed, "y").ok_or_else(|| KernelError::IoError("3MF: missing vertex y".into()))?;
             let z = extract_attr(trimmed, "z").ok_or_else(|| KernelError::IoError("3MF: missing vertex z".into()))?;
             vertices.push(Point3::new(x, y, z));
         } else if trimmed.starts_with("<triangle ") {
+            if indices.len() >= MAX_3MF_TRIANGLES {
+                return Err(KernelError::IoError(format!(
+                    "3MF triangle count exceeds limit {MAX_3MF_TRIANGLES}"
+                )));
+            }
             let v1 = extract_attr_u32(trimmed, "v1").ok_or_else(|| KernelError::IoError("3MF: missing triangle v1".into()))?;
             let v2 = extract_attr_u32(trimmed, "v2").ok_or_else(|| KernelError::IoError("3MF: missing triangle v2".into()))?;
             let v3 = extract_attr_u32(trimmed, "v3").ok_or_else(|| KernelError::IoError("3MF: missing triangle v3".into()))?;
+            for idx in [v1, v2, v3] {
+                if idx as usize >= vertices.len() {
+                    return Err(KernelError::IoError(format!(
+                        "3MF triangle index {idx} out of bounds for {} vertices",
+                        vertices.len()
+                    )));
+                }
+            }
             indices.push([v1, v2, v3]);
         }
     }
@@ -161,6 +189,12 @@ mod tests {
         assert_eq!(imported.vertices.len(), 3);
         assert_eq!(imported.indices.len(), 1);
         assert!((imported.vertices[0].x - 0.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_3mf_invalid_triangle_index() {
+        let xml = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<model><resources><object id=\"1\" type=\"model\"><mesh>\n<vertices>\n<vertex x=\"0\" y=\"0\" z=\"0\" />\n<vertex x=\"1\" y=\"0\" z=\"0\" />\n<vertex x=\"0\" y=\"1\" z=\"0\" />\n</vertices>\n<triangles>\n<triangle v1=\"0\" v2=\"1\" v3=\"9\" />\n</triangles>\n</mesh></object></resources></model>\n";
+        assert!(import_3mf(xml).is_err());
     }
 
     #[test]

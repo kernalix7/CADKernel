@@ -163,6 +163,12 @@ impl VertexDedup {
 /// recomputed from vertex positions (stored normals are ignored).
 /// Returns an error if no triangles are found or vertex lines are malformed.
 pub fn read_stl_ascii(input: &str) -> KernelResult<Mesh> {
+    const MAX_ASCII_STL_SIZE: usize = 256 * 1024 * 1024; // 256 MB
+    if input.len() > MAX_ASCII_STL_SIZE {
+        return Err(KernelError::IoError(format!(
+            "ASCII STL too large ({} bytes, max {})", input.len(), MAX_ASCII_STL_SIZE
+        )));
+    }
     let raw_tris: Vec<[Point3; 3]> = parse_ascii_triangles(input)?;
     if raw_tris.is_empty() {
         return Err(KernelError::IoError(
