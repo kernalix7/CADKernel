@@ -11,6 +11,56 @@
 
 ### 추가됨
 
+#### V33: 프로덕션 준비 — 테스트 커버리지, 패키징 & 문서 (2026-04-17)
+
+**코어 크레이트 신규 통합 테스트 39개** (`crates/core/tests/core_comprehensive.rs`):
+
+- **에러 생성** (6개): 6가지 `KernelError` 변형 전체 생성 및 매칭 확인
+- **Display 포맷** (7개): 각 변형이 올바른 접두어 및 전체 메시지를 포함하는지 확인
+- **Predicate 메서드** (3개): `is_invalid_handle`, `is_invalid_argument`, `is_io_error`가 해당 변형에서만 true 반환
+- **with_context** (7개): 5개 문자열 바디 변형에 컨텍스트 선두 추가, `InvalidHandle`은 그대로 통과, 변형 판별자 보존
+- **KernelResult 패턴** (5개): Ok 통과, Err 유지, `?` 전파, map, map_err
+- **From<std::io::Error>** (3개): NotFound, PermissionDenied, `?` 연산자 변환이 모두 IoError 생성
+- **std::error::Error 트레이트** (2개): Display와 to_string 일치, 기본 source 없음
+- **Clone + PartialEq** (4개): 복제 동등, 변형 간 불일치, 동일/상이 메시지 비교
+- **Send + Sync** (2개): `KernelError` 및 `KernelResult<()>` 스레드 안전성 확인
+
+코어 크레이트 커버리지: 10 → 49 테스트 (390% 증가).
+
+**뷰어 크레이트 신규 통합 테스트 101개** (`crates/viewer/tests/viewer_comprehensive.rs`):
+
+- **compute_aabb** (4개): 빈 입력, 단일 정점, 다중 정점 범위, 단위 큐브
+- **DisplayMode** (6개): ALL 슬라이스 크기, 레이블, 단축키, 동등성
+- **Projection / StandardView / Camera** (16개): 투영 전환, 뷰 스냅, 리셋, 바운드 맞춤, eye 위치, 행렬 크기, 화면 right/up 단위 길이
+- **NavConfig** (9개): 기본 스타일, 줌 팩터, FreeCAD/Blender/Maya resolve_drag, snap_3d 켜짐/꺼짐
+- **NavStyle / OrbitStyle / RotationMode / UnitSystem / BgPreset** (7개): 레이블/설명 비어있지 않음, mm 단위 레이블
+- **CreationParams 직렬화** (2개): Box, Sphere JSON 왕복
+- **Scene (헤드리스, add_mesh_object 사용)** (27개): 빈 씬, 추가/삭제, ID 순서, 가시성, 선택, 정렬, 부모/자식, 그룹 관리
+- **ScriptEngine** (29개): 엔진 생성, 숫자/문자/불리언/nil 반환, 샌드박스, cad 테이블, 5가지 기본 도형, 다중 누적, clear/delete/list/measure/count/translate, 문법 오류
+
+뷰어 크레이트 커버리지: 50 → 151 테스트 (202% 증가).
+
+**IO 라운드트립 통합 테스트 39개 신규** (`crates/io/tests/format_roundtrip.rs`):
+
+- 빈 모델/다중 솔리드 라운드트립 (STEP, BREP, JSON)
+- STEP 이중 라운드트립 일관성 및 면 수 보존
+- 신규 포맷 라운드트립: glTF, 3MF, DAE, AMF, VRML, OCA, DXF, DWG
+- SVG/PDF 내보내기 검증, 네이티브 .cadk 저장/로드
+- 대용량 메시 라운드트립 (10-박스 STL, 900-정점 OBJ 그리드)
+- 크로스 포맷 삼각형 수 일관성 (8개 포맷 비교)
+- 메시 연산: 법선 조화/반전, 수밀 검사, 스케일, 불리언, 플라토닉 다면체
+- 엣지 케이스: 음수 좌표, 부동소수점 정밀도, 바이너리 STL 크기
+
+IO 크레이트 라운드트립 커버리지: 22 → 61 테스트 (177% 증가).
+
+**Python 패키징 정비:**
+- `pyproject.toml`에 Changelog/Documentation URL, dev 의존성, manylinux2014 호환성 추가
+
+**CONTRIBUTING.md 개선 (EN + KO):**
+- 개발 환경 설정, 코드 표준, PR 워크플로우, 아키텍처 개요, 기여 시작점
+
+---
+
 #### V32: 토폴로지 크레이트 테스트 커버리지 확장 (2026-04-15)
 
 **33개 신규 통합 테스트** (`crates/topology/tests/topology_comprehensive.rs`):

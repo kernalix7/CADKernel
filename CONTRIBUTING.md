@@ -2,95 +2,137 @@
 
 **English** | [한국어](docs/CONTRIBUTING.ko.md)
 
-Thanks for your interest in contributing to CADKernel!
+Thank you for your interest in contributing to CADKernel!
 
 ## Architecture Overview
 
-CADKernel is a B-Rep CAD kernel built with Rust, organized as a 9-crate workspace:
+CADKernel is a B-Rep CAD kernel written in Rust, organized as a 9-crate workspace.
+
+**Dependency chain**: `core` → `math` → `geometry` → `topology` → `modeling` / `sketch` → `io` → `viewer`
 
 | Crate | Purpose |
 |-------|---------|
-| `core` | Error types (`KernelResult`), predicates, constants |
-| `math` | Point/Vec/Mat types, transforms, quaternions, BBox |
+| `core` | `KernelResult<T>`, `KernelError`, predicates, constants |
+| `math` | `Vec2/3`, `Point2/3`, `Mat3/4`, `Transform`, `Quaternion`, `BBox` |
 | `geometry` | Curve/Surface traits, NURBS, tessellation, BVH, intersection |
-| `topology` | Half-edge B-Rep: Vertex, Edge, HalfEdge, Loop, Face, Shell, Solid |
-| `modeling` | 13 primitives, features, booleans, patterns, FEM, assembly |
-| `sketch` | 2D parametric sketch with 24 constraint types, Newton-Raphson solver |
-| `io` | 11 file formats (STL/OBJ/glTF/STEP/IGES/DXF/PLY/3MF/BREP/DWG/DAE) |
-| `viewer` | egui + wgpu desktop GUI with 3D viewport |
+| `topology` | Half-edge B-Rep: `Vertex`, `Edge`, `HalfEdge`, `Loop`, `Face`, `Shell`, `Solid` |
+| `modeling` | 13 primitives, features, booleans, patterns, plugin API, quick API |
+| `sketch` | 2D parametric sketch, 24 constraint types, Newton-Raphson solver |
+| `io` | 11 file formats: STL, OBJ, glTF, STEP, IGES, DXF, PLY, 3MF, BREP, DWG, DAE |
+| `viewer` | egui 0.31 + wgpu 24 desktop GUI, 3D viewport, Lua scripting console |
 | `python` | PyO3 bindings (excluded from default workspace build) |
 
-**Dependency flow**: `core` → `math` → `geometry` → `topology` → `modeling`/`sketch` → `io` → `viewer`
+For full architecture documentation, see [docs/DEVELOPER_WIKI.md](docs/DEVELOPER_WIKI.md).
 
-For detailed architecture, see [DEVELOPER_WIKI.md](docs/DEVELOPER_WIKI.md).
-
-## Getting Started
+## Development Setup
 
 ### Prerequisites
-- Rust 1.85+ (edition 2024)
-- CMake 3.16+
-- GPU driver support (Vulkan/Metal/DX12 depending on platform)
 
-### Build & Test
+- Rust 1.85+ (edition 2024, MSRV 1.85)
+- CMake 3.16+ (required by some geometry dependencies)
+- GPU driver with Vulkan, Metal, or DX12 support
+
+### Clone and Build
+
 ```bash
 git clone https://github.com/kernalix7/CADKernel.git
 cd CADKernel
+cargo build --workspace
+```
+
+### Run the Full Verification Suite
+
+All three checks must pass before any commit or PR:
+
+```bash
 cargo build --workspace
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace
 ```
 
 ### Run the GUI
+
 ```bash
 cargo run --release
 ```
 
-## Good First Issues
+### Python Bindings (Optional)
 
-Look for issues labeled `good first issue` or consider these areas:
+The `python` crate is excluded from the default workspace build. To build and test it separately:
 
-- **Add a new primitive** in `crates/modeling/src/primitives/` — follow existing patterns like `make_box`
-- **Improve I/O format support** — add missing entity types in STEP/IGES parsers
-- **Add constraint types** to the sketch solver in `crates/sketch/`
-- **Write examples** — Lua scripts in `examples/lua/` or Python scripts in `examples/python/`
-- **Improve documentation** — add doc comments to public APIs, expand wiki pages
+```bash
+cd crates/python
+PYO3_PYTHON=/usr/bin/python3 cargo build
+cargo test --manifest-path crates/python/Cargo.toml
+```
 
-## Workflow
+## Code Standards
 
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/my-change`
-3. Make your changes, following the conventions below
-4. Run the full verification: `cargo build --workspace && cargo clippy --workspace --all-targets --all-features -- -D warnings && cargo test --workspace`
-5. Push and open a Pull Request
-
-## Coding Conventions
+### Error Handling
 
 - All public APIs return `KernelResult<T>` — never panic on user-facing paths
-- Use `f64` for all geometric computation
-- `Handle<T>` for topology entity references (generational arena indices)
-- `Tag` for persistent naming (`Tag::generated(EntityKind, OperationId, local_index)`)
-- Geometry constructors validate parameters (radius > 0, segments >= 3, etc.)
-- Zero warnings: clippy strict mode is enforced in CI
+- Use `with_context()` from `cadkernel-core` to attach context to errors
+- No `.unwrap()` on public API paths; use `?` or explicit error handling
 
-## Pull Request Checklist
+### Types and Naming
 
-- [ ] The change has a clear scope and rationale
-- [ ] Tests are added/updated where applicable
-- [ ] `cargo clippy --workspace --all-targets --all-features -- -D warnings` passes
-- [ ] `cargo test --workspace` passes
-- [ ] Public APIs include documentation comments
-- [ ] README / docs are updated when behavior changes
+- Use `f64` for all geometric computation (never `f32`)
+- `Handle<T>` for all topology entity references (generational arena indices)
+- `Tag` for persistent naming: `Tag::generated(EntityKind, OperationId, local_index)`
+- `OperationId` from `model.history.next_operation("op_name")`
+- All trait objects require `Send + Sync` bounds: `Arc<dyn Curve + Send + Sync>`
 
-## Commit Message Convention
+### Quality
+
+- Zero warnings: clippy strict mode is enforced in CI (`-D warnings`)
+- Geometry constructors validate all parameters (e.g., radius > 0, segments >= 3)
+- New primitives and features must include unit tests
+
+## PR Workflow
+
+1. Fork the repository and create a branch from `main`:
+   - New feature: `feature/<name>`
+   - Bug fix: `fix/<name>`
+   - Urgent fix: `hotfix/<name>`
+2. Make your changes following the standards above.
+3. Run the full verification suite (all three checks must pass).
+4. Push your branch and open a Pull Request against `main`.
+5. PRs are merged via **squash merge** — keep your commit history clean but do not worry about squashing manually.
+
+### Commit Message Convention
 
 Use [Conventional Commits](https://www.conventionalcommits.org/):
-- `feat:` for new features
-- `fix:` for bug fixes
-- `docs:` for documentation changes
-- `refactor:` for internal improvements without behavior changes
-- `test:` for test updates
-- `chore:` for maintenance tasks
+
+| Prefix | Use for |
+|--------|---------|
+| `feat:` | New functionality |
+| `fix:` | Bug fixes |
+| `refactor:` | Internal improvements, no behavior change |
+| `test:` | Test additions or updates |
+| `docs:` | Documentation only |
+| `chore:` | Build, CI, dependency updates |
+
+### PR Checklist
+
+- [ ] Branch name follows `feature/`, `fix/`, or `hotfix/` convention
+- [ ] `cargo build --workspace` passes with zero errors
+- [ ] `cargo clippy --workspace --all-targets --all-features -- -D warnings` passes with zero warnings
+- [ ] `cargo test --workspace` passes — all tests green
+- [ ] New public APIs have doc comments (`///`)
+- [ ] Tests are added or updated where applicable
+- [ ] CHANGELOG.md is updated if the change is user-visible
+
+## Where to Start
+
+Look for issues labeled `good first issue`. Here are concrete starting points by area:
+
+- **New primitive** — add a file in `crates/modeling/src/primitives/` following the pattern in `box_shape.rs`. Wire it up in `mod.rs`.
+- **I/O format improvement** — extend STEP or IGES entity coverage in `crates/io/src/step.rs` or `crates/io/src/brep_format.rs`.
+- **Sketch constraint** — implement a new constraint type in `crates/sketch/src/` following the Newton-Raphson solver pattern.
+- **Lua script example** — add a `.lua` file in `examples/lua/` demonstrating a modeling workflow.
+- **Doc comment pass** — add `///` doc comments to undocumented public functions in any crate.
+- **Benchmark** — add a Criterion benchmark in `crates/modeling/benches/` for an operation that lacks one.
 
 ## Security
 
-For security issues, follow the process in [SECURITY.md](SECURITY.md).
+For security vulnerabilities, follow the responsible disclosure process in [SECURITY.md](SECURITY.md).

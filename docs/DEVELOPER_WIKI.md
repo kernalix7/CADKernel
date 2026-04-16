@@ -390,7 +390,7 @@ Extended FEM module in `fem.rs` now supports 9 equation types: heat, flow, defor
 | Integration | `#[test]` | `cadkernel/src/lib.rs` | E2E pipelines |
 | Doc | `/// ` + ` ``` ` | prelude modules | API usage examples |
 
-**1369 tests** across all crates. Run with `cargo test --workspace`.
+**1509 tests** across all crates. Run with `cargo test --workspace`.
 
 ### Integration Test Categories (stress_tests.rs)
 
@@ -410,6 +410,18 @@ The `crates/modeling/tests/stress_tests.rs` file contains 67 stress tests organi
 | Pattern stress | 2 | linear/circular pattern with 64 instances |
 | FEM & surface ops | 4 | tet mesh quality, modal analysis, ruled→extend→pipe chain, surface stress |
 | I/O edge cases | 5 | binary STL zero-count header, OBJ missing normals, glTF multi-primitive, large mesh 100K+, round-trip consistency |
+
+### IO Roundtrip Tests — V33
+
+39 new integration tests in `crates/io/tests/format_roundtrip.rs` (total: 61). Empty/multi-solid roundtrips for STEP/BREP/JSON, STEP double-roundtrip consistency, new format coverage (glTF, 3MF, DAE, AMF, VRML, OCA, DXF, DWG), SVG/PDF export, native .cadk save/load, large mesh roundtrips (10-box STL, 900-vertex OBJ), cross-format triangle count consistency across 8 formats, mesh operations (harmonize/flip normals, watertight, scale, boolean, Platonic solids), and edge cases (negative coords, precision, special floats, binary STL size). IO roundtrip: 22 → 61 tests.
+
+### Core Crate Tests — V33
+
+39 integration tests in `crates/core/tests/core_comprehensive.rs`. All six `KernelError` variants are tested for construction, Display output, and predicate methods. `with_context` is verified for all string-body variants (context prepended) and `InvalidHandle` (passed through unchanged). `KernelResult` patterns cover `Ok` pass-through, `Err` carry, `?` propagation, `map`, and `map_err`. `From<std::io::Error>` conversion is tested for `NotFound`, `PermissionDenied`, and `?`-operator usage. `Clone + PartialEq`, `Send + Sync`, and `std::error::Error` trait implementation are also verified. Core crate: 10 → 49 tests.
+
+### Viewer Crate Tests — V33
+
+101 integration tests in `crates/viewer/tests/viewer_comprehensive.rs`. Tests cover `compute_aabb` (4 cases including empty input), `DisplayMode` / `Projection` / `StandardView` enums, `Camera` (projection toggle, snap to view, reset, fit to bounds, eye position, matrix shapes, screen right/up unit length), `NavConfig` (scroll/drag zoom factors, resolve_drag for FreeCAD/Blender/Maya styles, snap_3d), all label/description arrays for `NavStyle`/`OrbitStyle`/`RotationMode`/`UnitSystem`/`BgPreset`, `CreationParams` serde roundtrip (Box, Sphere), `ObjectGroup` field storage, and `Scene` headless management via `add_mesh_object` (27 tests covering add/remove, visibility, selection, ordering, hierarchy, active body, and group management). `ScriptEngine` is covered by 29 tests: engine creation, Lua value types, sandbox globals, cad table presence, all five primitives, multi-solid accumulation, clear/delete/list, measure volume, count faces, translate, get_models, syntax error handling, arithmetic, and local variables. Viewer crate: 50 → 151 tests.
 
 ### Topology Crate Tests — V32
 

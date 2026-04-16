@@ -35,9 +35,15 @@ classifiers = [
 Homepage = "https://github.com/kernalix7/CADKernel"
 Repository = "https://github.com/kernalix7/CADKernel"
 Issues = "https://github.com/kernalix7/CADKernel/issues"
+Changelog = "https://github.com/kernalix7/CADKernel/blob/main/CHANGELOG.md"
+Documentation = "https://github.com/kernalix7/CADKernel/blob/main/docs/DEVELOPER_WIKI.md"
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "numpy>=1.24"]
 
 [tool.maturin]
 features = ["pyo3/extension-module"]
 module-name = "cadkernel._native"
 python-source = "python"
 manifest-path = "Cargo.toml"
+compatibility = "manylinux2014"

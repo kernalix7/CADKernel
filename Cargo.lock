@@ -583,6 +583,7 @@ dependencies = [
  "cadkernel-geometry",
  "cadkernel-math",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

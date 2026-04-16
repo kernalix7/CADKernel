@@ -989,7 +989,7 @@ cargo fmt --all -- --check                                   # 포맷 검사
 
 ### 현재 테스트 현황
 
-전체 크레이트에 걸쳐 **1369개 테스트**. `cargo test --workspace`로 실행.
+전체 크레이트에 걸쳐 **1509개 테스트**. `cargo test --workspace`로 실행.
 
 ### 통합 테스트 카테고리 (stress_tests.rs)
 
@@ -1009,6 +1009,18 @@ cargo fmt --all -- --check                                   # 포맷 검사
 | 패턴 스트레스 | 2 | 64개 인스턴스 linear/circular 패턴 |
 | FEM & Surface 연산 | 4 | tet 메시 품질, 모달 해석, ruled→extend→pipe 체인, surface 스트레스 |
 | I/O 에지 케이스 | 5 | 삼각형 수 0 바이너리 STL, 법선 없는 OBJ, 다중 프리미티브 glTF, 100K+ 대형 메시, 라운드트립 일관성 |
+
+### IO 라운드트립 테스트 — V33
+
+39개 신규 통합 테스트(`crates/io/tests/format_roundtrip.rs`, 총 61개). 빈 모델/다중 솔리드 라운드트립(STEP/BREP/JSON), STEP 이중 라운드트립 일관성, 신규 포맷(glTF, 3MF, DAE, AMF, VRML, OCA, DXF, DWG), SVG/PDF 내보내기, 네이티브 .cadk 저장/로드, 대용량 메시(10-박스 STL, 900-정점 OBJ), 8개 포맷 간 삼각형 수 교차 검증, 메시 연산(법선/수밀/스케일/불리언/플라토닉), 엣지 케이스. IO 라운드트립: 22 → 61 테스트.
+
+### 코어 크레이트 테스트 — V33
+
+39개 통합 테스트(`crates/core/tests/core_comprehensive.rs`): 6가지 `KernelError` 변형 생성/Display/Predicate 메서드 전체 검증. `with_context`는 문자열 바디 변형 5개(컨텍스트 선두 추가)와 `InvalidHandle`(변경 없이 통과) 모두 확인. `KernelResult` 패턴(Ok 통과, Err 유지, `?` 전파, map, map_err), `From<std::io::Error>` 변환(NotFound/PermissionDenied/`?` 연산자), Clone+PartialEq, Send+Sync, `std::error::Error` 트레이트 구현 포함. 코어 크레이트: 10 → 49 테스트.
+
+### 뷰어 크레이트 테스트 — V33
+
+101개 통합 테스트(`crates/viewer/tests/viewer_comprehensive.rs`): `compute_aabb` (4개, 빈 입력 포함), `DisplayMode`/`Projection`/`StandardView` 열거형, `Camera` (투영 전환, 뷰 스냅, 리셋, 바운드 맞춤, eye 위치, 행렬 크기, screen right/up 단위 길이), `NavConfig` (줌 팩터, FreeCAD/Blender/Maya resolve_drag, snap_3d), 레이블/설명 배열 전체, `CreationParams` serde 왕복(Box/Sphere), `ObjectGroup` 필드 저장, `Scene` 헤드리스 관리 27개(추가/삭제, 가시성, 선택, 정렬, 계층구조, 활성 Body, 그룹 관리), `ScriptEngine` 29개(엔진 생성, Lua 값 타입, 샌드박스, cad 테이블, 5가지 프리미티브, 다중 누적, clear/delete/list/measure/count/translate, 문법 오류, 산술, 지역 변수). 뷰어 크레이트: 50 → 151 테스트.
 
 ### 토폴로지 크레이트 테스트 — V32
 

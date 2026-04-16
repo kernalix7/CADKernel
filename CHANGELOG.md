@@ -11,6 +11,67 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### V33: Production Readiness — Test Coverage, Packaging & Docs (2026-04-17)
+
+**39 new integration tests** for the core crate (`crates/core/tests/core_comprehensive.rs`):
+
+- **Error construction** (6 tests): all six `KernelError` variants can be built and matched
+- **Display formatting** (7 tests): all variants produce the correct display prefix and carry the full message
+- **Predicate methods** (3 tests): `is_invalid_handle`, `is_invalid_argument`, `is_io_error` return true only for their own variant
+- **with_context** (7 tests): context prepended to all five string-body variants; `InvalidHandle` passes through unchanged; variant discriminant preserved
+- **KernelResult patterns** (5 tests): `Ok` pass-through, `Err` carry, `?` propagation, `map`, `map_err`
+- **From<std::io::Error>** (3 tests): `NotFound`, `PermissionDenied`, and `?`-operator conversion all produce `IoError`
+- **std::error::Error trait** (2 tests): `Display` matches `to_string`, no `source` by default
+- **Clone + PartialEq** (4 tests): clone equality, cross-variant inequality, same-variant equality/inequality
+- **Send + Sync** (2 tests): `KernelError` and `KernelResult<()>` satisfy thread-safety bounds
+
+Core crate coverage: 10 → 49 tests (390% increase).
+
+**101 new integration tests** for the viewer crate (`crates/viewer/tests/viewer_comprehensive.rs`):
+
+- **compute_aabb** (4 tests): empty input, single vertex, multi-vertex bounds, unit cube
+- **DisplayMode** (6 tests): ALL slice count, labels, shortcuts, equality
+- **Projection** (2 tests): equality, inequality
+- **StandardView** (4 tests): labels, front yaw/pitch, top/bottom pitch polarity
+- **Camera** (10 tests): defaults, toggle projection, snap to view, reset, fit to bounds, eye position, matrix shapes, screen right/up unit length
+- **NavConfig** (9 tests): default style, scroll/drag zoom factors, resolve_drag for FreeCAD/Blender/Maya, snap_3d on/off
+- **NavStyle / OrbitStyle / RotationMode / UnitSystem / BgPreset** (7 tests): all label/description arrays non-empty, mm short label
+- **CreationParams serde** (2 tests): Box and Sphere JSON roundtrip
+- **ObjectGroup** (1 test): field storage
+- **Scene (headless via add_mesh_object)** (27 tests): empty/default, add/remove, ID ordering, get/get_mut, visibility, single/multi select, deselect all, select all visible, toggle, move up/down, root objects, children of, active body, group create/assign/ungroup/members/toggle visibility/delete
+- **ScriptEngine** (29 tests): engine creation, numeric/string/boolean/nil return, sandbox (os/io/require nil), cad table type, all five primitives, multiple accumulation, clear, delete (valid and invalid), list, measure volume, count faces, translate, get_models, syntax error, arithmetic, local variables
+
+Viewer crate coverage: 50 → 151 tests (202% increase).
+
+**39 new IO roundtrip integration tests** (`crates/io/tests/format_roundtrip.rs`):
+
+- Empty/multi-solid model roundtrips (STEP, BREP, JSON)
+- STEP double-roundtrip consistency and face count preservation
+- New format roundtrips: glTF, 3MF, DAE, AMF, VRML, OCA, DXF, DWG
+- SVG/PDF export verification
+- Native .cadk format save/load (single + multi-solid)
+- Large mesh roundtrips (10-box STL, 900-vertex OBJ grid)
+- Cross-format triangle count consistency (8 formats compared)
+- Mesh operations: harmonize/flip normals, watertight check, scale, boolean union, fill holes, Platonic solids, merge
+- Edge cases: negative coordinates, decimal precision, special floats, binary STL size
+- Tessellation: serial vs parallel validity, BREP coordinate fidelity
+
+IO crate roundtrip coverage: 22 → 61 tests (177% increase).
+
+**Python packaging polish:**
+- Added `Changelog` and `Documentation` URLs to `pyproject.toml`
+- Added `dev` optional-dependencies (`pytest>=7.0`, `numpy>=1.24`)
+- Added `compatibility = "manylinux2014"` for Linux wheel builds
+
+**CONTRIBUTING.md improvements (EN + KO):**
+- Development setup with full build/test commands including Python bindings
+- Code standards: error handling, types/naming, quality policy
+- PR workflow: branch naming, commit conventions, squash merge, checklist
+- Architecture overview with crate dependency table
+- "Where to Start" with specific file pointers for new contributors
+
+---
+
 #### V32: Topology Crate Test Coverage Expansion (2026-04-15)
 
 **33 new integration tests** for the topology crate (`crates/topology/tests/topology_comprehensive.rs`), covering previously untested APIs:
