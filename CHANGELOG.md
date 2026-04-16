@@ -11,6 +11,25 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### V32: Topology Crate Test Coverage Expansion (2026-04-15)
+
+**33 new integration tests** for the topology crate (`crates/topology/tests/topology_comprehensive.rs`), covering previously untested APIs:
+
+- **Tag/Naming system** (8 tests): `Tag::modified()`, `Tag::merged()`, chained operations, display/debug, hash consistency
+- **NameMap** (5 tests): typed getters, remove, len/is_empty, iter, serialization roundtrip
+- **ShapeHistory** (3 tests): `current_op_id`, `get_record`, all `Evolution` variants (Generated, Modified, Split, Deleted)
+- **ModelHistory undo/redo** (6 tests): basic undo/redo cycle, empty undo/redo returns None, record clears redo stack, max_history cap, history descriptions, multi-step undo/redo
+- **Geometry binding** (5 tests): `bind_edge_curve`, `bind_face_surface`, `bind_face_trim`, `bind_edge_pcurve` left/right, dead handle queries
+- **Inner loops** (2 tests): single and multiple inner loops on faces
+- **Wire operations** (4 tests): open/closed wires, tagged wires, empty wire
+- **Tagged entity constructors** (5 tests): `add_vertex_tagged`, `add_edge_tagged`, `make_shell_tagged`, `make_solid_tagged`, tag-not-found returns None
+- **Traversal** (2 tests): `faces_around_vertex`, invalid handle error
+- **Properties** (5 tests): `PropertyStore` material/metadata, `Color` constructors/constants, `Material` presets/builders
+- **Handle & EntityStore** (5 tests): `index()`/`generation()`/`from_raw_parts()`, `is_alive`/`is_empty`, `get_mut`, `iter_mut`, slot reuse with generation increment
+- **Validation edge cases** (4 tests): loop rejection, orientation consistency, default model, serialization roundtrip, invalid handle errors
+
+Topology crate coverage: 29 → 62 tests (114% increase).
+
 #### V31: Comprehensive Code Audit — Correctness, Security & Performance (2026-04-13)
 
 **Critical/High Correctness Fixes:**

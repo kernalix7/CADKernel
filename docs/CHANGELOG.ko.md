@@ -11,6 +11,22 @@
 
 ### 추가됨
 
+#### V32: 토폴로지 크레이트 테스트 커버리지 확장 (2026-04-15)
+
+**33개 신규 통합 테스트** (`crates/topology/tests/topology_comprehensive.rs`):
+
+- **Tag/Naming 시스템** (8개): `modified()`, `merged()`, 체인 연산, display/debug, 해시 일관성
+- **NameMap** (5개): 타입별 getter, remove, len/is_empty, iter, 직렬화 왕복
+- **ShapeHistory** (3개): `current_op_id`, `get_record`, 전체 `Evolution` 변형
+- **ModelHistory 실행 취소/재실행** (6개): 기본 undo/redo, 빈 상태 None 반환, 녹화 시 redo 스택 삭제, max_history 제한, 이력 설명, 다단계 undo/redo
+- **기하 바인딩** (5개): 곡선/곡면/트림/pcurve 바인딩, 유효하지 않은 핸들 처리
+- **내부 루프** (2개): 단일 및 다중 구멍 추가
+- **와이어** (4개): 개방/폐쇄, 태그 부여, 빈 와이어
+- **태그 엔티티** (5개): 정점/에지/셸/솔리드 태그 생성 및 조회
+- **순회/속성/핸들** (11개): `faces_around_vertex`, PropertyStore, Color, Material, Handle, EntityStore 확장
+
+토폴로지 크레이트 커버리지: 29 → 62 테스트 (114% 증가).
+
 #### V31: 포괄적 코드 감사 — 정확성, 보안 & 성능 (2026-04-13)
 
 **치명적/높은 정확성 수정:**

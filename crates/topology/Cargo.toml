@@ -17,3 +17,6 @@ cadkernel-core.workspace = true
 cadkernel-math.workspace = true
 cadkernel-geometry = { workspace = true, optional = true }
 serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

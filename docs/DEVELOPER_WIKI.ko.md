@@ -1010,6 +1010,10 @@ cargo fmt --all -- --check                                   # 포맷 검사
 | FEM & Surface 연산 | 4 | tet 메시 품질, 모달 해석, ruled→extend→pipe 체인, surface 스트레스 |
 | I/O 에지 케이스 | 5 | 삼각형 수 0 바이너리 STL, 법선 없는 OBJ, 다중 프리미티브 glTF, 100K+ 대형 메시, 라운드트립 일관성 |
 
+### 토폴로지 크레이트 테스트 — V32
+
+33개 통합 테스트(`crates/topology/tests/topology_comprehensive.rs`): Tag/Naming (modified/merged/체인 연산, NameMap CRUD, ShapeHistory Evolution 변형), ModelHistory undo/redo (기본 사이클, 최대 이력 제한, redo 삭제, 이력 설명), 기하 바인딩 (curve/surface/trim/pcurve, 유효하지 않은 핸들 안전성), 내부 루프, 와이어 연산, 태그 엔티티 생성자 + 조회, faces_around_vertex, PropertyStore material/metadata, Color/Material 프리셋, Handle from_raw_parts, EntityStore is_alive/get_mut/iter_mut/슬롯 재사용, 검증 에지 케이스. 토폴로지 크레이트: 29 → 62 테스트.
+
 ### 테스트 전략 — V25 추가 사항
 
 **스트레스 테스트 철학**: 각 스트레스 테스트는 3개 이상의 크레이트를 결합하는 현실적인 다단계 워크플로우를 실행합니다. 에지 케이스 테스트는 유효하지만 퇴화된 입력(길이 0, 거의 일치하는 정점, 빈 컴파운드)을 커버하여 사용자 경로에서 패닉이 발생하지 않도록 합니다.

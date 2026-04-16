@@ -411,6 +411,10 @@ The `crates/modeling/tests/stress_tests.rs` file contains 67 stress tests organi
 | FEM & surface ops | 4 | tet mesh quality, modal analysis, ruled→extend→pipe chain, surface stress |
 | I/O edge cases | 5 | binary STL zero-count header, OBJ missing normals, glTF multi-primitive, large mesh 100K+, round-trip consistency |
 
+### Topology Crate Tests — V32
+
+33 integration tests in `crates/topology/tests/topology_comprehensive.rs` covering Tag/Naming (modified/merged/chained ops, NameMap CRUD, ShapeHistory evolution variants), ModelHistory undo/redo (basic cycle, cap, redo clearing, descriptions), geometry binding (curve/surface/trim/pcurve, dead handle safety), inner loops, wire ops, tagged entity constructors + lookups, faces_around_vertex, PropertyStore material/metadata, Color/Material presets, Handle from_raw_parts, EntityStore is_alive/get_mut/iter_mut/slot reuse, and validation edge cases (serialization roundtrip, invalid handle errors). Topology crate: 29 → 62 tests.
+
 ### Testing Strategy — V25 Additions
 
 **Stress test philosophy**: Each stress test exercises a realistic, multi-step workflow that combines 3 or more crates. Edge case tests cover inputs that are valid but degenerate (zero-length, near-coincident, empty), ensuring no panics on user-facing paths.
