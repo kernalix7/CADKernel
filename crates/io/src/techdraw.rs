@@ -643,7 +643,7 @@ pub fn project_solid(
     }
 
     // Deduplicate edges.
-    edges_3d.sort_by(|a, b| edge_key(a.0, a.1).cmp(&edge_key(b.0, b.1)));
+    edges_3d.sort_by_key(|a| edge_key(a.0, a.1));
     edges_3d.dedup_by(|a, b| edge_key(a.0, a.1) == edge_key(b.0, b.1));
 
     // Project edges to 2D.
@@ -1846,7 +1846,7 @@ pub fn active_view(
         }
     }
 
-    edges_3d.sort_by(|a, b| edge_key(a.0, a.1).cmp(&edge_key(b.0, b.1)));
+    edges_3d.sort_by_key(|a| edge_key(a.0, a.1));
     edges_3d.dedup_by(|a, b| edge_key(a.0, a.1) == edge_key(b.0, b.1));
 
     let edges: Vec<ProjectedEdge> = edges_3d
@@ -1922,7 +1922,7 @@ pub fn project_shape_2d(
         }
     }
 
-    edges_3d.sort_by(|a, b| edge_key(a.0, a.1).cmp(&edge_key(b.0, b.1)));
+    edges_3d.sort_by_key(|a| edge_key(a.0, a.1));
     edges_3d.dedup_by(|a, b| edge_key(a.0, a.1) == edge_key(b.0, b.1));
 
     edges_3d

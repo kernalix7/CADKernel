@@ -2474,16 +2474,14 @@ pub fn flow_equation(
     // Apply velocity BCs
     for bc in bcs {
         match bc {
-            FluidBoundaryCondition::Velocity { node, velocity } => {
-                if *node < n_nodes {
+            FluidBoundaryCondition::Velocity { node, velocity }
+                if *node < n_nodes => {
                     velocities[*node] = *velocity;
                 }
-            }
-            FluidBoundaryCondition::Pressure { node, pressure } => {
-                if *node < n_nodes {
+            FluidBoundaryCondition::Pressure { node, pressure }
+                if *node < n_nodes => {
                     pressures[*node] = *pressure;
                 }
-            }
             _ => {}
         }
     }
@@ -2523,16 +2521,14 @@ pub fn flow_equation(
         // Re-apply BCs
         for bc in bcs {
             match bc {
-                FluidBoundaryCondition::Velocity { node, velocity } => {
-                    if *node < n_nodes {
+                FluidBoundaryCondition::Velocity { node, velocity }
+                    if *node < n_nodes => {
                         new_vel[*node] = *velocity;
                     }
-                }
-                FluidBoundaryCondition::Pressure { node, pressure } => {
-                    if *node < n_nodes {
+                FluidBoundaryCondition::Pressure { node, pressure }
+                    if *node < n_nodes => {
                         new_pres[*node] = *pressure;
                     }
-                }
                 _ => {}
             }
         }
@@ -3378,15 +3374,14 @@ pub fn magnetostatic_equation(
 
     for bc in em_bcs {
         match bc {
-            EmBoundaryCondition::ElectricPotential { node, voltage } => {
-                if *node < n_nodes {
+            EmBoundaryCondition::ElectricPotential { node, voltage }
+                if *node < n_nodes => {
                     let penalty = permeability * 1e20;
                     add_to_sparse_row(&mut k_rows[*node], *node, penalty);
                     rhs[*node] += penalty * voltage;
                 }
-            }
-            EmBoundaryCondition::CurrentDensity { element, density } => {
-                if *element < mesh.elements.len() {
+            EmBoundaryCondition::CurrentDensity { element, density }
+                if *element < mesh.elements.len() => {
                     let elem_nodes = &mesh.elements[*element];
                     let vol = tet_volume(&mesh.nodes, elem_nodes);
                     let node_src = density.length() * vol / 4.0;
@@ -3394,7 +3389,6 @@ pub fn magnetostatic_equation(
                         rhs[ni] += node_src;
                     }
                 }
-            }
             _ => {}
         }
     }
@@ -3570,15 +3564,14 @@ pub fn acoustic_equation(
     // Apply BCs (reuse thermal BC types: FixedTemperature = fixed pressure)
     for bc in bcs {
         match bc {
-            ThermalBoundaryCondition::FixedTemperature { node, temperature } => {
-                if *node < n_nodes {
+            ThermalBoundaryCondition::FixedTemperature { node, temperature }
+                if *node < n_nodes => {
                     let penalty = 1e10;
                     add_to_sparse_row(&mut rows[*node], *node, penalty);
                     rhs[*node] += penalty * temperature;
                 }
-            }
-            ThermalBoundaryCondition::HeatFlux { element, flux } => {
-                if *element < mesh.elements.len() {
+            ThermalBoundaryCondition::HeatFlux { element, flux }
+                if *element < mesh.elements.len() => {
                     let elem_nodes = &mesh.elements[*element];
                     let vol = tet_volume(&mesh.nodes, elem_nodes);
                     let nf = flux * vol / 4.0;
@@ -3586,7 +3579,6 @@ pub fn acoustic_equation(
                         rhs[ni] += nf;
                     }
                 }
-            }
             _ => {}
         }
     }
@@ -4260,14 +4252,13 @@ pub fn check_boundary_conditions(container: &AnalysisContainer) -> KernelResult<
                     ));
                 }
             }
-            BoundaryCondition::Spring { node, .. } => {
-                if *node >= n_nodes {
+            BoundaryCondition::Spring { node, .. }
+                if *node >= n_nodes => {
                     warnings.push(format!(
                         "Spring node {} exceeds node count {}",
                         node, n_nodes
                     ));
                 }
-            }
             _ => {}
         }
     }

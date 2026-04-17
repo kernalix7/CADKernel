@@ -11,6 +11,63 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### V35: Integration Test Coverage — topology & io (2026-04-17)
+
+**100 new integration tests** for the topology crate (`crates/topology/tests/topology_advanced.rs`):
+
+- **Half-edge traversal invariants** (8 tests): twin round-trip on every edge, origin differs from twin origin, next/prev inverse on loops, loop closes via next chain, half-edges reference their loop, sum of face degrees equals twice edge count, vertices of loop match half-edge origins, loop traversal is deterministic
+- **Euler characteristic** (6 tests): closed tetrahedron V-E+F=2, open triangle sheet V-E+F=1, manifold validation passes on closed solid, every edge shared by exactly 2 faces, every tetrahedron vertex in 3 faces, `validate_detailed` reports zero errors on valid geometry
+- **Handle identity, equality, hashing** (6 tests): reflexive and symmetric equality, index inequality, generation inequality, hash agrees with eq, debug output non-empty, copy semantics preserve both copies
+- **EntityStore generational behaviour** (8 tests): stale handle after remove, generation increments on slot reuse, fabricated handle returns None, mixed insert/remove preserves live count, iter skips removed, default equals new, serialization roundtrip, empty after removing all
+- **ShapeHistory monotonicity** (6 tests): operation IDs strictly increasing, first ID is 1, records returned in insertion order, evolution records attach to current op, default is empty, record without active op is a no-op
+- **Tag / persistent naming** (9 tests): `Tag::new` matches `Tag::generated`, segments are copies not aliases, operation IDs preserved in segments, split local index preserved, serialization roundtrip with 3-segment tag, uniqueness across all 8 EntityKind × op × index tuples (96 unique tags), `SegmentKind` equality and hash, `OperationId` equality and hash, all `EntityKind` variants distinct
+- **NameMap edge cases** (5 tests): overwrite yields last-write-wins, kind mismatch returns None, double remove returns None, `EntityRef` copy and eq, `EntityRef` serialization roundtrip
+- **Wire / Shell / Solid construction** (11 tests): empty wire, single half-edge open wire, `WireData::new` captures flags, `ShellData::new` is empty, default equals new, shell links face back to shell, shell links all faces, `SolidData::new` is empty, solid default equals new, `make_solid` links shell back to solid, `make_shell` links every face
+- **BRepModel traversal error paths** (5 tests): `vertices_of_face`, `edges_of_face`, `faces_of_edge`, `faces_around_vertex` all return `InvalidHandle` for stale handles; `make_loop` with zero half-edges returns error
+- **Transform propagation** (2 tests): translation shifts all vertex coordinates, identity transform leaves vertices unchanged
+- **Properties: overwrite and all variants** (8 tests): material overwrite, metadata overwrite, separate entities isolated, all four `PropertyValue` variants eq, `PropertyValue` serialization roundtrip for all variants, `PropertyStore` serialization roundtrip, `Color::rgba` alpha preserved, `Color` serialization roundtrip, `Material::new` default fields
+- **Tagged construction and NameMap sync** (5 tests): `make_face_tagged` registers in name map, `add_vertex_tagged` registers in name map, wrong-kind lookup returns None, duplicate tag is last-write-wins, 30 tags coexist in name map
+- **BRepModel serialization** (3 tests): new model has zero counts everywhere, tetrahedron serialization preserves V/E/F/shell counts, serialization preserves Euler characteristic
+
+Topology crate coverage: 62 → 162 tests (161% increase).
+
+**132 new integration tests** for the io crate (`crates/io/tests/io_comprehensive.rs`):
+
+- **STL parser error paths** (9 tests): ASCII empty input, no triangles, malformed vertex coordinate, incomplete vertex tokens, non-multiple-of-3 vertex count, binary too short, binary empty, triangle count overflow (>50M), truncated binary body
+- **OBJ parser error paths** (5 tests): empty input, no vertices, malformed vertex coordinate, missing coordinate, face with fewer than 3 vertex references
+- **PLY parser error paths** (5 tests): empty input, missing `end_header`, bad vertex count (NaN), truncated vertex data, non-triangular face (quad arity)
+- **STEP parser** (4 tests): empty input no panic, missing header tolerates gracefully, tokenize garbage no panic, plain text no panic
+- **IGES parser** (2 tests): empty input errors, non-IGES content yields empty entity list
+- **DXF parser** (2 tests): empty input yields empty mesh, no 3DFACE entities yields empty mesh
+- **3MF parser** (3 tests): missing vertex attribute errors, out-of-bounds triangle accepted or empty, empty document yields empty mesh
+- **glTF parser** (4 tests): malformed JSON, missing accessors, empty input, non-base64 buffer URI
+- **BREP parser** (5 tests): empty, wrong header, missing vertices section, truncated vertex data, malformed vertex line
+- **VRML parser** (2 tests): empty input, no coordinate data
+- **AMF parser** (2 tests): empty input, unclosed vertex tag
+- **Collada (DAE) parser** (2 tests): missing float array, empty input
+- **OCA parser** (2 tests): no points, empty input
+- **SVG import** (1 test): empty input errors
+- **PDF import / export** (4 tests): too-short input, missing header, encrypted PDF rejected, `export_pdf` rejects empty SVG
+- **MCP server protocol errors** (6 tests): malformed JSON (-32700), wrong jsonrpc version, unknown method, missing params, missing tool name, unknown tool name
+- **MCP tool invocations** (18 tests): `create_primitive` box/sphere/cylinder/cone/torus success, unknown type error, missing dimensions error; `transform` translate/rotate/scale success, unknown ID error; `query_model` on empty server and after creation; `measure` success and unknown ID error; `export_model` STL/OBJ success and unknown format error; `delete_solid` success and unknown ID error; `list_solids` empty and after create+delete; `boolean_operation` same-ID error and unknown-op error
+- **mesh_ops — flip/harmonize normals** (4 tests): flip twice restores winding, flip inverts normal sign, harmonize preserves vertex/triangle counts, harmonize on mixed-orientation mesh completes
+- **mesh_ops — watertight check** (2 tests): single open triangle not watertight, closed tessellated box does not panic
+- **mesh_ops — scale** (3 tests): zero factor collapses axis, negative factor mirrors axis, large factor (1e6) correct magnitude
+- **mesh_ops — mesh boolean** (3 tests): union of disjoint meshes concatenates with correct index offset, intersection of far-disjoint meshes is empty or small, difference of disjoint meshes retains target
+- **mesh_ops — fill holes** (1 test): filled mesh has at least as many triangles as input
+- **Regular (Platonic) solids** (7 tests): negative and zero size error, tetrahedron (4V/4T), cube (8V/12T), octahedron (6V/8T), icosahedron (12V/20T), dodecahedron (20V/36T)
+- **mesh_ops — decimate** (2 tests): out-of-range ratio (0, 1, negative, >1) errors, empty mesh yields empty
+- **tessellate — merge** (3 tests): empty slice yields empty mesh, single mesh equals input, empty meshes skipped in mixed slice
+- **SVG export** (3 tests): `SvgDocument::render` contains XML declaration and viewBox, XML special characters escaped correctly in text elements, `profile_to_svg` yields valid SVG root
+- **PDF export** (2 tests): output begins with `%PDF-` and contains xref/`%%EOF`/catalog/pages/page, output has more than 10 lines
+- **Native .cadk format errors** (7 tests): nonexistent path, corrupted content, wrong format marker, truncated file, save to unwritable path; `load_scene` nonexistent path, `save`+`load` empty scene roundtrip
+- **JSON — error paths and roundtrip** (5 tests): malformed JSON, wrong JSON shape, empty model produces valid JSON, nonexistent file errors, write+read single-primitive roundtrip preserves vertex count
+- **TechDraw projection API** (6 tests): `project_solid` on empty model returns empty view, box produces edges in front view, `three_view_drawing` returns 3 views with positive dimensions, A4 landscape sheet dimensions, projection direction labels, `drawing_to_svg` on empty sheet produces valid SVG
+
+IO crate coverage: 403 → 535 tests (33% increase).
+
+---
+
 #### V34: Integration Test Coverage — math, geometry & sketch (2026-04-17)
 
 **102 new integration tests** for the math crate (`crates/math/tests/math_comprehensive.rs`):

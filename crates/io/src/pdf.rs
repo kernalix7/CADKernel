@@ -253,10 +253,10 @@ fn extract_media_box(text: &str) -> Option<(f64, f64)> {
 fn extract_streams(text: &str) -> Vec<String> {
     let mut streams = Vec::new();
     let mut search_from = 0;
-    loop {
-        let Some(start) = text[search_from..].find("stream\n").or_else(|| text[search_from..].find("stream\r\n")) else {
-            break;
-        };
+    while let Some(start) = text[search_from..]
+        .find("stream\n")
+        .or_else(|| text[search_from..].find("stream\r\n"))
+    {
         let abs_start = search_from + start;
         // Find start of stream content (after "stream\n" or "stream\r\n")
         let content_start = if text[abs_start..].starts_with("stream\r\n") {

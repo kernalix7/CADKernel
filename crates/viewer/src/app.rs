@@ -2904,11 +2904,10 @@ impl CadApp {
                         let mut point_ids: Vec<cadkernel_sketch::PointId> = Vec::new();
                         for e in &sm.selected_entities {
                             match *e {
-                                SketchEntityRef::Line(i) => {
-                                    if axis_line.is_none() {
+                                SketchEntityRef::Line(i)
+                                    if axis_line.is_none() => {
                                         axis_line = Some(i);
                                     }
-                                }
                                 SketchEntityRef::Point(i) => {
                                     point_ids.push(cadkernel_sketch::PointId(i));
                                 }
@@ -2945,18 +2944,16 @@ impl CadApp {
                         let mut line_refs: Vec<(usize, usize)> = Vec::new();
                         for e in &sm.selected_entities {
                             match *e {
-                                SketchEntityRef::Point(i) => {
-                                    if !pt_indices.contains(&i) { pt_indices.push(i); }
-                                }
-                                SketchEntityRef::Line(i) => {
-                                    if i < sm.sketch.lines.len() {
+                                SketchEntityRef::Point(i)
+                                    if !pt_indices.contains(&i) => { pt_indices.push(i); }
+                                SketchEntityRef::Line(i)
+                                    if i < sm.sketch.lines.len() => {
                                         let s = sm.sketch.lines[i].start.0;
                                         let e = sm.sketch.lines[i].end.0;
                                         if !pt_indices.contains(&s) { pt_indices.push(s); }
                                         if !pt_indices.contains(&e) { pt_indices.push(e); }
                                         line_refs.push((s, e));
                                     }
-                                }
                                 _ => {}
                             }
                         }

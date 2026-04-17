@@ -11,6 +11,63 @@
 
 ### 추가됨
 
+#### V35: 통합 테스트 커버리지 — topology & io (2026-04-17)
+
+**topology 크레이트 신규 통합 테스트 100개** (`crates/topology/tests/topology_advanced.rs`):
+
+- **반변 순회 불변식** (8개): 모든 엣지에 대한 twin 왕복, twin과 origin 상이, 루프 내 next/prev 역원 관계, next 체인으로 루프 종료, 반변이 루프를 참조, 면 차수 합 = 2×엣지 수, 루프 꼭짓점이 반변 origin과 일치, 순회 결정론성
+- **오일러 특성** (6개): 닫힌 사면체 V-E+F=2, 열린 삼각형 시트 V-E+F=1, 닫힌 솔리드 다양체 검증 통과, 모든 엣지가 정확히 2개 면 공유, 사면체 각 꼭짓점이 3개 면 소속, `validate_detailed`가 오류 없이 통과
+- **Handle 동등성·해싱** (6개): 반사·대칭 동등성, 인덱스 불일치, 세대 불일치, eq와 hash 일치, debug 출력 비어있지 않음, 복사 시 두 변수 모두 유효
+- **EntityStore 세대 관리** (8개): 제거 후 stale handle, 슬롯 재사용 시 세대 증가, 조작된 handle은 None, 혼합 삽입/제거 시 live count 유지, iter가 제거된 항목 건너뜀, default==new, 직렬화 왕복, 전체 제거 후 empty
+- **ShapeHistory 단조성** (6개): 연산 ID 순증가, 첫 ID=1, 삽입 순서대로 레코드 반환, evolution 레코드가 현재 op에 부착, default는 비어있음, 활성 op 없이 record 호출 = no-op
+- **Tag / 퍼시스턴트 네이밍** (9개): `Tag::new`와 `Tag::generated` 일치, 세그먼트 복사 확인, segments에 op ID 보존, split 로컬 인덱스 보존, 3-세그먼트 태그 직렬화 왕복, 8가지 EntityKind × op × index 조합 96개 고유성, `SegmentKind` 동등성·해시, `OperationId` 동등성·해시, 모든 `EntityKind` 변형 구별 가능
+- **NameMap 엣지 케이스** (5개): 덮어쓰기는 마지막 값, 종류 불일치 시 None, 이중 remove 시 None, `EntityRef` 복사·동등성, `EntityRef` 직렬화 왕복
+- **Wire / Shell / Solid 생성 불변식** (11개): 빈 와이어, 단일 반변 개방 와이어, `WireData::new` 플래그 캡처, `ShellData::new` 비어있음, default==new, shell이 face를 다시 참조, shell이 모든 face를 참조, `SolidData::new` 비어있음, solid default==new, `make_solid`가 shell을 다시 참조, `make_shell`이 모든 face를 링크
+- **BRepModel 순회 오류 경로** (5개): stale handle에 대한 `vertices_of_face`, `edges_of_face`, `faces_of_edge`, `faces_around_vertex` 모두 `InvalidHandle` 반환; 반변 0개로 `make_loop` 시 오류
+- **변환 전파** (2개): 이동 변환이 모든 꼭짓점 좌표를 이동, 항등 변환은 꼭짓점 좌표를 변경하지 않음
+- **PropertyStore — 덮어쓰기 및 전체 변형** (8개): 재료 덮어쓰기, 메타데이터 덮어쓰기, 개별 엔티티 격리, 4가지 `PropertyValue` 변형 동등성, `PropertyValue` 직렬화 왕복, `PropertyStore` 직렬화 왕복, `Color::rgba` alpha 보존, `Color` 직렬화, `Material::new` 기본 필드 확인
+- **태그 생성 및 NameMap 동기화** (5개): `make_face_tagged` 등록, `add_vertex_tagged` 등록, 잘못된 종류 조회 시 None, 중복 태그는 마지막 값 우선, 30개 태그 동시 공존
+- **BRepModel 직렬화** (3개): 새 모델 전체 카운트 0, 사면체 직렬화 후 V/E/F/shell 수 보존, 직렬화 후 오일러 특성 보존
+
+topology 크레이트 커버리지: 62 → 162 테스트 (161% 증가).
+
+**io 크레이트 신규 통합 테스트 132개** (`crates/io/tests/io_comprehensive.rs`):
+
+- **STL 파서 오류 경로** (9개): ASCII 빈 입력, 삼각형 없음, 잘못된 좌표, 불완전한 토큰, 3의 배수 아닌 꼭짓점 수, 바이너리 너무 짧음, 바이너리 빈 입력, 삼각형 수 초과(>50M), 바이너리 본문 잘림
+- **OBJ 파서 오류 경로** (5개): 빈 입력, 꼭짓점 없음, 잘못된 좌표, 좌표 누락, 면 꼭짓점 수 부족
+- **PLY 파서 오류 경로** (5개): 빈 입력, `end_header` 누락, 꼭짓점 수 NaN, 꼭짓점 데이터 잘림, 사각형(arity 4) 면 거부
+- **STEP 파서** (4개): 빈 입력 패닉 없음, 헤더 누락 허용, 쓰레기 토큰 패닉 없음, 일반 텍스트 패닉 없음
+- **IGES 파서** (2개): 빈 입력 오류, 비-IGES 내용 → 빈 엔티티 목록
+- **DXF 파서** (2개): 빈 입력 → 빈 메시, 3DFACE 없음 → 빈 메시
+- **3MF 파서** (3개): 꼭짓점 속성 누락 오류, 범위 초과 삼각형 허용 또는 빈 메시, 빈 문서 → 빈 메시
+- **glTF 파서** (4개): 잘못된 JSON, accessors 누락, 빈 입력, 비-base64 buffer URI 오류
+- **BREP 파서** (5개): 빈 입력, 잘못된 헤더, vertices 섹션 누락, 꼭짓점 데이터 잘림, 잘못된 꼭짓점 라인
+- **VRML 파서** (2개): 빈 입력, 좌표 데이터 없음
+- **AMF 파서** (2개): 빈 입력, 닫히지 않은 vertex 태그
+- **Collada(DAE) 파서** (2개): float array 누락, 빈 입력
+- **OCA 파서** (2개): 점 없음, 빈 입력
+- **SVG 임포트** (1개): 빈 입력 오류
+- **PDF 임포트·익스포트** (4개): 입력 너무 짧음, 헤더 누락, 암호화 PDF 거부, `export_pdf`에 빈 SVG 전달 시 오류
+- **MCP 서버 프로토콜 오류** (6개): 잘못된 JSON(-32700), 잘못된 jsonrpc 버전, 알 수 없는 메서드, params 누락, 도구 이름 누락, 알 수 없는 도구 이름
+- **MCP 도구 실행** (18개): `create_primitive` box/sphere/cylinder/cone/torus 성공, 알 수 없는 type 오류, dimensions 누락 오류; `transform` translate/rotate/scale 성공, 알 수 없는 ID 오류; `query_model` 빈 서버·생성 후; `measure` 성공·알 수 없는 ID 오류; `export_model` STL/OBJ 성공·알 수 없는 포맷 오류; `delete_solid` 성공·알 수 없는 ID 오류; `list_solids` 빈 상태·생성+삭제 후; `boolean_operation` 동일 ID·알 수 없는 연산 오류
+- **mesh_ops — 법선 뒤집기·조화** (4개): 두 번 뒤집으면 원래 와인딩, 뒤집기는 법선 부호 반전, 조화 후 꼭짓점·삼각형 수 보존, 혼합 방향 메시에서 완료
+- **mesh_ops — 수밀성 검사** (2개): 열린 단일 삼각형은 수밀하지 않음, 닫힌 솔리드 테셀레이션은 패닉 없음
+- **mesh_ops — 스케일** (3개): 0 인수로 축 붕괴, 음수 인수로 축 반전, 큰 인수(1e6) 크기 정확
+- **mesh_ops — 메시 불리언** (3개): 분리된 메시의 union은 올바른 인덱스 오프셋으로 연결, 먼 분리 메시의 intersection은 비거나 작음, 분리 메시의 difference는 대상 유지
+- **mesh_ops — fill holes** (1개): 채워진 메시는 입력보다 삼각형 수 줄지 않음
+- **정다면체** (7개): 음수·영 크기 오류, 사면체(4V/4T), 정육면체(8V/12T), 팔면체(6V/8T), 정이십면체(12V/20T), 정십이면체(20V/36T)
+- **mesh_ops — decimate** (2개): 범위 초과 비율 오류, 빈 메시 → 빈 결과
+- **tessellate — 메시 병합** (3개): 빈 슬라이스 → 빈 메시, 단일 메시 = 입력, 빈 메시 건너뜀
+- **SVG 익스포트** (3개): `SvgDocument::render`에 XML 선언·viewBox 포함, 텍스트 요소 내 특수 문자 이스케이프, `profile_to_svg`로 유효한 SVG 루트 생성
+- **PDF 익스포트** (2개): `%PDF-`로 시작하고 xref/`%%EOF`/catalog/pages/page 포함, 10줄 이상의 출력
+- **네이티브 .cadk 오류 처리** (7개): 존재하지 않는 경로, 손상된 내용, 잘못된 format 마커, 잘린 파일, 쓰기 불가 경로; `load_scene` 존재하지 않는 경로; `save`+`load` 빈 scene 왕복
+- **JSON — 오류 경로 및 왕복** (5개): 잘못된 JSON, 잘못된 구조, 빈 모델 → 유효한 JSON, 존재하지 않는 파일 오류, 단일 프리미티브 write+read 왕복 시 꼭짓점 수 보존
+- **TechDraw 투영 API** (6개): `project_solid` 빈 모델 → 빈 뷰, box는 front 뷰에 엣지 포함, `three_view_drawing`은 3개 뷰·양수 치수 반환, A4 가로 용지 치수, 투영 방향 레이블, 빈 시트의 `drawing_to_svg`는 유효한 SVG 생성
+
+io 크레이트 커버리지: 403 → 535 테스트 (33% 증가).
+
+---
+
 #### V34: 통합 테스트 커버리지 — math, geometry & sketch (2026-04-17)
 
 **math 크레이트 신규 통합 테스트 102개** (`crates/math/tests/math_comprehensive.rs`):

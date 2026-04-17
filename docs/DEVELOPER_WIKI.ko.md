@@ -989,7 +989,7 @@ cargo fmt --all -- --check                                   # 포맷 검사
 
 ### 현재 테스트 현황
 
-전체 크레이트에 걸쳐 **2184개 테스트**. `cargo test --workspace`로 실행.
+전체 크레이트에 걸쳐 **2416개 테스트**. `cargo test --workspace`로 실행.
 
 ### 통합 테스트 카테고리 (stress_tests.rs)
 
@@ -1021,6 +1021,12 @@ cargo fmt --all -- --check                                   # 포맷 검사
 ### 뷰어 크레이트 테스트 — V33
 
 101개 통합 테스트(`crates/viewer/tests/viewer_comprehensive.rs`): `compute_aabb` (4개, 빈 입력 포함), `DisplayMode`/`Projection`/`StandardView` 열거형, `Camera` (투영 전환, 뷰 스냅, 리셋, 바운드 맞춤, eye 위치, 행렬 크기, screen right/up 단위 길이), `NavConfig` (줌 팩터, FreeCAD/Blender/Maya resolve_drag, snap_3d), 레이블/설명 배열 전체, `CreationParams` serde 왕복(Box/Sphere), `ObjectGroup` 필드 저장, `Scene` 헤드리스 관리 27개(추가/삭제, 가시성, 선택, 정렬, 계층구조, 활성 Body, 그룹 관리), `ScriptEngine` 29개(엔진 생성, Lua 값 타입, 샌드박스, cad 테이블, 5가지 프리미티브, 다중 누적, clear/delete/list/measure/count/translate, 문법 오류, 산술, 지역 변수). 뷰어 크레이트: 50 → 151 테스트.
+
+### topology / io 크레이트 테스트 — V35
+
+100개 통합 테스트(`crates/topology/tests/topology_advanced.rs`): 반변 순회 불변식(twin 왕복, next/prev 역원, 루프 종료, fan 소속), 오일러 특성(닫힌 사면체 V-E+F=2, 열린 시트 V-E+F=1), 다양체 검증, Handle 동등성·해싱·복사·직렬화, EntityStore 세대 슬롯 재사용(stale handle→None, 세대 증가, 혼합 삽입/제거, 직렬화), ShapeHistory 단조 연산 ID·evolution 부착, Tag 고유성(8 EntityKind × OperationId × 로컬 인덱스, 96개 고유 태그), NameMap 덮어쓰기·종류 불일치·이중 제거·EntityRef 직렬화, Wire/Shell/Solid 생성 불변식, BRepModel 순회 오류 경로(stale handle → InvalidHandle), 변환 전파, PropertyStore 덮어쓰기 및 전체 PropertyValue 변형, 태그 생성·NameMap 동기화(30개 태그 공존), BRepModel 직렬화로 오일러 특성 보존. topology 크레이트: 62 → 162 테스트.
+
+132개 통합 테스트(`crates/io/tests/io_comprehensive.rs`): 11개 포맷 파서 오류 경로(STL ASCII/바이너리, OBJ, PLY, STEP, IGES, DXF, 3MF, glTF, BREP, VRML, AMF, Collada/DAE, OCA, SVG, PDF), MCP 서버 프로토콜 오류(잘못된 JSON, 버전, 알 수 없는 메서드)·8개 도구 실행(create_primitive/transform/query_model/measure/export_model/delete_solid/list_solids/boolean_operation), mesh_ops 공개 API(법선 뒤집기 멱등성, 조화, 수밀성 검사, 스케일, 메시 불리언, fill_holes, 5가지 정다면체, decimate), tessellate::merge_meshes(빈/단일/혼합 슬라이스), SVG 렌더링·XML 이스케이프, PDF 구조 검증(`%PDF-`·xref·`%%EOF`), 네이티브 .cadk 오류 경로, JSON 왕복, TechDraw 투영 API. io 크레이트: 403 → 535 테스트.
 
 ### math / geometry / sketch 크레이트 테스트 — V34
 

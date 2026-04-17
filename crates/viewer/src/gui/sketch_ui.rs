@@ -410,36 +410,31 @@ pub(crate) fn draw_sketch_overlay(ctx: &egui::Context, gui: &mut GuiState, camer
         let mut y_constrained = vec![false; n_pts];
         for c in &sm.sketch.constraints {
             match c {
-                Constraint::Fixed(p, ..) => {
-                    if p.0 < n_pts { x_constrained[p.0] = true; y_constrained[p.0] = true; }
-                }
-                Constraint::Horizontal(lid) => {
-                    if lid.0 < sm.sketch.lines.len() {
+                Constraint::Fixed(p, ..)
+                    if p.0 < n_pts => { x_constrained[p.0] = true; y_constrained[p.0] = true; }
+                Constraint::Horizontal(lid)
+                    if lid.0 < sm.sketch.lines.len() => {
                         let ln = &sm.sketch.lines[lid.0];
                         if ln.start.0 < n_pts { y_constrained[ln.start.0] = true; }
                         if ln.end.0 < n_pts { y_constrained[ln.end.0] = true; }
                     }
-                }
-                Constraint::Vertical(lid) => {
-                    if lid.0 < sm.sketch.lines.len() {
+                Constraint::Vertical(lid)
+                    if lid.0 < sm.sketch.lines.len() => {
                         let ln = &sm.sketch.lines[lid.0];
                         if ln.start.0 < n_pts { x_constrained[ln.start.0] = true; }
                         if ln.end.0 < n_pts { x_constrained[ln.end.0] = true; }
                     }
-                }
-                Constraint::Coincident(p0, p1) => {
-                    if p0.0 < n_pts && p1.0 < n_pts {
+                Constraint::Coincident(p0, p1)
+                    if p0.0 < n_pts && p1.0 < n_pts => {
                         x_constrained[p0.0] = true; y_constrained[p0.0] = true;
                         x_constrained[p1.0] = true; y_constrained[p1.0] = true;
                     }
-                }
                 Constraint::Distance(p0, p1, _) | Constraint::HorizontalDistance(p0, p1, _) | Constraint::VerticalDistance(p0, p1, _) => {
                     if p0.0 < n_pts { x_constrained[p0.0] = true; }
                     if p1.0 < n_pts { x_constrained[p1.0] = true; }
                 }
-                Constraint::Block(p, ..) => {
-                    if p.0 < n_pts { x_constrained[p.0] = true; y_constrained[p.0] = true; }
-                }
+                Constraint::Block(p, ..)
+                    if p.0 < n_pts => { x_constrained[p.0] = true; y_constrained[p.0] = true; }
                 _ => {}
             }
         }
@@ -1172,8 +1167,8 @@ pub(crate) fn draw_sketch_overlay(ctx: &egui::Context, gui: &mut GuiState, camer
                         }
                     }
                 }
-                SketchValidationIssue::NearlyCoincidentPoints { point_a, point_b, .. } => {
-                    if *point_a < sm.sketch.points.len() && *point_b < sm.sketch.points.len() {
+                SketchValidationIssue::NearlyCoincidentPoints { point_a, point_b, .. }
+                    if *point_a < sm.sketch.points.len() && *point_b < sm.sketch.points.len() => {
                         let pa = &sm.sketch.points[*point_a].position;
                         let pb = &sm.sketch.points[*point_b].position;
                         let mx = (pa.x + pb.x) * 0.5;
@@ -1182,7 +1177,6 @@ pub(crate) fn draw_sketch_overlay(ctx: &egui::Context, gui: &mut GuiState, camer
                             painter.text(scr + egui::vec2(0.0, 10.0), egui::Align2::CENTER_TOP, "\u{26A0} merge?", warn_font.clone(), warn_color);
                         }
                     }
-                }
                 SketchValidationIssue::OverConstrained { .. } => {
                     let oc_pos = egui::pos2(viewport.center().x, viewport.top() + 100.0);
                     let oc_text = "\u{26A0} Over-constrained";
@@ -1853,8 +1847,8 @@ fn draw_ovp_panel(
                     ovp_row(ui, "Y:", &format!("{my:.2}"), "mm", lc, vc, uc);
 
                     match tool {
-                        SketchTool::Line | SketchTool::Polyline => {
-                            if pending.is_some() || poly_last.is_some() {
+                        SketchTool::Line | SketchTool::Polyline
+                            if (pending.is_some() || poly_last.is_some()) => {
                                 ui.separator();
                                 ovp_row(ui, "L:", &format!("{seg_len:.2}"), "mm", lc, vc, uc);
                                 ovp_row(
@@ -1867,16 +1861,14 @@ fn draw_ovp_panel(
                                     uc,
                                 );
                             }
-                        }
-                        SketchTool::Rectangle => {
-                            if pending.is_some() {
+                        SketchTool::Rectangle
+                            if pending.is_some() => {
                                 ui.separator();
                                 ovp_row(ui, "W:", &format!("{rect_w:.2}"), "mm", lc, vc, uc);
                                 ovp_row(ui, "H:", &format!("{rect_h:.2}"), "mm", lc, vc, uc);
                             }
-                        }
-                        SketchTool::Circle => {
-                            if pending.is_some() {
+                        SketchTool::Circle
+                            if pending.is_some() => {
                                 ui.separator();
                                 ovp_row(
                                     ui,
@@ -1888,9 +1880,8 @@ fn draw_ovp_panel(
                                     uc,
                                 );
                             }
-                        }
-                        SketchTool::Arc => {
-                            if pending.is_some() {
+                        SketchTool::Arc
+                            if pending.is_some() => {
                                 ui.separator();
                                 ovp_row(
                                     ui,
@@ -1911,7 +1902,6 @@ fn draw_ovp_panel(
                                     uc,
                                 );
                             }
-                        }
                         SketchTool::Polygon { sides } => {
                             if pending.is_some() {
                                 ui.separator();

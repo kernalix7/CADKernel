@@ -431,15 +431,14 @@ pub fn import_iges(content: &str) -> KernelResult<BRepModel> {
     let mut point_idx = 0usize;
     for entity in &entities {
         match entity.entity_type {
-            IgesEntityType::Line => {
-                if entity.params.len() >= 6 {
+            IgesEntityType::Line
+                if entity.params.len() >= 6 => {
                     let p1 = Point3::new(entity.params[0], entity.params[1], entity.params[2]);
                     let p2 = Point3::new(entity.params[3], entity.params[4], entity.params[5]);
                     let v1 = model.add_vertex(p1);
                     let v2 = model.add_vertex(p2);
                     model.add_edge(v1, v2);
                 }
-            }
             IgesEntityType::Point => {
                 point_idx += 1;
             }

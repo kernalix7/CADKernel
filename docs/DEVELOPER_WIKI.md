@@ -390,7 +390,7 @@ Extended FEM module in `fem.rs` now supports 9 equation types: heat, flow, defor
 | Integration | `#[test]` | `cadkernel/src/lib.rs` | E2E pipelines |
 | Doc | `/// ` + ` ``` ` | prelude modules | API usage examples |
 
-**2184 tests** across all crates. Run with `cargo test --workspace`.
+**2416 tests** across all crates. Run with `cargo test --workspace`.
 
 ### Integration Test Categories (stress_tests.rs)
 
@@ -422,6 +422,12 @@ The `crates/modeling/tests/stress_tests.rs` file contains 67 stress tests organi
 ### Viewer Crate Tests — V33
 
 101 integration tests in `crates/viewer/tests/viewer_comprehensive.rs`. Tests cover `compute_aabb` (4 cases including empty input), `DisplayMode` / `Projection` / `StandardView` enums, `Camera` (projection toggle, snap to view, reset, fit to bounds, eye position, matrix shapes, screen right/up unit length), `NavConfig` (scroll/drag zoom factors, resolve_drag for FreeCAD/Blender/Maya styles, snap_3d), all label/description arrays for `NavStyle`/`OrbitStyle`/`RotationMode`/`UnitSystem`/`BgPreset`, `CreationParams` serde roundtrip (Box, Sphere), `ObjectGroup` field storage, and `Scene` headless management via `add_mesh_object` (27 tests covering add/remove, visibility, selection, ordering, hierarchy, active body, and group management). `ScriptEngine` is covered by 29 tests: engine creation, Lua value types, sandbox globals, cad table presence, all five primitives, multi-solid accumulation, clear/delete/list, measure volume, count faces, translate, get_models, syntax error handling, arithmetic, and local variables. Viewer crate: 50 → 151 tests.
+
+### Topology / IO Crate Tests — V35
+
+100 integration tests in `crates/topology/tests/topology_advanced.rs`. Covers half-edge traversal invariants (twin round-trip, next/prev inverse, loop closure via next chain, fan membership), Euler characteristic on closed tetrahedron (V-E+F=2) and open triangle sheet (V-E+F=1), manifold validation, Handle equality/hashing/copy/serialization roundtrip, EntityStore generational slot reuse (stale handle → None, generation increment, mixed insert/remove, serialization), ShapeHistory monotonic op IDs and evolution attachment, Tag uniqueness across all EntityKind × OperationId × local-index tuples (96 unique tags), NameMap overwrite/kind-mismatch/double-remove/EntityRef serialization, Wire/Shell/Solid construction invariants, BRepModel traversal error paths (stale handles → InvalidHandle on all four traversal helpers), transform propagation, PropertyStore material/metadata overwrite and all PropertyValue variants, tagged construction with NameMap sync (30-tag coexistence), and full BRepModel serialization preserving Euler characteristic. Topology crate: 62 → 162 tests.
+
+132 integration tests in `crates/io/tests/io_comprehensive.rs`. Covers parser error paths for all 11 formats (STL ASCII/binary, OBJ, PLY, STEP, IGES, DXF, 3MF, glTF, BREP, VRML, AMF, Collada/DAE, OCA, SVG, PDF), MCP server protocol errors (malformed JSON, wrong version, unknown method) and all 8 tool invocations (create_primitive box/sphere/cylinder/cone/torus, transform translate/rotate/scale, query_model, measure, export_model STL/OBJ, delete_solid, list_solids), mesh_ops public API (flip_normals idempotency, harmonize_normals, watertight check, scale with zero/negative/large factors, mesh boolean union/intersection/difference on disjoint meshes, fill_holes, all five Platonic solid constructors, decimate edge cases), tessellate::merge_meshes (empty, single, mixed-empty slices), SVG document rendering and XML escaping, PDF export structure (%PDF- magic, xref, %%EOF), native .cadk load/save error paths (nonexistent, corrupted, wrong marker, truncated, bad write path), JSON roundtrip for single primitive, and TechDraw projection API (project_solid, three_view_drawing, DrawingSheet::a4_landscape, projection direction labels, drawing_to_svg). IO crate: 403 → 535 tests.
 
 ### Math / Geometry / Sketch Crate Tests — V34
 

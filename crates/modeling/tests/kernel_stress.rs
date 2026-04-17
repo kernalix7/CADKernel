@@ -724,7 +724,7 @@ fn stress_fem_static_analysis_multi_bc() {
             force: Vec3::new(0.0, 0.0, -1000.0),
         },
         BoundaryCondition::Force {
-            node: mesh.nodes.len().saturating_sub(2).max(0),
+            node: mesh.nodes.len().saturating_sub(2),
             force: Vec3::new(500.0, 0.0, -500.0),
         },
     ];
