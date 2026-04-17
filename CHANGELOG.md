@@ -11,6 +11,60 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### V34: Integration Test Coverage — math, geometry & sketch (2026-04-17)
+
+**102 new integration tests** for the math crate (`crates/math/tests/math_comprehensive.rs`):
+
+- **Vec2** (10 tests): constants, length/squared, dot, cross (signed area), normalize (zero guard + unit length), arithmetic ops, assign ops, sum iterator, from array/tuple
+- **Vec3** (10 tests): constants, length/squared, cross right-hand rule, cross anticommutativity, dot commutativity, normalize zero guard, arithmetic, assign ops, sum iterator, from array/tuple
+- **Vec4** (4 tests): construction, arithmetic, dot product, from array
+- **Point2** (6 tests): origin, from/into Vec2, arithmetic with Vec2, distance, midpoint, lerp
+- **Point3** (5 tests): origin, from/into Vec3, distance, midpoint, lerp
+- **Mat3** (3 tests): identity, transpose, multiply
+- **Mat4** (5 tests): identity, transpose, multiply, transform point, transform vector
+- **Transform** (17 tests): identity, translation, scale, rotation (X/Y/Z), combined TRS, inverse, compose, transform point, transform vector, transform normal (inverse transpose), from/into Mat4, from_rotation_translation, look_at, perspective/orthographic decomposition
+- **Quaternion** (12 tests): identity, from axis-angle, from euler, multiply, conjugate, rotate vector, slerp at t=0/0.5/1, normalize, dot, lerp matches slerp at endpoints
+- **Ray3** (8 tests): construction, at(t), normalize direction, parallel/perpendicular dot, closest point on ray, intersect sphere (hit/miss/inside), intersect plane, intersect AABB
+- **BoundingBox** (17 tests): empty, point, expand, union, contains point, intersects box, center, extents, surface area, volume, transform, from points, merge empty, intersect disjoint/touching/overlapping, ray intersection (hit/miss)
+- **Tolerance helpers** (4 tests): epsilon bounds, approx_eq absolute difference, is_zero threshold, approx_eq_tol custom tolerance
+
+Math crate coverage: 44 → 146 tests (232% increase).
+
+**126 new integration tests** for the geometry crate (`crates/geometry/tests/geometry_comprehensive.rs`):
+
+- **Line / LineSegment** (16 tests): point_at origin, constant tangent, infinite domain, infinite length, closed flag, project point analytically, zero-direction project guard, bounding box fallback, midpoint, 3-4-5 length, unit domain, endpoints, end-minus-start tangent, closed flag, bounding box, project via sampling
+- **Circle / Arc** (12 tests): zero-normal error, XY defaults, circumference length, closed flag, tau domain, tangent perpendicular to radius, custom normal, arc endpoints, quarter-arc length, arc open flag, arc unit domain, arc axes
+- **Ellipse** (6 tests): major-axis point at 0, minor-axis point at π/2, closed flag, circle-case length matches circle, between-axes length, tau domain
+- **NurbsCurve** (14 tests): Bezier linear evaluation, degree equals cp−1, control point count, knot accessor, weight accessor, knot insertion preserves shape, knot insertion adds cp, reverse swaps endpoints, bounding box contains control points, second derivative of quadratic Bezier, curvature of straight quadratic is zero, plus NurbsSurface bilinear patch, mismatched cp error, corner points match CPs
+- **Plane** (14 tests): XY/XZ/YZ normals, parallel-axes error, from-three-points builds XY, signed distance sign, absolute distance, project drops normal component, is_above, contains point, surface point_at + normal, infinite domain, du/dv derivatives, bounding box fallback
+- **Cylinder / Sphere / Cone / Torus** (22 tests): Z-axis defaults, base/top points, unit normal, tau×height domain, non-zero-axis validation; zero/negative radius rejection, equator/pole points, unit normal, domains; apex at v=0, radius at v=1, invalid half-angle, domains; outer/inner equator, tube top, invalid radii, domains, periodic flag
+- **Tessellation** (7 tests): default options, coarse vs fine LOD, medium default, straight line minimum segments, circle via extension trait, flat surface returns non-empty mesh, sphere via extension trait
+- **AABB** (14 tests): new, single point, multi-point, merge grows both, overlap/disjoint intersects, interior/boundary/exterior contains, unit-cube surface area is 6, center midpoint, expand all axes, min-distance-sq inside=0, min-distance-sq outside, ray hit from outside, ray origin-inside t=0, ray miss returns None
+- **BVH** (8 tests): build empty, len after build, AABB overlap query, point-containing query, ray along X, nearest query, nearest on empty, ray sorted order
+- **Intersection** (7 tests): two perpendicular line segments, XY∩XZ returns line along X, same-plane coincident, parallel separated planes empty, plane-sphere equator circle, plane-sphere tangent point, plane-sphere far miss
+- **Offset / Polyline** (3 tests): zero-distance preserves input, two-vertex error, polyline non-empty result
+- **Send + Sync** (1 test): geometry types satisfy thread-safety bounds
+
+Geometry crate coverage: 44 → 170 tests (286% increase).
+
+**99 new integration tests** for the sketch crate (`crates/sketch/tests/sketch_comprehensive.rs`):
+
+- **Sketch construction** (13 tests): point construction, add point + index, add line connects points, add circle and arc, add ellipse and B-spline, ID type roundtrips, struct field access, polyline builds chained lines, three-point polyline has two lines, regular polygon hex, triangle-through-octagon builders, slot and rounded-rectangle builders, arc-3pt recovers center
+- **Constraint system** (5 tests): all constraint variants constructible, add constraint records into sketch, constraint residuals zero when satisfied, constraint residuals nonzero when violated, all constraint variants constructible
+- **Newton-Raphson solver** (10 tests): empty sketch trivially converged, unconstrained convergence, fixed-point moves to target, distance constraint, right-angle triangle, result records iterations, over-constrained flag, result clone equivalent, drag solve moves toward target, perpendicular constraint convergence, circular tau constraint convergence
+- **Validation** (6 tests): empty sketch reports issue, zero-length line, nearly coincident points, invalid point reference, invalid line reference, under- and over-constrained flags, validation result clone
+- **Workplane** (4 tests): XY yields z=0, XZ maps y=0, orthonormalization, local↔world roundtrip
+- **Profile extraction** (3 tests): closed square, empty sketch, no lines returns all points
+- **Edge editing** (8 tests): fillet right-angle corner, fillet rejects non-shared lines, chamfer corner, split edge divides line, trim at intersection, trim false for parallel lines, extend lengthens line, external intersection finds crossing
+- **Geometry transforms** (8 tests): move translates points, rotate 90°, scale doubles distance, offset creates parallel line, offset rejects non-line, mirror reflects point, sketch mirror across line, sketch rotate copies, sketch scale copies, sketch offset closed rect
+- **Sketch utilities** (15 tests): merge combines sketches, attach to plane returns workplane, reorient builds new plane, toggle driving/reference bounds check, delete all geometry, delete all constraints, carbon copy duplicates source, external projection maps 3D points, grid default + snap, grid clamps low values, snap to endpoint, display options defaults, toggle constraints visibility, toggle construction tracks IDs, toggle construction rejects bad ID, select origin, select axes, remove axes alignment, copy and paste entities
+- **Contextual dimensions** (5 tests): single-line length, two-point distance, unified radius/diameter for circle, horizontal vs vertical auto-pick
+- **Miscellaneous** (6 tests): section view roundtrip, section view state clone, periodic B-spline stores closed flag, snap type equality and copy, align view to XY returns zero, stop operation clears construction mode
+
+Sketch crate coverage: 90 → 189 tests (110% increase).
+
+---
+
 #### V33: Production Readiness — Test Coverage, Packaging & Docs (2026-04-17)
 
 **39 new integration tests** for the core crate (`crates/core/tests/core_comprehensive.rs`):

@@ -989,7 +989,7 @@ cargo fmt --all -- --check                                   # 포맷 검사
 
 ### 현재 테스트 현황
 
-전체 크레이트에 걸쳐 **1509개 테스트**. `cargo test --workspace`로 실행.
+전체 크레이트에 걸쳐 **2184개 테스트**. `cargo test --workspace`로 실행.
 
 ### 통합 테스트 카테고리 (stress_tests.rs)
 
@@ -1021,6 +1021,14 @@ cargo fmt --all -- --check                                   # 포맷 검사
 ### 뷰어 크레이트 테스트 — V33
 
 101개 통합 테스트(`crates/viewer/tests/viewer_comprehensive.rs`): `compute_aabb` (4개, 빈 입력 포함), `DisplayMode`/`Projection`/`StandardView` 열거형, `Camera` (투영 전환, 뷰 스냅, 리셋, 바운드 맞춤, eye 위치, 행렬 크기, screen right/up 단위 길이), `NavConfig` (줌 팩터, FreeCAD/Blender/Maya resolve_drag, snap_3d), 레이블/설명 배열 전체, `CreationParams` serde 왕복(Box/Sphere), `ObjectGroup` 필드 저장, `Scene` 헤드리스 관리 27개(추가/삭제, 가시성, 선택, 정렬, 계층구조, 활성 Body, 그룹 관리), `ScriptEngine` 29개(엔진 생성, Lua 값 타입, 샌드박스, cad 테이블, 5가지 프리미티브, 다중 누적, clear/delete/list/measure/count/translate, 문법 오류, 산술, 지역 변수). 뷰어 크레이트: 50 → 151 테스트.
+
+### math / geometry / sketch 크레이트 테스트 — V34
+
+102개 통합 테스트(`crates/math/tests/math_comprehensive.rs`): Vec2/3/4, Point2/3, Mat3/4, Transform (역전치 법선 변환, look_at, 원근 분해 포함 17개), Quaternion (slerp, 축-각도, 오일러), Ray3 (구/평면/AABB 교차), BoundingBox (합집합, 광선 충돌, 표면적), 허용 오차 도우미. math 크레이트: 44 → 146 테스트.
+
+126개 통합 테스트(`crates/geometry/tests/geometry_comprehensive.rs`): Line/LineSegment, Circle/Arc/Ellipse, NurbsCurve/NurbsSurface, Plane/Cylinder/Sphere/Cone/Torus 곡면, 테셀레이션 LOD 옵션, AABB (최소 거리 및 광선 교차 포함 14개), BVH (빌드, AABB/점/광선/최근접 쿼리), 곡선-곡선 및 평면-구 교차, 오프셋/폴리라인, Send+Sync 경계. geometry 크레이트: 44 → 170 테스트.
+
+99개 통합 테스트(`crates/sketch/tests/sketch_comprehensive.rs`): 스케치 엔티티 생성(점/선/원/호/타원/B-스플라인/폴리라인/다각형 빌더), 24가지 구속조건 변형 전체, Newton-Raphson 솔버(수렴, 고정점, 거리/직각/수직/원형 구속조건, 드래그 솔브), 유효성 검사(길이=0, 일치 점, 잘못된 참조, 저/과구속), 작업 평면 왕복, 프로파일 추출, 엣지 편집(필렛/챔퍼/분할/트림/연장), 기하 변환(이동/회전/스케일/오프셋/미러), 유틸리티(병합, 카본 카피, 외부 투영, 그리드, 스냅), 문맥 치수, 단면 뷰/건설 모드 상태. sketch 크레이트: 90 → 189 테스트.
 
 ### 토폴로지 크레이트 테스트 — V32
 

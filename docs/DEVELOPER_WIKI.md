@@ -390,7 +390,7 @@ Extended FEM module in `fem.rs` now supports 9 equation types: heat, flow, defor
 | Integration | `#[test]` | `cadkernel/src/lib.rs` | E2E pipelines |
 | Doc | `/// ` + ` ``` ` | prelude modules | API usage examples |
 
-**1509 tests** across all crates. Run with `cargo test --workspace`.
+**2184 tests** across all crates. Run with `cargo test --workspace`.
 
 ### Integration Test Categories (stress_tests.rs)
 
@@ -422,6 +422,14 @@ The `crates/modeling/tests/stress_tests.rs` file contains 67 stress tests organi
 ### Viewer Crate Tests — V33
 
 101 integration tests in `crates/viewer/tests/viewer_comprehensive.rs`. Tests cover `compute_aabb` (4 cases including empty input), `DisplayMode` / `Projection` / `StandardView` enums, `Camera` (projection toggle, snap to view, reset, fit to bounds, eye position, matrix shapes, screen right/up unit length), `NavConfig` (scroll/drag zoom factors, resolve_drag for FreeCAD/Blender/Maya styles, snap_3d), all label/description arrays for `NavStyle`/`OrbitStyle`/`RotationMode`/`UnitSystem`/`BgPreset`, `CreationParams` serde roundtrip (Box, Sphere), `ObjectGroup` field storage, and `Scene` headless management via `add_mesh_object` (27 tests covering add/remove, visibility, selection, ordering, hierarchy, active body, and group management). `ScriptEngine` is covered by 29 tests: engine creation, Lua value types, sandbox globals, cad table presence, all five primitives, multi-solid accumulation, clear/delete/list, measure volume, count faces, translate, get_models, syntax error handling, arithmetic, and local variables. Viewer crate: 50 → 151 tests.
+
+### Math / Geometry / Sketch Crate Tests — V34
+
+102 integration tests in `crates/math/tests/math_comprehensive.rs`. Covers Vec2/3/4, Point2/3, Mat3/4, Transform (17 cases including inverse-transpose normal transform, look_at, perspective decomposition), Quaternion (slerp endpoints, axis-angle, euler), Ray3 (sphere/plane/AABB intersection), BoundingBox (union, ray hit, surface area), and tolerance helpers. Math crate: 44 → 146 tests.
+
+126 integration tests in `crates/geometry/tests/geometry_comprehensive.rs`. Covers Line/LineSegment, Circle/Arc/Ellipse, NurbsCurve/NurbsSurface, Plane/Cylinder/Sphere/Cone/Torus surfaces, tessellation LOD options, AABB (14 cases including min-distance and ray intersection), BVH (build, AABB/point/ray/nearest queries), curve-curve and plane-sphere intersection, offset/polyline, and Send+Sync bounds. Geometry crate: 44 → 170 tests.
+
+99 integration tests in `crates/sketch/tests/sketch_comprehensive.rs`. Covers sketch entity construction (points, lines, circles, arcs, ellipses, B-splines, polylines, polygon builders), all 24 constraint variants, Newton-Raphson solver (convergence, fixed-point, distance/right-angle/perpendicular/circular constraints, drag solve), validation (zero-length, coincident, invalid references, under/over-constrained), workplane roundtrip, profile extraction, edge editing (fillet/chamfer/split/trim/extend), geometry transforms (move/rotate/scale/offset/mirror), utilities (merge, carbon copy, external projection, grid, snap), contextual dimensions, and section view/construction mode state. Sketch crate: 90 → 189 tests.
 
 ### Topology Crate Tests — V32
 
