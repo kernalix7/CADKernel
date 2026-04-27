@@ -38,6 +38,7 @@
 - [20. 프로젝트 템플릿](#20-프로젝트-템플릿)
 - [21. 편의 API](#21-편의-api)
 - [22. 예제 스크립트](#22-예제-스크립트)
+- [23. 알려진 한계 (V36 감사)](#23-알려진-한계-v36-감사)
 
 ---
 
@@ -1763,3 +1764,83 @@ cadkernel --mcp < examples/mcp/session.json
 | **Euler characteristic** | V - E + F = 2 (닫힌 다면체) |
 | **Feature flag** | Cargo feature. 조건부 컴파일 |
 | **Armijo backtracking** | 선탐색 알고리즘. Newton-Raphson 수렴 보장 |
+
+---
+
+## 23. 알려진 한계 (V36 감사 — 종결 2026-04-23)
+
+V36 1라운드(2026-04-17)에서 네 개의 감사 테스트 스위트(`tests/cli.rs`, `crates/modeling/tests/real_world_kernel.rs`, `crates/io/tests/real_world_io.rs`, `crates/viewer/tests/gui_action_integration.rs`)를 추가하여 현실적 입력에서의 분석적 정확성을 단언했습니다. 2a라운드(2026-04-21)에서 11건의 정확성 결함 중 6건을 코드에서 직접 수정했습니다. 2b라운드(2026-04-21)에서 16건의 U3 dispatcher 스텁 중 5건을 Scene에 연결했습니다. 2b라운드 후속(2026-04-22)에서는 이미 dispatcher에 연결되어 있었지만 검증되지 않은 5건의 오래된 `#[ignore]` 마커를 다시 작성했습니다. Phase N-min(2026-04-22)에서는 남은 5개의 진짜 subsystem 스텁(Assembly×3, FEM×2)을 `GuiState`의 최소 `Option<T>` 상태를 통해 연결하여 R2c splitter 범위 밖의 마지막 `#[ignore]` 마커들을 제거했습니다. **2c라운드(2026-04-23)가 boolean splitter / 분류 재작성을 완료하여 남은 3건의 정확성 실패와 U1 무시를 모두 닫았습니다.** 워크스페이스 상태는 이제 **통과 2,590, 실패 0, 무시 0** — V36 R1에서 원래 catalog된 모든 결함이 수정되거나, dispatcher를 통해 end-to-end로 연결되거나, 통과하는 테스트에서 문서화-및-단언됩니다. 버그별 상태는 [`docs/V36_BUG_TRIAGE.md`](V36_BUG_TRIAGE.md) 참조.
+
+**2c라운드 — boolean splitter / 분류 재작성 (2026-04-23 랜딩).**
+
+- `crates/modeling/src/boolean/classify.rs` — `FacePosition::OnBoundary`를 `OnBoundarySame`과 `OnBoundaryOpposite`로 분리. 이전 3-way 분류는 A와 B의 내부가 공유 평면의 같은 쪽에 있는지 반대 쪽에 있는지를 잃었는데, 이것이 바로 `boolean_op` face-kept 규칙이 필요로 하는 정보입니다. `classify_face_with_coplanar`가 이제 4-way 분류를 방출합니다. 내부 샘플 선택도 재작성: 이전 코드는 edge 중점을 정점 평균 centroid 쪽으로 오프셋했는데, keyhole / slit 다각형에서는 샘플을 구멍 영역에 배치했습니다. 새 샘플러는 edge-tangent × face-normal 내부 수직선을 만들고, 두 개의 오프셋에서 16개 후보를 생성한 뒤, 투영된 다각형에 대한 2D point-in-polygon 테스트로 필터링합니다.
+- `crates/modeling/src/boolean/evaluate.rs` — `boolean_op`의 face-kept 규칙이 4-way 분류와 일치. Union은 A에서 `Outside | OnBoundarySame`, B에서 `Outside` 유지. Intersection은 A에서 `Inside | OnBoundarySame`, B에서 `Inside` 유지. Difference는 A에서 `Outside | OnBoundaryOpposite`, B에서 `Inside` 유지(뒤집힘 — R2a의 실패한 winding-flip이 도달하려던 조각별 방향 해석이 이제 여기 evaluator 내부에서 해결, face-copy 경계에서가 아님).
+- `crates/modeling/src/boolean/face_split.rs` — `merge_chords_into_polylines_with_boundary`가 이제 순서 무관 끝점 쌍으로 chord 레코드를 중복 제거. pocket과 hole에서 box 윗면이 하나의 cylinder cap(동일평면) + 모든 cylinder 벽(비동일평면)과 짝을 지어 같은 원을 따라 중복된 segment를 생성하는데, graph walker가 중복된 edge에서 멈추고 있었습니다.
+
+**R2c에서 통과로 이동한 테스트.** `union_of_two_overlapping_boxes` (K1), `subtract_cylinder_through_box` (K3), `nonconvex_subtraction_l_minus_cylinder` (K3), `boolean_subtract_box_minus_sphere_shrinks_volume` (U1, un-ignore). classify 수정이 따라 해결한 부수적 회귀: `pad_sketch_onto_box_increases_volume`, `hole_on_box_removes_cylindrical_material`, `quick::test_quick_union_disjoint`.
+
+**2a라운드에서 수정됨:**
+
+- **STEP 내보내기** (`crates/io/src/step.rs`) — 곡면(cylinder/sphere/cone/torus)이 `classify_surface()` + `emit_surface_class()` 디스패처를 통해 해당 STEP 엔티티를 방출합니다.
+- **IGES 내보내기** (`crates/io/src/iges.rs`) — face 순회 + u×v 샘플링으로 face당 Type 128 `RationalBSplineSurface`를 방출합니다. IGES 라운드트립에서 솔리드가 보존됩니다.
+- **동일평면 boolean** (`crates/modeling/src/boolean/face_split.rs`) — SSI 마칭이 빈 결과를 내고 면 평면이 일치할 때 `compute_planar_intersection` fallback.
+- **Extrude watertight** (`crates/modeling/src/features/extrude.rs`) — 6개 면 전체가 단일 `EdgeCache`를 공유하여 seam dedup이 각 엣지에 정확히 2개 인접 면을 남깁니다.
+- **Fillet/chamfer 합성 가능** — 신규 배치 API `fillet_edges(model, solid, edges, radius)`와 `chamfer_edges(model, solid, edges, distance)`가 원본 위상에 대해 모든 연산을 동시에 적용, 순차 단일 엣지 호출 시의 stale-handle 문제를 우회.
+- **스케치 solver 수렴** (`crates/sketch/src/solver.rs`) — `Fixed` 제약이 없을 때 Tikhonov anchor; 수렴 판정은 residual의 infinity-norm; `Horizontal` Jacobian은 Δy residual의 `(0, 1, 0, -1)` 직접 항.
+
+**2c라운드(`Task #9`, boolean splitter 재작성)로 이월:**
+
+- **일반 위치 boolean** (`crates/modeling/src/boolean/`): 겹치는 두 박스의 합집합에서 비-manifold 결과; subtract가 관통 구멍 경로에서 face-split을 놓쳐 참조 시나리오에서 기대 부피의 약 67%만 반환. 2c라운드에서 splitter가 반대쪽 면으로 교선을 전파하고, splitter 다각형의 내부 끝점을 처리하며, 교선 루프를 따라 manifold twin을 재구축하도록 확장됩니다.
+- **Difference 부호/방향**: `boolean_op(…, Difference)`로 `box − sphere`를 수행하면 원본보다 큰 부피를 반환. 조각별 방향 해석의 올바른 위치는 splitter 내부(2c)이며 face-copy 경계가 아닙니다. 초기 R2 시도에서 `copy_face_shared`가 B-face winding을 뒤집었으나, `compute_mass_properties`가 `|signed volume|`을 사용하므로 pocket/hole 테스트가 회귀했습니다. 2a라운드에서 flip을 되돌렸습니다.
+
+2c라운드 재작성을 위한 인프라는 이미 2a에 랜딩: `SharedBuilder`(위치 기반 정점 중복 제거 + 방향 반변/twin 매핑, `boolean/evaluate.rs`), `SplitBuilder` + `split_face_along_curves` + `copy_face_with_geometry`(`boolean/face_split.rs`).
+
+**GuiAction dispatcher — 2b라운드 상태.** 16건의 U3 스텁 중 5건이 Scene에 연결되었습니다:
+
+- **SurfaceFilling**, **SurfaceBoundary** — `cadkernel_modeling::filling()`을 기본 경계로 호출.
+- **SurfacePipe** — `pipe_surface()`를 기본 2단위 수직 경로, 반지름 0.25로 호출.
+- **DraftRectangle**, **DraftPolygon** — `make_rectangle_wire()` / `make_polygon_wire()`로 와이어를 만들고 `filling()`으로 채움. 결과 솔리드는 `CreationParams::DraftRectangle` / `DraftPolygon`과 함께 Scene에 추가되어 파라메트릭 재편집이 가능합니다.
+
+**GuiAction dispatcher — 2b라운드 후속 상태.** 남은 11건의 `#[ignore]` 마커를 감사하여 5건이 오래된 상태임을 확인했습니다 — **MeshRepair**, **TechDrawAddView**, **TechDrawThreeView**, **TechDrawExportSvg**, **CreateHelix**는 이전 라운드에서 이미 완전히 연결되었지만 테스트는 여전히 `unreachable!()` 본문을 가지고 있었습니다. 이 5개 테스트를 기존 dispatcher 경로(`evaluate_and_repair`, `project_solid`, `three_view_drawing`, `drawing_to_svg`, `make_helix`)를 미러링하도록 재작성했습니다. 구 테스트 주석의 "CreateHelix는 와이어 반환" 주장은 잘못된 것이었습니다 — `make_helix`는 shell과 face를 가진 튜브형 솔리드를 생성합니다.
+
+**GuiAction dispatcher — Phase N-min 상태.** `GuiState`에 `pub assembly: Option<cadkernel_modeling::Assembly>` 및 `pub fem_analysis: Option<cadkernel_modeling::AnalysisContainer>`를 추가하고(기존 `techdraw_sheet: Option<DrawingSheet>` 패턴을 미러링) 5개 dispatcher 암을 연결했습니다:
+
+- **CreateAssembly** → `Assembly::new("New Assembly")`를 `gui.assembly`에 저장.
+- **InsertComponent** → `assembly.add_component(name, current_solid)` (어셈블리가 없으면 빈 어셈블리 자동 초기화).
+- **SolveAssembly** → `assembly.solve(100)`. 수렴/비수렴/오류/no-assembly 경로를 로컬 `SolveMsg` enum으로 통합하여 `&mut self.gui.assembly` 대출이 끝난 뒤 `log_info`/`log_warning`/`log_error`/`status_message`로 디스패치.
+- **CreateFemAnalysis** → `generate_tet_mesh(&model, solid, 1.0)` + `AnalysisContainer::new(mesh, FemMaterial::steel())`. 노드/요소 개수 보고.
+- **SolveStatic** → `container.run_static()`. 동일한 borrow-splitting enum 패턴; 성공 시 `FemResult::max_displacement` 보고.
+
+이제 16건의 원본 U3 dispatcher 스텁이 모두 end-to-end로 연결되어 검증되었습니다. 남은 유일한 `#[ignore]`는 **U1 Difference 부호** — 2c라운드(boolean splitter 재작성) 범위. DraftLine은 의도적으로 wire-only로 남아 `draft_line_creates_wire_topology_in_model`에서 `BRepModel`에 대해 직접 확인됩니다.
+
+Phase N-min 총계: 워크스페이스 **통과 2,582, 실패 3, 무시 1**.
+
+**2c라운드 총계 (2026-04-23): 통과 2,590, 실패 0, 무시 0** (`cargo test --workspace --no-fail-fast`, Python 바인딩 42건 별도). 실패 0 / 무시 0 청정 기준선 달성.
+
+**V36 UX 패스 (2026-04-24): 2,606 / 0 / 0** — `gui/overlays.rs`의 gizmo Shift/Ctrl 정밀도 modifier, `gui/tree.rs` + `app.rs`의 `GuiAction::FocusObject` + 트리 더블클릭 → 카메라 AABB 맞춤, `gui/properties.rs` Placement 섹션의 Width/Depth/Height 행. ≤300 LOC 예산 내에서 +16 테스트.
+
+**V37 Phase N 완전판 (2026-04-24): 2,627 / 0 / 0** — Phase N-min 상태 위에 Assembly workbench UI 완성.
+
+- **Assembly 트리 패널** (`crates/viewer/src/gui/tree.rs`) — `gui.assembly.is_some()`일 때 씬 트리가 접을 수 있는 Assembly 섹션을 4-branch 구조로 렌더링: root는 `"{name} (N components, M constraints, K joints)"`, Components(컴포넌트별 행 + `GuiAction::ToggleAssemblyComponentVisibility`에 연결된 eye 아이콘), Constraints(5개 `AssemblyConstraint` variant 라벨), Joints(13개 `JointType` variant 라벨 — `Grounded(N)`, `Revolute(a↔b)`, `ScrewJoint(a↔b)`, `RackAndPinion(a↔b)` 등). 컴포넌트 행 더블클릭은 신규 `find_object_for_solid` 헬퍼(Handle 동등 매치)로 컴포넌트의 `Handle<SolidData>`가 `SceneObject`에 해결되면 `GuiAction::FocusObject`를 발동.
+- **BOM 뷰 다이얼로그** (`crates/viewer/src/gui/dialogs.rs`) — `GuiAction::BillOfMaterials`가 이제 `Assembly::bill_of_materials()`를 3컬럼 테이블(Index | Name | Quantity)과 "Total parts: {sum}" 푸터로 렌더링하는 모달을 엽니다. `assembly.is_none()` 분기는 상태바만 설정하고 상태 변경을 수행하지 않음. 모달 상태: `GuiState.show_bom_dialog` + `GuiState.bom_entries: Vec<BomEntry>`.
+- **Joint 편집기 UI** (`crates/viewer/src/gui/dialogs.rs`) — `GuiAction::AddAssemblyJoint(joint_type)`가 요청된 타입으로 사전 시딩된 모달을 엽니다. 컴포넌트 드롭다운은 `assembly.components`를 이름으로 나열; 선택된 `JointType` variant와 관련된 필드만 표시(Revolute/Cylindrical은 axis+origin, Slider는 axis, BallJoint는 center, AngleJoint는 angle, GearJoint/BeltJoint는 ratio, ScrewJoint는 axis+pitch, RackAndPinion은 pitch_radius, ParallelAxes/PerpendicularAxes는 2-axis pair). OK는 매칭 `JointType::{variant} {…}`를 구성하고 `assembly.add_joint(joint)` 호출; `Grounded`는 component_a만 필요.
+
+Phase N-min이 이미 모든 dispatcher arm(`CommitAssemblyJoint`, `ToggleAssemblyComponentVisibility`, `populate_bom_entries`, `open_joint_editor`, `commit_assembly_joint`)을 `GuiState` 헬퍼 메서드를 통해 연결해 두었기 때문에 이번 라운드에서 `app.rs`는 변경 0. 순 production LOC ≈ 160, 테스트 LOC ≈ 80, 총 ≈ 240으로 500 예산 이내. 남은 Assembly 작업: `gui/menu.rs` Assembly 섹션의 "Ground Component" 메뉴 엔트리(현재 `JointType::Grounded`는 프로그래매틱 `GuiAction` 디스패치로만 도달 가능).
+
+**V37 Phase O-a — FEM 재료 선택기 + BC 편집기 (2026-04-26): 2,637 / 0 / 0.** Phase N-min은 `GuiState.fem_analysis: Option<AnalysisContainer>`와 `CreateFemAnalysis` / `SolveStatic`을 연결했지만 재료가 `FemMaterial::steel()`로 하드코딩되어 있고 경계 조건 GUI 경로가 없었습니다. Phase O-a 추가 사항:
+
+- **재료 선택기 다이얼로그** (`crates/viewer/src/gui/dialogs.rs` + `gui/mod.rs`) — `GuiAction::OpenMaterialPicker`가 6개 프리셋 재료(`Steel`, `Aluminum`, `Titanium`, `Copper`, `Concrete`, `CastIron`) 라디오 버튼과 Young's modulus / Poisson 비율 / 밀도 입력을 노출하는 `Custom` 옵션(`FemMaterial::custom()` 검증 사용)을 가진 모달을 엽니다. `CommitMaterialPicker`는 신규 `GuiState.pending_fem_material: FemMaterial` 필드에 기록; 이후 `CreateFemAnalysis`가 그 값을 새 `AnalysisContainer`로 `clone()`(sticky-material UX — 한 번 선택, 분석 간 재사용). `FemMaterial`은 `Clone` derive(3개 `f64` 필드: `youngs_modulus`, `poisson_ratio`, `density`).
+- **경계 조건 편집기** (`crates/viewer/src/gui/dialogs.rs`) — `GuiAction::OpenBcEditor(BcKind)`가 `BcKind`가 가장 많이 쓰이는 두 variant(`FixedNode`, `Force`)를 다루는 모달을 엽니다. 종류 드롭다운, 메시 노드 수로 제한된 노드 인덱스 스피너, kind가 `FixedNode`일 때 숨겨지는 force XYZ 필드. `CommitBcEditor`는 `BoundaryCondition::FixedNode(n)` 또는 `BoundaryCondition::Force { node, force }`를 구성하고 `gui.fem_analysis.is_some()`일 때만 `fem_analysis.add_bc(bc)` 호출. 나머지 15개 BC variant는 여전히 레거시 `AddFemConstraint(FemConstraintType)` 경로 사용.
+- **FEM 메뉴** (`crates/viewer/src/gui/menu.rs`) — 기존 Steel/Aluminum 빠른 설정 위로 "Pick Material…" 엔트리; "Add Fixed Node"와 "Add Force"가 있는 신규 "Boundary Conditions" 서브메뉴.
+
+테스트: `gui::mod::fem_picker_tests`에 7개 unit 테스트 + `crates/viewer/tests/gui_action_integration.rs`에 4개 통합 테스트. Phase O-a 본체 LOC = 400 정확히 예산; sticky-material 폴리시는 추가 ~16 LOC(1줄 커널 `Clone` derive + 7줄 dispatcher swap + 8줄 clone 라운드트립 unit 테스트). 폴리시 후 워크스페이스 **2,638 / 0 / 0**.
+
+**V37 Phase O-a 후속 — BcKind 확장 + Ground Component 메뉴 (2026-04-26): 2,659 / 0 / 0.** `BcKind`를 2개에서 12개 variant로 확장: 신규 arm `Pressure | Displacement | Gravity | DistributedLoad | Spring | CentrifugalLoad | SelfWeight | SpringConstraint | BodyLoad | InitialTemperature`. 단일 `BcEditorState` 내부에서 Vec3/스칼라 필드 오버로딩 사용(하나의 `vec3_x/y/z` 트리플, 하나의 `scalar_a`, `node_index`와 `element_index`). 다이얼로그가 variant별 라벨 재할당: `BcKind::vec3_label()`("Force (N)" / "Displacement (m)" / "Acceleration (m/s²)" / "Load (N/m²)" / "Axis" / "Gravity (m/s²)" / "Direction" / "Force Density (N/m³)") + `scalar_label()`("Pressure (Pa)" / "Stiffness (N/m)" / "Omega (rad/s)" / "Temperature (K)"). `to_boundary_condition()`이 오버로드된 필드를 `BoundaryCondition::*` arm별 올바른 커널 필드 이름으로 라우팅. `BcInputs` 매트릭스가 다이얼로그가 렌더링할 입력을 게이팅: variant별 `(node, element, vec3, scalar)`. `app.rs`는 변경 없음 — 헬퍼 API가 안정적이라 `OpenBcEditor(BcKind)` / `CommitBcEditor` 디스패처 시그니처가 동일.
+
+FEM "Boundary Conditions" 서브메뉴가 3개 서브-서브메뉴로 재구성: **Loads**(Force, Pressure, Gravity, DistributedLoad, CentrifugalLoad, SelfWeight, BodyLoad), **Constraints**(FixedNode, Displacement, Spring, SpringConstraint), **Thermal**(InitialTemperature). 4개 다중 노드 집합 / 서피스 variant(`TieConstraint`, `RigidBody`, `ContactConstraint`, `SectionPrint`)는 노드 집합 피커가 존재할 때까지 레거시 `AddFemConstraint` 경로에 머묾; `gui/mod.rs`의 `BcKind` 위 주석 블록에 문서화.
+
+같은 세션에서: Assembly 메뉴의 "Joints" 서브메뉴 위에 "Ground Component" 엔트리 추가, 기존 joint 편집기 플로우(Phase N 완전판이 이미 1-컴포넌트 Grounded 케이스 지원)를 통해 `GuiAction::AddAssemblyJoint(AssemblyJointType::Grounded)` 연결. `Grounded`가 이제 메뉴로 도달 가능하므로 `AssemblyJointType`의 `#[allow(dead_code)]` 제거.
+
+테스트: `gui::mod::fem_picker_tests`에 11개 unit 테스트(12행 `BcInputs` 가시성 매트릭스 + 신규 variant별 `BcEditorState → BoundaryCondition` 매핑) + `crates/viewer/tests/gui_action_integration.rs`에 10개 통합 테스트(신규 variant별 매칭되는 `BoundaryCondition` 1개 추가). 21개 신규 테스트, ~495 LOC(450 예산보다 45 초과 — 초과는 테스트 폭에서 — Vec3/스칼라 오버로드의 명시적 variant별 커버리지를 위한 합리적 거래로 수용).
+
+Phase O-b(tet 메시 위 stress/displacement 컬러맵)는 미진행 — 렌더링 파이프라인 작업이 필요해 별도 세션으로 분리.

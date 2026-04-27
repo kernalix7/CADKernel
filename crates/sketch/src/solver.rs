@@ -1,7 +1,7 @@
 use cadkernel_math::linalg::{DMatrix, DVector};
 
 use crate::Sketch;
-use crate::constraint::{ConstraintEval, ConstraintWithCtx};
+use crate::constraint::{Constraint, ConstraintEval, ConstraintWithCtx};
 use crate::entity::PointId;
 
 /// Outcome of a solver run.
@@ -74,6 +74,9 @@ pub fn solve(sketch: &mut Sketch, max_iter: usize, tol: f64) -> SolverResult {
 
     let mut vars = DVector::zeros(n_vars);
     sketch_to_vars(sketch, &mut vars);
+    let initial_vars = vars.clone();
+
+    let anchor = build_anchor_weights(sketch, n_vars);
 
     let mut result = SolverResult {
         converged: false,
@@ -83,34 +86,42 @@ pub fn solve(sketch: &mut Sketch, max_iter: usize, tol: f64) -> SolverResult {
         over_constrained: false,
     };
 
+    let mut last_step_norm = f64::MAX;
+
     for iter in 0..max_iter {
         let (residual_vec, jacobian) = build_system(sketch, &lines, n_eqs, n_vars, vars.as_slice());
 
-        let norm = residual_vec.norm();
-        result.residual = norm;
+        let inf_norm = residual_vec.iter().fold(0.0_f64, |a, &v| a.max(v.abs()));
+        let l2_norm = residual_vec.norm();
+        result.residual = l2_norm;
         result.iterations = iter + 1;
 
-        if norm < tol {
+        if inf_norm < tol {
             result.converged = true;
             vars_to_sketch(&vars, sketch);
             return result;
         }
 
-        let dx = solve_linear_system(&jacobian, &residual_vec);
+        if last_step_norm < tol * 1e-3 {
+            break;
+        }
 
-        // Armijo backtracking
+        let dx = solve_linear_system(&jacobian, &residual_vec, &anchor, &vars, &initial_vars);
+
         let mut alpha = 1.0;
         let c = 1e-4;
-        let base_cost = 0.5 * norm * norm;
+        let base_cost = 0.5 * l2_norm * l2_norm;
         let gradient = jacobian.transpose() * &residual_vec;
         let directional = gradient.dot(&dx);
 
+        let mut accepted = false;
         for _ in 0..20 {
             let candidate = &vars - &dx * alpha;
             let (r_new, _) = build_system(sketch, &lines, n_eqs, n_vars, candidate.as_slice());
             let new_cost = 0.5 * r_new.norm_squared();
             if new_cost <= base_cost - c * alpha * directional {
                 vars = candidate;
+                accepted = true;
                 break;
             }
             alpha *= 0.5;
@@ -118,6 +129,8 @@ pub fn solve(sketch: &mut Sketch, max_iter: usize, tol: f64) -> SolverResult {
                 break;
             }
         }
+
+        last_step_norm = if accepted { (dx.norm() * alpha).abs() } else { 0.0 };
     }
 
     vars_to_sketch(&vars, sketch);
@@ -239,25 +252,73 @@ pub fn drag_solve(
     result
 }
 
-/// Solve J * dx = r using the normal equations (J^T J) dx = J^T r.
-/// Falls back to damped least-squares when singular.
-fn solve_linear_system(jac: &DMatrix<f64>, residual: &DVector<f64>) -> DVector<f64> {
+/// Solve (J^T J + W) dx = J^T r - W (x - x0) using the normal equations, where
+/// `W = diag(anchor)` is a Tikhonov regularization that pulls variables toward
+/// their initial values. `W` breaks the symmetry in underdetermined systems so
+/// that unfixed points prefer to remain near their starting positions.
+///
+/// Falls back to Levenberg-Marquardt damping when the augmented matrix is
+/// still singular.
+fn solve_linear_system(
+    jac: &DMatrix<f64>,
+    residual: &DVector<f64>,
+    anchor: &DVector<f64>,
+    vars: &DVector<f64>,
+    initial_vars: &DVector<f64>,
+) -> DVector<f64> {
     let jt = jac.transpose();
     let jtj = &jt * jac;
     let jtr = &jt * residual;
 
-    if let Some(lu) = jtj.clone().lu().try_inverse() {
-        lu * jtr
+    let n = jtj.nrows();
+    let mut augmented = jtj;
+    for i in 0..n {
+        augmented[(i, i)] += anchor[i];
+    }
+
+    let drift = vars - initial_vars;
+    let mut rhs = jtr;
+    for i in 0..n {
+        rhs[i] -= anchor[i] * drift[i];
+    }
+
+    if let Some(lu) = augmented.clone().lu().try_inverse() {
+        lu * rhs
     } else {
-        // Levenberg-Marquardt damping
         let lambda = 1e-6;
-        let eye = DMatrix::identity(jtj.nrows(), jtj.ncols());
-        let damped = jtj + eye * lambda;
+        let eye = DMatrix::identity(n, n);
+        let damped = augmented + eye * lambda;
         damped
             .lu()
-            .solve(&jtr)
+            .solve(&rhs)
             .unwrap_or_else(|| DVector::zeros(jac.ncols()))
     }
+}
+
+/// Build per-variable anchor weights that break symmetry in underdetermined
+/// sketches. When no `Fixed` constraint exists anywhere in the sketch, the
+/// lowest-indexed point is anchored to its initial position with unit weight
+/// so the solver picks a unique minimum-change solution instead of drifting
+/// to the midpoint of symmetric free variables. When any `Fixed` constraint
+/// is present the user is presumed to have anchored the sketch deliberately
+/// and no auto-anchor is applied.
+fn build_anchor_weights(sketch: &Sketch, n_vars: usize) -> DVector<f64> {
+    let mut weights = DVector::zeros(n_vars);
+    if sketch.points.is_empty() {
+        return weights;
+    }
+
+    let has_fixed = sketch
+        .constraints
+        .iter()
+        .any(|c| matches!(c, Constraint::Fixed(..)));
+    if has_fixed {
+        return weights;
+    }
+
+    weights[0] = 1.0;
+    weights[1] = 1.0;
+    weights
 }
 
 #[cfg(test)]

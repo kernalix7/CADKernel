@@ -1,4 +1,4 @@
-use super::{AssemblyJointType, FemConstraintType, GuiAction, GuiState, SketchTool, Workbench, task_panel};
+use super::{AssemblyJointType, BcKind, FemConstraintType, GuiAction, GuiState, SketchTool, Workbench, task_panel};
 use crate::render::{Camera, DisplayMode, Projection, StandardView};
 
 pub(crate) fn draw_menu_bar(
@@ -1026,6 +1026,12 @@ fn draw_assembly_menu(ui: &mut egui::Ui, gui: &mut GuiState) {
         menu_action(ui, gui, "Create Assembly", GuiAction::CreateAssembly);
         menu_action(ui, gui, "Insert Component", GuiAction::InsertComponent);
         ui.separator();
+        menu_action(
+            ui,
+            gui,
+            "Ground Component",
+            GuiAction::AddAssemblyJoint(AssemblyJointType::Grounded),
+        );
         ui.menu_button("Joints", |ui| {
             for jt in [
                 AssemblyJointType::Fixed,
@@ -1124,8 +1130,30 @@ fn draw_fem_menu(ui: &mut egui::Ui, gui: &mut GuiState) {
             menu_action(ui, gui, "Report", GuiAction::FemReport);
         });
         ui.menu_button("Material", |ui| {
+            menu_action(ui, gui, "Pick Material...", GuiAction::OpenMaterialPicker);
+            ui.separator();
             menu_action(ui, gui, "Steel", GuiAction::SetFemMaterial("steel".into()));
             menu_action(ui, gui, "Aluminum", GuiAction::SetFemMaterial("aluminum".into()));
+        });
+        ui.menu_button("Boundary Conditions", |ui| {
+            ui.menu_button("Loads", |ui| {
+                menu_action(ui, gui, "Force...", GuiAction::OpenBcEditor(BcKind::Force));
+                menu_action(ui, gui, "Pressure...", GuiAction::OpenBcEditor(BcKind::Pressure));
+                menu_action(ui, gui, "Gravity...", GuiAction::OpenBcEditor(BcKind::Gravity));
+                menu_action(ui, gui, "Distributed Load...", GuiAction::OpenBcEditor(BcKind::DistributedLoad));
+                menu_action(ui, gui, "Centrifugal Load...", GuiAction::OpenBcEditor(BcKind::CentrifugalLoad));
+                menu_action(ui, gui, "Self Weight...", GuiAction::OpenBcEditor(BcKind::SelfWeight));
+                menu_action(ui, gui, "Body Load...", GuiAction::OpenBcEditor(BcKind::BodyLoad));
+            });
+            ui.menu_button("Constraints", |ui| {
+                menu_action(ui, gui, "Fixed Node...", GuiAction::OpenBcEditor(BcKind::FixedNode));
+                menu_action(ui, gui, "Displacement...", GuiAction::OpenBcEditor(BcKind::Displacement));
+                menu_action(ui, gui, "Spring...", GuiAction::OpenBcEditor(BcKind::Spring));
+                menu_action(ui, gui, "Spring Constraint...", GuiAction::OpenBcEditor(BcKind::SpringConstraint));
+            });
+            ui.menu_button("Thermal", |ui| {
+                menu_action(ui, gui, "Initial Temperature...", GuiAction::OpenBcEditor(BcKind::InitialTemperature));
+            });
         });
         ui.menu_button("Mesh", |ui| {
             menu_action(ui, gui, "Generate Tet Mesh", GuiAction::GenTetMesh { element_size: 1.0 });

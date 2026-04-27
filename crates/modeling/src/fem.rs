@@ -20,6 +20,7 @@ pub struct TetMesh {
 }
 
 /// Isotropic linear-elastic material properties.
+#[derive(Clone)]
 pub struct FemMaterial {
     /// Young's modulus (Pa).
     pub youngs_modulus: f64,

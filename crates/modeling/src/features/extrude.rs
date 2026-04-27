@@ -1,6 +1,11 @@
 use cadkernel_core::{KernelError, KernelResult};
 use cadkernel_math::{Point3, Vec3};
-use cadkernel_topology::{BRepModel, EntityKind, FaceData, Handle, SolidData, Tag, VertexData};
+use cadkernel_topology::{
+    BRepModel, EntityKind, FaceData, HalfEdgeData, Handle, OperationId, SolidData, Tag, VertexData,
+};
+
+use crate::check::check_watertight;
+use crate::primitives::EdgeCache;
 
 /// Handles returned from [`extrude`].
 pub struct ExtrudeResult {
@@ -16,7 +21,8 @@ pub struct ExtrudeResult {
 /// The extrusion direction is `direction * distance`.
 ///
 /// Produces: N bottom vertices, N top vertices, 1 bottom face, 1 top face,
-/// N side quad faces, 1 shell, 1 solid.  All entities carry persistent tags.
+/// N side quad faces, 1 shell, 1 solid. All edges are deduplicated so each
+/// physical edge is shared by exactly two faces (watertight manifold).
 pub fn extrude(
     model: &mut BRepModel,
     profile: &[Point3],
@@ -33,7 +39,6 @@ pub fn extrude(
     let op = model.history.next_operation("extrude");
     let offset = direction.normalized().unwrap_or(Vec3::Z) * distance;
 
-    // --- Vertices ---
     let mut bot_v: Vec<Handle<VertexData>> = Vec::with_capacity(n);
     let mut top_v: Vec<Handle<VertexData>> = Vec::with_capacity(n);
 
@@ -45,24 +50,29 @@ pub fn extrude(
         top_v.push(model.add_vertex_tagged(pt + offset, tag_top));
     }
 
-    // --- Bottom face (CCW from outside = CW from top = reversed winding) ---
-    let bottom_face = make_polygon_face(model, &bot_v, op, 0, true)?;
+    let mut edge_cache = EdgeCache::new();
+    let mut edge_idx: u32 = 0;
 
-    // --- Top face (CCW from outside) ---
-    let top_face = make_polygon_face(model, &top_v, op, 1, false)?;
+    let bottom_face = make_face_with_cache(
+        model,
+        &reversed(&bot_v),
+        op,
+        0,
+        &mut edge_cache,
+        &mut edge_idx,
+    )?;
 
-    // --- Side faces ---
+    let top_face = make_face_with_cache(model, &top_v, op, 1, &mut edge_cache, &mut edge_idx)?;
+
     let mut side_faces = Vec::with_capacity(n);
     for i in 0..n {
         let j = (i + 1) % n;
         let quad = [bot_v[i], bot_v[j], top_v[j], top_v[i]];
-
         let face_idx = (2 + i) as u32;
-        let sf = make_polygon_face(model, &quad, op, face_idx, false)?;
+        let sf = make_face_with_cache(model, &quad, op, face_idx, &mut edge_cache, &mut edge_idx)?;
         side_faces.push(sf);
     }
 
-    // --- Assemble ---
     let mut all_faces = vec![bottom_face, top_face];
     all_faces.extend_from_slice(&side_faces);
 
@@ -72,6 +82,12 @@ pub fn extrude(
     let solid_tag = Tag::generated(EntityKind::Solid, op, 0);
     let solid = model.make_solid_tagged(&[shell], solid_tag);
 
+    if !check_watertight(model, solid) {
+        return Err(KernelError::TopologyError(
+            "extrude produced a non-watertight solid".into(),
+        ));
+    }
+
     Ok(ExtrudeResult {
         solid,
         bottom_face,
@@ -80,29 +96,27 @@ pub fn extrude(
     })
 }
 
-fn make_polygon_face(
+fn reversed<T: Copy>(v: &[T]) -> Vec<T> {
+    v.iter().rev().copied().collect()
+}
+
+fn make_face_with_cache(
     model: &mut BRepModel,
     verts: &[Handle<VertexData>],
-    op: cadkernel_topology::OperationId,
+    op: OperationId,
     face_idx: u32,
-    reverse: bool,
+    edge_cache: &mut EdgeCache,
+    edge_idx: &mut u32,
 ) -> KernelResult<Handle<FaceData>> {
     let n = verts.len();
-    let ordered: Vec<Handle<VertexData>> = if reverse {
-        verts.iter().rev().copied().collect()
-    } else {
-        verts.to_vec()
-    };
-
-    let mut half_edges = Vec::with_capacity(n);
-    let edge_base = face_idx * 100;
+    let mut half_edges: Vec<Handle<HalfEdgeData>> = Vec::with_capacity(n);
     for i in 0..n {
         let j = (i + 1) % n;
-        let edge_tag = Tag::generated(EntityKind::Edge, op, edge_base + i as u32);
-        let (_, he_a, _) = model.add_edge_tagged(ordered[i], ordered[j], edge_tag);
-        half_edges.push(he_a);
+        let tag = Tag::generated(EntityKind::Edge, op, *edge_idx);
+        *edge_idx += 1;
+        let he = edge_cache.get_or_create(model, verts[i], verts[j], tag);
+        half_edges.push(he);
     }
-
     let loop_h = model.make_loop(&half_edges)?;
     let face_tag = Tag::generated(EntityKind::Face, op, face_idx);
     Ok(model.make_face_tagged(loop_h, face_tag))
@@ -125,10 +139,24 @@ mod tests {
         let result = extrude(&mut model, &profile, Vec3::Z, 2.0).unwrap();
 
         assert_eq!(model.vertices.len(), 8);
+        assert_eq!(model.edges.len(), 12);
         assert_eq!(model.faces.len(), 6);
         assert_eq!(model.shells.len(), 1);
         assert_eq!(model.solids.len(), 1);
         assert_eq!(result.side_faces.len(), 4);
+    }
+
+    #[test]
+    fn test_extrude_square_watertight() {
+        let mut model = BRepModel::new();
+        let profile = vec![
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(1.0, 0.0, 0.0),
+            Point3::new(1.0, 1.0, 0.0),
+            Point3::new(0.0, 1.0, 0.0),
+        ];
+        let result = extrude(&mut model, &profile, Vec3::Z, 2.0).unwrap();
+        assert!(check_watertight(&model, result.solid));
     }
 
     #[test]

@@ -53,3 +53,6 @@ cadkernel-sketch.workspace = true
 cadkernel-io.workspace = true
 cadkernel-viewer.workspace = true
 clap = { version = "4", features = ["derive"] }
+
+[dev-dependencies]
+serde_json.workspace = true

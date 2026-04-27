@@ -415,6 +415,9 @@ pub(crate) enum GuiAction {
     },
     ResetCamera,
     FitAll,
+    /// Frame the camera on a single object's bounding box (no scene-wide fit).
+    /// Dispatched by double-clicking an object row in the scene tree.
+    FocusObject(crate::scene::ObjectId),
     ToggleProjection,
     SetGizmoMode(GizmoMode),
     SetDisplayMode(DisplayMode),
@@ -605,6 +608,8 @@ pub(crate) enum GuiAction {
     BillOfMaterials,
     DOFAnalysis,
     AddAssemblyJoint(AssemblyJointType),
+    ToggleAssemblyComponentVisibility(usize),
+    CommitAssemblyJoint,
 
     // -- Draft workbench --
     DraftLine,
@@ -653,6 +658,10 @@ pub(crate) enum GuiAction {
     // -- FEM workbench --
     CreateFemAnalysis,
     SetFemMaterial(String),
+    OpenMaterialPicker,
+    CommitMaterialPicker,
+    OpenBcEditor(BcKind),
+    CommitBcEditor,
     GenTetMesh { element_size: f64 },
     GenHexMesh { nx: u32, ny: u32, nz: u32 },
     AddFemConstraint(FemConstraintType),
@@ -743,6 +752,7 @@ pub(crate) enum GuiAction {
 // -- Assembly joint types --
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum AssemblyJointType {
+    Grounded,
     Fixed,
     Revolute,
     Cylindrical,
@@ -761,6 +771,7 @@ pub(crate) enum AssemblyJointType {
 impl AssemblyJointType {
     pub fn label(self) -> &'static str {
         match self {
+            Self::Grounded => "Grounded",
             Self::Fixed => "Fixed",
             Self::Revolute => "Revolute",
             Self::Cylindrical => "Cylindrical",
@@ -776,6 +787,16 @@ impl AssemblyJointType {
             Self::Belt => "Belt",
         }
     }
+
+    /// Minimum number of components required in the assembly to open a
+    /// joint editor of this type. Grounded attaches to a single component;
+    /// all other joints require two distinct components.
+    pub fn min_components(self) -> usize {
+        match self {
+            Self::Grounded => 1,
+            _ => 2,
+        }
+    }
 }
 
 // -- FEM constraint types --
@@ -787,6 +808,240 @@ pub(crate) enum FemConstraintType {
     Displacement,
     Gravity,
     Spring,
+}
+
+// -- FEM material picker / BC editor (Phase O-a) --
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum MaterialPreset {
+    Steel, Aluminum, Titanium, Copper, Concrete, CastIron, Custom,
+}
+
+impl MaterialPreset {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Steel => "Steel", Self::Aluminum => "Aluminum",
+            Self::Titanium => "Titanium", Self::Copper => "Copper",
+            Self::Concrete => "Concrete", Self::CastIron => "Cast Iron",
+            Self::Custom => "Custom",
+        }
+    }
+    /// Short description (E, ν, ρ).
+    pub fn description(self) -> &'static str {
+        match self {
+            Self::Steel => "E=210 GPa, \u{03BD}=0.30, \u{03C1}=7850 kg/m\u{00B3}",
+            Self::Aluminum => "E=70 GPa, \u{03BD}=0.33, \u{03C1}=2700 kg/m\u{00B3}",
+            Self::Titanium => "E=114 GPa, \u{03BD}=0.34, \u{03C1}=4430 kg/m\u{00B3}",
+            Self::Copper => "E=117 GPa, \u{03BD}=0.34, \u{03C1}=8960 kg/m\u{00B3}",
+            Self::Concrete => "E=30 GPa, \u{03BD}=0.20, \u{03C1}=2400 kg/m\u{00B3}",
+            Self::CastIron => "E=170 GPa, \u{03BD}=0.26, \u{03C1}=7200 kg/m\u{00B3}",
+            Self::Custom => "User-specified properties",
+        }
+    }
+    /// Build the matching `FemMaterial` for this preset. Custom falls back to
+    /// steel; real custom path uses [`material_from_preset`].
+    pub fn to_material(self) -> cadkernel_modeling::FemMaterial {
+        use cadkernel_modeling::FemMaterial;
+        match self {
+            Self::Steel => FemMaterial::steel(), Self::Aluminum => FemMaterial::aluminum(),
+            Self::Titanium => FemMaterial::titanium(), Self::Copper => FemMaterial::copper(),
+            Self::Concrete => FemMaterial::concrete(), Self::CastIron => FemMaterial::cast_iron(),
+            Self::Custom => FemMaterial::steel(),
+        }
+    }
+}
+
+/// Build a `FemMaterial` from a preset + user-provided custom values. For
+/// non-Custom presets the custom values are ignored. Invalid Custom inputs
+/// fall back to steel.
+pub(crate) fn material_from_preset(p: MaterialPreset, e: f64, nu: f64, rho: f64)
+    -> cadkernel_modeling::FemMaterial
+{
+    use cadkernel_modeling::FemMaterial;
+    match p {
+        MaterialPreset::Custom => FemMaterial::custom(e, nu, rho)
+            .unwrap_or_else(|_| FemMaterial::steel()),
+        _ => p.to_material(),
+    }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct MaterialPickerState {
+    pub selected: MaterialPreset,
+    pub youngs_modulus: f64,
+    pub poisson_ratio: f64,
+    pub density: f64,
+}
+impl MaterialPickerState {
+    pub fn new() -> Self {
+        Self { selected: MaterialPreset::Steel, youngs_modulus: 210.0e9,
+            poisson_ratio: 0.3, density: 7850.0 }
+    }
+}
+
+// Boundary-condition kinds exposed by the viewer's BC editor.
+//
+// Phase O-a shipped FixedNode + Force. Phase O-b extends to 12 scalar /
+// single-node / Vec3-only variants. The four remaining kernel-side variants
+// (`TieConstraint`, `RigidBody`, `ContactConstraint`, `SectionPrint`) are
+// **deferred** here — they require a multi-node-set picker UX and a separate
+// session.
+//
+// Field overload: `BcEditorState` carries a single `vec3_x/y/z` triple that is
+// re-labelled by the dialog per `BcKind` (force / displacement / acceleration
+// / load / axis / direction / gravity / force-density). The dialog's
+// visibility gate guarantees only the relevant inputs are shown.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) enum BcKind {
+    FixedNode,
+    Force,
+    Pressure,
+    Displacement,
+    Gravity,
+    DistributedLoad,
+    Spring,
+    CentrifugalLoad,
+    SelfWeight,
+    SpringConstraint,
+    BodyLoad,
+    InitialTemperature,
+}
+
+/// Which of the BC editor's input groups a given `BcKind` consumes.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub(crate) struct BcInputs {
+    pub node: bool,
+    pub element: bool,
+    pub vec3: bool,
+    pub scalar: bool,
+}
+
+impl BcKind {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::FixedNode => "Fixed Node",
+            Self::Force => "Force",
+            Self::Pressure => "Pressure",
+            Self::Displacement => "Displacement",
+            Self::Gravity => "Gravity",
+            Self::DistributedLoad => "Distributed Load",
+            Self::Spring => "Spring",
+            Self::CentrifugalLoad => "Centrifugal Load",
+            Self::SelfWeight => "Self Weight",
+            Self::SpringConstraint => "Spring Constraint",
+            Self::BodyLoad => "Body Load",
+            Self::InitialTemperature => "Initial Temperature",
+        }
+    }
+    /// Visibility gate: which input groups are needed for each kind.
+    pub fn inputs(self) -> BcInputs {
+        let (n, e, v, s) = match self {
+            Self::FixedNode          => (true,  false, false, false),
+            Self::Force              => (true,  false, true,  false),
+            Self::Pressure           => (false, true,  false, true),
+            Self::Displacement       => (true,  false, true,  false),
+            Self::Gravity            => (false, false, true,  false),
+            Self::DistributedLoad    => (false, true,  true,  false),
+            Self::Spring             => (true,  false, false, true),
+            Self::CentrifugalLoad    => (false, false, true,  true),
+            Self::SelfWeight         => (false, false, true,  false),
+            Self::SpringConstraint   => (true,  false, true,  true),
+            Self::BodyLoad           => (false, false, true,  false),
+            Self::InitialTemperature => (true,  false, false, true),
+        };
+        BcInputs { node: n, element: e, vec3: v, scalar: s }
+    }
+    /// Label used for the Vec3 input group, when shown.
+    pub fn vec3_label(self) -> &'static str {
+        match self {
+            Self::Force            => "Force (N)",
+            Self::Displacement     => "Displacement (m)",
+            Self::Gravity          => "Acceleration (m/s\u{00B2})",
+            Self::DistributedLoad  => "Load (N/m\u{00B2})",
+            Self::CentrifugalLoad  => "Axis",
+            Self::SelfWeight       => "Gravity (m/s\u{00B2})",
+            Self::SpringConstraint => "Direction",
+            Self::BodyLoad         => "Force Density (N/m\u{00B3})",
+            _ => "Vector",
+        }
+    }
+    /// Label used for the scalar input, when shown.
+    pub fn scalar_label(self) -> &'static str {
+        match self {
+            Self::Pressure           => "Pressure (Pa):",
+            Self::Spring             => "Stiffness (N/m):",
+            Self::CentrifugalLoad    => "Omega (rad/s):",
+            Self::SpringConstraint   => "Stiffness (N/m):",
+            Self::InitialTemperature => "Temperature (K):",
+            _ => "Scalar:",
+        }
+    }
+    /// Whether the legacy Force XYZ fields should be visible for this BC kind.
+    /// Retained for back-compat with existing tests.
+    #[cfg(test)]
+    pub fn shows_force_fields(self) -> bool { self.inputs().vec3 }
+}
+
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct BcEditorState {
+    pub bc_kind: BcKind,
+    pub node_index: usize,
+    pub element_index: usize,
+    /// Re-labelled per `BcKind`: force / displacement / acceleration / load /
+    /// axis / direction / gravity / force_density. See `BcKind::vec3_label`.
+    pub vec3_x: f64,
+    pub vec3_y: f64,
+    pub vec3_z: f64,
+    /// Re-labelled per `BcKind`: pressure / stiffness / omega / temperature.
+    /// See `BcKind::scalar_label`.
+    pub scalar_a: f64,
+}
+impl BcEditorState {
+    pub fn new(bc_kind: BcKind) -> Self {
+        Self {
+            bc_kind,
+            node_index: 0,
+            element_index: 0,
+            vec3_x: 0.0, vec3_y: 0.0, vec3_z: 0.0,
+            scalar_a: 0.0,
+        }
+    }
+    fn vec3(self) -> cadkernel_math::Vec3 {
+        cadkernel_math::Vec3 { x: self.vec3_x, y: self.vec3_y, z: self.vec3_z }
+    }
+    /// Build the `BoundaryCondition` matching this editor state.
+    pub fn to_boundary_condition(self) -> cadkernel_modeling::BoundaryCondition {
+        use cadkernel_modeling::BoundaryCondition as BC;
+        match self.bc_kind {
+            BcKind::FixedNode => BC::FixedNode(self.node_index),
+            BcKind::Force => BC::Force { node: self.node_index, force: self.vec3() },
+            BcKind::Pressure => BC::Pressure {
+                element: self.element_index, pressure: self.scalar_a,
+            },
+            BcKind::Displacement => BC::Displacement {
+                node: self.node_index, displacement: self.vec3(),
+            },
+            BcKind::Gravity => BC::Gravity { acceleration: self.vec3() },
+            BcKind::DistributedLoad => BC::DistributedLoad {
+                element: self.element_index, load: self.vec3(),
+            },
+            BcKind::Spring => BC::Spring {
+                node: self.node_index, stiffness: self.scalar_a,
+            },
+            BcKind::CentrifugalLoad => BC::CentrifugalLoad {
+                axis: self.vec3(), omega: self.scalar_a,
+            },
+            BcKind::SelfWeight => BC::SelfWeight { gravity: self.vec3() },
+            BcKind::SpringConstraint => BC::SpringConstraint {
+                node_id: self.node_index,
+                stiffness: self.scalar_a,
+                direction: self.vec3(),
+            },
+            BcKind::BodyLoad => BC::BodyLoad { force_density: self.vec3() },
+            BcKind::InitialTemperature => BC::InitialTemperature {
+                node: self.node_index, temperature: self.scalar_a,
+            },
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -858,6 +1113,10 @@ pub(crate) struct GuiState {
 
     pub techdraw_sheet: Option<cadkernel_io::DrawingSheet>,
 
+    pub assembly: Option<cadkernel_modeling::Assembly>,
+
+    pub fem_analysis: Option<cadkernel_modeling::AnalysisContainer>,
+
     // Boolean dialog state
     pub show_boolean_union: bool,
     pub show_boolean_subtract: bool,
@@ -920,6 +1179,10 @@ pub(crate) struct GuiState {
     pub show_fem_solver: bool,
     pub fem_solver_tolerance: f64,
     pub fem_solver_max_iter: usize,
+    // Phase O-a: material picker + BC editor
+    pub material_picker_dialog: Option<MaterialPickerState>,
+    pub bc_editor_dialog: Option<BcEditorState>,
+    pub pending_fem_material: cadkernel_modeling::FemMaterial,
     // Export options dialog state
     pub show_export_options: bool,
     pub export_path: Option<PathBuf>,
@@ -929,6 +1192,17 @@ pub(crate) struct GuiState {
     // Assembly dialog state
     pub show_explode: bool,
     pub explode_factor: f64,
+    pub show_bom_dialog: bool,
+    pub bom_entries: Vec<cadkernel_modeling::BomEntry>,
+    pub show_joint_editor: bool,
+    pub joint_editor_type: Option<AssemblyJointType>,
+    pub joint_editor_comp_a: usize,
+    pub joint_editor_comp_b: usize,
+    pub joint_editor_axis: [f32; 3],
+    pub joint_editor_origin: [f32; 3],
+    pub joint_editor_angle: f64,
+    pub joint_editor_pitch: f64,
+    pub joint_editor_ratio: f64,
     // Draft state
     #[allow(dead_code)]
     pub draft_active_layer: String,
@@ -1109,6 +1383,8 @@ impl GuiState {
             sketch_chamfer_distance: 1.0,
             dimension_popup: None,
             techdraw_sheet: None,
+            assembly: None,
+            fem_analysis: None,
             show_boolean_union: false,
             show_boolean_subtract: false,
             show_boolean_intersect: false,
@@ -1164,12 +1440,26 @@ impl GuiState {
             show_fem_solver: false,
             fem_solver_tolerance: 1e-6,
             fem_solver_max_iter: 1000,
+            material_picker_dialog: None,
+            bc_editor_dialog: None,
+            pending_fem_material: cadkernel_modeling::FemMaterial::steel(),
             show_export_options: false,
             export_path: None,
             export_stl_binary: true,
             export_scale: 1.0,
             show_explode: false,
             explode_factor: 2.0,
+            show_bom_dialog: false,
+            bom_entries: Vec::new(),
+            show_joint_editor: false,
+            joint_editor_type: None,
+            joint_editor_comp_a: 0,
+            joint_editor_comp_b: 1,
+            joint_editor_axis: [0.0, 0.0, 1.0],
+            joint_editor_origin: [0.0, 0.0, 0.0],
+            joint_editor_angle: 90.0,
+            joint_editor_pitch: 1.0,
+            joint_editor_ratio: 1.0,
             draft_active_layer: "Default".into(),
             draft_snap_modes: [true; 8],
             show_mesh_smooth: false,
@@ -1236,6 +1526,122 @@ impl GuiState {
 
     pub fn log(&mut self, level: ReportLevel, msg: impl Into<String>) {
         self.report_lines.push((level, msg.into()));
+    }
+
+    // ---- Assembly dispatcher helpers (testable without CadApp) ----
+
+    /// Flip visibility of component `idx` in the current assembly.
+    /// Returns true on success, false if no assembly or out-of-bounds.
+    pub fn toggle_assembly_component_visibility(&mut self, idx: usize) -> bool {
+        let asm = match self.assembly.as_mut() {
+            Some(a) => a,
+            None => return false,
+        };
+        let comp = match asm.components.get(idx) {
+            Some(c) => c,
+            None => return false,
+        };
+        let new_vis = !comp.visible;
+        let cid = comp.id;
+        asm.set_visible(cid, new_vis).is_ok()
+    }
+
+    /// Populate BOM entries from the current assembly. Returns true if an
+    /// assembly exists and BOM was computed.
+    pub fn populate_bom_entries(&mut self) -> bool {
+        if let Some(asm) = self.assembly.as_ref() {
+            self.bom_entries = asm.bill_of_materials();
+            self.show_bom_dialog = true;
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Open the joint editor for the given type. Returns false (no-op) if
+    /// the current assembly has fewer components than the joint variant
+    /// requires (1 for Grounded, 2 for every other type).
+    pub fn open_joint_editor(&mut self, jtype: AssemblyJointType) -> bool {
+        let n = self.assembly.as_ref().map(|a| a.num_components()).unwrap_or(0);
+        if n < jtype.min_components() {
+            return false;
+        }
+        self.joint_editor_type = Some(jtype);
+        self.joint_editor_comp_a = 0;
+        // When there's only one component (Grounded case), pin comp_b to 0.
+        self.joint_editor_comp_b = if n >= 2 { 1 } else { 0 };
+        self.show_joint_editor = true;
+        true
+    }
+
+    /// Commit the currently-edited joint to `assembly.joints` based on the
+    /// editor state. Returns true on success.
+    pub fn commit_assembly_joint(&mut self) -> bool {
+        use cadkernel_modeling::JointType;
+        let jtype = match self.joint_editor_type {
+            Some(t) => t,
+            None => return false,
+        };
+        let asm = match self.assembly.as_mut() {
+            Some(a) => a,
+            None => return false,
+        };
+        let a = self.joint_editor_comp_a;
+        let b = self.joint_editor_comp_b;
+        let axis = cadkernel_math::Vec3 {
+            x: self.joint_editor_axis[0] as f64,
+            y: self.joint_editor_axis[1] as f64,
+            z: self.joint_editor_axis[2] as f64,
+        };
+        let origin = cadkernel_math::Point3 {
+            x: self.joint_editor_origin[0] as f64,
+            y: self.joint_editor_origin[1] as f64,
+            z: self.joint_editor_origin[2] as f64,
+        };
+        let joint = match jtype {
+            AssemblyJointType::Grounded => JointType::Grounded,
+            AssemblyJointType::Fixed => JointType::FixedJoint { component_a: a, component_b: b },
+            AssemblyJointType::Revolute => JointType::Revolute {
+                component_a: a, component_b: b, axis, origin,
+            },
+            AssemblyJointType::Cylindrical => JointType::Cylindrical {
+                component_a: a, component_b: b, axis, origin,
+            },
+            AssemblyJointType::Slider => JointType::Slider {
+                component_a: a, component_b: b, axis,
+            },
+            AssemblyJointType::Ball => JointType::BallJoint {
+                component_a: a, component_b: b, center: origin,
+            },
+            AssemblyJointType::Distance => JointType::AngleJoint {
+                component_a: a, component_b: b, angle: self.joint_editor_angle,
+            },
+            AssemblyJointType::Angle => JointType::AngleJoint {
+                component_a: a, component_b: b, angle: self.joint_editor_angle,
+            },
+            AssemblyJointType::Parallel => JointType::ParallelAxes {
+                component_a: a, component_b: b, axis_a: axis, axis_b: axis,
+            },
+            AssemblyJointType::Perpendicular => JointType::PerpendicularAxes {
+                component_a: a, component_b: b, axis_a: axis, axis_b: axis,
+            },
+            AssemblyJointType::Gear => JointType::GearJoint {
+                component_a: a, component_b: b, ratio: self.joint_editor_ratio,
+            },
+            AssemblyJointType::Rack => JointType::RackAndPinion {
+                component_a: a, component_b: b, pitch_radius: self.joint_editor_pitch,
+            },
+            AssemblyJointType::Screw => JointType::ScrewJoint {
+                component_a: a, component_b: b, axis, pitch: self.joint_editor_pitch,
+            },
+            AssemblyJointType::Belt => JointType::BeltJoint {
+                component_a: a, component_b: b, ratio: self.joint_editor_ratio,
+            },
+        };
+        asm.add_joint(joint);
+        self.show_joint_editor = false;
+        self.joint_editor_type = None;
+        true
     }
 }
 
@@ -1383,6 +1789,10 @@ pub(crate) fn draw_ui(
     dialogs::draw_shortcuts_dialog(ctx, gui);
     dialogs::draw_settings(ctx, gui, nav);
     dialogs::draw_plugin_manager(ctx, gui);
+    dialogs::draw_bom_dialog(ctx, gui);
+    dialogs::draw_joint_editor_dialog(ctx, gui);
+    dialogs::draw_material_picker_dialog(ctx, gui);
+    dialogs::draw_bc_editor_dialog(ctx, gui);
     if nav.show_view_cube {
         view_cube::draw_view_cube(ctx, vp.camera, gui, nav);
     }
@@ -1444,4 +1854,442 @@ pub(crate) fn draw_ui(
         i.pointer.latest_pos().map(|p| (p.x * ppp, p.y * ppp))
     });
 
+}
+
+// ---------------------------------------------------------------------------
+// Assembly dispatcher helper tests (Phase N full)
+// ---------------------------------------------------------------------------
+#[cfg(test)]
+mod assembly_helper_tests {
+    use super::*;
+    use cadkernel_math::Point3;
+    use cadkernel_modeling::{Assembly, JointType, make_box};
+    use cadkernel_topology::BRepModel;
+
+    fn make_assembly_with_n_named(parts: &[&str]) -> Assembly {
+        let mut model = BRepModel::new();
+        let b = make_box(&mut model, Point3::ORIGIN, 1.0, 1.0, 1.0).unwrap();
+        let mut asm = Assembly::new("T");
+        for p in parts {
+            asm.add_component(p, b.solid);
+        }
+        asm
+    }
+
+    #[test]
+    fn toggle_component_visibility_flips_flag() {
+        let mut gui = GuiState::new();
+        gui.assembly = Some(make_assembly_with_n_named(&["A", "B"]));
+        assert!(gui.assembly.as_ref().unwrap().components[0].visible);
+        assert!(gui.toggle_assembly_component_visibility(0));
+        assert!(!gui.assembly.as_ref().unwrap().components[0].visible);
+        assert!(gui.toggle_assembly_component_visibility(0));
+        assert!(gui.assembly.as_ref().unwrap().components[0].visible);
+    }
+
+    #[test]
+    fn toggle_component_visibility_no_assembly_noop() {
+        let mut gui = GuiState::new();
+        assert!(!gui.toggle_assembly_component_visibility(0));
+    }
+
+    #[test]
+    fn bill_of_materials_groups_by_name() {
+        let mut gui = GuiState::new();
+        // Two "Gear" + one "Shaft" → 2 entries.
+        gui.assembly = Some(make_assembly_with_n_named(&["Gear", "Gear", "Shaft"]));
+        assert!(gui.populate_bom_entries());
+        assert!(gui.show_bom_dialog);
+        assert_eq!(gui.bom_entries.len(), 2);
+        let gear = gui.bom_entries.iter().find(|e| e.name == "Gear").unwrap();
+        let shaft = gui.bom_entries.iter().find(|e| e.name == "Shaft").unwrap();
+        assert_eq!(gear.quantity, 2);
+        assert_eq!(shaft.quantity, 1);
+    }
+
+    #[test]
+    fn bill_of_materials_no_assembly_returns_false() {
+        let mut gui = GuiState::new();
+        assert!(!gui.populate_bom_entries());
+        assert!(!gui.show_bom_dialog);
+    }
+
+    #[test]
+    fn open_joint_editor_requires_two_components() {
+        let mut gui = GuiState::new();
+        gui.assembly = Some(make_assembly_with_n_named(&["Only"]));
+        assert!(!gui.open_joint_editor(AssemblyJointType::Revolute));
+        assert!(!gui.show_joint_editor);
+        assert!(gui.joint_editor_type.is_none());
+    }
+
+    #[test]
+    fn open_joint_editor_ok_with_two_plus_components() {
+        let mut gui = GuiState::new();
+        gui.assembly = Some(make_assembly_with_n_named(&["A", "B"]));
+        assert!(gui.open_joint_editor(AssemblyJointType::Revolute));
+        assert!(gui.show_joint_editor);
+        assert_eq!(gui.joint_editor_type, Some(AssemblyJointType::Revolute));
+        assert_eq!(gui.joint_editor_comp_a, 0);
+        assert_eq!(gui.joint_editor_comp_b, 1);
+    }
+
+    #[test]
+    fn commit_revolute_joint_appends_one_revolute() {
+        let mut gui = GuiState::new();
+        gui.assembly = Some(make_assembly_with_n_named(&["A", "B"]));
+        assert!(gui.open_joint_editor(AssemblyJointType::Revolute));
+        gui.joint_editor_axis = [0.0, 0.0, 1.0];
+        gui.joint_editor_origin = [1.0, 2.0, 3.0];
+        assert!(gui.commit_assembly_joint());
+        let joints = &gui.assembly.as_ref().unwrap().joints;
+        assert_eq!(joints.len(), 1);
+        assert!(matches!(joints[0], JointType::Revolute { .. }));
+        assert!(!gui.show_joint_editor);
+        assert!(gui.joint_editor_type.is_none());
+    }
+
+    #[test]
+    fn open_grounded_joint_ok_with_one_component() {
+        let mut gui = GuiState::new();
+        gui.assembly = Some(make_assembly_with_n_named(&["Only"]));
+        assert!(gui.open_joint_editor(AssemblyJointType::Grounded));
+        assert!(gui.show_joint_editor);
+        assert_eq!(gui.joint_editor_type, Some(AssemblyJointType::Grounded));
+    }
+
+    #[test]
+    fn commit_grounded_joint_appends_grounded() {
+        let mut gui = GuiState::new();
+        gui.assembly = Some(make_assembly_with_n_named(&["A"]));
+        assert!(gui.open_joint_editor(AssemblyJointType::Grounded));
+        assert!(gui.commit_assembly_joint());
+        let joints = &gui.assembly.as_ref().unwrap().joints;
+        assert_eq!(joints.len(), 1);
+        assert!(matches!(joints[0], JointType::Grounded));
+    }
+
+    #[test]
+    fn commit_slider_joint_appends_slider() {
+        let mut gui = GuiState::new();
+        gui.assembly = Some(make_assembly_with_n_named(&["A", "B"]));
+        assert!(gui.open_joint_editor(AssemblyJointType::Slider));
+        assert!(gui.commit_assembly_joint());
+        let joints = &gui.assembly.as_ref().unwrap().joints;
+        assert_eq!(joints.len(), 1);
+        assert!(matches!(joints[0], JointType::Slider { .. }));
+    }
+
+    #[test]
+    fn tree_assembly_section_does_not_panic_with_assembly() {
+        let mut gui = GuiState::new();
+        gui.assembly = Some(make_assembly_with_n_named(&["A", "B", "C"]));
+        let ctx = egui::Context::default();
+        let _ = ctx.run(egui::RawInput::default(), |c| {
+            egui::CentralPanel::default().show(c, |ui| {
+                crate::gui::tree::draw_assembly_section(ui, &mut gui, None);
+            });
+        });
+    }
+
+    #[test]
+    fn tree_assembly_section_noop_without_assembly() {
+        let mut gui = GuiState::new();
+        let ctx = egui::Context::default();
+        let _ = ctx.run(egui::RawInput::default(), |c| {
+            egui::CentralPanel::default().show(c, |ui| {
+                crate::gui::tree::draw_assembly_section(ui, &mut gui, None);
+            });
+        });
+    }
+
+    #[test]
+    fn joint_label_revolute_uses_arrow_notation() {
+        use crate::gui::tree::joint_label;
+        let j = JointType::Revolute {
+            component_a: 0,
+            component_b: 1,
+            axis: cadkernel_math::Vec3 { x: 0.0, y: 0.0, z: 1.0 },
+            origin: Point3::ORIGIN,
+        };
+        assert_eq!(joint_label(&j), "Revolute(0\u{2194}1)");
+    }
+
+    #[test]
+    fn joint_label_grounded_has_no_components() {
+        use crate::gui::tree::joint_label;
+        assert_eq!(joint_label(&JointType::Grounded), "Grounded");
+    }
+
+    #[test]
+    fn joint_label_fixed_and_gear() {
+        use crate::gui::tree::joint_label;
+        let f = JointType::FixedJoint { component_a: 2, component_b: 3 };
+        assert_eq!(joint_label(&f), "FixedJoint(2\u{2194}3)");
+        let g = JointType::GearJoint { component_a: 4, component_b: 5, ratio: 2.0 };
+        assert_eq!(joint_label(&g), "Gear(4\u{2194}5)");
+    }
+
+    #[test]
+    fn constraint_label_covers_all_variants() {
+        use crate::gui::tree::constraint_label;
+        use cadkernel_modeling::{AssemblyConstraint as C, ComponentId};
+        let fixed = C::Fixed(ComponentId(7));
+        assert_eq!(constraint_label(&fixed), "Fixed(comp 7)");
+        let coin = C::Coincident {
+            comp_a: ComponentId(0),
+            comp_b: ComponentId(1),
+            offset: 0.0,
+        };
+        assert_eq!(constraint_label(&coin), "Coincident(0,1)");
+        let conc = C::Concentric { comp_a: ComponentId(2), comp_b: ComponentId(3) };
+        assert_eq!(constraint_label(&conc), "Concentric(2,3)");
+        let dist = C::Distance {
+            comp_a: ComponentId(4),
+            comp_b: ComponentId(5),
+            distance: 10.0,
+        };
+        assert_eq!(constraint_label(&dist), "Distance(4,5)");
+        let ang = C::Angle {
+            comp_a: ComponentId(6),
+            comp_b: ComponentId(8),
+            angle: 90.0,
+        };
+        assert_eq!(constraint_label(&ang), "Angle(6,8)");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Phase O-a — material picker / BC editor unit tests
+// ---------------------------------------------------------------------------
+#[cfg(test)]
+mod fem_picker_tests {
+    use super::*;
+    use cadkernel_modeling::BoundaryCondition;
+
+    fn near(a: f64, b: f64) -> bool { (a - b).abs() <= 1e-6 * a.abs().max(b.abs()).max(1.0) }
+
+    #[test]
+    fn material_preset_all_six_match_fem_material_constructors() {
+        for (preset, e, nu, rho) in [
+            (MaterialPreset::Steel, 210.0e9, 0.30, 7850.0),
+            (MaterialPreset::Aluminum, 70.0e9, 0.33, 2700.0),
+            (MaterialPreset::Titanium, 114.0e9, 0.34, 4430.0),
+            (MaterialPreset::Copper, 117.0e9, 0.34, 8960.0),
+            (MaterialPreset::Concrete, 30.0e9, 0.20, 2400.0),
+            (MaterialPreset::CastIron, 170.0e9, 0.26, 7200.0),
+        ] {
+            let m = preset.to_material();
+            assert!(near(m.youngs_modulus, e) && near(m.poisson_ratio, nu) && near(m.density, rho),
+                "{} mismatch", preset.label());
+        }
+    }
+
+    #[test]
+    fn material_from_preset_custom_uses_user_values_and_falls_back_on_invalid() {
+        let m = material_from_preset(MaterialPreset::Custom, 123.0e9, 0.25, 5000.0);
+        assert!(near(m.youngs_modulus, 123.0e9) && near(m.poisson_ratio, 0.25) && near(m.density, 5000.0));
+        // Invalid (negative density) falls back to steel.
+        let f = material_from_preset(MaterialPreset::Custom, 1.0e9, 0.3, -1.0);
+        assert!(near(f.youngs_modulus, 210.0e9));
+        // Named preset ignores custom values.
+        let s = material_from_preset(MaterialPreset::Steel, 1.0, 0.1, 1.0);
+        assert!(near(s.youngs_modulus, 210.0e9));
+    }
+
+    #[test]
+    fn bc_kind_force_visibility_gate() {
+        assert!(!BcKind::FixedNode.shows_force_fields());
+        assert!(BcKind::Force.shows_force_fields());
+    }
+
+    #[test]
+    fn bc_kind_inputs_gate_matches_kernel_field_set() {
+        // (kind, node, element, vec3, scalar)
+        let cases = [
+            (BcKind::FixedNode,          true,  false, false, false),
+            (BcKind::Force,              true,  false, true,  false),
+            (BcKind::Pressure,           false, true,  false, true),
+            (BcKind::Displacement,       true,  false, true,  false),
+            (BcKind::Gravity,            false, false, true,  false),
+            (BcKind::DistributedLoad,    false, true,  true,  false),
+            (BcKind::Spring,             true,  false, false, true),
+            (BcKind::CentrifugalLoad,    false, false, true,  true),
+            (BcKind::SelfWeight,         false, false, true,  false),
+            (BcKind::SpringConstraint,   true,  false, true,  true),
+            (BcKind::BodyLoad,           false, false, true,  false),
+            (BcKind::InitialTemperature, true,  false, false, true),
+        ];
+        for (k, n, e, v, s) in cases {
+            let i = k.inputs();
+            assert_eq!((i.node, i.element, i.vec3, i.scalar), (n, e, v, s),
+                "{} inputs gate mismatch", k.label());
+        }
+    }
+
+    #[test]
+    fn bc_editor_state_to_fixed_node_uses_node_index_only() {
+        let mut s = BcEditorState::new(BcKind::FixedNode);
+        s.node_index = 42;
+        s.vec3_x = 999.0; // ignored for FixedNode.
+        match s.to_boundary_condition() {
+            BoundaryCondition::FixedNode(n) => assert_eq!(n, 42),
+            _ => panic!("expected FixedNode"),
+        }
+    }
+
+    #[test]
+    fn bc_editor_state_to_force_uses_xyz_components() {
+        let mut s = BcEditorState::new(BcKind::Force);
+        s.node_index = 7;
+        s.vec3_x = 10.0; s.vec3_y = -20.0; s.vec3_z = 30.0;
+        match s.to_boundary_condition() {
+            BoundaryCondition::Force { node, force } => {
+                assert_eq!(node, 7);
+                assert!(near(force.x, 10.0) && near(force.y, -20.0) && near(force.z, 30.0));
+            }
+            _ => panic!("expected Force"),
+        }
+    }
+
+    #[test]
+    fn bc_editor_state_to_pressure_uses_element_and_scalar() {
+        let mut s = BcEditorState::new(BcKind::Pressure);
+        s.element_index = 5; s.scalar_a = 1.5e6;
+        match s.to_boundary_condition() {
+            BoundaryCondition::Pressure { element, pressure } => {
+                assert_eq!(element, 5); assert!(near(pressure, 1.5e6));
+            }
+            _ => panic!("expected Pressure"),
+        }
+    }
+
+    #[test]
+    fn bc_editor_state_to_displacement_uses_node_and_vec3() {
+        let mut s = BcEditorState::new(BcKind::Displacement);
+        s.node_index = 3; s.vec3_x = 1.0; s.vec3_y = 2.0; s.vec3_z = 3.0;
+        match s.to_boundary_condition() {
+            BoundaryCondition::Displacement { node, displacement } => {
+                assert_eq!(node, 3);
+                assert!(near(displacement.x, 1.0) && near(displacement.y, 2.0)
+                    && near(displacement.z, 3.0));
+            }
+            _ => panic!("expected Displacement"),
+        }
+    }
+
+    #[test]
+    fn bc_editor_state_to_gravity_uses_vec3_only() {
+        let mut s = BcEditorState::new(BcKind::Gravity);
+        s.vec3_x = 0.0; s.vec3_y = 0.0; s.vec3_z = -9.81;
+        match s.to_boundary_condition() {
+            BoundaryCondition::Gravity { acceleration } => {
+                assert!(near(acceleration.z, -9.81));
+            }
+            _ => panic!("expected Gravity"),
+        }
+    }
+
+    #[test]
+    fn bc_editor_state_to_distributed_load_uses_element_and_vec3() {
+        let mut s = BcEditorState::new(BcKind::DistributedLoad);
+        s.element_index = 12; s.vec3_x = 100.0; s.vec3_y = 0.0; s.vec3_z = 50.0;
+        match s.to_boundary_condition() {
+            BoundaryCondition::DistributedLoad { element, load } => {
+                assert_eq!(element, 12);
+                assert!(near(load.x, 100.0) && near(load.z, 50.0));
+            }
+            _ => panic!("expected DistributedLoad"),
+        }
+    }
+
+    #[test]
+    fn bc_editor_state_to_spring_uses_node_and_scalar() {
+        let mut s = BcEditorState::new(BcKind::Spring);
+        s.node_index = 9; s.scalar_a = 1000.0;
+        match s.to_boundary_condition() {
+            BoundaryCondition::Spring { node, stiffness } => {
+                assert_eq!(node, 9); assert!(near(stiffness, 1000.0));
+            }
+            _ => panic!("expected Spring"),
+        }
+    }
+
+    #[test]
+    fn bc_editor_state_to_centrifugal_uses_axis_vec3_and_omega_scalar() {
+        let mut s = BcEditorState::new(BcKind::CentrifugalLoad);
+        s.vec3_x = 0.0; s.vec3_y = 0.0; s.vec3_z = 1.0; s.scalar_a = 100.0;
+        match s.to_boundary_condition() {
+            BoundaryCondition::CentrifugalLoad { axis, omega } => {
+                assert!(near(axis.z, 1.0) && near(omega, 100.0));
+            }
+            _ => panic!("expected CentrifugalLoad"),
+        }
+    }
+
+    #[test]
+    fn bc_editor_state_to_self_weight_uses_vec3_only() {
+        let mut s = BcEditorState::new(BcKind::SelfWeight);
+        s.vec3_z = -9.81;
+        match s.to_boundary_condition() {
+            BoundaryCondition::SelfWeight { gravity } => {
+                assert!(near(gravity.z, -9.81));
+            }
+            _ => panic!("expected SelfWeight"),
+        }
+    }
+
+    #[test]
+    fn bc_editor_state_to_spring_constraint_uses_node_scalar_and_direction() {
+        let mut s = BcEditorState::new(BcKind::SpringConstraint);
+        s.node_index = 4; s.scalar_a = 500.0;
+        s.vec3_x = 1.0; s.vec3_y = 0.0; s.vec3_z = 0.0;
+        match s.to_boundary_condition() {
+            BoundaryCondition::SpringConstraint { node_id, stiffness, direction } => {
+                assert_eq!(node_id, 4);
+                assert!(near(stiffness, 500.0) && near(direction.x, 1.0));
+            }
+            _ => panic!("expected SpringConstraint"),
+        }
+    }
+
+    #[test]
+    fn bc_editor_state_to_body_load_uses_vec3_only() {
+        let mut s = BcEditorState::new(BcKind::BodyLoad);
+        s.vec3_x = 0.0; s.vec3_y = 0.0; s.vec3_z = -1000.0;
+        match s.to_boundary_condition() {
+            BoundaryCondition::BodyLoad { force_density } => {
+                assert!(near(force_density.z, -1000.0));
+            }
+            _ => panic!("expected BodyLoad"),
+        }
+    }
+
+    #[test]
+    fn bc_editor_state_to_initial_temperature_uses_node_and_scalar() {
+        let mut s = BcEditorState::new(BcKind::InitialTemperature);
+        s.node_index = 11; s.scalar_a = 293.15;
+        match s.to_boundary_condition() {
+            BoundaryCondition::InitialTemperature { node, temperature } => {
+                assert_eq!(node, 11); assert!(near(temperature, 293.15));
+            }
+            _ => panic!("expected InitialTemperature"),
+        }
+    }
+
+    #[test]
+    fn pending_fem_material_default_is_steel() {
+        let g = GuiState::new();
+        assert!(near(g.pending_fem_material.youngs_modulus, 210.0e9));
+        assert!(near(g.pending_fem_material.density, 7850.0));
+    }
+
+    #[test]
+    fn pending_fem_material_clones_for_sticky_reuse() {
+        let mut g = GuiState::new();
+        g.pending_fem_material = cadkernel_modeling::FemMaterial::aluminum();
+        let snapshot = g.pending_fem_material.clone();
+        assert!(near(g.pending_fem_material.youngs_modulus, 70.0e9));
+        assert!(near(snapshot.youngs_modulus, 70.0e9));
+    }
 }

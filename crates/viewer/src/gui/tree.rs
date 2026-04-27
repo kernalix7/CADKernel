@@ -752,6 +752,9 @@ pub(crate) fn draw_model_tree_inline(
         theme::draw_separator(ui);
     }
 
+    // -- Assembly section (collapsible) --
+    draw_assembly_section(ui, gui, Some(scene));
+
     // -- Document root node --
     {
         let row_h = 22.0;
@@ -1178,7 +1181,10 @@ fn draw_object_row(
                     });
                 }
             } else {
-                gui.rename_edit = Some((id, obj.name.clone()));
+                // Frame the camera on this object (CAD-conventional double-click
+                // action). Rename remains accessible via F2 and the context menu.
+                gui.actions.push(GuiAction::SelectObject(id));
+                gui.actions.push(GuiAction::FocusObject(id));
             }
         }
 
@@ -1342,4 +1348,160 @@ fn params_label(p: &CreationParams) -> &'static str {
 #[allow(dead_code)]
 pub(crate) fn params_label_pub(p: &CreationParams) -> &'static str {
     params_label(p)
+}
+
+// ---------------------------------------------------------------------------
+// Assembly tree section
+// ---------------------------------------------------------------------------
+
+/// Render the Assembly section of the tree (Components / Constraints / Joints).
+/// No-op when there is no active assembly.
+pub(crate) fn draw_assembly_section(
+    ui: &mut egui::Ui,
+    gui: &mut GuiState,
+    scene: Option<&Scene>,
+) {
+    let Some(asm) = gui.assembly.as_ref() else { return; };
+    let title = format!(
+        "\u{1F527} Assembly \u{2014} \"{}\"  ({} components, {} constraints, {} joints)",
+        asm.name,
+        asm.num_components(),
+        asm.num_constraints(),
+        asm.joint_count(),
+    );
+    // Snapshot component rows with a scene-resolved ObjectId (if the solid
+    // handle matches a SceneObject). The lookup is done eagerly so that the
+    // immutable borrow of `asm` doesn't clash with `gui.actions.push` below.
+    let comps: Vec<(usize, String, bool, Option<ObjectId>)> = asm
+        .components
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            let oid = scene.and_then(|s| find_object_for_solid(s, c.solid));
+            (i, c.name.clone(), c.visible, oid)
+        })
+        .collect();
+    let constraint_rows: Vec<String> =
+        asm.constraints.iter().map(constraint_label).collect();
+    let joint_rows: Vec<String> = asm.joints.iter().map(joint_label).collect();
+
+    egui::CollapsingHeader::new(egui::RichText::new(title).size(11.5).color(theme::COLOR_ACCENT))
+        .id_salt("tree_assembly_root")
+        .default_open(true)
+        .show(ui, |ui| {
+            egui::CollapsingHeader::new(format!("Components ({})", comps.len()))
+                .id_salt("tree_assembly_comps")
+                .default_open(true)
+                .show(ui, |ui| {
+                    for (i, name, visible, oid) in &comps {
+                        ui.horizontal(|ui| {
+                            let eye = if *visible { "\u{25C9}" } else { "\u{25CB}" };
+                            if ui.small_button(eye).on_hover_text("Toggle visibility").clicked() {
+                                gui.actions.push(GuiAction::ToggleAssemblyComponentVisibility(*i));
+                            }
+                            let resp = ui.label(format!("\u{1F4E6} {name}"))
+                                .on_hover_text("Double-click to focus");
+                            if resp.double_clicked() {
+                                if let Some(id) = oid {
+                                    gui.actions.push(GuiAction::FocusObject(*id));
+                                }
+                            }
+                        });
+                    }
+                });
+            egui::CollapsingHeader::new(format!("Constraints ({})", constraint_rows.len()))
+                .id_salt("tree_assembly_cons")
+                .default_open(false)
+                .show(ui, |ui| {
+                    for (i, label) in constraint_rows.iter().enumerate() {
+                        ui.label(egui::RichText::new(format!("  {i}. {label}"))
+                            .size(10.5).color(theme::COLOR_DIM));
+                    }
+                });
+            egui::CollapsingHeader::new(format!("Joints ({})", joint_rows.len()))
+                .id_salt("tree_assembly_joints")
+                .default_open(false)
+                .show(ui, |ui| {
+                    for (i, label) in joint_rows.iter().enumerate() {
+                        ui.label(egui::RichText::new(format!("  {i}. {label}"))
+                            .size(10.5).color(theme::COLOR_DIM));
+                    }
+                });
+        });
+    theme::draw_separator(ui);
+}
+
+/// Pure helper: format an [`AssemblyConstraint`] as a one-line label for the
+/// tree panel. Matches the spec format: `Fixed(comp 0)`, `Coincident(a,b)`, etc.
+pub(crate) fn constraint_label(c: &cadkernel_modeling::AssemblyConstraint) -> String {
+    use cadkernel_modeling::AssemblyConstraint as C;
+    match c {
+        C::Fixed(id) => format!("Fixed(comp {})", id.0),
+        C::Coincident { comp_a, comp_b, .. } => {
+            format!("Coincident({},{})", comp_a.0, comp_b.0)
+        }
+        C::Concentric { comp_a, comp_b } => {
+            format!("Concentric({},{})", comp_a.0, comp_b.0)
+        }
+        C::Distance { comp_a, comp_b, .. } => {
+            format!("Distance({},{})", comp_a.0, comp_b.0)
+        }
+        C::Angle { comp_a, comp_b, .. } => {
+            format!("Angle({},{})", comp_a.0, comp_b.0)
+        }
+    }
+}
+
+/// Pure helper: format a [`JointType`] as a tree-row label. Uses the
+/// `Revolute(a↔b)` / `Grounded` / `FixedJoint(a↔b)` patterns.
+pub(crate) fn joint_label(j: &cadkernel_modeling::JointType) -> String {
+    use cadkernel_modeling::JointType as J;
+    match j {
+        J::Grounded => "Grounded".to_string(),
+        J::FixedJoint { component_a, component_b } => {
+            format!("FixedJoint({component_a}\u{2194}{component_b})")
+        }
+        J::Revolute { component_a, component_b, .. } => {
+            format!("Revolute({component_a}\u{2194}{component_b})")
+        }
+        J::Cylindrical { component_a, component_b, .. } => {
+            format!("Cylindrical({component_a}\u{2194}{component_b})")
+        }
+        J::Slider { component_a, component_b, .. } => {
+            format!("Slider({component_a}\u{2194}{component_b})")
+        }
+        J::BallJoint { component_a, component_b, .. } => {
+            format!("Ball({component_a}\u{2194}{component_b})")
+        }
+        J::ParallelAxes { component_a, component_b, .. } => {
+            format!("Parallel({component_a}\u{2194}{component_b})")
+        }
+        J::PerpendicularAxes { component_a, component_b, .. } => {
+            format!("Perpendicular({component_a}\u{2194}{component_b})")
+        }
+        J::AngleJoint { component_a, component_b, .. } => {
+            format!("Angle({component_a}\u{2194}{component_b})")
+        }
+        J::GearJoint { component_a, component_b, .. } => {
+            format!("Gear({component_a}\u{2194}{component_b})")
+        }
+        J::RackAndPinion { component_a, component_b, .. } => {
+            format!("Rack({component_a}\u{2194}{component_b})")
+        }
+        J::ScrewJoint { component_a, component_b, .. } => {
+            format!("Screw({component_a}\u{2194}{component_b})")
+        }
+        J::BeltJoint { component_a, component_b, .. } => {
+            format!("Belt({component_a}\u{2194}{component_b})")
+        }
+    }
+}
+
+/// Lookup the first [`SceneObject`] whose solid handle matches `solid`.
+/// Returns `None` if the assembly component is not mirrored in the scene.
+fn find_object_for_solid(
+    scene: &Scene,
+    solid: cadkernel_topology::Handle<cadkernel_topology::SolidData>,
+) -> Option<ObjectId> {
+    scene.visible_objects().find(|o| o.solid == solid).map(|o| o.id)
 }

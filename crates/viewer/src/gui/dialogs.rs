@@ -1,4 +1,4 @@
-use super::{GuiAction, GuiState, MirrorPlane};
+use super::{AssemblyJointType, BcKind, GuiAction, GuiState, MaterialPreset, MirrorPlane};
 use super::theme;
 use crate::nav::{BgPreset, NavConfig, NavStyle, OrbitStyle, RotationMode, UnitSystem};
 use crate::render::Projection;
@@ -1904,4 +1904,312 @@ fn shortcut_section(ui: &mut egui::Ui, icon: &str, title: &str, shortcuts: &[(&s
                 ui.end_row();
             }
         });
+}
+
+// ---------------------------------------------------------------------------
+// Assembly: Bill of Materials dialog
+// ---------------------------------------------------------------------------
+
+pub(crate) fn draw_bom_dialog(ctx: &egui::Context, gui: &mut GuiState) {
+    if !gui.show_bom_dialog {
+        return;
+    }
+    let mut open = true;
+    let mut close_clicked = false;
+    let total: usize = gui.bom_entries.iter().map(|e| e.quantity).sum();
+    let entries = gui.bom_entries.clone();
+    egui::Window::new("Bill of Materials")
+        .collapsible(false)
+        .resizable(true)
+        .default_width(360.0)
+        .open(&mut open)
+        .show(ctx, |ui| {
+            dialog_section(ui, "Parts");
+            egui::Grid::new("bom_grid").num_columns(3).spacing([14.0, 4.0]).striped(true).show(ui, |ui| {
+                ui.label(egui::RichText::new("Index").strong());
+                ui.label(egui::RichText::new("Part Name").strong());
+                ui.label(egui::RichText::new("Qty").strong());
+                ui.end_row();
+                for e in &entries {
+                    ui.label(format!("{}", e.index));
+                    ui.label(&e.name);
+                    ui.label(format!("{}", e.quantity));
+                    ui.end_row();
+                }
+            });
+            ui.add_space(6.0);
+            ui.label(egui::RichText::new(format!("Total parts: {total}")).strong());
+            ui.add_space(4.0);
+            if ui.button("Close").clicked() {
+                close_clicked = true;
+            }
+        });
+    if !open || close_clicked {
+        gui.show_bom_dialog = false;
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Assembly: Joint editor dialog
+// ---------------------------------------------------------------------------
+
+pub(crate) fn draw_joint_editor_dialog(ctx: &egui::Context, gui: &mut GuiState) {
+    if !gui.show_joint_editor || gui.joint_editor_type.is_none() {
+        return;
+    }
+    let jtype = gui.joint_editor_type.unwrap();
+    // Snapshot component (idx, name) pairs for ComboBox population.
+    let comps: Vec<(usize, String)> = gui
+        .assembly
+        .as_ref()
+        .map(|a| a.components.iter().enumerate().map(|(i, c)| (i, c.name.clone())).collect())
+        .unwrap_or_default();
+    if comps.len() < jtype.min_components() {
+        gui.show_joint_editor = false;
+        gui.joint_editor_type = None;
+        return;
+    }
+    let grounded = matches!(jtype, AssemblyJointType::Grounded);
+    let mut open = true;
+    let mut do_create = false;
+    let mut do_cancel = false;
+    let title = format!("Joint: {}", jtype.label());
+    egui::Window::new(title)
+        .collapsible(false)
+        .resizable(false)
+        .default_width(320.0)
+        .open(&mut open)
+        .show(ctx, |ui| {
+            dialog_section(ui, "Components");
+            egui::Grid::new("je_comps").num_columns(2).spacing([10.0, 4.0]).show(ui, |ui| {
+                ui.label("Component A:");
+                egui::ComboBox::from_id_salt("je_comp_a")
+                    .selected_text(comps.get(gui.joint_editor_comp_a)
+                        .map(|(i, n)| format!("{i}: {n}"))
+                        .unwrap_or_else(|| "?".into()))
+                    .show_ui(ui, |ui| {
+                        for (i, n) in &comps {
+                            ui.selectable_value(&mut gui.joint_editor_comp_a, *i,
+                                format!("{i}: {n}"));
+                        }
+                    });
+                ui.end_row();
+                if !grounded {
+                    ui.label("Component B:");
+                    egui::ComboBox::from_id_salt("je_comp_b")
+                        .selected_text(comps.get(gui.joint_editor_comp_b)
+                            .map(|(i, n)| format!("{i}: {n}"))
+                            .unwrap_or_else(|| "?".into()))
+                        .show_ui(ui, |ui| {
+                            for (i, n) in &comps {
+                                ui.selectable_value(&mut gui.joint_editor_comp_b, *i,
+                                    format!("{i}: {n}"));
+                            }
+                        });
+                    ui.end_row();
+                }
+            });
+            if !grounded {
+                dialog_section(ui, "Parameters");
+                egui::Grid::new("je_params").num_columns(2).spacing([10.0, 4.0]).show(ui, |ui| {
+                if joint_needs_axis(jtype) {
+                    ui.label("Axis X/Y/Z:");
+                    ui.horizontal(|ui| {
+                        for k in 0..3 {
+                            ui.add(egui::DragValue::new(&mut gui.joint_editor_axis[k])
+                                .speed(0.05));
+                        }
+                    });
+                    ui.end_row();
+                }
+                if joint_needs_origin(jtype) {
+                    let lab = if matches!(jtype, AssemblyJointType::Ball) { "Center:" } else { "Origin:" };
+                    ui.label(lab);
+                    ui.horizontal(|ui| {
+                        for k in 0..3 {
+                            ui.add(egui::DragValue::new(&mut gui.joint_editor_origin[k])
+                                .speed(0.1));
+                        }
+                    });
+                    ui.end_row();
+                }
+                if matches!(jtype, AssemblyJointType::Angle | AssemblyJointType::Distance) {
+                    ui.label("Angle (deg):");
+                    ui.add(egui::DragValue::new(&mut gui.joint_editor_angle)
+                        .range(-360.0..=360.0).speed(1.0));
+                    ui.end_row();
+                }
+                if matches!(jtype, AssemblyJointType::Screw | AssemblyJointType::Rack) {
+                    ui.label("Pitch:");
+                    ui.add(egui::DragValue::new(&mut gui.joint_editor_pitch)
+                        .range(0.01..=1000.0).speed(0.1));
+                    ui.end_row();
+                }
+                if matches!(jtype, AssemblyJointType::Gear | AssemblyJointType::Belt) {
+                    ui.label("Ratio:");
+                    ui.add(egui::DragValue::new(&mut gui.joint_editor_ratio)
+                        .range(0.01..=100.0).speed(0.05));
+                    ui.end_row();
+                }
+                });
+            }
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                if ui.add(egui::Button::new(
+                        egui::RichText::new("Create").strong().color(egui::Color32::WHITE))
+                        .fill(egui::Color32::from_rgb(0, 100, 180))
+                        .min_size(egui::vec2(70.0, 24.0)))
+                    .clicked()
+                {
+                    do_create = true;
+                }
+                if ui.add(egui::Button::new("Cancel").min_size(egui::vec2(60.0, 24.0)))
+                    .clicked()
+                {
+                    do_cancel = true;
+                }
+            });
+        });
+    if !open || do_cancel {
+        gui.show_joint_editor = false;
+        gui.joint_editor_type = None;
+    } else if do_create {
+        gui.actions.push(GuiAction::CommitAssemblyJoint);
+    }
+}
+
+fn joint_needs_axis(t: AssemblyJointType) -> bool {
+    matches!(t,
+        AssemblyJointType::Revolute
+        | AssemblyJointType::Cylindrical
+        | AssemblyJointType::Slider
+        | AssemblyJointType::Parallel
+        | AssemblyJointType::Perpendicular
+        | AssemblyJointType::Screw)
+}
+
+fn joint_needs_origin(t: AssemblyJointType) -> bool {
+    matches!(t,
+        AssemblyJointType::Revolute
+        | AssemblyJointType::Cylindrical
+        | AssemblyJointType::Ball)
+}
+
+// ---------------------------------------------------------------------------
+// Phase O-a — FEM material picker / BC editor dialogs
+// ---------------------------------------------------------------------------
+
+const MATERIAL_PRESETS: [MaterialPreset; 7] = [
+    MaterialPreset::Steel, MaterialPreset::Aluminum, MaterialPreset::Titanium,
+    MaterialPreset::Copper, MaterialPreset::Concrete, MaterialPreset::CastIron,
+    MaterialPreset::Custom,
+];
+
+pub(crate) fn draw_material_picker_dialog(ctx: &egui::Context, gui: &mut GuiState) {
+    if gui.material_picker_dialog.is_none() { return; }
+    let mut open = true;
+    let (mut do_ok, mut do_cancel) = (false, false);
+    let mut state = gui.material_picker_dialog.unwrap();
+    egui::Window::new("FEM Material").collapsible(false).resizable(false)
+        .default_width(320.0).open(&mut open).show(ctx, |ui| {
+            dialog_section(ui, "Preset");
+            for p in MATERIAL_PRESETS {
+                ui.radio_value(&mut state.selected, p, p.label());
+                ui.label(egui::RichText::new(p.description())
+                    .size(10.0).color(theme::COLOR_DIM).italics());
+            }
+            if state.selected == MaterialPreset::Custom {
+                dialog_section(ui, "Custom Properties");
+                egui::Grid::new("mat_custom").num_columns(2).spacing([10.0, 4.0]).show(ui, |ui| {
+                    ui.label("Young's Modulus (Pa):");
+                    ui.add(egui::DragValue::new(&mut state.youngs_modulus).range(1.0..=1.0e13).speed(1.0e8));
+                    ui.end_row();
+                    ui.label("Poisson Ratio:");
+                    ui.add(egui::DragValue::new(&mut state.poisson_ratio).range(0.0..=0.499).speed(0.01));
+                    ui.end_row();
+                    ui.label("Density (kg/m\u{00B3}):");
+                    ui.add(egui::DragValue::new(&mut state.density).range(1.0..=30000.0).speed(10.0));
+                    ui.end_row();
+                });
+            }
+            let (ok, cancel, _) = button_bar(ui, "OK");
+            do_ok = ok; do_cancel = cancel;
+        });
+    gui.material_picker_dialog = Some(state);
+    if !open || do_cancel { gui.material_picker_dialog = None; }
+    else if do_ok { gui.actions.push(GuiAction::CommitMaterialPicker); }
+}
+
+pub(crate) fn draw_bc_editor_dialog(ctx: &egui::Context, gui: &mut GuiState) {
+    if gui.bc_editor_dialog.is_none() { return; }
+    let n_nodes = gui.fem_analysis.as_ref().map(|a| a.mesh.nodes.len()).unwrap_or(0);
+    let n_elems = gui.fem_analysis.as_ref().map(|a| a.mesh.elements.len()).unwrap_or(0);
+    let max_node = n_nodes.saturating_sub(1);
+    let max_elem = n_elems.saturating_sub(1);
+    let mut open = true;
+    let (mut do_ok, mut do_cancel) = (false, false);
+    let mut state = gui.bc_editor_dialog.unwrap();
+    const ALL_KINDS: &[BcKind] = &[
+        BcKind::FixedNode, BcKind::Force, BcKind::Pressure, BcKind::Displacement,
+        BcKind::Gravity, BcKind::DistributedLoad, BcKind::Spring,
+        BcKind::CentrifugalLoad, BcKind::SelfWeight, BcKind::SpringConstraint,
+        BcKind::BodyLoad, BcKind::InitialTemperature,
+    ];
+    egui::Window::new("FEM Boundary Condition").collapsible(false).resizable(false)
+        .default_width(320.0).open(&mut open).show(ctx, |ui| {
+            dialog_section(ui, "Type");
+            egui::ComboBox::from_id_salt("bc_kind").selected_text(state.bc_kind.label())
+                .show_ui(ui, |ui| {
+                    for &k in ALL_KINDS {
+                        ui.selectable_value(&mut state.bc_kind, k, k.label());
+                    }
+                });
+            let inputs = state.bc_kind.inputs();
+            if inputs.node {
+                dialog_section(ui, "Node");
+                egui::Grid::new("bc_node_grid").num_columns(2).spacing([10.0, 4.0]).show(ui, |ui| {
+                    ui.label("Node Index:");
+                    let range = if n_nodes == 0 { 0..=usize::MAX } else { 0..=max_node };
+                    ui.add(egui::DragValue::new(&mut state.node_index).range(range));
+                    ui.end_row();
+                });
+            }
+            if inputs.element {
+                dialog_section(ui, "Element");
+                egui::Grid::new("bc_elem_grid").num_columns(2).spacing([10.0, 4.0]).show(ui, |ui| {
+                    ui.label("Element Index:");
+                    let range = if n_elems == 0 { 0..=usize::MAX } else { 0..=max_elem };
+                    ui.add(egui::DragValue::new(&mut state.element_index).range(range));
+                    ui.end_row();
+                });
+            }
+            if n_nodes == 0 { validation_error(ui, "No analysis \u{2014} create one first."); }
+            if inputs.vec3 {
+                dialog_section(ui, state.bc_kind.vec3_label());
+                egui::Grid::new("bc_vec3_grid").num_columns(2).spacing([10.0, 4.0]).show(ui, |ui| {
+                    for (lab, v) in [
+                        ("X:", &mut state.vec3_x),
+                        ("Y:", &mut state.vec3_y),
+                        ("Z:", &mut state.vec3_z),
+                    ] {
+                        ui.label(lab);
+                        ui.add(egui::DragValue::new(v).speed(1.0));
+                        ui.end_row();
+                    }
+                });
+            }
+            if inputs.scalar {
+                dialog_section(ui, "Magnitude");
+                egui::Grid::new("bc_scalar_grid").num_columns(2).spacing([10.0, 4.0]).show(ui, |ui| {
+                    ui.label(state.bc_kind.scalar_label());
+                    ui.add(egui::DragValue::new(&mut state.scalar_a).speed(1.0));
+                    ui.end_row();
+                });
+            }
+            let (ok, cancel, _) = button_bar(ui, "OK");
+            do_ok = ok; do_cancel = cancel;
+        });
+    gui.bc_editor_dialog = Some(state);
+    if !open || do_cancel { gui.bc_editor_dialog = None; }
+    else if do_ok { gui.actions.push(GuiAction::CommitBcEditor); }
 }

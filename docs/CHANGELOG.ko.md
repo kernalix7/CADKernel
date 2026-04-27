@@ -11,6 +11,273 @@
 
 ### 추가됨
 
+#### V37: Phase O-a 후속 — BcKind 12개 variant + Ground Component 메뉴 (2026-04-26)
+
+**배경.** Phase O-a는 `BcKind { FixedNode | Force }`를 동작하는 편집기 파이프라인과 함께 출하했지만 커널의 17개 `BoundaryCondition` variant 중 나머지 10개는 레거시 `AddFemConstraint` 경로에 있었고(다중 노드/서피스 4개는 더 풍부한 노드 집합 선택 UX 필요), 이 후속 작업은 `BcKind`를 나머지 10개 스칼라 / 단일 노드 / Vec3 전용 variant로 확장하여 통합 편집기에 담고, 기존 `JointType::Grounded`를 프로그래매틱 디스패치뿐 아니라 메뉴로도 도달 가능하도록 Assembly 메뉴에 "Ground Component" 엔트리를 추가합니다.
+
+**`BcKind` 확장(2 → 12 variant).** 신규 arm: `Pressure { element, pressure }`, `Displacement { node, displacement }`, `Gravity { acceleration }`, `DistributedLoad { element, load }`, `Spring { node, stiffness }`, `CentrifugalLoad { axis, omega }`, `SelfWeight { gravity }`, `SpringConstraint { node_id, stiffness, direction }`, `BodyLoad { force_density }`, `InitialTemperature { node, temperature }`.
+
+**Vec3/스칼라 오버로드를 가진 단일 편집기** (`crates/viewer/src/gui/mod.rs` + `dialogs.rs`). 10개 서브 모달 대신 `BcEditorState`가 단일 `vec3_x/y/z` 트리플, 단일 `scalar_a`, `node_index`와 `element_index`를 가집니다. 다이얼로그가 variant별 라벨을 다시 붙임: `vec3_label()`은 "Force (N)" / "Displacement (m)" / "Acceleration (m/s²)" / "Load (N/m²)" / "Axis" / "Gravity (m/s²)" / "Direction" / "Force Density (N/m³)"를 반환; `scalar_label()`은 "Pressure (Pa)" / "Stiffness (N/m)" / "Omega (rad/s)" / "Temperature (K)"를 반환. `to_boundary_condition()`이 오버로드된 필드를 variant별 올바른 커널 필드 이름(axis vs displacement vs force vs gravity vs load vs direction vs acceleration vs force_density)으로 라우팅. `BcInputs` 매트릭스가 다이얼로그가 렌더링할 입력을 게이팅: variant별 `(node, element, vec3, scalar)`. `app.rs`는 변경 없음 — 헬퍼 API가 안정적이라 `OpenBcEditor(BcKind)` / `CommitBcEditor` 디스패처 시그니처가 동일.
+
+**메뉴 3개 서브-서브메뉴로 재구성** (`crates/viewer/src/gui/menu.rs`). 평평한 "Boundary Conditions" 서브메뉴가 3개 그룹으로 분리: **Loads**(Force, Pressure, Gravity, DistributedLoad, CentrifugalLoad, SelfWeight, BodyLoad), **Constraints**(FixedNode, Displacement, Spring, SpringConstraint), **Thermal**(InitialTemperature). 자라는 평평한 목록 대신 FEM 메뉴에 12개 엔트리.
+
+**미진행(4개 variant, 별도 세션).** `TieConstraint`, `RigidBody`, `ContactConstraint`, `SectionPrint`는 단순 스칼라/Vec3 입력이 아닌 다중 노드 집합 / 서피스 피커 UX가 필요하므로 노드 집합 피커가 존재할 때까지 레거시 `AddFemConstraint(FemConstraintType)` 경로에 머묾. `gui/mod.rs`의 `BcKind` 위 주석 블록에 문서화.
+
+**Ground Component 메뉴 엔트리** (`crates/viewer/src/gui/mod.rs` + `gui/menu.rs`). Assembly 메뉴의 기존 "Joints" 서브메뉴 위 신규 엔트리가 기존 joint 편집기 플로우(Phase N 완전판이 이미 1-컴포넌트 Grounded 케이스 지원)를 통해 `GuiAction::AddAssemblyJoint(AssemblyJointType::Grounded)`를 연결. `Grounded`가 이제 메뉴로 도달 가능하므로 `AssemblyJointType`의 `#[allow(dead_code)]` 제거.
+
+**추가된 테스트(총 21개).** `gui::mod::fem_picker_tests`의 unit 테스트 11개(모든 `BcKind` variant에 대한 12행 매트릭스 입력 가시성 테이블 체크 + 신규 variant별 `BcEditorState → BoundaryCondition` 매핑). `crates/viewer/tests/gui_action_integration.rs`의 통합 테스트 10개(디스패처 호출 미러링, 신규 variant별 매칭되는 `BoundaryCondition` 1개를 `fem_analysis.boundary_conditions`에 추가).
+
+**검증 (2026-04-26).**
+- `cargo build --workspace` — 0 에러.
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` — 0 경고.
+- `cargo test --workspace --no-fail-fast` — **2,659 통과, 0 실패, 0 무시.** Sticky-material 폴리시 베이스라인 대비 +21 테스트.
+
+**LOC 변경.** ~495 production+test net(mod.rs +285, dialogs.rs +28, menu.rs +16, gui_action_integration +166), 450 예산보다 45 LOC 초과 — 11개 variant별 unit 테스트가 각 ~10줄이라 전적으로 테스트 폭에 의해 발생. 프로덕션 코드는 예산 안에서 깔끔; 초과는 테스트 폭에서 — Vec3/스칼라 오버로드의 명시적 variant별 커버리지를 위한 합리적 거래로 수용.
+
+---
+
+#### V37: Phase O-a — FEM 재료 선택기 + 경계 조건 편집기 (2026-04-26)
+
+**배경.** Phase N-min에서 `GuiState.fem_analysis: Option<AnalysisContainer>`와 `CreateFemAnalysis` / `SolveStatic` dispatcher arm을 연결했지만, 재료는 `FemMaterial::steel()`로 하드코딩되어 있고 경계 조건을 추가할 GUI 경로가 없어 사용자가 Lua/Python으로 빠져야 했습니다. Phase O-a는 누락된 UI를 추가; 전체 결과 시각화(tet 메시 위 stress/displacement 컬러맵)는 렌더링 파이프라인 작업이 필요해 Phase O-b로 분리.
+
+**재료 선택기 다이얼로그** (`crates/viewer/src/gui/dialogs.rs` + `gui/mod.rs`). `GuiAction::OpenMaterialPicker`가 여는 신규 모달. 6개 프리셋 재료(`Steel`, `Aluminum`, `Titanium`, `Copper`, `Concrete`, `CastIron`)의 라디오 버튼 — 각각 매칭되는 `cadkernel_modeling::fem::FemMaterial` 생성자를 값 중복 없이 사용하므로 커널 측 재료 업데이트가 자동 반영. `Custom` 옵션은 3개 숫자 입력(Young's modulus, Poisson 비율, 밀도)을 노출하여 `FemMaterial::custom()` 검증을 거침. `CommitMaterialPicker`는 신규 `GuiState.pending_fem_material: FemMaterial` 필드에 기록; 이후 `CreateFemAnalysis` 호출들이 그 값을 새 `AnalysisContainer`로 clone(sticky-material UX — 한 번 선택, 분석 간 재사용). 상태: `MaterialPickerState { selected, custom_youngs_modulus, custom_poisson_ratio, custom_density }`. `FemMaterial`은 이제 `Clone`을 derive(3개 `f64` 필드, 자명히 Clone-safe).
+
+**경계 조건 편집기** (`crates/viewer/src/gui/dialogs.rs`). `GuiAction::OpenBcEditor(BcKind)`가 여는 신규 모달. `BcKind`는 가장 많이 쓰이는 두 variant — `FixedNode`와 `Force` — 를 다룸. 다이얼로그는 종류 드롭다운, 노드 인덱스 스피너(분석 존재 시 메시 노드 수로 제한), kind가 `FixedNode`일 때 숨겨지는 force XYZ 필드. `CommitBcEditor`는 `BoundaryCondition::FixedNode(n)` 또는 `BoundaryCondition::Force { node, force }`를 구성하고 `gui.fem_analysis.is_some()`일 때만 `fem_analysis.add_bc(bc)` 호출; 아니면 상태바를 "FEM: no analysis — create one first"로 설정. 나머지 15개 `BoundaryCondition` variant(Pressure, Displacement, Gravity, Spring 등)는 여전히 기존 `GuiAction::AddFemConstraint(FemConstraintType)` 경로 사용 — 통합은 추후.
+
+**메뉴 통합** (`crates/viewer/src/gui/menu.rs`). FEM workbench 메뉴에 기존 Steel/Aluminum 빠른 설정 위로 "Pick Material…" 엔트리 추가, "Boundary Conditions" 서브메뉴(Add Fixed Node, Add Force) 추가.
+
+**추가된 테스트.** `gui::mod::fem_picker_tests`의 unit 테스트(7개 신규: 6개 프리셋 → `FemMaterial` 생성자 매핑, `Custom` 사용자 값 + 잘못된 입력 시 steel 폴백, `BcKind::Force` 필드 가시성 게이트, FixedNode/Force `BcEditorState` → `BoundaryCondition` 매핑, `pending_fem_material` 기본값 steel, sticky 재사용을 위한 clone 라운드트립). `crates/viewer/tests/gui_action_integration.rs`의 통합 테스트(4개 신규: `commit_material_picker_updates_pending_material_for_each_preset`, `create_fem_analysis_consumes_pending_material`, `commit_bc_editor_fixed_node_appends_one_matching_bc`, `commit_bc_editor_force_appends_one_matching_bc_xyz`). 총 11개 신규 테스트.
+
+**검증 (2026-04-26).**
+- `cargo build --workspace` — 0 에러.
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` — 0 경고.
+- `cargo test --workspace --no-fail-fast` — **2,638 통과, 0 실패, 0 무시.** Phase N full 베이스라인 대비 +11 테스트.
+
+**LOC 변경.** Phase O-a 본체: 400 LOC 정확히 예산 한계(production: app.rs +38, dialogs.rs +89, menu.rs +6, gui/mod.rs +195; test: gui_action_integration.rs +72). Sticky-material 폴리시: 1줄 커널 `Clone` derive + 7줄 dispatcher swap(`mem::replace` → `clone()`) + 8줄 clone 라운드트립 unit 테스트.
+
+**알려진 후속 항목.** (1) `BcKind`는 `FixedNode`와 `Force`만 모델링; 다른 15개 BC variant는 여전히 레거시 `AddFemConstraint` 경로 사용. (2) Phase O-b — tet 메시 위 stress/displacement 컬러맵 — 미진행. (3) 재료 선택기의 `Custom` 잘못된 입력 경로는 조용히 steel로 폴백; DragValue 범위가 UI에서 이를 도달 불가능하게 유지하지만 경로는 존재.
+
+---
+
+#### V37: Phase N 완전판 — Assembly 트리 패널, BOM 다이얼로그, Joint 편집기 (2026-04-24)
+
+**배경.** Phase N-min에서 이미 `GuiState.assembly: Option<Assembly>` scaffolding과 `GuiAction::BillOfMaterials` / `AddAssemblyJoint` stub 디스패처 arm이 완료된 상태. Phase N 완전판은 그 stub들을 모델링 계층의 `Assembly` 구현(이미 완성)을 건드리지 않은 채 UI 측에서 완전히 기능하는 Assembly workbench로 전환 — 씬 트리 계층, BOM 모달, Joint 편집기 모달.
+
+**Assembly 트리 패널** (`crates/viewer/src/gui/tree.rs`). `gui.assembly.is_some()`일 때 씬 트리가 객체 트리 아래에 4-branch Assembly 섹션을 렌더링: root 라벨은 `"{name} (N components, M constraints, K joints)"`, Components branch는 컴포넌트별 1행 + `GuiAction::ToggleAssemblyComponentVisibility`에 연결된 eye 아이콘, Constraints branch는 `Fixed(comp N)` / `Coincident(a,b)` / `Concentric(a,b)` / `Distance(a,b,d)` / `Angle(a,b,θ)` 라벨, Joints branch는 `Revolute(a↔b)` / `FixedJoint(a↔b)` / `Grounded(N)` 등의 포맷. 컴포넌트 행 더블클릭은 컴포넌트의 `Handle<SolidData>`가 `SceneObject`에 매핑되면 (`find_object_for_solid`를 통한 `Handle` 동등 매치) `GuiAction::FocusObject`를 발동.
+
+**BOM 뷰 다이얼로그** (`crates/viewer/src/gui/dialogs.rs`). `GuiAction::BillOfMaterials`가 이제 `Assembly::bill_of_materials()`를 3컬럼 테이블(Index | Name | Quantity)과 "Total parts: {sum}" 푸터로 렌더링하는 모달을 엽니다. `assembly.is_none()`일 경우 디스패처는 상태바를 "Assembly: no assembly — create one first"로 설정하고 상태 변경은 수행하지 않습니다. 모달 상태는 `GuiState`의 `show_bom_dialog` + `bom_entries: Vec<BomEntry>`로 오픈 시점에 채워집니다.
+
+**Joint 편집기 UI** (`crates/viewer/src/gui/dialogs.rs`). `GuiAction::AddAssemblyJoint(joint_type)`가 요청된 타입으로 사전 시딩된 모달을 엽니다. 2개 컴포넌트 드롭다운은 `assembly.components`를 이름으로 나열; 선택된 `JointType` variant와 관련된 필드만 표시 (Revolute/Cylindrical은 axis+origin, Slider는 axis만, BallJoint는 center, AngleJoint는 angle, GearJoint/BeltJoint는 ratio, ScrewJoint는 axis+pitch, RackAndPinion은 pitch_radius, ParallelAxes/PerpendicularAxes는 2-axis pair). OK는 매칭되는 `JointType::{variant} {…}`를 구성하고 `assembly.add_joint(joint)` 호출; Cancel은 상태 변경 없이 닫기. `Grounded`는 component_a만 필요 — 그에 따라 게이팅.
+
+**추가된 테스트.** `gui::mod::assembly_helper_tests`의 unit 테스트(6개 신규: joint 라벨 Revolute/Grounded/Fixed/Gear 포맷, constraint 라벨 커버리지, 단일 컴포넌트 Grounded open+commit). `crates/viewer/tests/gui_action_integration.rs`의 통합 테스트(디스패처 호출 미러링, 5개 신규: 컴포넌트 가시성 토글, 중복 BOM 집계, 빈 assembly BOM, Revolute joint `assembly.joints`에 추가, 단일 컴포넌트에서 Grounded joint 허용). 기존 `tree_assembly_section_*` 테스트 2개는 신규 `Option<&Scene>` 인자를 받도록 갱신.
+
+**검증 (2026-04-24).**
+- `cargo build --workspace` — 0 에러.
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` — 0 경고.
+- `cargo test --workspace --no-fail-fast` — **2,627 통과, 0 실패, 0 무시.** UX pass 베이스라인 대비 +21 테스트.
+
+**LOC 변경.** Production ≈ 160 net(tree.rs +72, gui/mod.rs +82, dialogs.rs +6). Test ≈ 80(gui_action_integration +80). 총 ≈ 240 LOC, 500 예산 이내. `app.rs`는 변경 0 — Phase N-min이 이미 `GuiState` 헬퍼 메서드(`populate_bom_entries`, `open_joint_editor`, `commit_assembly_joint`, `toggle_assembly_component_visibility`)를 통해 모든 디스패처 arm을 연결해 두었기 때문.
+
+**Assembly 로드맵 잔여 항목.** `JointType::Grounded`를 위한 메뉴 엔트리(Assembly workbench 메뉴의 "Ground Component" 버튼) — 현재 `Grounded`는 프로그래매틱 `GuiAction` 디스패치로만 도달 가능. Phase N 스펙의 다른 항목은 모두 출하됨.
+
+---
+
+#### V36: UX 패스 — gizmo 정밀도, 트리 포커스, Properties AABB (2026-04-24)
+
+**배경.** V36 감사가 2,590 / 0 / 0으로 종결된 뒤, 이미 scaffolding은 있으나 작은 어포던스가 빠져 있던 4개 사용자 표시 상호작용을 정리하는 집중 UX 패스. 드리프트 방지를 위해 범위를 production+test 합쳐 ≤300 LOC로 제한. Sketch drag는 감사 결과 이미 FreeCAD 수준(제약 인식 `drag_solve`, 그리드 스냅, point/midpoint/intersection 스냅, FreeCAD 스타일 녹색 스냅 표시자) — 변경 없음.
+
+**Gizmo 정밀도** (`crates/viewer/src/gui/overlays.rs`). 3D 변환 gizmo 드래그가 이제 modifier 키를 존중합니다. Shift-drag는 동작을 0.1× 속도로 느리게 하여 정밀 위치 지정; Ctrl-drag는 translation을 1 mm, rotation을 1°, scale을 10%로 스냅. gizmo 모드 레이블 아래 suffix("Shift", "Ctrl", "Shift+Ctrl")가 활성 modifier를 표시. `precision_multiplier`, `snap_to_step`, `gizmo_modifier_suffix` 헬퍼는 순수 함수; `gui::overlays::gizmo_precision_tests`에 8개 unit 테스트.
+
+**트리 더블클릭 → 카메라 포커스** (`crates/viewer/src/gui/tree.rs` + `gui/mod.rs` + `app.rs`). 신규 `GuiAction::FocusObject(ObjectId)`가 해당 객체의 캐시된 AABB에 카메라를 맞춥니다. Scene tree의 body 행을 더블클릭하면 이제 inline rename 대신 `FocusObject`가 실행됩니다(F2가 기존 이름 변경 바인딩 유지, 일반 CAD 앱과 일치). 통합 테스트 `focus_object_dispatch_fits_camera_to_single_object_aabb`, `focus_object_dispatch_is_a_noop_on_empty_vertex_list`.
+
+**Properties 패널 — AABB extents** (`crates/viewer/src/gui/properties.rs`). Placement 섹션이 이제 선택된 객체의 캐시된 `aabb_min`/`aabb_max`에서 계산한 Width / Depth / Height 행을 표시. `bbox_extents(obj)` 헬퍼는 `properties.rs:1060`. 3개 통합 테스트(`properties_aabb_extents_match_box_constructor`, `properties_aabb_extents_match_sphere_diameter`, `compute_aabb_matches_cached_object_fields`) + 3개 unit 테스트.
+
+**검증 (2026-04-24).**
+- `cargo build --workspace` — 오류 0.
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` — 경고 0.
+- `cargo test --workspace --no-fail-fast` — **통과 2,606, 실패 0, 무시 0.** R2c 기준선 대비 +16 테스트.
+
+**LOC 영향.** Production ≈ 60 (app.rs +11, gui/mod.rs +4, tree.rs +3, overlays.rs +35, properties.rs +29 순증). Test ≈ 210 (overlays unit +62, properties unit +48, gui_action_integration +100). 합계 ≈ 270 LOC, 300 예산 내.
+
+---
+
+#### V36: 품질 감사 — 2c라운드 (boolean splitter 재작성) (2026-04-23)
+
+**배경.** 2c라운드는 동일한 boolean splitter / 분류 파이프라인을 공유하는 3건의 남은 정확성 실패(K1 겹치는 박스 합집합, K3 관통 구멍 차집합, K3 비볼록 L-minus-cylinder)와 U1 Difference 부호 무시를 닫습니다. 이전 라운드(R2a)가 `SharedBuilder`, `SplitBuilder`, `split_face_along_curves`, `copy_face_with_geometry`를 인프라로 랜딩; R2c가 그 위에서 분류 및 chord 병합 작업을 완성합니다.
+
+**`crates/modeling/src/boolean/classify.rs`.** `FacePosition::OnBoundary`를 두 개의 구분된 서브 상태로 분리하여, 동일평면 면 쌍이 연산별로 올바른 유지/폐기 규칙을 받도록 했습니다:
+- `OnBoundarySame` — A, B 내부가 공유 평면의 같은 쪽에 있음 (동일한 매칭 면, 일치하는 pocket).
+- `OnBoundaryOpposite` — 내부가 반대쪽에 있음 (두 박스가 한 면을 따라 만남).
+
+`classify_face_with_coplanar`의 내부 샘플 선택을 재작성했습니다. 이전 코드는 edge 중점을 정점 평균 centroid 쪽으로 오프셋했는데, keyhole / slit 다각형(centroid가 구멍 내부에 위치)에서는 잘못된 영역에서 샘플을 생성했습니다. 새 샘플러는 edge-tangent × face-normal 내부 수직선을 사용해 두 개의 다른 오프셋에서 16개 후보를 생성한 뒤, 투영된 다각형에 대한 2D point-in-polygon 테스트로 필터링 — 재료 영역 내부에 엄격히 있는 샘플만 남습니다.
+
+**`crates/modeling/src/boolean/evaluate.rs`.** `boolean_op`의 face-kept 규칙이 이제 4-way 분류와 일치합니다:
+- Union: A는 `Outside | OnBoundarySame` 유지; B는 `Outside` 유지.
+- Intersection: A는 `Inside | OnBoundarySame` 유지; B는 `Inside` 유지.
+- Difference: A는 `Outside | OnBoundaryOpposite` 유지; B는 `Inside` 유지(뒤집힘 — 조각별 방향 해석은 이제 파이프라인 내부에서 해결, face-copy 경계에서가 아님).
+
+**`crates/modeling/src/boolean/face_split.rs`.** `merge_chords_into_polylines_with_boundary`가 이제 순서 무관 끝점 쌍으로 chord 레코드를 중복 제거합니다. pocket과 hole에서 box 윗면이 하나의 cylinder cap(동일평면) + 모든 cylinder 벽(비동일평면)과 짝을 지어 같은 원을 따라 중복된 segment를 생성하는데, graph walker가 중복된 edge에서 멈추고 있었습니다.
+
+**테스트 un-ignore.** `boolean_subtract_box_minus_sphere_shrinks_volume` (U1) — 더 이상 `#[ignore]`가 아닙니다. 이제 splitter가 조각 방향을 올바르게 잡으므로 `box(4³) − sphere(r=1.5)`는 부피가 64보다 엄격히 작은 솔리드를 생성합니다.
+
+**검증 (2026-04-23).**
+- `cargo build --workspace` — 오류 0.
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` — 경고 0.
+- `cargo test --workspace --no-fail-fast` — **통과 2,590, 실패 0, 무시 0.** Phase N-min 대비 +8 통과, −3 실패, −1 무시.
+
+**이것이 닫는 것.** V36 R1의 원래 실패 케이스(`cargo test --workspace --no-fail-fast` 초기 기준선 2,558 / 9 / 18) 전부가 이제 수정되거나, dispatcher를 통해 end-to-end로 연결되거나, 통과하는 테스트에서 문서화-및-단언됩니다. 576/576 FreeCAD-parity dispatcher 암이 실제 계산된 결과물을 반환합니다. 의도적 실패 0 청정 상태 달성.
+
+---
+
+#### V36: Phase N-min — Assembly / FEM dispatcher 연결 (2026-04-22)
+
+**배경.** R2b-cont 감사에서 남은 6개 `#[ignore]` 마커 중 5개가 진짜 subsystem 스텁(Assembly×3, FEM×2)임이 확인됨에 따라, Phase N-min은 기존 `techdraw_sheet: Option<DrawingSheet>` 패턴을 미러링하는 최소 `Option<T>` 상태만 `GuiState`에 추가하여 두 subsystem의 modeling-crate API를 viewer dispatcher에 연결합니다. 이번 패스에서 새 viewer 패널은 만들지 않았습니다.
+
+**GuiState 상태 추가** (`crates/viewer/src/gui/mod.rs`).
+- `pub assembly: Option<cadkernel_modeling::Assembly>`
+- `pub fem_analysis: Option<cadkernel_modeling::AnalysisContainer>`
+
+**Assembly dispatcher 암 연결** (`crates/viewer/src/app.rs`).
+- `CreateAssembly` → `Assembly::new("New Assembly")`를 `gui.assembly`에 저장.
+- `InsertComponent` → `assembly.add_component(name, current_solid)`. 어셈블리가 없으면 빈 어셈블리를 자동 초기화; 솔리드 미선택 시 status 메시지.
+- `SolveAssembly` → `assembly.solve(100)`; 수렴 여부, Err, no-assembly 경로 모두 로컬 `SolveMsg` enum을 거쳐 `log_info`/`log_warning`으로 디스패치 (이중 `&mut self` 대출 문제 회피).
+
+**FEM dispatcher 암 연결.**
+- `CreateFemAnalysis` → `generate_tet_mesh(&model, solid, 1.0)` + `AnalysisContainer::new(mesh, FemMaterial::steel())`. 노드/요소 개수를 보고.
+- `SolveStatic` → `container.run_static()`; 성공 시 BC 개수와 `max_displacement` 보고, 오류는 `log_warning`, 컨테이너가 비어 있으면 status 메시지. 동일한 borrow-splitting enum 패턴.
+
+**테스트 재작성 및 un-ignore** (`crates/viewer/tests/gui_action_integration.rs`).
+- `assembly_create_new_assembly_is_empty`, `assembly_insert_component_increments_count`, `assembly_solve_distance_constraint_converges` — `Assembly::new` / `add_component` / `solve(200)` 체인을 미러링. 컴포넌트 개수, 고유 ID, Fixed + Distance(5.0) 쌍에 대한 Newton-Raphson 수렴을 assert.
+- `fem_create_analysis_builds_tet_mesh_with_steel_material` — `generate_tet_mesh(...)` + `AnalysisContainer::new`를 미러링. 비어있지 않은 메쉬와 초기 BC/result가 비어 있음을 assert.
+- `fem_solve_static_produces_displacement_result` — `add_bc(FixedNode)` + `add_bc(Force { ... })` + `run_static()`을 미러링. 변위 벡터 크기가 노드 수와 일치함을 assert.
+
+**검증 (2026-04-22).**
+- `cargo build --workspace` — 오류 0.
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` — 경고 0.
+- `cargo test --workspace --no-fail-fast` — **통과 2,582, 실패 3, 무시 1**. R2b-cont 대비 +5 통과, −5 무시. 유일하게 남은 `#[ignore]`는 U1 Difference 부호(R2c boolean splitter 재작성 범위).
+
+**Phase N-min이 올바른 크기인 이유.** Assembly와 FEM modeling API(컴포넌트 트리, 조인트, DoF, tet 메쉬 빌더, 재료 라이브러리, static/modal/thermal 솔버)는 이미 오래전에 완성되어 있었습니다 — 간극은 오직 viewer 상태였습니다. 전체 Phase N(Assembly 트리 패널, BOM 뷰, 조인트 UI)과 Phase O(Analysis 패널, 재료 선택 UI, 결과 시각화)는 후속 작업으로 남지만, 이제 dispatcher 계약은 솔직합니다: 모든 암은 실제 계산된 결과물을 반환합니다.
+
+---
+
+#### V36: 품질 감사 — 2b라운드 후속 (2026-04-22)
+
+**배경.** `crates/viewer/tests/gui_action_integration.rs`의 11개 `#[ignore]` 마커를 감사한 결과 5개가 오래된 상태임이 확인되었습니다 — 해당 dispatcher 암(MeshRepair, TechDrawAddView, TechDrawThreeView, TechDrawExportSvg, CreateHelix)은 이전 라운드에서 이미 완전히 연결되었지만, 테스트는 `unreachable!()` 스텁 본문에서 재작성되지 않았습니다. 이번 패스는 이 5개 마커를 dispatcher의 `cadkernel_io` 및 `cadkernel_modeling` 호출 체인을 미러링하는 실제 assertion으로 전환합니다.
+
+**테스트 재작성 및 un-ignore** (`crates/viewer/tests/gui_action_integration.rs`).
+- `mesh_repair_evaluate_and_repair_returns_valid_mesh` — `evaluate_and_repair(mesh)`를 미러링. 비어있지 않은 vertex/index 버퍼와 `indices.len() % 3 == 0`을 assert.
+- `techdraw_add_view_projects_solid_to_sheet` — `project_solid(model, solid, ProjectionDir::Front)` + `DrawingSheet::a4_landscape()`에 push를 미러링. 뷰에 edge가 있음을 assert.
+- `techdraw_three_view_populates_three_views` — `three_view_drawing(model, solid)`를 미러링. 세 뷰 모두 채워짐을 assert.
+- `techdraw_export_svg_renders_nonempty_svg` — `drawing_to_svg(&sheet).render()`를 미러링. 문자열이 잘 형성된 non-trivial SVG인지 assert.
+- `create_helix_produces_tube_solid_with_faces` — `make_helix(..., 16, 8)`을 미러링. 솔리드가 shell과 face를 갖고 있음을 assert ("helix는 wire-only"라는 오래된 주장을 정정).
+
+**여전히 이월됨.**
+- R2c / Task #9 boolean splitter 재작성 — K1 union, K3 cylinder-through-box, K3 L-minus-cylinder 여전히 실패; U1 Difference 부호 여전히 ignore.
+- Assembly (3개 암)와 FEM (2개 암) — viewer 상태가 없는 진짜 subsystem 스텁. 연결하려면 새 Assembly/FEM viewer 패널이 필요하며 FREECAD_PARITY_PLAN Phase N 및 O에서 추적됩니다.
+
+**검증 (2026-04-22).**
+- `cargo build --workspace` — 오류 0.
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` — 경고 0.
+- `cargo test --workspace --no-fail-fast` — **통과 2,577, 실패 3, 무시 6**. 실패는 R2b와 동일(K1 + K3 쌍); 5개 오래된 스텁이 ignored에서 passing으로 이동.
+
+**R2b 대비 수치 변화.** R2b: 2,572 / 3 / 11. R2b-cont: 2,577 / 3 / 6. 순: **+5 통과, −5 무시**, 신규 실패 없음.
+
+---
+
+#### V36: 품질 감사 — 2b라운드 (2026-04-21)
+
+**배경.** 2b라운드는 1라운드 감사에서 식별된 U3 dispatcher-stub 그룹을 겨냥합니다 — `self.log_info(...)`만 호출하고 실제 Scene 지오메트리를 생성하지 않던 GuiAction 변형들입니다. 이번 패스는 16개 스텁 중 5개를, 이미 `Handle<SolidData>`를 반환하는 `cadkernel_modeling` 함수에 dispatcher 암을 연결하는 방식으로 해결합니다. UX 회귀 없음: 메뉴 클릭이 기본 예시 솔리드를 생성하는 방식은 CreateBox / CreateCylinder 흐름과 동일합니다.
+
+**수정됨.**
+- **SurfaceFilling, SurfaceBoundary** (`crates/viewer/src/app.rs`). dispatcher 암이 이제 `cadkernel_modeling::filling()`을 기본 경계(SurfaceFilling은 2×2 정사각형, SurfaceBoundary는 단위 육각형)와 함께 호출하고, 반환된 `SurfaceFillingResult.solid`를 `add_to_scene()`으로 추가합니다.
+- **SurfacePipe** (`crates/viewer/src/app.rs`). dispatcher 암이 이제 `pipe_surface()`를 기본 2-단위 수직 경로, 반지름 0.25로 호출하여 튜브형 솔리드를 생성합니다.
+- **DraftRectangle, DraftPolygon** (`crates/viewer/src/app.rs`). dispatcher 암이 `make_rectangle_wire()` / `make_polygon_wire()`로 경계 폴리라인을 만들고 `filling()`로 채워 평면 패치 솔리드를 생성합니다. `CreationParams::DraftRectangle` / `DraftPolygon`과 함께 `add_to_scene()`되어 Object Tree와 Properties 패널에서 파라메트릭 편집이 재개됩니다.
+
+**테스트 재작성 및 un-ignore** (`crates/viewer/tests/gui_action_integration.rs`).
+- `surface_filling_creates_solid_from_boundary`, `surface_boundary_fills_closed_polyline`, `surface_pipe_creates_solid_along_path`, `draft_rectangle_fills_patch_and_adds_to_scene`, `draft_polygon_fills_patch_and_adds_to_scene` — 이전에는 `#[ignore]` 아래에서 `unreachable!()`을 호출하던 스텁 마커 테스트였습니다. 이제 dispatcher의 modeling 호출 체인을 미러링하고 `scene.len() == 1` 및 비어있지 않은 vertex 버퍼를 assert합니다.
+- `draft_line_creates_wire_topology_in_model` — DraftLine은 `Scene`이 `Handle<SolidData>`만 저장하고 wire 프리미티브를 지원하지 않으므로 여전히 wire-only입니다. 테스트는 이제 `make_line_draft()`를 직접 실행하여 2개 vertex + 1개 edge가 `BRepModel`에 추가됨을 assert합니다. viewer의 wire 렌더링은 FREECAD_PARITY_PLAN Phase L에서 추적됩니다.
+
+**여전히 이월됨.**
+- R2b 남은 11개 U3 스텁 (MeshRepair, TechDraw {Add, Three, ExportSvg}, Assembly {Create, Insert, Solve}, FEM {CreateAnalysis, SolveStatic}, CreateHelix) — 헤드리스 생성 경로 또는 Scene 레벨의 wire 지원이 필요합니다.
+- R2c / Task #9 boolean splitter 재작성 — 3개 K1/K3 실패와 U1 ignored 테스트는 R2a에서 그대로 이월됩니다.
+
+**검증 (2026-04-21).**
+- `cargo build --workspace` — 오류 0.
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` — 경고 0.
+- `cargo test --workspace --no-fail-fast` — **통과 2,572, 실패 3, 무시 11**. 실패는 R2a와 동일(K1 + K3 쌍); 6개 U3 테스트가 ignored에서 passing으로 이동.
+- `cargo test --manifest-path crates/python/Cargo.toml` — 42개 통과.
+
+**R2a 대비 수치 변화.** R2a: 2,566 / 3 / 17. R2b: 2,572 / 3 / 11. 순: **+6 통과, −6 무시**, 신규 실패 없음.
+
+---
+
+#### V36: 품질 감사 — 2a라운드 (2026-04-21)
+
+**배경.** 2라운드는 1라운드 감사가 드러낸 Critical/High 버그들을 정리합니다. 이번 패스에서 11개 정확성 결함 중 6건을 해결했습니다. 일반 위치 boolean 3건(K1, K3)과 U1 Difference 부호 버그는 splitter 재작성이 필요하여 2c라운드(Task #9)로 명시적으로 이월합니다.
+
+**수정됨.**
+- **I1 STEP 곡면 내보내기 (`crates/io/src/step.rs`).** 내보내기에서 face surface를 분류하여 `CYLINDRICAL_SURFACE`, `SPHERICAL_SURFACE`, `CONICAL_SURFACE`, `TOROIDAL_SURFACE`를 발행합니다. `export_face_surface()`로 무조건 평면화하던 이전 경로를 대체. 원통 라운드트립에서 곡률이 보존됩니다. `step_roundtrip_cylinder_surface_stays_curved` 통과.
+- **I2 IGES face/shell 레코드 (`crates/io/src/iges.rs`).** 내보내기에서 face loop을 순회하면서 u×v 그리드로 샘플링한 뒤 face당 Type 128 `RationalBSplineSurface`를 발행합니다. 재가져오기가 와이어프레임이 아니라 solid 기하를 복원합니다. `iges_roundtrip_spline_surface_lost` 통과.
+- **K2 extrude seam watertight (`crates/modeling/src/features/extrude.rs`).** 6개 면 전체가 하나의 `EdgeCache`를 공유하여 cap 경계의 seam 엣지가 중복 제거되고, 각 엣지가 정확히 2개 면과 인접합니다. `extrude_square_profile` 통과.
+- **K4 fillet/chamfer 합성 가능 (`crates/modeling/src/features/fillet.rs`, `chamfer.rs`).** 신규 배치 API `fillet_edges(model, solid, edges, radius)` / `chamfer_edges(model, solid, edges, distance)` 추가. 엣지 슬라이스를 원본 위상에 대해 한 번에 적용하므로, 개별 엣지를 순차 호출할 때 handle이 stale해지는 문제를 회피합니다. `fillet_all_12_edges_of_box`, `chamfer_all_12_edges_of_box` 통과.
+- **K1b 동일평면 boolean (`crates/modeling/src/boolean/face_split.rs`).** 곡면–곡면 교선 마칭이 빈 결과를 내고 face 평면이 일치하는 경우, `compute_planar_intersection` fallback이 평면 분할 다각형을 생성합니다. 박스 위에 박스가 얹혀서 top이 동일평면인 경우 올바르게 boolean이 수행됩니다. `boolean_on_coplanar_faces` 통과.
+- **U2 스케치 solver 수렴 (`crates/sketch/src/solver.rs`).** `Fixed` 제약이 없을 때 Tikhonov anchor를 구축하도록 변경(이전의 단일점 anchor는 취약했음). 수렴 판정은 step norm이 아니라 residual 벡터의 infinity-norm으로 전환. `Horizontal`의 Jacobian 기여를 Δy residual의 `(0, 1, 0, -1)` 직접 항으로 설정. `sketcher_solve_horizontal_constraint_zeros_dy` 통과, `#[ignore]` 해제.
+
+**이월 작업(2c라운드)에서 재사용되는 인프라.**
+- `SharedBuilder` (`crates/modeling/src/boolean/evaluate.rs`): 위치 기반 정점 중복 제거(허용오차 1e-6) + 방향 지정 반변 매핑. 복사된 면들이 정점을 공유하고 공유 엣지에서 twin을 연결. K1/K3가 필요로 하는 manifold 재구축의 선결 인프라.
+- `SplitBuilder` 및 `split_face_along_curves`, `copy_face_with_geometry` (`crates/modeling/src/boolean/face_split.rs`). 현재는 K1b 평면 fallback에서 사용. 2c라운드의 일반 위치 face-split 재작성이 이 기반 위에 구축됩니다.
+
+**Difference B-face 방향에 대한 범위 주해.** 초기 `copy_face_shared` 구현은 Difference 시 B-face winding을 뒤집어 U1(박스 − 구가 77.9를 반환, 기대 ~50)을 해결하려 했습니다. 그러나 `compute_mass_properties`가 `|signed volume|`을 사용하는 divergence theorem 기반이므로, 그 flip은 오히려 *정확히 동작하던* pocket/hole 경로의 부호를 뒤집어 버렸습니다. `pocket_sketch_on_box_removes_material`과 `hole_on_box_removes_cylindrical_material`의 회귀가 이를 드러냈습니다. 이제 winding은 복사 시점에서 그대로 유지하며, 도구(B) 기여의 부호를 뒤집어야 하는 올바른 위치는 splitter 재작성(2c라운드 Task #9)입니다. 면 복사 경계에서 뒤집는 것이 아닙니다. U1은 테스트 속성에 명시적 2c라운드 태그와 함께 다시 `#[ignore]` 처리했습니다.
+
+**2c라운드(Task #9)로 이월.**
+- K1 `union_of_two_overlapping_boxes` (일반 위치 합집합의 비-manifold 결과)
+- K3 `subtract_cylinder_through_box`, `nonconvex_subtraction_l_minus_cylinder` (관통 구멍 및 비볼록 피감수 face-split)
+- U1 `boolean_subtract_box_minus_sphere_shrinks_volume` (Difference 부호/방향)
+
+세 건 모두 같은 splitter 재작성을 공유합니다: 반대쪽 면으로 교선 전파(관통 구멍), splitter 다각형의 내부 끝점 처리, 분할 경계를 가로지르는 올바른 twin 링키지로 shell 재구축.
+
+**검증 (2026-04-21).**
+- `cargo build --workspace` — 오류 0.
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` — 경고 0.
+- `cargo test --workspace` — **통과 2,566, 실패 3, 무시 17**. 실패 3건은 위에 이월된 K1/K3 사례이고, 무시 17건은 GuiAction 스텁 16건 + 2c라운드 대기 중인 U1.
+- `cargo test --manifest-path crates/python/Cargo.toml` — 42개 통과.
+
+**1라운드 대비 수치 변화.** 1라운드: 2,558 / 9 / 18. 2a라운드: 2,566 / 3 / 17. 순: **+8 통과, −6 실패, −1 무시** (U2는 un-ignore 후 통과; I1, I2, K1b, K2, K4 신규 통과; U1은 명시적 재-ignore).
+
+---
+
+#### V36: 품질 감사 — 1라운드 (2026-04-17)
+
+**배경.** 이전 버전까지는 디스패처 도달 가능성 기준으로 FreeCAD 576개 기능 전체를 달성했다고 기록해 왔습니다. V36 1라운드는 이 주장을 의도적으로 정정합니다. 새로 추가된 네 개의 감사(audit) 테스트 스위트는 커널, I/O, 뷰어를 현실적인 입력으로 구동하면서 **수치적/위상적 정확성까지 검증**합니다. no-panic만 확인하는 것이 아니라, 결과가 실제로 올바른지 단언하도록 작성했습니다. 틀린 부분이 나오면 시끄럽게 실패하도록 설계했고, 실제로 실패했습니다.
+
+**CLI 수정 — `src/main.rs`, 신규 `tests/cli.rs`:**
+- `main.rs`를 `clap` derive 파서로 재작성했습니다. 이제 `--script <PATH>`, `--mcp`, `-V/--version` 플래그를 실제로 인식합니다. Lua 예제(`examples/lua/*.lua` 5개)와 MCP 세션 예제는 문서에서 이 플래그들을 광고해 왔지만, 실제 바이너리는 인자를 전부 무시하고 무조건 GUI를 띄우고 있었습니다.
+- 신규 `tests/cli.rs` (6개): `--version` 배너, `--script hello_cad.lua` 실행, `--mcp`가 `tools/list` JSON-RPC 요청을 stdio로 처리, 알 수 없는 플래그/누락된 스크립트 오류 경로.
+
+**신규 감사 테스트 파일 (총 169개):**
+
+- `tests/cli.rs` — **6개**, 전부 통과.
+- `crates/modeling/tests/real_world_kernel.rs` — **16개** (통과 9, 실패 7). 겹치는 박스, 관통 구멍, 전체 모서리 필릿 등 현실적 형상에 대해 primitive → feature → boolean 파이프라인을 끝까지 돌립니다.
+- `crates/io/tests/real_world_io.rs` — **54개** (통과 52, 실패 2). 11개 포맷의 내보내기→재가져오기 라운드트립 + 잘못된 입력에 대한 파서 퍼즈 25개(패닉 0건). 실패 2건은 STEP/IGES 내보내기의 실제 결함을 드러냅니다.
+- `crates/viewer/tests/gui_action_integration.rs` — **93개** (통과 75, 무시 18). 헤드리스로 도달 가능한 모든 GuiAction 변종을 디스패치하고 Scene 상태 변화를 단언합니다. `#[ignore]` 중 2개는 실제 버그(Scene Difference 부호, 스케치 solver 수렴), 나머지 16개는 디스패처 스텁 갭입니다.
+
+**발견된 버그.** Critical 5건, High 5건, Medium 1건, 스텁 16건. 재현 방법과 수정 위치 포함 전체 카탈로그: [`docs/V36_BUG_TRIAGE.md`](V36_BUG_TRIAGE.md) 참조.
+
+- **Kernel (5건):** 합집합 및 동일평면 boolean에서 비-manifold 결과(K1/K1b), 관통 구멍에서 subtract face-split 불완전(K3, 기대 부피의 약 67%), extrude 시 edge dedup이 seam 정점을 붕괴시킴(K2), fillet/chamfer가 같은 shell에 재적용할 때 비-합성 가능(K4).
+- **IO (2건):** STEP 내보내기가 곡면을 평면화 — 원통이 라운드트립에서 곡률을 잃음(I1, `step.rs:1114`); IGES 내보내기가 와이어프레임만 작성, face/shell 레코드 없음(I2, `iges.rs:458`).
+- **Viewer (버그 2건 + 스텁 16건):** Scene 레벨 `Difference`가 원본보다 *더 큰* 부피를 반환(U1, Scene↔modeling 경계에서 인자 순서 문제); 스케치 solver가 `Horizontal` 제약 residual을 절반만 줄이고 `converged=true`로 보고(U2). 16개 GuiAction 변종은 현재 디스패처 스텁 — 요청을 받아서 로그만 남기고 SceneObject를 만들지 않습니다.
+
+**parity 주장의 현실화.** 576개 기능 모두 디스패처 수준에서는 도달 가능합니다. 감사 결과, 그중 최소 11개가 현실적 입력에서 구조적으로 잘못된 결과를 내고, 16개는 no-op임을 보였습니다. 2라운드 수정 후 실제 수치로 이 항목을 다시 정정합니다.
+
+**1라운드에서는 코드 수정을 하지 않았습니다** — 의도적으로 카탈로그 단계에 한정했습니다. 2라운드 수정 우선순위는 `docs/V36_BUG_TRIAGE.md`에 있습니다.
+
+**검증.**
+- `cargo build --workspace` — 오류 0.
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` — 경고 0.
+- `cargo test --workspace` — 통과 2,558, 실패 9, 무시 18 (V35 베이스라인 2,416 통과; 169개 감사 테스트 추가; 실패 9건과 무시 18건은 모두 의도된 것이며 triage 문서에 기록).
+
+---
+
 #### V35: 통합 테스트 커버리지 — topology & io (2026-04-17)
 
 **topology 크레이트 신규 통합 테스트 100개** (`crates/topology/tests/topology_advanced.rs`):

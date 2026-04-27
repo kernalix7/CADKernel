@@ -47,12 +47,12 @@ pub use compound_ops::{
     BooleanFragmentsResult, SliceToCompoundResult, boolean_fragments, compound_filter,
     explode_compound, slice_to_compound,
 };
-pub use chamfer::{ChamferResult, chamfer_edge};
+pub use chamfer::{ChamferResult, chamfer_edge, chamfer_edges};
 pub use defeature::{auto_defeaturing, remove_face, simplify_solid};
 pub use cross_sections::cross_sections;
 pub use draft::{DraftResult, draft_faces};
 pub use extrude::{ExtrudeResult, extrude};
-pub use fillet::{FilletResult, fillet_edge, fillet_edge_segments};
+pub use fillet::{FilletResult, fillet_edge, fillet_edge_segments, fillet_edges};
 pub use face_from_wires::{FaceFromWiresResult, PointsFromShapeResult, face_from_wires, points_from_shape};
 pub use groove::{GrooveResult, groove};
 pub use hole::{HoleResult, countersunk_hole, hole};

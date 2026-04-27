@@ -32,6 +32,7 @@
 - [20. Project Templates](#20-project-templates)
 - [21. Convenience API](#21-convenience-api)
 - [22. Example Scripts](#22-example-scripts)
+- [23. Known Limitations (V36 audit)](#23-known-limitations-v36-audit)
 
 ---
 
@@ -1182,3 +1183,83 @@ cadkernel --mcp < examples/mcp/session.json
 | **TNP** | Topology Naming Problem |
 | **AABB** | Axis-Aligned Bounding Box |
 | **SSI** | Surface-Surface Intersection |
+
+---
+
+## 23. Known Limitations (V36 audit — CLOSED 2026-04-23)
+
+V36 Round 1 (2026-04-17) added four audit test suites (`tests/cli.rs`, `crates/modeling/tests/real_world_kernel.rs`, `crates/io/tests/real_world_io.rs`, `crates/viewer/tests/gui_action_integration.rs`) that assert analytical correctness on realistic inputs. Round 2a (2026-04-21) fixed 6 of the 11 catalogued correctness defects in place. Round 2b (2026-04-21) wired 5 of the 16 U3 dispatcher stubs to Scene. Round 2b-cont (2026-04-22) rewrote 5 stale `#[ignore]` markers that were already dispatcher-wired but never verified. Phase N-min (2026-04-22) wired the remaining 5 genuine subsystem stubs (Assembly×3, FEM×2) through minimal `Option<T>` state on `GuiState` and closed the last `#[ignore]` markers outside the R2c splitter scope. **Round 2c (2026-04-23) completed the boolean splitter / classification rewrite and closed all three remaining correctness failures plus the U1 ignore.** Workspace state is now **2,590 passing, 0 failing, 0 ignored** — every originally catalogued V36 R1 defect is either fixed, dispatcher-wired end-to-end, or documented-and-asserted in a passing test. Full per-bug status is in [`docs/V36_BUG_TRIAGE.md`](V36_BUG_TRIAGE.md).
+
+**Round 2c — boolean splitter / classification rewrite (landed 2026-04-23).**
+
+- `crates/modeling/src/boolean/classify.rs` — split `FacePosition::OnBoundary` into `OnBoundarySame` and `OnBoundaryOpposite`. The previous three-way classification lost the information about whether A's and B's interiors sat on the same or opposite sides of a shared plane, which is exactly the information the `boolean_op` face-kept rules need. `classify_face_with_coplanar` now emits the four-way classification. Interior-sample selection was also rewritten: the prior code offset edge-midpoints toward the vertex-average centroid, which for keyhole / slit polygons placed samples in the hole region. The new sampler builds the edge-tangent × face-normal inward perpendicular, generates 16 candidates at two offsets, then filters each through a 2D point-in-polygon test against the polygon projection.
+- `crates/modeling/src/boolean/evaluate.rs` — face-kept rules in `boolean_op` now match the four-way classification. Union keeps `Outside | OnBoundarySame` from A, `Outside` from B. Intersection keeps `Inside | OnBoundarySame` from A, `Inside` from B. Difference keeps `Outside | OnBoundaryOpposite` from A, `Inside` from B (flipped — the per-fragment orientation that R2a's failed winding-flip was reaching for is now resolved here inside the evaluator, not at the face-copy boundary).
+- `crates/modeling/src/boolean/face_split.rs` — `merge_chords_into_polylines_with_boundary` now dedupes chord records by unordered endpoint pair. For pockets and holes, a box-top face pairs with one cylinder cap (coplanar) plus all cylinder walls (non-coplanar), producing duplicate segments along the same circle; the graph walker was stalling on redundant edges.
+
+**Tests that moved to passing in R2c.** `union_of_two_overlapping_boxes` (K1), `subtract_cylinder_through_box` (K3), `nonconvex_subtraction_l_minus_cylinder` (K3), and `boolean_subtract_box_minus_sphere_shrinks_volume` (U1, un-ignored). Incidental regressions that the classify fix resolved along the way: `pad_sketch_onto_box_increases_volume`, `hole_on_box_removes_cylindrical_material`, `quick::test_quick_union_disjoint`.
+
+**Fixed in Round 2a:**
+
+- **STEP export** (`crates/io/src/step.rs`) — curved surfaces (cylinder / sphere / cone / torus) now emit the corresponding STEP entities via `classify_surface()` + `emit_surface_class()`.
+- **IGES export** (`crates/io/src/iges.rs`) — face iteration + u×v sampling now emits Type 128 `RationalBSplineSurface` per face; solids roundtrip through IGES.
+- **Coplanar booleans** (`crates/modeling/src/boolean/face_split.rs`) — planar fallback via `compute_planar_intersection` when SSI marching returns empty.
+- **Extrude watertightness** (`crates/modeling/src/features/extrude.rs`) — all six faces share a single `EdgeCache`, so seam dedup produces clean 2-incident-face edges.
+- **Fillet / chamfer composability** — new batched APIs `fillet_edges(model, solid, edges, radius)` and `chamfer_edges(model, solid, edges, distance)` apply all ops against the original topology, sidestepping the stale-handle problem of sequential single-edge calls.
+- **Sketch solver convergence** (`crates/sketch/src/solver.rs`) — Tikhonov anchor when no `Fixed` constraint is present; convergence predicate is residual infinity-norm; `Horizontal` Jacobian is the direct `(0, 1, 0, -1)` of the Δy residual.
+
+**Deferred to Round 2c (`Task #9`, boolean splitter rewrite):**
+
+- **General-position boolean** (`crates/modeling/src/boolean/`): union of two overlapping boxes produces non-manifold output; subtract drops through-holes on the face-split pipeline (~67% of expected volume in one reference scenario). Round 2c will extend the splitter to propagate intersection curves onto opposite faces, handle interior endpoints in splitter polygons, and rebuild manifold twins along the intersection loop.
+- **Difference sign/orientation**: `boolean_op(…, Difference)` on `box − sphere` returns a larger volume than the minuend. Correct place for per-fragment orientation resolution is inside the splitter (R2c), not at the face-copy boundary. An earlier R2 attempt to flip B-face winding in `copy_face_shared` regressed pocket/hole tests because `compute_mass_properties` takes `|signed volume|`; the flip was reverted in R2a.
+
+Infrastructure prepared for the Round 2c rewrite is already landed: `SharedBuilder` (position-dedup vertices + directed half-edge / twin map) in `boolean/evaluate.rs`; `SplitBuilder` + `split_face_along_curves` + `copy_face_with_geometry` in `boolean/face_split.rs`.
+
+**GuiAction dispatcher — Round 2b state.** 5 of the 16 U3 stubs are now wired to Scene:
+
+- **SurfaceFilling** and **SurfaceBoundary** call `cadkernel_modeling::filling()` with default boundaries.
+- **SurfacePipe** calls `pipe_surface()` with a default 2-unit vertical path at radius 0.25.
+- **DraftRectangle** and **DraftPolygon** build a wire via `make_rectangle_wire()` / `make_polygon_wire()` then fill it with `filling()`; the resulting solid is added to Scene with `CreationParams::DraftRectangle` / `DraftPolygon` for parametric reopen.
+
+**GuiAction dispatcher — Round 2b-cont state.** Audited the 11 remaining `#[ignore]` markers and found 5 were stale — **MeshRepair**, **TechDrawAddView**, **TechDrawThreeView**, **TechDrawExportSvg**, and **CreateHelix** were already wired end-to-end in prior rounds; their tests still held `unreachable!()` bodies. Those 5 tests were rewritten to mirror the existing dispatcher paths (`evaluate_and_repair`, `project_solid`, `three_view_drawing`, `drawing_to_svg`, `make_helix`). The "CreateHelix returns a wire" claim in the old test comment was wrong — `make_helix` produces a tubular solid with shells and faces.
+
+**GuiAction dispatcher — Phase N-min state.** Added `pub assembly: Option<cadkernel_modeling::Assembly>` and `pub fem_analysis: Option<cadkernel_modeling::AnalysisContainer>` to `GuiState` (mirrors the existing `techdraw_sheet: Option<DrawingSheet>` pattern) and wired 5 dispatcher arms:
+
+- **CreateAssembly** → `Assembly::new("New Assembly")` stored in `gui.assembly`.
+- **InsertComponent** → `assembly.add_component(name, current_solid)` (auto-initialises empty assembly if none exists).
+- **SolveAssembly** → `assembly.solve(100)`; reports converged / not-converged / error / no-assembly via a local `SolveMsg` enum that unifies the `log_info` / `log_warning` / `log_error` / `status_message` branches after the `&mut self.gui.assembly` borrow is released.
+- **CreateFemAnalysis** → `generate_tet_mesh(&model, solid, 1.0)` + `AnalysisContainer::new(mesh, FemMaterial::steel())`; reports node / element counts.
+- **SolveStatic** → `container.run_static()`; same borrow-splitting enum pattern; reports `FemResult::max_displacement` on success.
+
+All 16 original U3 dispatcher stubs are now verified wired end-to-end. The single remaining `#[ignore]` is **U1 Difference-sign** — scoped to Round 2c (boolean splitter rewrite). DraftLine stays wire-only by design and is exercised via `draft_line_creates_wire_topology_in_model` against the `BRepModel` directly.
+
+Phase N-min totals: **2,582 passing, 3 failing, 1 ignored** across the workspace.
+
+**Round 2c totals (2026-04-23): 2,590 passing, 0 failing, 0 ignored** across the workspace (`cargo test --workspace --no-fail-fast`, plus 42 Python binding tests). Clean zero-failure-zero-ignore baseline achieved.
+
+**V36 UX pass (2026-04-24): 2,606 / 0 / 0** — gizmo Shift/Ctrl precision modifiers in `gui/overlays.rs`, `GuiAction::FocusObject` + tree double-click → fit-camera-to-AABB in `gui/tree.rs` + `app.rs`, Width/Depth/Height rows in `gui/properties.rs` Placement section. +16 tests inside a ≤300 LOC budget.
+
+**V37 Phase N full (2026-04-24): 2,627 / 0 / 0** — Assembly workbench UI completion on top of Phase N-min state.
+
+- **Assembly tree panel** (`crates/viewer/src/gui/tree.rs`) — when `gui.assembly.is_some()`, the scene tree renders a collapsible Assembly section with four branches: root `"{name} (N components, M constraints, K joints)"`, Components (per-component row with eye icon → `GuiAction::ToggleAssemblyComponentVisibility`), Constraints (labels for all five `AssemblyConstraint` variants), Joints (labels for all 13 `JointType` variants including `Grounded(N)`, `Revolute(a↔b)`, `ScrewJoint(a↔b)`, `RackAndPinion(a↔b)`, etc.). Component row double-click fires `GuiAction::FocusObject` if the component's `Handle<SolidData>` resolves to a `SceneObject` via the new `find_object_for_solid` helper (Handle equality match).
+- **BOM view dialog** (`crates/viewer/src/gui/dialogs.rs`) — `GuiAction::BillOfMaterials` now opens a modal rendering `Assembly::bill_of_materials()` as a 3-column table (Index | Name | Quantity) with a "Total parts: {sum}" footer. `assembly.is_none()` branch sets the status bar and performs no state change. Modal state: `GuiState.show_bom_dialog` + `GuiState.bom_entries: Vec<BomEntry>`.
+- **Joint editor UI** (`crates/viewer/src/gui/dialogs.rs`) — `GuiAction::AddAssemblyJoint(joint_type)` opens a modal pre-seeded with the requested type. Component dropdowns list `assembly.components` by name; only fields relevant to the selected `JointType` variant are shown (axis/origin for Revolute/Cylindrical, axis for Slider, center for BallJoint, angle for AngleJoint, ratio for GearJoint/BeltJoint, axis+pitch for ScrewJoint, pitch_radius for RackAndPinion, two-axis pairs for ParallelAxes/PerpendicularAxes). OK constructs the matching `JointType::{variant} {…}` and calls `assembly.add_joint(joint)`; `Grounded` needs only component_a.
+
+Phase N-min had already wired every dispatcher arm (`CommitAssemblyJoint`, `ToggleAssemblyComponentVisibility`, `populate_bom_entries`, `open_joint_editor`, `commit_assembly_joint`) through `GuiState` helper methods, so `app.rs` required zero changes this round. Net production LOC ≈ 160, test LOC ≈ 80, total ≈ 240 inside the 500 budget. Remaining Assembly work: a "Ground Component" menu entry in `gui/menu.rs` Assembly section (currently `JointType::Grounded` is reachable only via programmatic `GuiAction` dispatch).
+
+**V37 Phase O-a — FEM material picker + BC editor (2026-04-26): 2,637 / 0 / 0.** Phase N-min wired `GuiState.fem_analysis: Option<AnalysisContainer>` and `CreateFemAnalysis` / `SolveStatic` but the material was hardcoded to `FemMaterial::steel()` and there was no GUI path for boundary conditions. Phase O-a adds:
+
+- **Material picker dialog** (`crates/viewer/src/gui/dialogs.rs` + `gui/mod.rs`) — `GuiAction::OpenMaterialPicker` opens a modal with radio buttons for the 6 preset materials (`Steel`, `Aluminum`, `Titanium`, `Copper`, `Concrete`, `CastIron`) plus a `Custom` option exposing Young's modulus, Poisson's ratio, density inputs through `FemMaterial::custom()` validation. `CommitMaterialPicker` writes into a new `GuiState.pending_fem_material: FemMaterial` field; subsequent `CreateFemAnalysis` calls `clone()` that value into the new `AnalysisContainer` (sticky-material UX — pick once, re-use across analyses). `FemMaterial` derives `Clone` (three `f64` fields: `youngs_modulus`, `poisson_ratio`, `density`).
+- **Boundary-condition editor** (`crates/viewer/src/gui/dialogs.rs`) — `GuiAction::OpenBcEditor(BcKind)` opens a modal where `BcKind` covers the two most-used variants (`FixedNode`, `Force`). Kind dropdown, node index spinner bounded by mesh node count, force XYZ fields hidden when kind is `FixedNode`. `CommitBcEditor` constructs `BoundaryCondition::FixedNode(n)` or `BoundaryCondition::Force { node, force }` and calls `fem_analysis.add_bc(bc)` only if `gui.fem_analysis.is_some()`. Remaining 15 BC variants still flow through legacy `AddFemConstraint(FemConstraintType)`.
+- **FEM menu** (`crates/viewer/src/gui/menu.rs`) — "Pick Material…" entry above the legacy Steel/Aluminum quick-set entries; new "Boundary Conditions" submenu with "Add Fixed Node" and "Add Force".
+
+Tests: 7 unit tests in `gui::mod::fem_picker_tests` + 4 integration tests in `crates/viewer/tests/gui_action_integration.rs`. Phase O-a body LOC = 400 exactly at budget; sticky-material polish adds ~16 LOC on top (1-line kernel `Clone` derive + 7-line dispatcher swap + 8-line clone-roundtrip unit test). Workspace at **2,638 / 0 / 0** after the polish.
+
+**V37 Phase O-a follow-up — BcKind extended + Ground Component menu (2026-04-26): 2,659 / 0 / 0.** Extends `BcKind` from 2 to 12 variants: new arms `Pressure | Displacement | Gravity | DistributedLoad | Spring | CentrifugalLoad | SelfWeight | SpringConstraint | BodyLoad | InitialTemperature`. Implementation uses Vec3/scalar field overloading inside a single `BcEditorState` (one `vec3_x/y/z` triple, one `scalar_a`, plus `node_index` and `element_index`). The dialog re-labels them per variant via `BcKind::vec3_label()` ("Force (N)" / "Displacement (m)" / "Acceleration (m/s²)" / "Load (N/m²)" / "Axis" / "Gravity (m/s²)" / "Direction" / "Force Density (N/m³)") and `scalar_label()` ("Pressure (Pa)" / "Stiffness (N/m)" / "Omega (rad/s)" / "Temperature (K)"). `to_boundary_condition()` routes the overloaded fields to the correctly-named kernel field per `BoundaryCondition::*` arm. `BcInputs` matrix gates which inputs the dialog renders for each `BcKind`: `(node, element, vec3, scalar)` per variant. `app.rs` unchanged — `OpenBcEditor(BcKind)` / `CommitBcEditor` dispatcher signatures stay stable because the helper API is unchanged.
+
+The FEM "Boundary Conditions" submenu is reorganized into three sub-submenus: **Loads** (Force, Pressure, Gravity, DistributedLoad, CentrifugalLoad, SelfWeight, BodyLoad), **Constraints** (FixedNode, Displacement, Spring, SpringConstraint), **Thermal** (InitialTemperature). The 4 multi-node-set / surface variants (`TieConstraint`, `RigidBody`, `ContactConstraint`, `SectionPrint`) stay on the legacy `AddFemConstraint` path until a node-set picker exists; documented in a comment block above `BcKind` in `gui/mod.rs`.
+
+Same session: a "Ground Component" entry was added to the Assembly menu above the "Joints" submenu, wiring `GuiAction::AddAssemblyJoint(AssemblyJointType::Grounded)` through the existing joint editor flow (Phase N full already supports the 1-component Grounded case). The `#[allow(dead_code)]` on `AssemblyJointType` was removed since `Grounded` is now reachable via menu.
+
+Tests: 11 unit tests in `gui::mod::fem_picker_tests` (12-row `BcInputs` visibility matrix + per-variant `BcEditorState → BoundaryCondition` mapping for each new kind) + 10 integration tests in `crates/viewer/tests/gui_action_integration.rs` (each new kind appends one matching `BoundaryCondition`). 21 new tests, ~495 LOC (45 over the 450 budget — the overrun is in test breadth, accepted as a fair trade for explicit per-variant coverage of the Vec3/scalar overload).
+
+Phase O-b (stress/displacement colormap on tet mesh) remains — requires render-pipeline work and is split off as a separate session.

@@ -515,6 +515,7 @@ dependencies = [
  "cadkernel-topology",
  "cadkernel-viewer",
  "clap",
+ "serde_json",
 ]
 
 [[package]]

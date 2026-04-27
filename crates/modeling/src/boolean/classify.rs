@@ -5,11 +5,35 @@ use cadkernel_topology::{BRepModel, FaceData, Handle, SolidData};
 use super::broad_phase::collect_solid_faces;
 
 /// Classification of a face relative to another solid.
+///
+/// `OnBoundary` is further split into two subtypes that distinguish
+/// *co-facing* overlap (both solids lie on the SAME side of the shared
+/// face plane — e.g. two identical boxes) from *mating* overlap (the two
+/// solids lie on OPPOSITE sides of the plane — e.g. two boxes touching
+/// along one face). This distinction is necessary for correct boolean
+/// face-kept rules:
+///   - Union of co-facing pair → keep one copy (A) to avoid duplication.
+///   - Union of mating pair → drop both (the shared face is interior
+///     to the union).
+///   - Difference of mating pair → keep A (B doesn't carve material
+///     from A through that face).
+///   - Difference of co-facing pair → drop A (A's face coincides with
+///     B's face and B's interior fully occupies A's side).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FacePosition {
     Inside,
     Outside,
-    OnBoundary,
+    /// Coincident with B's boundary; A-interior and B-interior on same side.
+    OnBoundarySame,
+    /// Coincident with B's boundary; A-interior and B-interior on opposite sides.
+    OnBoundaryOpposite,
+}
+
+impl FacePosition {
+    /// True when the face lies on the other solid's boundary (either subtype).
+    pub fn is_on_boundary(self) -> bool {
+        matches!(self, FacePosition::OnBoundarySame | FacePosition::OnBoundaryOpposite)
+    }
 }
 
 /// Computes the centroid of a face by averaging its boundary vertices.
@@ -269,7 +293,7 @@ pub fn classify_face(
         match point_in_solid(*pt, model_b, solid_b)? {
             FacePosition::Inside => inside_count += 1,
             FacePosition::Outside => outside_count += 1,
-            FacePosition::OnBoundary => {}
+            FacePosition::OnBoundarySame | FacePosition::OnBoundaryOpposite => {}
         }
     }
 
@@ -281,6 +305,176 @@ pub fn classify_face(
         // Tie — use centroid result as tiebreaker
         point_in_solid(centroid + normal * 1e-6, model_b, solid_b)
     }
+}
+
+/// Classifies a face of model_a against solid_b with awareness of
+/// coplanar-overlap (shared-boundary) regions. Returns
+/// `OnBoundarySame` when A-interior and B-interior lie on the same side
+/// of the shared face plane (co-facing), `OnBoundaryOpposite` when they
+/// lie on opposite sides (mating). The classification is decided by
+/// majority-voting interior-biased edge midpoints sampled on BOTH sides
+/// of the face plane. This lets the caller make an operation-specific
+/// decision (Difference removes the A-face on co-facing but keeps it on
+/// mating; Union keeps one copy of co-facing but drops mating; etc.).
+pub fn classify_face_with_coplanar(
+    model_a: &BRepModel,
+    face: Handle<FaceData>,
+    model_b: &BRepModel,
+    solid_b: Handle<SolidData>,
+) -> KernelResult<FacePosition> {
+    let centroid = face_centroid(model_a, face)?;
+    let normal = face_normal_approx(model_a, face)?;
+    let polygon = face_polygon(model_a, face)?;
+
+    if polygon.len() < 3 || normal.length() < 1e-14 {
+        return Ok(FacePosition::Outside);
+    }
+
+    // Collect interior sample points. Strategy: prefer midpoints of the
+    // LONGEST edges as primary samples, offset toward the centroid by a
+    // fraction of the edge length. Long edges belong to the outer
+    // polygon perimeter (box sides, not the faceted hole boundary) and
+    // their offset-midpoints reliably land inside the polygon's interior
+    // even for keyhole shapes where the vertex-average centroid itself
+    // may lie inside the hole.
+    let n_poly = polygon.len();
+    let mut edge_list: Vec<(f64, usize)> = (0..n_poly)
+        .map(|i| {
+            let a = polygon[i];
+            let b = polygon[(i + 1) % n_poly];
+            ((b - a).length(), i)
+        })
+        .collect();
+    edge_list.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
+
+    // Choose the projection axis (drop the dominant normal component) so
+    // point-in-polygon filters keyhole-slit samples correctly.
+    let (nx, ny, nz) = (normal.x.abs(), normal.y.abs(), normal.z.abs());
+    let drop_axis = if nx >= ny && nx >= nz {
+        0
+    } else if ny >= nz {
+        1
+    } else {
+        2
+    };
+
+    const SAMPLE_COUNT: usize = 16;
+    let mut interior: Vec<Point3> = Vec::new();
+    // Generate candidate samples from edge-midpoints offset by the edge's
+    // INWARD perpendicular (tangent × face-normal). This is more robust
+    // than "toward centroid" for keyhole polygons whose vertex-average
+    // centroid may lie in the hole rather than in the polygon interior.
+    for &(edge_len, i) in edge_list.iter().take(SAMPLE_COUNT) {
+        if edge_len < 1e-10 {
+            continue;
+        }
+        let a = polygon[i];
+        let b = polygon[(i + 1) % n_poly];
+        let mid = Point3::new(
+            (a.x + b.x) * 0.5,
+            (a.y + b.y) * 0.5,
+            (a.z + b.z) * 0.5,
+        );
+        let tangent = (b - a).normalized().unwrap_or(Vec3::X);
+        // Inward perpendicular: (face_normal × tangent) lies in the polygon
+        // plane and points into the polygon interior when the polygon is
+        // wound CCW viewed from the +normal side.
+        let inward = normal.cross(tangent).normalized().unwrap_or(Vec3::ZERO);
+        let toward_cen = (centroid - mid).normalized().unwrap_or(Vec3::ZERO);
+        // Use inward unless it disagrees with the centroid direction for a
+        // non-keyhole polygon (in which case winding is reversed).
+        let inward = if inward.dot(toward_cen) >= 0.0 {
+            inward
+        } else {
+            -inward
+        };
+        let offset = (edge_len * 0.25).clamp(1e-3, 0.5);
+        // Propose two candidates at different offsets to survive skinny
+        // keyhole geometry.
+        let cand1 = mid + inward * offset;
+        let cand2 = mid + inward * (offset * 0.5);
+        for cand in [cand1, cand2] {
+            // Only keep candidates that lie strictly inside the polygon
+            // (projected to 2D). This correctly excludes samples that
+            // strayed into a keyhole hole region despite a winding-based
+            // inward offset.
+            if point_in_polygon_2d(cand, &polygon, drop_axis) {
+                interior.push(cand);
+            }
+        }
+    }
+    if interior.is_empty() {
+        // Fall back to centroid-offset samples.
+        for &(_, i) in edge_list.iter().take(8) {
+            let a = polygon[i];
+            let b = polygon[(i + 1) % n_poly];
+            let mid = Point3::new(
+                (a.x + b.x) * 0.5,
+                (a.y + b.y) * 0.5,
+                (a.z + b.z) * 0.5,
+            );
+            let toward = (centroid - mid).normalized().unwrap_or(Vec3::ZERO);
+            let cand = mid + toward * 1e-3;
+            if point_in_polygon_2d(cand, &polygon, drop_axis) {
+                interior.push(cand);
+            }
+        }
+    }
+    if interior.is_empty() {
+        interior.push(centroid);
+    }
+
+    // Vote on both the outward and inward sides of each interior point.
+    let mut out_inside = 0u32;
+    let mut out_outside = 0u32;
+    let mut in_inside = 0u32;
+    let mut in_outside = 0u32;
+    for pt in &interior {
+        match point_in_solid(*pt + normal * 1e-6, model_b, solid_b)? {
+            FacePosition::Inside => out_inside += 1,
+            FacePosition::Outside => out_outside += 1,
+            FacePosition::OnBoundarySame | FacePosition::OnBoundaryOpposite => {}
+        }
+        match point_in_solid(*pt - normal * 1e-6, model_b, solid_b)? {
+            FacePosition::Inside => in_inside += 1,
+            FacePosition::Outside => in_outside += 1,
+            FacePosition::OnBoundarySame | FacePosition::OnBoundaryOpposite => {}
+        }
+    }
+
+    let out_side = if out_inside > out_outside {
+        FacePosition::Inside
+    } else if out_outside > out_inside {
+        FacePosition::Outside
+    } else {
+        // Tie: treat as the centroid outward result.
+        point_in_solid(centroid + normal * 1e-6, model_b, solid_b)?
+    };
+    let in_side = if in_inside > in_outside {
+        FacePosition::Inside
+    } else if in_outside > in_inside {
+        FacePosition::Outside
+    } else {
+        point_in_solid(centroid - normal * 1e-6, model_b, solid_b)?
+    };
+
+    // Coplanar overlap detection — reliable majority signals on both sides.
+    //
+    // A-face outward normal points away from A's interior. Decide co-facing
+    // vs mating by where B's interior lies:
+    //   out=Outside, in=Inside  → B-interior on A's INWARD side → co-facing
+    //       (A-interior and B-interior both on the negative-normal side).
+    //   out=Inside,  in=Outside → B-interior on A's OUTWARD side → mating
+    //       (A-interior and B-interior on opposite sides of the plane).
+    if out_side == FacePosition::Outside && in_side == FacePosition::Inside {
+        return Ok(FacePosition::OnBoundarySame);
+    }
+    if out_side == FacePosition::Inside && in_side == FacePosition::Outside {
+        return Ok(FacePosition::OnBoundaryOpposite);
+    }
+
+    // Otherwise defer to the standard outward-side classification.
+    Ok(out_side)
 }
 
 #[cfg(test)]

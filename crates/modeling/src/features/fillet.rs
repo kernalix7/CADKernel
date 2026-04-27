@@ -77,6 +77,13 @@ pub fn fillet_edge_segments(
         face_vert_lists.push((fh, verts));
     }
 
+    // Re-resolve the input vertices by position within the active solid.
+    // Sequential feature ops rebuild topology (new vertex handles), so the
+    // caller may pass stale handles whose coordinates still exist somewhere
+    // in the model. Resolving by position makes operations composable.
+    let (edge_v1, edge_v2) =
+        resolve_edge_in_faces(model, edge_v1, edge_v2, &face_vert_lists)?;
+
     let mut adj_faces: Vec<Handle<FaceData>> = Vec::new();
     for &(fh, ref verts) in &face_vert_lists {
         if has_consecutive_pair(verts, edge_v1, edge_v2) {
@@ -198,6 +205,355 @@ pub fn fillet_edge_segments(
         fillet_faces,
         faces: new_faces,
     })
+}
+
+/// Fillets multiple edges of a solid in a single rebuild pass.
+///
+/// Unlike calling `fillet_edge` in a loop — which rebuilds topology after
+/// each call and makes subsequent edge handles stale — this batched API
+/// computes all offsets against the *original* topology and rebuilds once.
+/// Corners shared by multiple requested edges are split into one offset per
+/// incident filleted edge on each adjacent face.
+pub fn fillet_edges(
+    model: &mut BRepModel,
+    solid: Handle<SolidData>,
+    edges: &[(Handle<VertexData>, Handle<VertexData>)],
+    radius: f64,
+) -> KernelResult<FilletResult> {
+    fillet_edges_segments(model, solid, edges, radius, 4)
+}
+
+/// Like `fillet_edges` but with a configurable number of arc segments per edge.
+pub fn fillet_edges_segments(
+    model: &mut BRepModel,
+    solid: Handle<SolidData>,
+    edges: &[(Handle<VertexData>, Handle<VertexData>)],
+    radius: f64,
+    segments: usize,
+) -> KernelResult<FilletResult> {
+    if radius <= 0.0 {
+        return Err(KernelError::InvalidArgument(
+            "fillet radius must be positive".into(),
+        ));
+    }
+    if segments < 1 {
+        return Err(KernelError::InvalidArgument("segments must be >= 1".into()));
+    }
+    if edges.is_empty() {
+        return Err(KernelError::InvalidArgument(
+            "fillet_edges requires at least one edge".into(),
+        ));
+    }
+
+    let solid_data = model
+        .solids
+        .get(solid)
+        .ok_or(KernelError::InvalidHandle("solid"))?;
+    let shells = solid_data.shells.clone();
+
+    let mut all_faces: Vec<Handle<FaceData>> = Vec::new();
+    for &sh in &shells {
+        let sd = model
+            .shells
+            .get(sh)
+            .ok_or(KernelError::InvalidHandle("shell"))?;
+        all_faces.extend(sd.faces.clone());
+    }
+
+    let mut face_vert_lists: Vec<(Handle<FaceData>, Vec<Handle<VertexData>>)> =
+        Vec::with_capacity(all_faces.len());
+    for &fh in &all_faces {
+        let verts = model.vertices_of_face(fh)?;
+        face_vert_lists.push((fh, verts));
+    }
+
+    struct ResolvedFilletEdge {
+        v1: Handle<VertexData>,
+        v2: Handle<VertexData>,
+        adj_faces: [Handle<FaceData>; 2],
+    }
+    let mut resolved: Vec<ResolvedFilletEdge> = Vec::with_capacity(edges.len());
+
+    for &(v1_in, v2_in) in edges {
+        let p1 = vertex_point(model, v1_in)?;
+        let p2 = vertex_point(model, v2_in)?;
+        let (v1, v2) = resolve_edge_by_position(&face_vert_lists, model, p1, p2).ok_or_else(
+            || {
+                KernelError::InvalidArgument(format!(
+                    "fillet_edges: edge ({:?},{:?}) not on any face of the solid",
+                    p1, p2
+                ))
+            },
+        )?;
+        let edge_len = (p2 - p1).length();
+        if radius >= edge_len * 0.5 {
+            return Err(KernelError::InvalidArgument(
+                "fillet radius too large for this edge".into(),
+            ));
+        }
+        let mut adj: Vec<Handle<FaceData>> = Vec::new();
+        for &(fh, ref verts) in &face_vert_lists {
+            if has_consecutive_pair(verts, v1, v2) {
+                adj.push(fh);
+            }
+        }
+        if adj.len() != 2 {
+            return Err(KernelError::InvalidArgument(format!(
+                "fillet_edges: edge shared by {} faces (need exactly 2)",
+                adj.len()
+            )));
+        }
+        resolved.push(ResolvedFilletEdge { v1, v2, adj_faces: [adj[0], adj[1]] });
+    }
+
+    let op = model.history.next_operation("fillet_edges");
+
+    // For each edge, compute inward vectors on each adjacent face, and arc
+    // strip offsets at each endpoint. Strip layer 0 lies on adj_faces[0]
+    // (offset into that face away from the edge), layer `segments` lies on
+    // adj_faces[1].
+    struct EdgeOffsets {
+        // [face_idx(0 or 1)][endpoint(0=v1,1=v2)] -> offset point
+        // face_idx 0 corresponds to strip layer 0 (on adj_faces[0])
+        // face_idx 1 corresponds to strip layer `segments` (on adj_faces[1])
+        layer_points: Vec<[Point3; 2]>, // indexed by strip layer 0..=segments
+    }
+
+    let mut all_edge_offsets: Vec<EdgeOffsets> = Vec::with_capacity(resolved.len());
+    for re in &resolved {
+        let inward_a = compute_inward(model, re.adj_faces[0], re.v1, re.v2, &face_vert_lists)?;
+        let inward_b = compute_inward(model, re.adj_faces[1], re.v1, re.v2, &face_vert_lists)?;
+        let da = inward_a.normalized().unwrap_or(cadkernel_math::Vec3::X);
+        let db = inward_b.normalized().unwrap_or(cadkernel_math::Vec3::Y);
+
+        let p1 = vertex_point(model, re.v1)?;
+        let p2 = vertex_point(model, re.v2)?;
+
+        let mut layers: Vec<[Point3; 2]> = Vec::with_capacity(segments + 1);
+        for s in 0..=segments {
+            let t = s as f64 / segments as f64;
+            let angle = t * std::f64::consts::FRAC_PI_2;
+            let off1 = p1 + da * (radius * angle.cos()) + db * (radius * angle.sin());
+            let off2 = p2 + da * (radius * angle.cos()) + db * (radius * angle.sin());
+            layers.push([off1, off2]);
+        }
+        all_edge_offsets.push(EdgeOffsets { layer_points: layers });
+    }
+
+    let mut new_vert_cache: HashMap<VertKey, Handle<VertexData>> = HashMap::new();
+    let mut vert_idx = 0u32;
+    let get_or_create = |model: &mut BRepModel,
+                         cache: &mut HashMap<VertKey, Handle<VertexData>>,
+                         idx: &mut u32,
+                         point: Point3,
+                         op_id: cadkernel_topology::OperationId| {
+        let key = VertKey::from_point(point);
+        if let Some(&h) = cache.get(&key) {
+            return h;
+        }
+        let tag = Tag::generated(EntityKind::Vertex, op_id, *idx);
+        *idx += 1;
+        let h = model.add_vertex_tagged(point, tag);
+        cache.insert(key, h);
+        h
+    };
+
+    // Face rebuild: walk each original face's vertex loop and substitute
+    // corner offsets where needed.
+    let mut new_faces: Vec<Handle<FaceData>> = Vec::new();
+    let mut fillet_faces: Vec<Handle<FaceData>> = Vec::new();
+    let mut face_idx = 0u32;
+    let mut edge_idx_base = 0u32;
+
+    for &(orig_fh, ref orig_verts) in &face_vert_lists {
+        let n = orig_verts.len();
+        let mut new_loop: Vec<Handle<VertexData>> = Vec::with_capacity(n * 2);
+
+        for i in 0..n {
+            let prev_i = (i + n - 1) % n;
+            let next_i = (i + 1) % n;
+            let v = orig_verts[i];
+            let vp = orig_verts[prev_i];
+            let vn = orig_verts[next_i];
+
+            let mut incoming: Option<usize> = None;
+            let mut outgoing: Option<usize> = None;
+            for (edge_idx, re) in resolved.iter().enumerate() {
+                let on_face = re.adj_faces[0] == orig_fh || re.adj_faces[1] == orig_fh;
+                if !on_face {
+                    continue;
+                }
+                let endpoints = [re.v1, re.v2];
+                if endpoints.contains(&v) && endpoints.contains(&vp) {
+                    incoming = Some(edge_idx);
+                }
+                if endpoints.contains(&v) && endpoints.contains(&vn) {
+                    outgoing = Some(edge_idx);
+                }
+            }
+
+            let offset_for_edge = |edge_idx: usize, vertex: Handle<VertexData>| -> Point3 {
+                let re = &resolved[edge_idx];
+                let eo = &all_edge_offsets[edge_idx];
+                let layer = if re.adj_faces[0] == orig_fh { 0 } else { segments };
+                let endpoint = if vertex == re.v1 { 0 } else { 1 };
+                eo.layer_points[layer][endpoint]
+            };
+
+            match (incoming, outgoing) {
+                (None, None) => {
+                    let pt = vertex_point(model, v)?;
+                    let nvh = get_or_create(model, &mut new_vert_cache, &mut vert_idx, pt, op);
+                    new_loop.push(nvh);
+                }
+                (Some(e), None) => {
+                    let off = offset_for_edge(e, v);
+                    let nvh = get_or_create(model, &mut new_vert_cache, &mut vert_idx, off, op);
+                    new_loop.push(nvh);
+                }
+                (None, Some(e)) => {
+                    let off = offset_for_edge(e, v);
+                    let nvh = get_or_create(model, &mut new_vert_cache, &mut vert_idx, off, op);
+                    new_loop.push(nvh);
+                }
+                (Some(e_in), Some(e_out)) => {
+                    let off_in = offset_for_edge(e_in, v);
+                    let off_out = offset_for_edge(e_out, v);
+                    let nvh_in =
+                        get_or_create(model, &mut new_vert_cache, &mut vert_idx, off_in, op);
+                    new_loop.push(nvh_in);
+                    if e_in != e_out {
+                        let nvh_out =
+                            get_or_create(model, &mut new_vert_cache, &mut vert_idx, off_out, op);
+                        new_loop.push(nvh_out);
+                    }
+                }
+            }
+        }
+
+        new_loop.dedup();
+        if new_loop.len() >= 2 && new_loop.first() == new_loop.last() {
+            new_loop.pop();
+        }
+        if new_loop.len() < 3 {
+            continue;
+        }
+
+        let fh = build_face(model, &new_loop, op, face_idx, &mut edge_idx_base)?;
+        new_faces.push(fh);
+        face_idx += 1;
+    }
+
+    // For each requested edge, emit `segments` strip faces between layers s
+    // and s+1.
+    for eo in &all_edge_offsets {
+        for s in 0..segments {
+            let p1a = eo.layer_points[s][0];
+            let p2a = eo.layer_points[s + 1][0];
+            let p2b = eo.layer_points[s + 1][1];
+            let p1b = eo.layer_points[s][1];
+
+            let v1a = get_or_create(model, &mut new_vert_cache, &mut vert_idx, p1a, op);
+            let v2a = get_or_create(model, &mut new_vert_cache, &mut vert_idx, p2a, op);
+            let v2b = get_or_create(model, &mut new_vert_cache, &mut vert_idx, p2b, op);
+            let v1b = get_or_create(model, &mut new_vert_cache, &mut vert_idx, p1b, op);
+
+            let mut quad = vec![v1a, v2a, v2b, v1b];
+            quad.dedup();
+            if quad.len() < 3 {
+                continue;
+            }
+
+            let fh = build_face(model, &quad, op, face_idx, &mut edge_idx_base)?;
+            new_faces.push(fh);
+            fillet_faces.push(fh);
+            face_idx += 1;
+        }
+    }
+
+    let shell_tag = Tag::generated(EntityKind::Shell, op, 0);
+    let shell = model.make_shell_tagged(&new_faces, shell_tag);
+    let solid_tag = Tag::generated(EntityKind::Solid, op, 0);
+    let new_solid = model.make_solid_tagged(&[shell], solid_tag);
+
+    Ok(FilletResult {
+        solid: new_solid,
+        fillet_faces,
+        faces: new_faces,
+    })
+}
+
+/// Resolves an edge to current-face vertex handles by position lookup.
+fn resolve_edge_by_position(
+    face_vert_lists: &[(Handle<FaceData>, Vec<Handle<VertexData>>)],
+    model: &BRepModel,
+    p1: Point3,
+    p2: Point3,
+) -> Option<(Handle<VertexData>, Handle<VertexData>)> {
+    let find_by_pos = |verts: &[Handle<VertexData>], target: Point3| -> Option<Handle<VertexData>> {
+        verts.iter().copied().find(|&vh| {
+            if let Some(vd) = model.vertices.get(vh) {
+                (vd.point - target).length() < 1e-9
+            } else {
+                false
+            }
+        })
+    };
+    for (_, verts) in face_vert_lists {
+        let r1 = find_by_pos(verts, p1);
+        let r2 = find_by_pos(verts, p2);
+        if let (Some(h1), Some(h2)) = (r1, r2) {
+            if has_consecutive_pair(verts, h1, h2) {
+                return Some((h1, h2));
+            }
+        }
+    }
+    None
+}
+
+/// Resolves two vertex handles to handles that actually appear consecutively
+/// on some face of the active solid. If the exact handles are already valid,
+/// returns them unchanged. Otherwise searches by position (1e-9 tolerance).
+fn resolve_edge_in_faces(
+    model: &BRepModel,
+    v1: Handle<VertexData>,
+    v2: Handle<VertexData>,
+    face_vert_lists: &[(Handle<FaceData>, Vec<Handle<VertexData>>)],
+) -> KernelResult<(Handle<VertexData>, Handle<VertexData>)> {
+    if face_vert_lists
+        .iter()
+        .any(|(_, verts)| has_consecutive_pair(verts, v1, v2))
+    {
+        return Ok((v1, v2));
+    }
+
+    let p1 = vertex_point(model, v1)?;
+    let p2 = vertex_point(model, v2)?;
+
+    let find_by_pos = |verts: &[Handle<VertexData>], target: Point3| -> Option<Handle<VertexData>> {
+        verts.iter().copied().find(|&vh| {
+            if let Some(vd) = model.vertices.get(vh) {
+                (vd.point - target).length() < 1e-9
+            } else {
+                false
+            }
+        })
+    };
+
+    for (_, verts) in face_vert_lists {
+        let r1 = find_by_pos(verts, p1);
+        let r2 = find_by_pos(verts, p2);
+        if let (Some(h1), Some(h2)) = (r1, r2) {
+            if has_consecutive_pair(verts, h1, h2) {
+                return Ok((h1, h2));
+            }
+        }
+    }
+
+    Err(KernelError::InvalidArgument(format!(
+        "fillet edge endpoints ({:?}, {:?}) not found on any face after position-based lookup",
+        p1, p2
+    )))
 }
 
 fn has_consecutive_pair(

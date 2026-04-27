@@ -1064,6 +1064,570 @@ pub fn export_step_mesh(_mesh: &super::Mesh, path: &str) -> KernelResult<()> {
     Ok(())
 }
 
+/// Classified analytic surface extracted from a `dyn Surface` via sampling.
+#[derive(Debug, Clone, Copy)]
+enum SurfaceClass {
+    Plane {
+        origin: Point3,
+        normal: Vec3,
+        x_dir: Vec3,
+    },
+    Cylinder {
+        origin: Point3,
+        axis: Vec3,
+        x_dir: Vec3,
+        radius: f64,
+    },
+    Sphere {
+        center: Point3,
+        axis: Vec3,
+        x_dir: Vec3,
+        radius: f64,
+    },
+    Cone {
+        apex: Point3,
+        axis: Vec3,
+        x_dir: Vec3,
+        semi_angle: f64,
+        ref_radius: f64,
+    },
+    Torus {
+        center: Point3,
+        axis: Vec3,
+        x_dir: Vec3,
+        major_radius: f64,
+        minor_radius: f64,
+    },
+}
+
+const CLASSIFY_TOL: f64 = 1e-6;
+
+/// Classifies an arbitrary `dyn Surface` into an analytic kind by sampling
+/// positions and normals. Returns `None` for free-form surfaces that don't
+/// match any analytic pattern — caller should fall back to plane or b-spline.
+fn classify_surface(surface: &dyn cadkernel_geometry::Surface) -> Option<SurfaceClass> {
+    let (u0, u1) = surface.domain_u();
+    let (v0, v1) = surface.domain_v();
+    if !(u0.is_finite() && u1.is_finite() && v0.is_finite() && v1.is_finite()) {
+        return None;
+    }
+    if u1 <= u0 || v1 <= v0 {
+        return None;
+    }
+
+    // Sample a small grid of normals. If all are equal, the surface is a plane.
+    let sample = |fu: f64, fv: f64| {
+        let u = u0 + fu * (u1 - u0);
+        let v = v0 + fv * (v1 - v0);
+        (surface.point_at(u, v), surface.normal_at(u, v))
+    };
+
+    let (p00, n00) = sample(0.25, 0.25);
+    let (p01, n01) = sample(0.25, 0.75);
+    let (p10, n10) = sample(0.75, 0.25);
+    let (p11, n11) = sample(0.75, 0.75);
+    let (pmm, nmm) = sample(0.5, 0.5);
+
+    let normals_equal = |a: Vec3, b: Vec3| (a - b).length() < CLASSIFY_TOL;
+
+    if normals_equal(n00, n01)
+        && normals_equal(n00, n10)
+        && normals_equal(n00, n11)
+        && normals_equal(n00, nmm)
+    {
+        let x_dir = (p10 - p00).normalized().unwrap_or(Vec3::X);
+        return Some(SurfaceClass::Plane {
+            origin: pmm,
+            normal: nmm.normalized().unwrap_or(Vec3::Z),
+            x_dir,
+        });
+    }
+
+    // Sphere: all point-normal rays meet at a common center (p - r*n).
+    let c0 = p00 - n00 * 0.0;
+    let _ = c0;
+    let centers = [
+        p00 + n00 * (-sphere_radius_guess(&p00, &n00, &pmm, &nmm)),
+        pmm + nmm * (-sphere_radius_guess(&pmm, &nmm, &p11, &n11)),
+    ];
+    // A more robust sphere test: for each sampled point, point + (-dot(n, center-p)) * n == center.
+    // Use least-squares approach: all points equidistant from a candidate center.
+    if let Some((center, radius)) = fit_sphere(&[p00, p01, p10, p11, pmm]) {
+        let mut all_match = true;
+        for &(p, n) in &[(p00, n00), (p01, n01), (p10, n10), (p11, n11), (pmm, nmm)] {
+            if (p.distance_to(center) - radius).abs() > CLASSIFY_TOL * radius.max(1.0) {
+                all_match = false;
+                break;
+            }
+            let outward = (p - center).normalized().unwrap_or(Vec3::Z);
+            if (outward - n.normalized().unwrap_or(Vec3::Z)).length() > 1e-4 {
+                all_match = false;
+                break;
+            }
+        }
+        if all_match && radius > CLASSIFY_TOL {
+            let axis = Vec3::Z;
+            let x_dir = arbitrary_perp(axis);
+            return Some(SurfaceClass::Sphere {
+                center,
+                axis,
+                x_dir,
+                radius,
+            });
+        }
+    }
+    let _ = centers;
+
+    // Cylinder: all normals perpendicular to a common axis; points at constant
+    // distance from that axis line.
+    if let Some((axis, origin_on_axis, radius)) =
+        fit_cylinder(&[(p00, n00), (p01, n01), (p10, n10), (p11, n11), (pmm, nmm)])
+    {
+        let x_dir = arbitrary_perp(axis);
+        return Some(SurfaceClass::Cylinder {
+            origin: origin_on_axis,
+            axis,
+            x_dir,
+            radius,
+        });
+    }
+
+    // Cone: normals all lie on lines passing through a common apex, with
+    // constant angle to the axis. Defer detection by sampling and checking
+    // that (point - apex) . axis / |point - apex| is constant across samples.
+    if let Some((apex, axis, semi_angle, ref_radius)) = fit_cone(&[
+        (p00, n00),
+        (p01, n01),
+        (p10, n10),
+        (p11, n11),
+        (pmm, nmm),
+    ]) {
+        let x_dir = arbitrary_perp(axis);
+        return Some(SurfaceClass::Cone {
+            apex,
+            axis,
+            x_dir,
+            semi_angle,
+            ref_radius,
+        });
+    }
+
+    // Torus: ring of revolution. Check that the minor-circle center (point +
+    // r_minor * inward_normal) lies on a common circle of a common plane.
+    if let Some((center, axis, major_r, minor_r)) = fit_torus(&[
+        (p00, n00),
+        (p01, n01),
+        (p10, n10),
+        (p11, n11),
+        (pmm, nmm),
+    ]) {
+        let x_dir = arbitrary_perp(axis);
+        return Some(SurfaceClass::Torus {
+            center,
+            axis,
+            x_dir,
+            major_radius: major_r,
+            minor_radius: minor_r,
+        });
+    }
+
+    None
+}
+
+fn sphere_radius_guess(p0: &Point3, _n0: &Vec3, p1: &Point3, _n1: &Vec3) -> f64 {
+    (*p1 - *p0).length() * 0.5
+}
+
+fn fit_sphere(points: &[Point3]) -> Option<(Point3, f64)> {
+    if points.len() < 4 {
+        return None;
+    }
+    // Algebraic sphere fit: solve (x-a)^2 + (y-b)^2 + (z-c)^2 = r^2
+    // in linear form: x^2 + y^2 + z^2 = 2ax + 2by + 2cz + (r^2 - a^2 - b^2 - c^2).
+    // Build Ax = b and solve via normal equations (4 unknowns).
+    let n = points.len();
+    let mut ata = [[0.0f64; 4]; 4];
+    let mut atb = [0.0f64; 4];
+    for p in points {
+        let row = [2.0 * p.x, 2.0 * p.y, 2.0 * p.z, 1.0];
+        let rhs = p.x * p.x + p.y * p.y + p.z * p.z;
+        for i in 0..4 {
+            for j in 0..4 {
+                ata[i][j] += row[i] * row[j];
+            }
+            atb[i] += row[i] * rhs;
+        }
+    }
+    let sol = solve4(ata, atb)?;
+    let center = Point3::new(sol[0], sol[1], sol[2]);
+    let r_sq = sol[3] + sol[0] * sol[0] + sol[1] * sol[1] + sol[2] * sol[2];
+    if r_sq <= 0.0 {
+        return None;
+    }
+    let _ = n;
+    Some((center, r_sq.sqrt()))
+}
+
+#[allow(clippy::needless_range_loop)]
+fn solve4(mut a: [[f64; 4]; 4], mut b: [f64; 4]) -> Option<[f64; 4]> {
+    for i in 0..4 {
+        let mut max_row = i;
+        for k in (i + 1)..4 {
+            if a[k][i].abs() > a[max_row][i].abs() {
+                max_row = k;
+            }
+        }
+        if a[max_row][i].abs() < 1e-12 {
+            return None;
+        }
+        a.swap(i, max_row);
+        b.swap(i, max_row);
+        for k in (i + 1)..4 {
+            let f = a[k][i] / a[i][i];
+            for j in i..4 {
+                a[k][j] -= f * a[i][j];
+            }
+            b[k] -= f * b[i];
+        }
+    }
+    let mut x = [0.0f64; 4];
+    for i in (0..4).rev() {
+        let mut s = b[i];
+        for j in (i + 1)..4 {
+            s -= a[i][j] * x[j];
+        }
+        x[i] = s / a[i][i];
+    }
+    Some(x)
+}
+
+fn fit_cylinder(samples: &[(Point3, Vec3)]) -> Option<(Vec3, Point3, f64)> {
+    // Cylinder axis is perpendicular to every surface normal. Solve for axis
+    // direction as the null-space direction of the normals matrix (smallest
+    // singular vector). Use power iteration on (I - sum n n^T).
+    let mut nnt = [[0.0f64; 3]; 3];
+    for (_, n) in samples {
+        let nv = n.normalized()?;
+        let arr = [nv.x, nv.y, nv.z];
+        for i in 0..3 {
+            for j in 0..3 {
+                nnt[i][j] += arr[i] * arr[j];
+            }
+        }
+    }
+    // Axis direction is the eigenvector of nnt with smallest eigenvalue.
+    let axis = smallest_eigenvector(nnt)?;
+    let axis = axis.normalized()?;
+
+    // Project all points onto plane perpendicular to axis; they should lie on a circle.
+    let p0 = samples[0].0;
+    let mut projected: Vec<Point3> = Vec::with_capacity(samples.len());
+    for (p, _) in samples {
+        let delta = *p - p0;
+        let along = axis * delta.dot(axis);
+        let perp = delta - along;
+        projected.push(p0 + perp);
+    }
+    let (center2d, radius) = fit_circle_in_plane(&projected, axis)?;
+    // Verify normals point radially outward from axis.
+    for (p, n) in samples {
+        let d = *p - center2d;
+        let radial = d - axis * d.dot(axis);
+        let radial_dir = radial.normalized()?;
+        let n_dir = n.normalized()?;
+        if (radial_dir - n_dir).length() > 1e-3 {
+            return None;
+        }
+        if ((*p - center2d).length().hypot(0.0) - 0.0).is_nan() {
+            return None;
+        }
+        let dist = radial.length();
+        if (dist - radius).abs() > 1e-3 * radius.max(1.0) {
+            return None;
+        }
+    }
+    Some((axis, center2d, radius))
+}
+
+fn smallest_eigenvector(m: [[f64; 3]; 3]) -> Option<Vec3> {
+    // Shift: largest eigenvalue <= trace. Use inverse power iteration via
+    // solving (m - 0) x = y ... but simpler: find largest eigenvector of
+    // (trace*I - m) which has the smallest eigenvector of m as its largest.
+    let tr = m[0][0] + m[1][1] + m[2][2];
+    let shifted = [
+        [tr - m[0][0], -m[0][1], -m[0][2]],
+        [-m[1][0], tr - m[1][1], -m[1][2]],
+        [-m[2][0], -m[2][1], tr - m[2][2]],
+    ];
+    let mut v = Vec3::new(1.0, 0.3, 0.7).normalized()?;
+    for _ in 0..64 {
+        let vx = shifted[0][0] * v.x + shifted[0][1] * v.y + shifted[0][2] * v.z;
+        let vy = shifted[1][0] * v.x + shifted[1][1] * v.y + shifted[1][2] * v.z;
+        let vz = shifted[2][0] * v.x + shifted[2][1] * v.y + shifted[2][2] * v.z;
+        let nv = Vec3::new(vx, vy, vz).normalized()?;
+        if (nv - v).length() < 1e-12 {
+            v = nv;
+            break;
+        }
+        v = nv;
+    }
+    Some(v)
+}
+
+fn fit_circle_in_plane(points: &[Point3], axis: Vec3) -> Option<(Point3, f64)> {
+    if points.len() < 3 {
+        return None;
+    }
+    let u = arbitrary_perp(axis);
+    let w = axis.cross(u).normalized()?;
+    let origin = points[0];
+    let pts2d: Vec<(f64, f64)> = points
+        .iter()
+        .map(|p| {
+            let d = *p - origin;
+            (d.dot(u), d.dot(w))
+        })
+        .collect();
+    let mut ata = [[0.0f64; 3]; 3];
+    let mut atb = [0.0f64; 3];
+    for (x, y) in &pts2d {
+        let row = [2.0 * x, 2.0 * y, 1.0];
+        let rhs = x * x + y * y;
+        for i in 0..3 {
+            for j in 0..3 {
+                ata[i][j] += row[i] * row[j];
+            }
+            atb[i] += row[i] * rhs;
+        }
+    }
+    let sol = solve3(ata, atb)?;
+    let cx = sol[0];
+    let cy = sol[1];
+    let r_sq = sol[2] + cx * cx + cy * cy;
+    if r_sq <= 0.0 {
+        return None;
+    }
+    let center = origin + u * cx + w * cy;
+    Some((center, r_sq.sqrt()))
+}
+
+#[allow(clippy::needless_range_loop)]
+fn solve3(mut a: [[f64; 3]; 3], mut b: [f64; 3]) -> Option<[f64; 3]> {
+    for i in 0..3 {
+        let mut max_row = i;
+        for k in (i + 1)..3 {
+            if a[k][i].abs() > a[max_row][i].abs() {
+                max_row = k;
+            }
+        }
+        if a[max_row][i].abs() < 1e-12 {
+            return None;
+        }
+        a.swap(i, max_row);
+        b.swap(i, max_row);
+        for k in (i + 1)..3 {
+            let f = a[k][i] / a[i][i];
+            for j in i..3 {
+                a[k][j] -= f * a[i][j];
+            }
+            b[k] -= f * b[i];
+        }
+    }
+    let mut x = [0.0f64; 3];
+    for i in (0..3).rev() {
+        let mut s = b[i];
+        for j in (i + 1)..3 {
+            s -= a[i][j] * x[j];
+        }
+        x[i] = s / a[i][i];
+    }
+    Some(x)
+}
+
+fn fit_cone(samples: &[(Point3, Vec3)]) -> Option<(Point3, Vec3, f64, f64)> {
+    // On a cone, every normal ray (p, -n) passes through the axis line.
+    // The vectors from apex to sample points all make the same angle with
+    // the axis. Use the fact that normals are perpendicular to (apex - p)
+    // rotated by (pi/2 - semi_angle). For simplicity, require at least two
+    // distinct normals and find the axis as the common line of planes defined
+    // by each (p, n) — (p + t*n) line direction at the apex satisfies axis.
+    if samples.len() < 3 {
+        return None;
+    }
+    // Reject if normals are parallel (that's a cylinder case).
+    let n0 = samples[0].1.normalized()?;
+    let mut varied = false;
+    for (_, n) in samples.iter().skip(1) {
+        if (n.normalized()? - n0).length() > 1e-4 {
+            varied = true;
+            break;
+        }
+    }
+    if !varied {
+        return None;
+    }
+    // Apex is the point where lines along (-n) from each sample point converge.
+    // Build two lines from two distinct samples and intersect them in 3D (closest point).
+    let mut best = None;
+    for i in 0..samples.len() {
+        for j in (i + 1)..samples.len() {
+            let (pi, ni) = samples[i];
+            let (pj, nj) = samples[j];
+            let ni = ni.normalized()?;
+            let nj = nj.normalized()?;
+            if (ni - nj).length() < 1e-4 {
+                continue;
+            }
+            // Lines: pi + t*(-ni), pj + s*(-nj). Find closest point pair.
+            let w0 = pi - pj;
+            let a = ni.dot(ni);
+            let b = ni.dot(nj);
+            let c = nj.dot(nj);
+            let d = ni.dot(w0);
+            let e = nj.dot(w0);
+            let denom = a * c - b * b;
+            if denom.abs() < 1e-10 {
+                continue;
+            }
+            let t = (b * e - c * d) / denom;
+            let s = (a * e - b * d) / denom;
+            let pa = pi + (-ni) * t;
+            let pb = pj + (-nj) * s;
+            let apex_candidate = pa + (pb - pa) * 0.5;
+            best = Some(apex_candidate);
+            break;
+        }
+        if best.is_some() {
+            break;
+        }
+    }
+    let apex = best?;
+
+    // Axis = normalized mean of (p - apex).
+    let mut axis_sum = Vec3::ZERO;
+    for (p, _) in samples {
+        let d = *p - apex;
+        let dn = d.normalized()?;
+        axis_sum += dn;
+    }
+    let axis = axis_sum.normalized()?;
+
+    // Semi-angle: angle between (p - apex) and axis.
+    let mut angles = Vec::new();
+    let mut ref_rad = 0.0;
+    for (p, _) in samples {
+        let d = *p - apex;
+        let dn = d.normalized()?;
+        let cos_a = dn.dot(axis).clamp(-1.0, 1.0);
+        angles.push(cos_a.acos());
+        let v = d.dot(axis);
+        let r = (d - axis * v).length();
+        if v > ref_rad {
+            ref_rad = v;
+        }
+        let _ = r;
+    }
+    let mean = angles.iter().sum::<f64>() / angles.len() as f64;
+    for a in &angles {
+        if (a - mean).abs() > 1e-3 {
+            return None;
+        }
+    }
+    if mean <= 1e-6 || mean >= std::f64::consts::FRAC_PI_2 - 1e-6 {
+        return None;
+    }
+    // Reference radius = ref_rad * tan(semi-angle)
+    let ref_radius = ref_rad * mean.tan();
+    Some((apex, axis, mean, ref_radius))
+}
+
+fn fit_torus(samples: &[(Point3, Vec3)]) -> Option<(Point3, Vec3, f64, f64)> {
+    // Minor circle center for each sample: c_i = p_i - r_minor * n_i,
+    // where r_minor is unknown. But we can also express: all c_i lie on a
+    // circle of radius R (major) in a plane through torus center. Direct
+    // algebraic fit is hard; we take a guess-and-check strategy by using
+    // the normal to determine r_minor such that |c_i - torus_center|
+    // equals R across all samples.
+    // For reliability, require that the axis is deducible from normals.
+    if samples.len() < 4 {
+        return None;
+    }
+    // Try a few candidate minor radii via a search: for each candidate,
+    // compute c_i and check if they lie on a common plane with a circle fit.
+    let mean_point = samples.iter().fold(Vec3::ZERO, |acc, (p, _)| {
+        acc + Vec3::new(p.x, p.y, p.z)
+    }) * (1.0 / samples.len() as f64);
+    let _ = mean_point;
+    // Binary search minor radius in range [0, diameter of bounding box].
+    let mut bb_min = Point3::new(f64::INFINITY, f64::INFINITY, f64::INFINITY);
+    let mut bb_max = Point3::new(f64::NEG_INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY);
+    for (p, _) in samples {
+        bb_min = Point3::new(bb_min.x.min(p.x), bb_min.y.min(p.y), bb_min.z.min(p.z));
+        bb_max = Point3::new(bb_max.x.max(p.x), bb_max.y.max(p.y), bb_max.z.max(p.z));
+    }
+    let diag = (bb_max - bb_min).length();
+    if diag < 1e-9 {
+        return None;
+    }
+    let mut best: Option<(Point3, Vec3, f64, f64, f64)> = None;
+    for step in 1..50 {
+        let r_minor = diag * (step as f64 / 100.0);
+        let mut centers = Vec::new();
+        for (p, n) in samples {
+            let nv = n.normalized()?;
+            centers.push(*p - nv * r_minor);
+        }
+        // Fit plane to centers, then fit circle in that plane.
+        let axis = best_fit_plane_normal(&centers)?;
+        let (cc, rr) = fit_circle_in_plane(&centers, axis)?;
+        let mut err = 0.0;
+        for c in &centers {
+            let d = *c - cc;
+            let planar = d - axis * d.dot(axis);
+            err += (planar.length() - rr).powi(2);
+            err += d.dot(axis).powi(2);
+        }
+        err /= centers.len() as f64;
+        if best.is_none() || err < best.unwrap().4 {
+            best = Some((cc, axis, rr, r_minor, err));
+        }
+    }
+    let (center, axis, major, minor, err) = best?;
+    if err > 1e-6 * (major.max(minor) + 1.0) {
+        return None;
+    }
+    if major <= minor || minor < 1e-6 {
+        return None;
+    }
+    Some((center, axis, major, minor))
+}
+
+fn best_fit_plane_normal(points: &[Point3]) -> Option<Vec3> {
+    if points.len() < 3 {
+        return None;
+    }
+    let mut c = Vec3::ZERO;
+    for p in points {
+        c += Vec3::new(p.x, p.y, p.z);
+    }
+    c *= 1.0 / points.len() as f64;
+    let mut m = [[0.0f64; 3]; 3];
+    for p in points {
+        let d = [p.x - c.x, p.y - c.y, p.z - c.z];
+        for i in 0..3 {
+            for j in 0..3 {
+                m[i][j] += d[i] * d[j];
+            }
+        }
+    }
+    smallest_eigenvector(m)
+}
+
+fn arbitrary_perp(v: Vec3) -> Vec3 {
+    let candidate = if v.x.abs() < 0.9 { Vec3::X } else { Vec3::Y };
+    v.cross(candidate).normalized().unwrap_or(Vec3::X)
+}
+
 /// Create a STEP surface entity for a face based on its bound geometry.
 ///
 /// If the face has a bound surface, uses the appropriate STEP entity type
@@ -1074,8 +1638,18 @@ fn export_face_surface(
     face_h: cadkernel_topology::Handle<cadkernel_topology::FaceData>,
     w: &mut StepWriter,
 ) -> u64 {
-    // Try to compute a plane from the face boundary vertices
     let face_data = model.faces.get(face_h);
+
+    // If the face has a bound surface, try to classify it.
+    if let Some(fd) = face_data {
+        if let Some(surface_arc) = fd.surface.as_ref() {
+            if let Some(class) = classify_surface(surface_arc.as_ref()) {
+                return emit_surface_class(&class, w);
+            }
+        }
+    }
+
+    // Fallback: compute a plane from the face boundary vertices.
     let (origin, normal, x_dir) = if let Some(fd) = face_data {
         if let Some(ld) = model.loops.get(fd.outer_loop) {
             let hes = model.loop_half_edges(ld.half_edge);
@@ -1103,15 +1677,114 @@ fn export_face_surface(
         (Point3::ORIGIN, Vec3::Z, Vec3::X)
     };
 
-    let origin_id = w.add_point(origin);
-    let n_id = w.add_direction(normal);
-    let x_id = w.add_direction(x_dir);
-    let axis_id = w.add_entity(StepEntity::Axis2Placement3d {
-        location: origin_id,
-        axis: Some(n_id),
-        ref_direction: Some(x_id),
-    });
-    w.add_entity(StepEntity::Plane { placement: axis_id })
+    emit_surface_class(
+        &SurfaceClass::Plane {
+            origin,
+            normal,
+            x_dir,
+        },
+        w,
+    )
+}
+
+fn emit_surface_class(class: &SurfaceClass, w: &mut StepWriter) -> u64 {
+    match *class {
+        SurfaceClass::Plane {
+            origin,
+            normal,
+            x_dir,
+        } => {
+            let origin_id = w.add_point(origin);
+            let n_id = w.add_direction(normal);
+            let x_id = w.add_direction(x_dir);
+            let axis_id = w.add_entity(StepEntity::Axis2Placement3d {
+                location: origin_id,
+                axis: Some(n_id),
+                ref_direction: Some(x_id),
+            });
+            w.add_entity(StepEntity::Plane { placement: axis_id })
+        }
+        SurfaceClass::Cylinder {
+            origin,
+            axis,
+            x_dir,
+            radius,
+        } => {
+            let origin_id = w.add_point(origin);
+            let a_id = w.add_direction(axis);
+            let x_id = w.add_direction(x_dir);
+            let axis_id = w.add_entity(StepEntity::Axis2Placement3d {
+                location: origin_id,
+                axis: Some(a_id),
+                ref_direction: Some(x_id),
+            });
+            w.add_entity(StepEntity::CylindricalSurface {
+                placement: axis_id,
+                radius,
+            })
+        }
+        SurfaceClass::Sphere {
+            center,
+            axis,
+            x_dir,
+            radius,
+        } => {
+            let origin_id = w.add_point(center);
+            let a_id = w.add_direction(axis);
+            let x_id = w.add_direction(x_dir);
+            let axis_id = w.add_entity(StepEntity::Axis2Placement3d {
+                location: origin_id,
+                axis: Some(a_id),
+                ref_direction: Some(x_id),
+            });
+            w.add_entity(StepEntity::SphericalSurface {
+                placement: axis_id,
+                radius,
+            })
+        }
+        SurfaceClass::Cone {
+            apex,
+            axis,
+            x_dir,
+            semi_angle,
+            ref_radius,
+        } => {
+            let origin_id = w.add_point(apex);
+            let a_id = w.add_direction(axis);
+            let x_id = w.add_direction(x_dir);
+            let axis_id = w.add_entity(StepEntity::Axis2Placement3d {
+                location: origin_id,
+                axis: Some(a_id),
+                ref_direction: Some(x_id),
+            });
+            w.add_entity(StepEntity::ConicalSurface {
+                placement: axis_id,
+                radius: ref_radius,
+                semi_angle,
+            })
+        }
+        SurfaceClass::Torus {
+            center,
+            axis,
+            x_dir,
+            major_radius,
+            minor_radius,
+        } => {
+            let origin_id = w.add_point(center);
+            let a_id = w.add_direction(axis);
+            let x_id = w.add_direction(x_dir);
+            let axis_id = w.add_entity(StepEntity::Axis2Placement3d {
+                location: origin_id,
+                axis: Some(a_id),
+                ref_direction: Some(x_id),
+            });
+            w.add_entity(StepEntity::ToroidalSurface {
+                placement: axis_id,
+                major_radius,
+                minor_radius,
+            })
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

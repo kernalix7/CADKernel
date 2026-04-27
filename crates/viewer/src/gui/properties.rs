@@ -264,7 +264,11 @@ fn draw_data_tab(
     }
 
     // Placement group
-    let placement_labels = ["Position X", "Position Y", "Position Z", "Rotation X", "Rotation Y", "Rotation Z"];
+    let placement_labels = [
+        "Position X", "Position Y", "Position Z",
+        "Rotation X", "Rotation Y", "Rotation Z",
+        "Bounding Width", "Bounding Depth", "Bounding Height",
+    ];
     if any_label_matches(&placement_labels, filter) {
         collapsible_group(ui, "Placement", true, |ui| {
             let (cx, cy, cz) = mesh_center(&obj.mesh);
@@ -281,6 +285,19 @@ fn draw_data_tab(
                 if matches_filter("Rotation Y", filter) { readonly_f64_row(ui, "Angle Y", 0.0, 1, "\u{00B0}"); }
                 if matches_filter("Rotation Z", filter) { readonly_f64_row(ui, "Angle Z", 0.0, 1, "\u{00B0}"); }
             });
+            // Bounding box dimensions — driven by live obj.aabb_min / aabb_max,
+            // which are recomputed whenever a SceneObject is rebuilt.
+            let bbox_labels = ["Bounding Width", "Bounding Depth", "Bounding Height"];
+            if any_label_matches(&bbox_labels, filter) {
+                let (dx, dy, dz) = bbox_extents(obj);
+                ui.add_space(4.0);
+                ui.label(egui::RichText::new("Bounding Box").size(10.5).color(theme::COLOR_DIM).strong());
+                egui::Grid::new("placement_bbox_grid").num_columns(3).spacing([10.0, 4.0]).show(ui, |ui| {
+                    if matches_filter("Bounding Width", filter)  { readonly_f64_row(ui, "Width",  dx, 3, "mm"); }
+                    if matches_filter("Bounding Depth", filter)  { readonly_f64_row(ui, "Depth",  dy, 3, "mm"); }
+                    if matches_filter("Bounding Height", filter) { readonly_f64_row(ui, "Height", dz, 3, "mm"); }
+                });
+            }
         });
     }
 
@@ -1055,6 +1072,17 @@ fn mesh_center(mesh: &cadkernel_io::Mesh) -> (f64, f64, f64) {
     (sum.0 / n, sum.1 / n, sum.2 / n)
 }
 
+/// Axis-aligned bounding box extents (dx, dy, dz) in mm, read from the
+/// object's pre-computed `aabb_min`/`aabb_max` fields. These are refreshed
+/// by `Scene::add_object` and `Scene::rebuild_object` so the returned
+/// values always reflect the current mesh.
+pub(crate) fn bbox_extents(obj: &crate::scene::SceneObject) -> (f64, f64, f64) {
+    let dx = (obj.aabb_max[0] - obj.aabb_min[0]).max(0.0) as f64;
+    let dy = (obj.aabb_max[1] - obj.aabb_min[1]).max(0.0) as f64;
+    let dz = (obj.aabb_max[2] - obj.aabb_min[2]).max(0.0) as f64;
+    (dx, dy, dz)
+}
+
 fn creation_param_labels(p: &CreationParams) -> Vec<&'static str> {
     match p {
         CreationParams::Box { .. } => vec!["Width", "Height", "Depth"],
@@ -1196,4 +1224,54 @@ fn draw_material_presets(
             }
         }
     });
+}
+
+#[cfg(test)]
+mod bbox_tests {
+    //! Unit tests for `bbox_extents` — the helper that drives the new
+    //! Bounding Box section of the Placement group (V36 Task #16 UX pass).
+    use super::bbox_extents;
+    use cadkernel_io::Mesh;
+    use cadkernel_math::Point3;
+    use cadkernel_modeling::make_box;
+    use cadkernel_topology::BRepModel;
+    use crate::scene::{CreationParams, Scene};
+
+    #[test]
+    fn bbox_extents_of_unit_box_is_one_on_all_axes() {
+        let mut scene = Scene::new();
+        let mut model = BRepModel::new();
+        let r = make_box(&mut model, Point3::ORIGIN, 1.0, 1.0, 1.0).unwrap();
+        let id = scene.add_object("u1", model, r.solid, Some(CreationParams::Box {
+            width: 1.0, height: 1.0, depth: 1.0,
+        }));
+        let obj = scene.get(id).unwrap();
+        let (dx, dy, dz) = bbox_extents(obj);
+        assert!((dx - 1.0).abs() < 1e-3, "width {dx}");
+        assert!((dy - 1.0).abs() < 1e-3, "depth {dy}");
+        assert!((dz - 1.0).abs() < 1e-3, "height {dz}");
+    }
+
+    #[test]
+    fn bbox_extents_reflects_anisotropic_box_dimensions() {
+        let mut scene = Scene::new();
+        let mut model = BRepModel::new();
+        let r = make_box(&mut model, Point3::ORIGIN, 2.5, 7.0, 0.5).unwrap();
+        let id = scene.add_object("aniso", model, r.solid, None);
+        let (dx, dy, dz) = bbox_extents(scene.get(id).unwrap());
+        assert!((dx - 2.5).abs() < 1e-3, "dx {dx}");
+        assert!((dy - 7.0).abs() < 1e-3, "dy {dy}");
+        assert!((dz - 0.5).abs() < 1e-3, "dz {dz}");
+    }
+
+    #[test]
+    fn bbox_extents_is_zero_on_empty_mesh_object() {
+        // add_mesh_object with an empty Mesh: aabb should be [0;3] for both
+        // bounds, so extents are zero (clamped non-negative).
+        let mut scene = Scene::new();
+        let empty = Mesh::new();
+        let id = scene.add_mesh_object("empty", empty, None);
+        let (dx, dy, dz) = bbox_extents(scene.get(id).unwrap());
+        assert_eq!((dx, dy, dz), (0.0, 0.0, 0.0));
+    }
 }

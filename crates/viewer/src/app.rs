@@ -22,9 +22,10 @@ use cadkernel_io::{
 use cadkernel_math::{Point3, Vec3};
 use cadkernel_modeling::{
     BooleanOp, boolean_op, chamfer_edge, check_geometry, compute_mass_properties,
-    extrude, fillet_edge, linear_pattern, make_box, make_cone, make_cylinder, make_ellipsoid,
-    make_helix, make_prism, make_sphere, make_torus, make_tube, make_wedge, mirror_solid,
-    scale_solid, shell_solid,
+    extrude, filling, fillet_edge, linear_pattern, make_box, make_cone, make_cylinder,
+    make_ellipsoid, make_helix, make_polygon_wire, make_prism, make_rectangle_wire,
+    make_sphere, make_torus, make_tube, make_wedge, mirror_solid, pipe_surface, scale_solid,
+    shell_solid,
 };
 use cadkernel_sketch::{
     Constraint, WorkPlane, carbon_copy, decrease_bspline_degree, drag_solve,
@@ -1376,6 +1377,16 @@ impl CadApp {
                         self.camera.fit_to_bounds(min, max);
                     }
                     self.gui.status_message = "Camera fit to model".into();
+                }
+
+                GuiAction::FocusObject(id) => {
+                    // Fit camera to the AABB of a single object (tree double-click).
+                    if let Some(obj) = self.scene.get_object(id) {
+                        if !obj.vertices.is_empty() {
+                            self.camera.fit_to_bounds(obj.aabb_min, obj.aabb_max);
+                            self.gui.status_message = format!("Focused on '{}'", obj.name);
+                        }
+                    }
                 }
 
                 GuiAction::ToggleProjection => {
@@ -3319,16 +3330,144 @@ impl CadApp {
                 }
 
                 // -- Assembly workbench --
-                GuiAction::CreateAssembly => self.log_info("Assembly: created new assembly"),
-                GuiAction::InsertComponent => self.log_info("Assembly: insert component"),
-                GuiAction::SolveAssembly => self.log_info("Assembly: solving constraints"),
+                GuiAction::CreateAssembly => {
+                    self.gui.assembly = Some(cadkernel_modeling::Assembly::new("New Assembly"));
+                    self.log_info("Assembly: created new assembly");
+                }
+                GuiAction::InsertComponent => {
+                    let solid = self.current_solid;
+                    let msg = {
+                        let assembly = self.gui.assembly.get_or_insert_with(|| {
+                            cadkernel_modeling::Assembly::new("New Assembly")
+                        });
+                        if let Some(s) = solid {
+                            let n = assembly.num_components();
+                            let id = assembly.add_component(&format!("Component {}", n + 1), s);
+                            Some(format!(
+                                "Assembly: inserted component {} ({} total)",
+                                id.0,
+                                assembly.num_components()
+                            ))
+                        } else {
+                            None
+                        }
+                    };
+                    match msg {
+                        Some(m) => self.log_info(m),
+                        None => {
+                            self.gui.status_message =
+                                "Assembly: no solid selected to insert as component".into();
+                        }
+                    }
+                }
+                GuiAction::SolveAssembly => {
+                    enum SolveMsg {
+                        Ok(String),
+                        Warn(String),
+                        Err(String),
+                        NoAssembly,
+                    }
+                    let msg = if let Some(assembly) = self.gui.assembly.as_mut() {
+                        let n = assembly.num_constraints();
+                        match assembly.solve(100) {
+                            Ok(true) => SolveMsg::Ok(format!("Assembly: solved {n} constraints")),
+                            Ok(false) => SolveMsg::Warn(format!(
+                                "Assembly: solver did not converge ({n} constraints)"
+                            )),
+                            Err(e) => SolveMsg::Err(format!("Assembly solve error: {e}")),
+                        }
+                    } else {
+                        SolveMsg::NoAssembly
+                    };
+                    match msg {
+                        SolveMsg::Ok(m) => self.log_info(m),
+                        SolveMsg::Warn(m) => self.log_warning(m),
+                        SolveMsg::Err(m) => self.log_error(m),
+                        SolveMsg::NoAssembly => {
+                            self.gui.status_message =
+                                "Assembly: no assembly — create one first".into();
+                        }
+                    }
+                }
                 GuiAction::ExplodedView { factor } => {
                     self.log_info(format!("Assembly: exploded view factor={factor:.1}"));
                 }
-                GuiAction::BillOfMaterials => self.log_info("Assembly: bill of materials"),
-                GuiAction::DOFAnalysis => self.log_info("Assembly: DOF analysis"),
+                GuiAction::BillOfMaterials => {
+                    enum Msg { Ok(String), NoAssembly }
+                    let msg = if self.gui.populate_bom_entries() {
+                        let n: usize = self.gui.bom_entries.iter().map(|e| e.quantity).sum();
+                        Msg::Ok(format!(
+                            "Assembly: BOM ({} entries, {n} parts)",
+                            self.gui.bom_entries.len()
+                        ))
+                    } else {
+                        Msg::NoAssembly
+                    };
+                    match msg {
+                        Msg::Ok(m) => self.log_info(m),
+                        Msg::NoAssembly => {
+                            self.gui.status_message =
+                                "Assembly: no assembly — create one first".into();
+                            self.log_warning("Assembly: no assembly for BOM");
+                        }
+                    }
+                }
+                GuiAction::DOFAnalysis => {
+                    enum Msg { Ok(String), NoAssembly }
+                    let msg = if let Some(asm) = self.gui.assembly.as_ref() {
+                        let n = asm.num_components();
+                        let c = asm.num_constraints();
+                        let j = asm.joint_count();
+                        let dof = (n as i64) * 6 - (c as i64) - (j as i64);
+                        Msg::Ok(format!(
+                            "Assembly DOF: {n} comps × 6 - {c} constraints - {j} joints = {dof}"
+                        ))
+                    } else {
+                        Msg::NoAssembly
+                    };
+                    match msg {
+                        Msg::Ok(m) => self.log_info(m),
+                        Msg::NoAssembly => self.log_warning("Assembly: no assembly for DOF"),
+                    }
+                }
                 GuiAction::AddAssemblyJoint(joint) => {
-                    self.log_info(format!("Assembly: joint {}", joint.label()));
+                    enum Msg { Ok(String), TooFew }
+                    let msg = if self.gui.open_joint_editor(joint) {
+                        Msg::Ok(format!("Assembly: edit joint {}", joint.label()))
+                    } else {
+                        Msg::TooFew
+                    };
+                    match msg {
+                        Msg::Ok(m) => self.log_info(m),
+                        Msg::TooFew => self.log_warning(
+                            "Assembly: need at least 2 components to add a joint",
+                        ),
+                    }
+                }
+                GuiAction::ToggleAssemblyComponentVisibility(idx) => {
+                    enum Msg { Ok(String), Fail }
+                    let msg = if self.gui.toggle_assembly_component_visibility(idx) {
+                        Msg::Ok(format!("Assembly: toggled component {idx} visibility"))
+                    } else {
+                        Msg::Fail
+                    };
+                    match msg {
+                        Msg::Ok(m) => self.log_info(m),
+                        Msg::Fail => self.log_warning("Assembly: toggle visibility failed"),
+                    }
+                }
+                GuiAction::CommitAssemblyJoint => {
+                    enum Msg { Ok(String), Fail }
+                    let msg = if self.gui.commit_assembly_joint() {
+                        let n = self.gui.assembly.as_ref().map(|a| a.joint_count()).unwrap_or(0);
+                        Msg::Ok(format!("Assembly: joint added ({n} total)"))
+                    } else {
+                        Msg::Fail
+                    };
+                    match msg {
+                        Msg::Ok(m) => self.log_info(m),
+                        Msg::Fail => self.log_warning("Assembly: failed to commit joint"),
+                    }
                 }
 
                 // -- Draft workbench --
@@ -3337,8 +3476,49 @@ impl CadApp {
                 GuiAction::DraftCircle => self.log_info("Draft: circle"),
                 GuiAction::DraftArc => self.log_info("Draft: arc"),
                 GuiAction::DraftEllipse => self.log_info("Draft: ellipse"),
-                GuiAction::DraftRectangle => self.log_info("Draft: rectangle"),
-                GuiAction::DraftPolygon => self.log_info("Draft: polygon"),
+                GuiAction::DraftRectangle => {
+                    self.snapshot_before("Draft Rectangle");
+                    let mut model = BRepModel::new();
+                    match make_rectangle_wire(Point3::ORIGIN, 2.0, 1.0, Vec3::Z) {
+                        Ok(mut pts) => {
+                            // make_rectangle_wire closes the polyline by repeating
+                            // the origin; filling() expects distinct boundary points.
+                            pts.pop();
+                            match filling(&mut model, &pts, 1) {
+                                Ok(r) => {
+                                    self.add_to_scene(
+                                        "Draft Rectangle",
+                                        model, r.solid,
+                                        Some(crate::scene::CreationParams::DraftRectangle { width: 2.0, height: 1.0 }),
+                                    );
+                                    self.log_info("Draft: rectangle");
+                                }
+                                Err(e) => self.log_error(format!("DraftRectangle fill error: {e}")),
+                            }
+                        }
+                        Err(e) => self.log_error(format!("DraftRectangle error: {e}")),
+                    }
+                }
+                GuiAction::DraftPolygon => {
+                    self.snapshot_before("Draft Polygon");
+                    let mut model = BRepModel::new();
+                    match make_polygon_wire(Point3::ORIGIN, Vec3::Z, 1.0, 6) {
+                        Ok(pts) => {
+                            match filling(&mut model, &pts, 1) {
+                                Ok(r) => {
+                                    self.add_to_scene(
+                                        "Draft Polygon",
+                                        model, r.solid,
+                                        Some(crate::scene::CreationParams::DraftPolygon { radius: 1.0, sides: 6 }),
+                                    );
+                                    self.log_info("Draft: polygon");
+                                }
+                                Err(e) => self.log_error(format!("DraftPolygon fill error: {e}")),
+                            }
+                        }
+                        Err(e) => self.log_error(format!("DraftPolygon error: {e}")),
+                    }
+                }
                 GuiAction::DraftBSpline => self.log_info("Draft: B-spline"),
                 GuiAction::DraftBezier => self.log_info("Draft: Bezier"),
                 GuiAction::DraftPoint => self.log_info("Draft: point"),
@@ -3371,18 +3551,127 @@ impl CadApp {
                 }
 
                 // -- Surface workbench --
-                GuiAction::SurfaceFilling => self.log_info("Surface: filling"),
-                GuiAction::SurfaceBoundary => self.log_info("Surface: boundary"),
+                GuiAction::SurfaceFilling => {
+                    self.snapshot_before("Surface Filling");
+                    let mut model = BRepModel::new();
+                    let boundary = [
+                        Point3::new(0.0, 0.0, 0.0),
+                        Point3::new(2.0, 0.0, 0.0),
+                        Point3::new(2.0, 2.0, 0.0),
+                        Point3::new(0.0, 2.0, 0.0),
+                    ];
+                    match filling(&mut model, &boundary, 1) {
+                        Ok(r) => {
+                            self.add_to_scene("Surface Filling", model, r.solid, None);
+                            self.log_info("Surface: filling");
+                        }
+                        Err(e) => self.log_error(format!("SurfaceFilling error: {e}")),
+                    }
+                }
+                GuiAction::SurfaceBoundary => {
+                    self.snapshot_before("Surface Boundary");
+                    let mut model = BRepModel::new();
+                    // Hexagonal boundary — make_polygon_wire returns closed polyline,
+                    // but filling() expects distinct points.
+                    match make_polygon_wire(Point3::ORIGIN, Vec3::Z, 1.0, 6) {
+                        Ok(pts) => {
+                            match filling(&mut model, &pts, 1) {
+                                Ok(r) => {
+                                    self.add_to_scene("Surface Boundary", model, r.solid, None);
+                                    self.log_info("Surface: boundary");
+                                }
+                                Err(e) => self.log_error(format!("SurfaceBoundary fill error: {e}")),
+                            }
+                        }
+                        Err(e) => self.log_error(format!("SurfaceBoundary error: {e}")),
+                    }
+                }
                 GuiAction::SurfaceSections => self.log_info("Surface: sections"),
                 GuiAction::SurfaceExtend => self.log_info("Surface: extend"),
                 GuiAction::SurfaceBlend => self.log_info("Surface: blend"),
-                GuiAction::SurfacePipe => self.log_info("Surface: pipe"),
+                GuiAction::SurfacePipe => {
+                    self.snapshot_before("Surface Pipe");
+                    let mut model = BRepModel::new();
+                    let path = [
+                        Point3::new(0.0, 0.0, 0.0),
+                        Point3::new(0.0, 0.0, 2.0),
+                    ];
+                    match pipe_surface(&mut model, &path, 0.25, 16) {
+                        Ok(r) => {
+                            self.add_to_scene(
+                                "Surface Pipe",
+                                model, r.solid,
+                                Some(crate::scene::CreationParams::SurfacePipe { radius: 0.25, length: 2.0 }),
+                            );
+                            self.log_info("Surface: pipe");
+                        }
+                        Err(e) => self.log_error(format!("SurfacePipe error: {e}")),
+                    }
+                }
                 GuiAction::SurfaceCoons => self.log_info("Surface: Coons"),
 
                 // -- FEM workbench --
-                GuiAction::CreateFemAnalysis => self.log_info("FEM: new analysis created"),
+                GuiAction::CreateFemAnalysis => {
+                    let solid_opt = self.current_solid;
+                    let msg = if let Some(solid) = solid_opt {
+                        match cadkernel_modeling::generate_tet_mesh(&self.model, solid, 1.0) {
+                            Ok(mesh) => {
+                                let n_nodes = mesh.nodes.len();
+                                let n_elems = mesh.elements.len();
+                                self.gui.fem_analysis = Some(
+                                    cadkernel_modeling::AnalysisContainer::new(
+                                        mesh,
+                                        self.gui.pending_fem_material.clone(),
+                                    ),
+                                );
+                                Ok(format!(
+                                    "FEM: new analysis ({n_nodes} nodes, {n_elems} elements)"
+                                ))
+                            }
+                            Err(e) => Err(format!("FEM mesh error: {e}")),
+                        }
+                    } else {
+                        Err("FEM: no solid to mesh".into())
+                    };
+                    match msg {
+                        Ok(m) => self.log_info(m),
+                        Err(m) => self.log_warning(m),
+                    }
+                }
                 GuiAction::SetFemMaterial(ref mat) => {
                     self.log_info(format!("FEM: material set to '{mat}'"));
+                }
+                GuiAction::OpenMaterialPicker => {
+                    self.gui.material_picker_dialog = Some(crate::gui::MaterialPickerState::new());
+                }
+                GuiAction::CommitMaterialPicker => {
+                    if let Some(s) = self.gui.material_picker_dialog.take() {
+                        self.gui.pending_fem_material = crate::gui::material_from_preset(
+                            s.selected, s.youngs_modulus, s.poisson_ratio, s.density);
+                        self.log_info(format!("FEM: material set to '{}'", s.selected.label()));
+                    }
+                }
+                GuiAction::OpenBcEditor(kind) => {
+                    if self.gui.fem_analysis.is_none() {
+                        self.gui.status_message = "FEM: no analysis \u{2014} create one first".into();
+                    } else {
+                        self.gui.bc_editor_dialog = Some(crate::gui::BcEditorState::new(kind));
+                    }
+                }
+                GuiAction::CommitBcEditor => {
+                    if let Some(s) = self.gui.bc_editor_dialog.take() {
+                        let total = self.gui.fem_analysis.as_mut().map(|c| {
+                            c.add_bc(s.to_boundary_condition());
+                            c.boundary_conditions.len()
+                        });
+                        match total {
+                            Some(n) => self.log_info(format!(
+                                "FEM: BC added ({}, node {}) \u{2014} total {n}",
+                                s.bc_kind.label(), s.node_index)),
+                            None => self.gui.status_message =
+                                "FEM: no analysis \u{2014} create one first".into(),
+                        }
+                    }
                 }
                 GuiAction::GenTetMesh { element_size } => {
                     self.log_info(format!("FEM: generate tet mesh (size={element_size:.2})"));
@@ -3393,7 +3682,35 @@ impl CadApp {
                 GuiAction::AddFemConstraint(ref ctype) => {
                     self.log_info(format!("FEM: constraint {ctype:?}"));
                 }
-                GuiAction::SolveStatic => self.log_info("FEM: static solve"),
+                GuiAction::SolveStatic => {
+                    enum Msg { Ok(String), Err(String), NoAnalysis }
+                    let msg = if let Some(container) = self.gui.fem_analysis.as_mut() {
+                        let n_bc = container.boundary_conditions.len();
+                        match container.run_static() {
+                            Ok(()) => {
+                                let max_disp = container
+                                    .result
+                                    .as_ref()
+                                    .map(|r| r.max_displacement)
+                                    .unwrap_or(0.0);
+                                Msg::Ok(format!(
+                                    "FEM: static solved ({n_bc} BCs, max |u|={max_disp:.4e})"
+                                ))
+                            }
+                            Err(e) => Msg::Err(format!("FEM solve error: {e}")),
+                        }
+                    } else {
+                        Msg::NoAnalysis
+                    };
+                    match msg {
+                        Msg::Ok(m) => self.log_info(m),
+                        Msg::Err(m) => self.log_warning(m),
+                        Msg::NoAnalysis => {
+                            self.gui.status_message =
+                                "FEM: no analysis — create one first".into();
+                        }
+                    }
+                }
                 GuiAction::SolveModal { modes } => {
                     self.log_info(format!("FEM: modal solve ({modes} modes)"));
                 }

@@ -484,7 +484,88 @@ pub fn export_iges(model: &BRepModel) -> KernelResult<String> {
         });
     }
 
+    // Export faces as Rational B-Spline Surface entities (type 128).
+    // Each bound face becomes a degree-1 bilinear patch sampled at the four
+    // corners of the surface's (u, v) domain. Faces without a bound surface
+    // fall back to sampling the outer-loop boundary vertices.
+    for (fh, fd) in model.faces.iter() {
+        let corners = face_corner_samples(model, fh, fd);
+        if let Some([p00, p10, p01, p11]) = corners {
+            writer.add_entity(IgesEntity {
+                entity_type: IgesEntityType::RationalBSplineSurface,
+                params: bilinear_surface_params(p00, p10, p01, p11),
+            });
+        }
+    }
+
     writer.write()
+}
+
+fn face_corner_samples(
+    model: &BRepModel,
+    face_h: cadkernel_topology::Handle<cadkernel_topology::FaceData>,
+    fd: &cadkernel_topology::FaceData,
+) -> Option<[Point3; 4]> {
+    if let Some(surface) = fd.surface.as_ref() {
+        let (u0, u1) = surface.domain_u();
+        let (v0, v1) = surface.domain_v();
+        if u0.is_finite()
+            && u1.is_finite()
+            && v0.is_finite()
+            && v1.is_finite()
+            && u1 > u0
+            && v1 > v0
+        {
+            let p00 = surface.point_at(u0, v0);
+            let p10 = surface.point_at(u1, v0);
+            let p01 = surface.point_at(u0, v1);
+            let p11 = surface.point_at(u1, v1);
+            return Some([p00, p10, p01, p11]);
+        }
+    }
+    let _ = face_h;
+
+    let ld = model.loops.get(fd.outer_loop)?;
+    let hes = model.loop_half_edges(ld.half_edge);
+    let mut pts = Vec::new();
+    for &he_h in &hes {
+        if let Some(he) = model.half_edges.get(he_h) {
+            if let Some(v) = model.vertices.get(he.origin) {
+                pts.push(v.point);
+            }
+        }
+    }
+    if pts.len() < 3 {
+        return None;
+    }
+    let n = pts.len();
+    Some([pts[0], pts[n / 4], pts[n / 2], pts[(3 * n) / 4]])
+}
+
+fn bilinear_surface_params(p00: Point3, p10: Point3, p01: Point3, p11: Point3) -> Vec<f64> {
+    // IGES Type 128 Rational B-Spline Surface parameter layout:
+    //   K1, K2, M1, M2, PROP1..PROP5,
+    //   S[-M1..K1+1] knots, T[-M2..K2+1] knots,
+    //   W[0..K1][0..K2] weights,
+    //   (X, Y, Z) control points in row-major,
+    //   U0, U1, V0, V1.
+    // For a bilinear patch: K1=K2=1, M1=M2=1 → 4 control points, knot vec
+    // [0,0,1,1] for each direction, all weights 1.
+    // K1, K2, M1, M2, PROP1..PROP5
+    let mut params: Vec<f64> = vec![1.0, 1.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0, 0.0];
+    // S knots, T knots, and 4 unit weights
+    params.extend_from_slice(&[0.0, 0.0, 1.0, 1.0]);
+    params.extend_from_slice(&[0.0, 0.0, 1.0, 1.0]);
+    params.extend_from_slice(&[1.0, 1.0, 1.0, 1.0]);
+    // Control points in row-major order: (i=0,j=0), (i=1,j=0), (i=0,j=1), (i=1,j=1)
+    for p in [p00, p10, p01, p11] {
+        params.push(p.x);
+        params.push(p.y);
+        params.push(p.z);
+    }
+    // Parameter ranges
+    params.extend_from_slice(&[0.0, 1.0, 0.0, 1.0]);
+    params
 }
 
 /// Exports a mesh to an IGES format string (vertices as points, triangle edges as lines).

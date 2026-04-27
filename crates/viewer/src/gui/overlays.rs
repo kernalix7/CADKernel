@@ -1055,6 +1055,11 @@ pub(crate) fn draw_transform_gizmo(
     let drag_delta = ctx.input(|i| i.pointer.delta());
     let primary_down = ctx.input(|i| i.pointer.button_down(egui::PointerButton::Primary));
     let primary_released = ctx.input(|i| i.pointer.button_released(egui::PointerButton::Primary));
+    // Precision modifiers:
+    //   Shift → fine drag (0.1× speed, for sub-millimeter / sub-degree tuning)
+    //   Ctrl  → snap to step (1 mm for translate, 1° for rotate, 10% for scale)
+    let shift_held = ctx.input(|i| i.modifiers.shift);
+    let ctrl_held = ctx.input(|i| i.modifiers.ctrl);
 
     gui.gizmo_hover_axis = None;
     if let Some(mp) = mouse_pos {
@@ -1081,25 +1086,36 @@ pub(crate) fn draw_transform_gizmo(
             let dir = dirs[axis];
             let proj = dx * dir[0] + dy * dir[1];
             let speed = camera.distance * 0.003;
-            let amount = proj as f64 * speed as f64;
+            let precision = precision_multiplier(shift_held);
+            let amount = proj as f64 * speed as f64 * precision;
             if amount.abs() > 1e-6 {
                 use super::GuiAction;
                 match gui.gizmo_mode {
                     GizmoMode::Translate => {
+                        let stepped = if ctrl_held { snap_to_step(amount, 1.0) } else { amount };
                         let (mx, my, mz) = match axis {
-                            0 => (amount, 0.0, 0.0),
-                            1 => (0.0, amount, 0.0),
-                            _ => (0.0, 0.0, amount),
+                            0 => (stepped, 0.0, 0.0),
+                            1 => (0.0, stepped, 0.0),
+                            _ => (0.0, 0.0, stepped),
                         };
-                        gui.actions.push(GuiAction::MoveObject { id: obj_id, dx: mx, dy: my, dz: mz });
+                        if stepped.abs() > 1e-6 {
+                            gui.actions.push(GuiAction::MoveObject { id: obj_id, dx: mx, dy: my, dz: mz });
+                        }
                     }
                     GizmoMode::Rotate => {
-                        let angle = proj as f64 * 0.5;
-                        gui.actions.push(GuiAction::RotateObject { id: obj_id, axis: axis as u8, angle_deg: angle });
+                        let angle = proj as f64 * 0.5 * precision;
+                        let stepped = if ctrl_held { snap_to_step(angle, 1.0) } else { angle };
+                        if stepped.abs() > 1e-6 {
+                            gui.actions.push(GuiAction::RotateObject { id: obj_id, axis: axis as u8, angle_deg: stepped });
+                        }
                     }
                     GizmoMode::Scale => {
-                        let factor = 1.0 + proj as f64 * 0.005;
-                        gui.actions.push(GuiAction::ScaleObjectUniform { id: obj_id, factor });
+                        let raw = proj as f64 * 0.005 * precision;
+                        let stepped = if ctrl_held { snap_to_step(raw, 0.1) } else { raw };
+                        let factor = 1.0 + stepped;
+                        if (factor - 1.0).abs() > 1e-6 {
+                            gui.actions.push(GuiAction::ScaleObjectUniform { id: obj_id, factor });
+                        }
                     }
                     GizmoMode::None => {}
                 }
@@ -1129,21 +1145,58 @@ pub(crate) fn draw_transform_gizmo(
     painter.circle_filled(origin, 5.0, egui::Color32::WHITE);
     painter.circle_stroke(origin, 5.0, egui::Stroke::new(1.0, egui::Color32::from_gray(60)));
 
-    // Mode label below the gizmo center
-    let label = match gui.gizmo_mode {
+    // Mode label below the gizmo center; suffix shows active precision modifier.
+    let base_label = match gui.gizmo_mode {
         GizmoMode::Translate => "Move (W)",
         GizmoMode::Rotate => "Rotate (E)",
         GizmoMode::Scale => "Scale (R)",
         GizmoMode::None => "",
     };
-    if !label.is_empty() {
+    if !base_label.is_empty() {
+        let suffix = gizmo_modifier_suffix(shift_held, ctrl_held);
+        let label = if suffix.is_empty() {
+            base_label.to_string()
+        } else {
+            format!("{base_label}  {suffix}")
+        };
         painter.text(
             egui::pos2(origin.x, origin.y + 10.0),
             egui::Align2::CENTER_TOP,
-            label,
+            &label,
             egui::FontId::proportional(10.0),
             egui::Color32::from_gray(160),
         );
+    }
+}
+
+/// Scale factor applied to raw drag deltas when Shift is held.
+///
+/// Returns `0.1` for fine-grained tuning (sub-mm / sub-°) when `shift_held`
+/// is true, and `1.0` otherwise. Pure function — unit tested.
+pub(crate) fn precision_multiplier(shift_held: bool) -> f64 {
+    if shift_held { 0.1 } else { 1.0 }
+}
+
+/// Round `value` to the nearest integer multiple of `step`.
+///
+/// Used to implement Ctrl-snap in the transform gizmo: 1 mm for translate,
+/// 1° for rotate, 10% for uniform scale. Returns `value` unchanged when
+/// `step` is non-positive. Pure function — unit tested.
+pub(crate) fn snap_to_step(value: f64, step: f64) -> f64 {
+    if step <= 0.0 {
+        return value;
+    }
+    (value / step).round() * step
+}
+
+/// Build the small text suffix displayed under the gizmo indicating which
+/// precision modifiers are currently active.
+pub(crate) fn gizmo_modifier_suffix(shift_held: bool, ctrl_held: bool) -> &'static str {
+    match (shift_held, ctrl_held) {
+        (true, true)  => "[Shift+Ctrl: fine+snap]",
+        (true, false) => "[Shift: fine]",
+        (false, true) => "[Ctrl: snap]",
+        (false, false) => "",
     }
 }
 
@@ -1779,5 +1832,62 @@ pub(crate) fn draw_toast_overlay(ctx: &egui::Context, gui: &mut GuiState) {
                 msg_color,
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod gizmo_precision_tests {
+    //! Unit tests for the pure helpers that back the transform-gizmo precision
+    //! modifiers (V36 Task #16 UX pass).
+    use super::{gizmo_modifier_suffix, precision_multiplier, snap_to_step};
+
+    #[test]
+    fn precision_multiplier_defaults_to_one() {
+        assert!((precision_multiplier(false) - 1.0).abs() < 1e-12);
+    }
+
+    #[test]
+    fn precision_multiplier_is_one_tenth_when_shift_held() {
+        let p = precision_multiplier(true);
+        assert!((p - 0.1).abs() < 1e-12, "shift should give 0.1× speed, got {p}");
+    }
+
+    #[test]
+    fn snap_to_step_rounds_to_nearest_integer_mm() {
+        assert!((snap_to_step(0.49, 1.0) - 0.0).abs() < 1e-12);
+        assert!((snap_to_step(0.51, 1.0) - 1.0).abs() < 1e-12);
+        assert!((snap_to_step(2.7, 1.0) - 3.0).abs() < 1e-12);
+        assert!((snap_to_step(-1.4, 1.0) - (-1.0)).abs() < 1e-12);
+    }
+
+    #[test]
+    fn snap_to_step_handles_tenths_for_scale() {
+        // Scale snap uses 0.1 step
+        assert!((snap_to_step(0.14, 0.1) - 0.1).abs() < 1e-12);
+        assert!((snap_to_step(0.16, 0.1) - 0.2).abs() < 1e-12);
+    }
+
+    #[test]
+    fn snap_to_step_returns_value_unchanged_for_non_positive_step() {
+        assert!((snap_to_step(1.234, 0.0) - 1.234).abs() < 1e-12);
+        assert!((snap_to_step(1.234, -0.5) - 1.234).abs() < 1e-12);
+    }
+
+    #[test]
+    fn snap_to_step_is_idempotent_on_already_snapped_values() {
+        let v = snap_to_step(2.7, 1.0);
+        assert_eq!(v, snap_to_step(v, 1.0));
+    }
+
+    #[test]
+    fn modifier_suffix_empty_when_no_modifiers() {
+        assert_eq!(gizmo_modifier_suffix(false, false), "");
+    }
+
+    #[test]
+    fn modifier_suffix_shows_active_keys() {
+        assert_eq!(gizmo_modifier_suffix(true, false), "[Shift: fine]");
+        assert_eq!(gizmo_modifier_suffix(false, true), "[Ctrl: snap]");
+        assert_eq!(gizmo_modifier_suffix(true, true), "[Shift+Ctrl: fine+snap]");
     }
 }

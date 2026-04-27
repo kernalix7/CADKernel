@@ -11,6 +11,273 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### V37: Phase O-a follow-up — BcKind extended to 12 variants + Ground Component menu (2026-04-26)
+
+**Context.** Phase O-a shipped `BcKind { FixedNode | Force }` with a working editor pipeline (10 of the kernel's 17 `BoundaryCondition` variants were on the legacy `AddFemConstraint` path; the multi-node/surface 4 require richer node-set selection UX). This follow-up extends `BcKind` to cover the remaining 10 scalar / single-node / Vec3-only variants in one unified editor, and adds a "Ground Component" entry to the Assembly menu so the existing `JointType::Grounded` is reachable through the menu — not just programmatic dispatch.
+
+**`BcKind` extended (2 → 12 variants).** New arms: `Pressure { element, pressure }`, `Displacement { node, displacement }`, `Gravity { acceleration }`, `DistributedLoad { element, load }`, `Spring { node, stiffness }`, `CentrifugalLoad { axis, omega }`, `SelfWeight { gravity }`, `SpringConstraint { node_id, stiffness, direction }`, `BodyLoad { force_density }`, `InitialTemperature { node, temperature }`.
+
+**Single editor with Vec3/scalar overload** (`crates/viewer/src/gui/mod.rs` + `dialogs.rs`). Rather than ten sub-modals, `BcEditorState` carries a single `vec3_x/y/z` triple, a single `scalar_a`, plus `node_index` and `element_index`. The dialog re-labels them per-variant: `vec3_label()` returns "Force (N)" / "Displacement (m)" / "Acceleration (m/s²)" / "Load (N/m²)" / "Axis" / "Gravity (m/s²)" / "Direction" / "Force Density (N/m³)"; `scalar_label()` returns "Pressure (Pa)" / "Stiffness (N/m)" / "Omega (rad/s)" / "Temperature (K)". `to_boundary_condition()` routes the overloaded fields to the correctly-named kernel field per variant (axis vs displacement vs force vs gravity vs load vs direction vs acceleration vs force_density). `BcInputs` matrix gates which inputs the dialog renders: `(node, element, vec3, scalar)` per variant. `app.rs` unchanged — `OpenBcEditor(BcKind)` / `CommitBcEditor` dispatcher signatures keep the same shape because the helper API is stable.
+
+**Menu reorganized into 3 sub-submenus** (`crates/viewer/src/gui/menu.rs`). The flat "Boundary Conditions" submenu became three groups: **Loads** (Force, Pressure, Gravity, DistributedLoad, CentrifugalLoad, SelfWeight, BodyLoad), **Constraints** (FixedNode, Displacement, Spring, SpringConstraint), **Thermal** (InitialTemperature). 12 entries in the FEM menu instead of one growing flat list.
+
+**Deferred (4 variants, separate session).** `TieConstraint`, `RigidBody`, `ContactConstraint`, `SectionPrint` need multi-node-set / surface picker UX — not just scalar/Vec3 inputs — so they stay on the legacy `AddFemConstraint(FemConstraintType)` path until a node-set picker exists. Documented in a comment block above `BcKind` in `gui/mod.rs`.
+
+**Ground Component menu entry** (`crates/viewer/src/gui/mod.rs` + `gui/menu.rs`). New entry above the existing "Joints" submenu in the Assembly menu wires `GuiAction::AddAssemblyJoint(AssemblyJointType::Grounded)` through the existing joint editor flow (which Phase N full already supports for the 1-component Grounded case). Removed the `#[allow(dead_code)]` on `AssemblyJointType` since `Grounded` is now reachable via menu.
+
+**Tests added (21 total).** 11 unit tests in `gui::mod::fem_picker_tests` (a 12-row matrix table check across all `BcKind` variants for `(node, element, vec3, scalar)` input visibility, plus per-variant `BcEditorState → BoundaryCondition` mapping for each new kind). 10 integration tests in `crates/viewer/tests/gui_action_integration.rs` mirroring dispatcher calls (each new kind appends one matching `BoundaryCondition` to `fem_analysis.boundary_conditions`).
+
+**Verification (2026-04-26).**
+- `cargo build --workspace` — zero errors.
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` — zero warnings.
+- `cargo test --workspace --no-fail-fast` — **2,659 passed, 0 failed, 0 ignored.** +21 tests vs sticky-material polish baseline.
+
+**LOC touched.** ~495 production+test net (mod.rs +285, dialogs.rs +28, menu.rs +16, gui_action_integration +166), 45 LOC over the 450 budget — driven entirely by the 11 per-variant unit tests at ~10 lines each. Production code came in clean inside the budget; the overrun is in test breadth, accepted as a fair trade for explicit per-variant coverage of the Vec3/scalar overload.
+
+---
+
+#### V37: Phase O-a — FEM material picker + boundary-condition editor (2026-04-26)
+
+**Context.** Phase N-min wired `GuiState.fem_analysis: Option<AnalysisContainer>` and the `CreateFemAnalysis` / `SolveStatic` dispatcher arms, but the material was hardcoded to `FemMaterial::steel()` and there was no GUI path to add boundary conditions — users had to drop into Lua or Python. Phase O-a adds the missing UI; full result visualisation (stress/displacement colormap on the tet mesh) is split off as Phase O-b because it requires render-pipeline work.
+
+**Material picker dialog** (`crates/viewer/src/gui/dialogs.rs` + `gui/mod.rs`). New modal opened by `GuiAction::OpenMaterialPicker`. Radio buttons for the 6 preset materials (`Steel`, `Aluminum`, `Titanium`, `Copper`, `Concrete`, `CastIron`) — each uses the matching `cadkernel_modeling::fem::FemMaterial` constructor with no value duplication, so kernel-side material updates flow through automatically. A `Custom` option reveals three numeric inputs (Young's modulus, Poisson's ratio, density) routed through `FemMaterial::custom()` validation. `CommitMaterialPicker` writes into a new `GuiState.pending_fem_material: FemMaterial` field; subsequent `CreateFemAnalysis` calls clone that value into the new `AnalysisContainer` (sticky-material UX — pick once, re-use across analyses). State: `MaterialPickerState { selected, custom_youngs_modulus, custom_poisson_ratio, custom_density }`. `FemMaterial` now derives `Clone` (three `f64` fields, trivially Clone-safe).
+
+**Boundary-condition editor** (`crates/viewer/src/gui/dialogs.rs`). New modal opened by `GuiAction::OpenBcEditor(BcKind)`. `BcKind` covers the two most-used variants — `FixedNode` and `Force`. Dialog has a kind dropdown, a node index spinner (bounded by mesh node count when an analysis exists), and force XYZ fields hidden when kind is `FixedNode`. `CommitBcEditor` constructs `BoundaryCondition::FixedNode(n)` or `BoundaryCondition::Force { node, force }` and calls `fem_analysis.add_bc(bc)` only if `gui.fem_analysis.is_some()`; otherwise sets the status bar to "FEM: no analysis — create one first". The remaining 15 `BoundaryCondition` variants (Pressure, Displacement, Gravity, Spring, etc.) still flow through the older `GuiAction::AddFemConstraint(FemConstraintType)` path — unification is deferred.
+
+**Menu integration** (`crates/viewer/src/gui/menu.rs`). The FEM workbench menu gains a "Pick Material…" entry above the existing Steel/Aluminum quick-set entries, plus a new "Boundary Conditions" submenu containing "Add Fixed Node" and "Add Force".
+
+**Tests added.** Unit tests in `gui::mod::fem_picker_tests` (7 new: all 6 preset → `FemMaterial` constructor mapping, `Custom` user-values + invalid-input fallback to steel, `BcKind::Force` field-visibility gate, FixedNode/Force `BcEditorState` → `BoundaryCondition` mapping, `pending_fem_material` defaults to steel, `pending_fem_material` clones for sticky reuse). Integration tests in `crates/viewer/tests/gui_action_integration.rs` (4 new: `commit_material_picker_updates_pending_material_for_each_preset`, `create_fem_analysis_consumes_pending_material`, `commit_bc_editor_fixed_node_appends_one_matching_bc`, `commit_bc_editor_force_appends_one_matching_bc_xyz`). 11 new tests total.
+
+**Verification (2026-04-26).**
+- `cargo build --workspace` — zero errors.
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` — zero warnings.
+- `cargo test --workspace --no-fail-fast` — **2,638 passed, 0 failed, 0 ignored.** +11 tests vs Phase N full baseline.
+
+**LOC touched.** Phase O-a body: 400 LOC exactly at budget (production: app.rs +38, dialogs.rs +89, menu.rs +6, gui/mod.rs +195; test: gui_action_integration.rs +72). Sticky-material polish: 1-line kernel `Clone` derive + 7-line dispatcher swap from `mem::replace` to `clone()` + 8-line clone-roundtrip unit test.
+
+**Known follow-ups.** (1) `BcKind` only models `FixedNode` and `Force`; the other 15 BC variants still use the legacy `AddFemConstraint` path. (2) Phase O-b — stress/displacement colormap on the tet mesh — remains. (3) Material picker's `Custom` invalid-input path silently falls back to steel; DragValue ranges should keep this unreachable from the UI in practice, but the path exists.
+
+---
+
+#### V37: Phase N full — Assembly tree panel, BOM dialog, joint editor (2026-04-24)
+
+**Context.** Phase N-min had already landed `GuiState.assembly: Option<Assembly>` scaffolding plus stub `GuiAction::BillOfMaterials` / `AddAssemblyJoint` arms. Phase N full turns those stubs into a functional Assembly workbench on the UI side — scene-tree hierarchy, BOM modal, and joint editor modal — without touching the modeling-layer `Assembly` implementation (which was already complete).
+
+**Assembly tree panel** (`crates/viewer/src/gui/tree.rs`). When `gui.assembly.is_some()` the scene tree now renders an Assembly section beneath the object tree with four branches: root label showing `"{name} (N components, M constraints, K joints)"`, Components branch (one row per component with a clickable eye icon wired to `GuiAction::ToggleAssemblyComponentVisibility`), Constraints branch with `Fixed(comp N)` / `Coincident(a,b)` / `Concentric(a,b)` / `Distance(a,b,d)` / `Angle(a,b,θ)` labels, and Joints branch with `Revolute(a↔b)` / `FixedJoint(a↔b)` / `Grounded(N)` / etc. formatting. Component row double-click fires `GuiAction::FocusObject` if the component's `Handle<SolidData>` maps to a `SceneObject` (matched via `Handle` equality through `find_object_for_solid`).
+
+**BOM view dialog** (`crates/viewer/src/gui/dialogs.rs`). `GuiAction::BillOfMaterials` now opens a modal rendering `Assembly::bill_of_materials()` as a 3-column table (Index | Name | Quantity) with a "Total parts: {sum}" footer. If `assembly.is_none()` the dispatcher sets the status bar to "Assembly: no assembly — create one first" and performs no state change. Modal state in `GuiState` via `show_bom_dialog` + `bom_entries: Vec<BomEntry>`, populated at open time.
+
+**Joint editor UI** (`crates/viewer/src/gui/dialogs.rs`). `GuiAction::AddAssemblyJoint(joint_type)` opens a modal pre-seeded with the requested type. Two component dropdowns list `assembly.components` by name; only fields relevant to the chosen `JointType` variant appear (axis/origin for Revolute and Cylindrical, axis only for Slider, center for BallJoint, angle for AngleJoint, ratio for GearJoint/BeltJoint, axis+pitch for ScrewJoint, pitch_radius for RackAndPinion, two-axis pairs for ParallelAxes/PerpendicularAxes). OK constructs the matching `JointType::{variant} {…}` and calls `assembly.add_joint(joint)`; Cancel closes without state change. `Grounded` needs only component_a — gated accordingly.
+
+**Tests added.** Unit tests in `gui::mod::assembly_helper_tests` (6 new: joint label Revolute/Grounded/Fixed/Gear formatting, constraint label coverage, open+commit Grounded with single component). Integration tests in `crates/viewer/tests/gui_action_integration.rs` mirroring dispatcher calls (5 new: toggle component visibility, BOM aggregation on duplicates, BOM on empty assembly, Revolute joint appended to `assembly.joints`, Grounded joint allowed with single component). Two existing `tree_assembly_section_*` tests updated to take the new `Option<&Scene>` argument.
+
+**Verification (2026-04-24).**
+- `cargo build --workspace` — zero errors.
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` — zero warnings.
+- `cargo test --workspace --no-fail-fast` — **2,627 passed, 0 failed, 0 ignored.** +21 tests vs UX pass baseline.
+
+**LOC touched.** Production ≈ 160 net (tree.rs +72, gui/mod.rs +82, dialogs.rs +6). Test ≈ 80 (gui_action_integration +80). Total ≈ 240 LOC, inside the 500 budget. `app.rs` required zero changes — Phase N-min had already wired every dispatcher arm through `GuiState` helper methods (`populate_bom_entries`, `open_joint_editor`, `commit_assembly_joint`, `toggle_assembly_component_visibility`).
+
+**What remains on the Assembly roadmap.** Menu entry for `JointType::Grounded` ("Ground Component" button in the Assembly workbench menu) — currently `Grounded` is reachable only via programmatic `GuiAction` dispatch. Everything else on the Phase N spec is shipped.
+
+---
+
+#### V36: UX pass — gizmo precision, tree focus, Properties AABB (2026-04-24)
+
+**Context.** With the V36 audit closed at 2,590 / 0 / 0, a focused UX pass tightens four user-visible interactions that already had the scaffolding in place but were missing small affordances. Scope was capped at ≤300 LOC production+test combined to prevent drift. Sketch drag was audited and deemed already FreeCAD-grade (constraint-aware `drag_solve`, snap-to-grid, point/midpoint/intersection snap, green FreeCAD-style snap indicators) — no change.
+
+**Gizmo precision** (`crates/viewer/src/gui/overlays.rs`). The 3D transform gizmo drag now respects modifier keys. Shift-drag slows motion to 0.1× speed for fine positioning; Ctrl-drag snaps translation to 1 mm, rotation to 1°, scale to 10%. A suffix under the gizmo mode label ("Shift", "Ctrl", "Shift+Ctrl") indicates which modifiers are active. Helpers `precision_multiplier`, `snap_to_step`, `gizmo_modifier_suffix` are pure; 8 unit tests in `gui::overlays::gizmo_precision_tests`.
+
+**Tree double-click → focus camera** (`crates/viewer/src/gui/tree.rs` + `gui/mod.rs` + `app.rs`). New `GuiAction::FocusObject(ObjectId)` fits the camera to that object's cached AABB. Double-clicking a body row in the scene tree now triggers `FocusObject` instead of inline-rename (F2 remains the rename binding, matching conventional CAD apps). Integration tests `focus_object_dispatch_fits_camera_to_single_object_aabb` and `focus_object_dispatch_is_a_noop_on_empty_vertex_list`.
+
+**Properties panel — AABB extents** (`crates/viewer/src/gui/properties.rs`). The Placement section now shows Width / Depth / Height rows computed from the selected object's cached `aabb_min`/`aabb_max`. Helper `bbox_extents(obj)` at `properties.rs:1060`. Three integration tests (`properties_aabb_extents_match_box_constructor`, `properties_aabb_extents_match_sphere_diameter`, `compute_aabb_matches_cached_object_fields`) plus 3 unit tests.
+
+**Verification (2026-04-24).**
+- `cargo build --workspace` — zero errors.
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` — zero warnings.
+- `cargo test --workspace --no-fail-fast` — **2,606 passed, 0 failed, 0 ignored.** +16 tests vs R2c baseline.
+
+**LOC touched.** Production ≈ 60 (app.rs +11, gui/mod.rs +4, tree.rs +3, overlays.rs +35, properties.rs +29 net). Test ≈ 210 (overlays unit +62, properties unit +48, gui_action_integration +100). Total ≈ 270 LOC, inside the 300 budget.
+
+---
+
+#### V36: Quality Audit — Round 2c (boolean splitter rewrite) (2026-04-23)
+
+**Context.** Round 2c closes the three remaining correctness failures (K1 overlapping union, K3 through-hole subtract, K3 nonconvex L-minus-cylinder) and the U1 Difference-sign ignore — all of which share the boolean splitter / classification pipeline. Prior rounds (R2a) landed `SharedBuilder`, `SplitBuilder`, `split_face_along_curves`, and `copy_face_with_geometry` as infrastructure; R2c completes the classification and chord-merging work on top.
+
+**`crates/modeling/src/boolean/classify.rs`.** Split `FacePosition::OnBoundary` into two distinct sub-states so that coplanar face pairs can be assigned the right keep/discard rule per operation:
+- `OnBoundarySame` — A and B interiors lie on the same side of the shared plane (identical mating faces, coincident pockets).
+- `OnBoundaryOpposite` — interiors on opposite sides (two boxes meeting along a face).
+
+Rewrote interior-sample selection in `classify_face_with_coplanar`. The previous code offset edge-midpoints toward the vertex-average centroid, which for keyhole / slit polygons (centroid sits inside the hole, not inside the material) produced samples in the wrong region. The new sampler uses the edge-tangent × face-normal inward perpendicular, generates 16 candidates at two distinct offsets, then filters each through a 2D point-in-polygon test against the projected polygon — only samples strictly inside the material region survive.
+
+**`crates/modeling/src/boolean/evaluate.rs`.** The face-kept rules in `boolean_op` now match the four-way classification:
+- Union: A keeps `Outside | OnBoundarySame`; B keeps `Outside`.
+- Intersection: A keeps `Inside | OnBoundarySame`; B keeps `Inside`.
+- Difference: A keeps `Outside | OnBoundaryOpposite`; B keeps `Inside` (flipped — per-fragment orientation resolved inside the pipeline, not at the face-copy boundary).
+
+**`crates/modeling/src/boolean/face_split.rs`.** `merge_chords_into_polylines_with_boundary` now dedupes chord records by unordered endpoint pair. For pockets and holes, a box-top face pairs with one cylinder cap (coplanar) plus all cylinder walls (non-coplanar), producing duplicate segments along the same circle; the graph walker was stalling on redundant edges.
+
+**Tests un-ignored.** `boolean_subtract_box_minus_sphere_shrinks_volume` (U1) — no longer `#[ignore]`. With the splitter now orienting fragments correctly, `box(4³) − sphere(r=1.5)` produces a solid with volume strictly less than 64.
+
+**Verification (2026-04-23).**
+- `cargo build --workspace` — zero errors.
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` — zero warnings.
+- `cargo test --workspace --no-fail-fast` — **2,590 passed, 0 failed, 0 ignored.** +8 passing, −3 failing, −1 ignored vs Phase N-min.
+
+**What this closes.** Every originally failing case from V36 R1 (`cargo test --workspace --no-fail-fast` initial baseline 2,558 / 9 / 18) is now either fixed, dispatcher-wired end-to-end, or documented-and-asserted in a passing test. 576/576 FreeCAD-parity dispatcher arms return real computed artefacts. Clean deliberate-zero-failure state achieved.
+
+---
+
+#### V36: Phase N-min — Assembly & FEM dispatcher wiring (2026-04-22)
+
+**Context.** With the R2b-cont audit clarifying that 5 of the 6 remaining `#[ignore]` markers were genuine subsystem stubs — Assembly×3 and FEM×2 — Phase N-min closes the stub gap by threading both subsystems' modeling-crate APIs through the viewer dispatcher using minimal `Option<T>` state on `GuiState`, avoiding any new viewer panels for this pass.
+
+**GuiState state added** (`crates/viewer/src/gui/mod.rs`).
+- `pub assembly: Option<cadkernel_modeling::Assembly>` — mirrors the existing `techdraw_sheet: Option<DrawingSheet>` pattern.
+- `pub fem_analysis: Option<cadkernel_modeling::AnalysisContainer>` — identical shape.
+
+**Assembly dispatcher arms wired** (`crates/viewer/src/app.rs`).
+- `CreateAssembly` → `Assembly::new("New Assembly")` stored in `gui.assembly`.
+- `InsertComponent` → `assembly.add_component(name, current_solid)` — auto-initialises an empty assembly if none exists; status message on no-solid.
+- `SolveAssembly` → `assembly.solve(100)`; logs converged/non-converged, Err, or no-assembly paths via a local `SolveMsg` enum (avoids a double `&mut self` borrow against `log_info`/`log_warning`).
+
+**FEM dispatcher arms wired.**
+- `CreateFemAnalysis` → `generate_tet_mesh(&model, solid, 1.0)` + `AnalysisContainer::new(mesh, FemMaterial::steel())` stored in `gui.fem_analysis`; reports node/element counts.
+- `SolveStatic` → `container.run_static()`; reports BC count and `max_displacement` on success, routes errors to `log_warning`, and reports a no-analysis status message when the container is empty. Same borrow-splitting enum pattern as `SolveAssembly`.
+
+**Tests rewritten and un-ignored** (`crates/viewer/tests/gui_action_integration.rs`).
+- `assembly_create_new_assembly_is_empty`, `assembly_insert_component_increments_count`, `assembly_solve_distance_constraint_converges` — mirror the `Assembly::new` / `add_component` / `solve(200)` chain; assert component count, distinct component IDs, and Newton-Raphson convergence on a Fixed + Distance(5.0) pair.
+- `fem_create_analysis_builds_tet_mesh_with_steel_material` — mirrors `generate_tet_mesh(...)` + `AnalysisContainer::new`; asserts non-empty mesh and empty initial BCs/result.
+- `fem_solve_static_produces_displacement_result` — mirrors `add_bc(FixedNode)` + `add_bc(Force { ... })` + `run_static()`; asserts the displacement vector matches the node count.
+
+**Verification (2026-04-22).**
+- `cargo build --workspace` — zero errors.
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` — zero warnings.
+- `cargo test --workspace --no-fail-fast` — **2,582 passed, 3 failed, 1 ignored**. +5 passing, −5 ignored vs R2b-cont. The single remaining `#[ignore]` is U1 Difference-sign, scoped to the R2c boolean-splitter rewrite.
+
+**Why Phase N-min is the right shape.** The Assembly and FEM modeling APIs (component tree, joints, DoF, tet mesh builder, material library, static/modal/thermal solvers) were already complete long before this pass — the gap was purely viewer-side state. Full Phase N (Assembly tree panel, BOM view, joint UI) and Phase O (Analysis panel, material picker UI, result visualisation) remain as follow-ups, but the dispatcher contract is now honest: every arm returns a real computed artefact.
+
+---
+
+#### V36: Quality Audit — Round 2b-cont (2026-04-22)
+
+**Context.** Audit of the 11 `#[ignore]` markers in `crates/viewer/tests/gui_action_integration.rs` revealed that 5 of them were stale: the corresponding dispatcher arms (MeshRepair, TechDrawAddView, TechDrawThreeView, TechDrawExportSvg, CreateHelix) had been wired end-to-end in earlier rounds, but their tests were never rewritten off the `unreachable!()` stub body. This pass converts those 5 markers into real assertions that mirror the dispatcher's call chain into `cadkernel_io` and `cadkernel_modeling`.
+
+**Tests rewritten and un-ignored** (`crates/viewer/tests/gui_action_integration.rs`).
+- `mesh_repair_evaluate_and_repair_returns_valid_mesh` — mirrors `evaluate_and_repair(mesh)`; asserts non-empty vertex/index buffers and `indices.len() % 3 == 0`.
+- `techdraw_add_view_projects_solid_to_sheet` — mirrors `project_solid(model, solid, ProjectionDir::Front)` + push to `DrawingSheet::a4_landscape()`; asserts the view has edges.
+- `techdraw_three_view_populates_three_views` — mirrors `three_view_drawing(model, solid)`; asserts all three views are populated.
+- `techdraw_export_svg_renders_nonempty_svg` — mirrors `drawing_to_svg(&sheet).render()`; asserts the string is a well-formed, non-trivial SVG.
+- `create_helix_produces_tube_solid_with_faces` — mirrors `make_helix(..., 16, 8)`; asserts the solid has shells and faces (corrects the stale "helix is wire-only" claim).
+
+**Still deferred.**
+- R2c / Task #9 boolean splitter rewrite — K1 union, K3 cylinder-through-box, K3 L-minus-cylinder still fail; U1 Difference sign still ignored.
+- Assembly (3 arms) and FEM (2 arms) — genuine subsystem stubs without viewer state; wiring them requires a new Assembly/FEM viewer panel and is tracked under FREECAD_PARITY_PLAN Phases N and O.
+
+**Verification (2026-04-22).**
+- `cargo build --workspace` — zero errors.
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` — zero warnings.
+- `cargo test --workspace --no-fail-fast` — **2,577 passed, 3 failed, 6 ignored**. Failures unchanged from R2b (K1 + K3 pair); 5 stale stubs moved from ignored to passing.
+
+**What changed vs R2b numbers.** R2b was 2,572 / 3 / 11. R2b-cont is 2,577 / 3 / 6. Net: **+5 passing, −5 ignored**, no new failures.
+
+---
+
+#### V36: Quality Audit — Round 2b (2026-04-21)
+
+**Context.** Round 2b targets the U3 dispatcher-stub cohort from the R1 audit — GuiAction variants wired to `self.log_info(...)` that never produced scene geometry. This pass closes 5 of the 16 stubs by routing the dispatcher arms to the existing `cadkernel_modeling` functions that already return `Handle<SolidData>`. No UX regression: clicking the menu item now materialises a default example, matching the CreateBox / CreateCylinder flow.
+
+**Fixed.**
+- **SurfaceFilling, SurfaceBoundary** (`crates/viewer/src/app.rs`). Dispatcher arms now call `cadkernel_modeling::filling()` with a default boundary (a 2×2 square for SurfaceFilling, a unit hexagon for SurfaceBoundary) and `add_to_scene()` the resulting `SurfaceFillingResult.solid`.
+- **SurfacePipe** (`crates/viewer/src/app.rs`). Dispatcher arm now calls `pipe_surface()` with a default vertical 2-unit path at radius 0.25, producing a tubular solid.
+- **DraftRectangle, DraftPolygon** (`crates/viewer/src/app.rs`). Dispatcher arms build the boundary polyline via `make_rectangle_wire()` / `make_polygon_wire()`, then fill it with `filling()` to produce a planar-patch solid that is `add_to_scene()`'d with `CreationParams::DraftRectangle` / `DraftPolygon` so the object tree and properties pane can reopen it for parametric edits.
+
+**Tests rewritten and un-ignored** (`crates/viewer/tests/gui_action_integration.rs`).
+- `surface_filling_creates_solid_from_boundary`, `surface_boundary_fills_closed_polyline`, `surface_pipe_creates_solid_along_path`, `draft_rectangle_fills_patch_and_adds_to_scene`, `draft_polygon_fills_patch_and_adds_to_scene` — previously stub-marker tests that called `unreachable!()` under `#[ignore]`. Now mirror the dispatcher's modeling call chain and assert `scene.len() == 1` plus non-empty vertex buffers.
+- `draft_line_creates_wire_topology_in_model` — DraftLine remains wire-only because `Scene` stores `Handle<SolidData>` and has no wire primitive. The test now exercises `make_line_draft()` directly and asserts 2 vertices + 1 edge are added to the `BRepModel`. The viewer-side wire rendering is tracked under FREECAD_PARITY_PLAN Phase L.
+
+**Still deferred.**
+- R2b remaining 11 U3 stubs (MeshRepair, TechDraw {Add, Three, ExportSvg}, Assembly {Create, Insert, Solve}, FEM {CreateAnalysis, SolveStatic}, CreateHelix) — need headless construction paths or Scene-level wire support.
+- R2c / Task #9 boolean splitter rewrite — the 3 K1/K3 failures and the U1 ignored test carry over from R2a.
+
+**Verification (2026-04-21).**
+- `cargo build --workspace` — zero errors.
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` — zero warnings.
+- `cargo test --workspace --no-fail-fast` — **2,572 passed, 3 failed, 11 ignored**. Failures unchanged from R2a (K1 + K3 pair); 6 U3 tests moved from ignored to passing.
+- `cargo test --manifest-path crates/python/Cargo.toml` — 42 tests passing.
+
+**What changed vs R2a numbers.** R2a was 2,566 / 3 / 17. R2b is 2,572 / 3 / 11. Net: **+6 passing, −6 ignored**, no new failures.
+
+---
+
+#### V36: Quality Audit — Round 2a (2026-04-21)
+
+**Context.** Round 2 closes the critical/high bugs surfaced by the Round 1 audit. This pass fixes 6 of the 11 catalogued correctness defects; the 3 general-position boolean cases (K1, K3) and the U1 Difference sign bug require a splitter rewrite and are formally deferred to Round 2c (tracked as Task #9).
+
+**Fixed.**
+- **I1 STEP curved-surface export (`crates/io/src/step.rs`).** Exporter now classifies face surfaces and emits `CYLINDRICAL_SURFACE`, `SPHERICAL_SURFACE`, `CONICAL_SURFACE`, or `TOROIDAL_SURFACE` entities instead of unconditionally planarising via `export_face_surface()`. Roundtripping a cylinder now preserves curvature. `step_roundtrip_cylinder_surface_stays_curved` passes.
+- **I2 IGES face/shell records (`crates/io/src/iges.rs`).** Exporter now iterates face loops, samples each face on a u×v grid, and emits a Type 128 `RationalBSplineSurface` per face with the sampled control net. Reimport yields solid geometry instead of bare wireframe. `iges_roundtrip_spline_surface_lost` passes.
+- **K2 extrude seam watertightness (`crates/modeling/src/features/extrude.rs`).** All six faces now share a single `EdgeCache`, so the seam edges at the cap boundary dedupe correctly and each edge has exactly two incident faces. `extrude_square_profile` passes.
+- **K4 fillet/chamfer composability (`crates/modeling/src/features/fillet.rs`, `chamfer.rs`).** New batched APIs `fillet_edges(model, solid, edges, radius)` and `chamfer_edges(model, solid, edges, distance)` accept a slice of edges and apply them all against the original topology, avoiding the stale-handle problem on sequential single-edge calls. `fillet_all_12_edges_of_box` and `chamfer_all_12_edges_of_box` pass.
+- **K1b coplanar boolean (`crates/modeling/src/boolean/face_split.rs`).** When the surface–surface intersection marcher returns no curves but face planes agree, a `compute_planar_intersection` fallback produces the planar split polygon. Coplanar-top-face stacks now boolean correctly. `boolean_on_coplanar_faces` passes.
+- **U2 sketch solver convergence (`crates/sketch/src/solver.rs`).** Solver now builds a Tikhonov anchor when no `Fixed` constraints are present (replacing the brittle single-point anchor), and the convergence test uses the infinity-norm of the residual vector instead of the step norm. The `Horizontal` Jacobian contribution is the direct `(0, 1, 0, -1)` of the Δy residual. `sketcher_solve_horizontal_constraint_zeros_dy` now passes and has been un-ignored.
+
+**Infrastructure added (shared by the deferred Round 2c work).**
+- `SharedBuilder` in `crates/modeling/src/boolean/evaluate.rs`: position-dedup vertices (1e-6 tolerance) plus a directed half-edge map so copied faces share vertices and twin their shared edges. Prerequisite for the manifold-rebuild pass required by K1/K3.
+- `SplitBuilder` plus `split_face_along_curves` and `copy_face_with_geometry` in `crates/modeling/src/boolean/face_split.rs`. Used today for the K1b planar fallback; the general-position face split rewrite in Round 2c will build on this.
+
+**Scope note on the Difference B-face winding.** An earlier iteration of `copy_face_shared` reversed B-face winding on Difference operations with the intent of fixing U1 (box − sphere returning 77.9 instead of ~50). Combined with the divergence-theorem `|signed volume|` in `compute_mass_properties`, that flip sign-inverted the *correct* pocket/hole paths. Regressed `pocket_sketch_on_box_removes_material` and `hole_on_box_removes_cylindrical_material` pointed it out. Winding is now left as-is at copy time; the correct place to invert tool contribution is in the splitter rewrite (Round 2c Task #9), not at the face-copy boundary. U1 is re-ignored with an explicit Round 2c tag in the test attribute.
+
+**Deferred to Round 2c (Task #9).**
+- K1 `union_of_two_overlapping_boxes` (non-manifold output from general-position union)
+- K3 `subtract_cylinder_through_box`, `nonconvex_subtraction_l_minus_cylinder` (through-hole and nonconvex minuend face-split)
+- U1 `boolean_subtract_box_minus_sphere_shrinks_volume` (Difference sign/orientation)
+
+These share the same splitter rewrite: the general-position face-split needs to propagate intersection curves onto opposite faces (through-holes), handle interior endpoints in the splitter polygon, and rebuild the shell with correct twin linkage across the split boundary.
+
+**Verification (2026-04-21).**
+- `cargo build --workspace` — zero errors.
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` — zero warnings.
+- `cargo test --workspace` — **2,566 passed, 3 failed, 17 ignored**. The 3 failures are the deferred K1/K3 cases above; the 17 ignored are 16 GuiAction stubs + the re-ignored U1 pending Round 2c.
+- `cargo test --manifest-path crates/python/Cargo.toml` — 42 tests passing.
+
+**What changed vs Round 1 numbers.** R1 was 2,558 / 9 / 18. R2a is 2,566 / 3 / 17. Net: **+8 passing, −6 failures, −1 ignored** (U2 un-ignored and fixed; I1, I2, K1b, K2, K4 newly passing; U1 re-ignored explicitly).
+
+---
+
+#### V36: Quality Audit — Round 1 (2026-04-17)
+
+**Context.** Prior releases claimed 100% FreeCAD feature parity based on dispatcher coverage. V36 Round 1 is a deliberate correction: four new audit test suites exercise the kernel, I/O, and viewer against realistic inputs and **assert analytical correctness** instead of only verifying no-panic behavior. The suites were written to fail loudly where the underlying code is wrong. They did.
+
+**CLI fix — `src/main.rs`, new `tests/cli.rs`:**
+- `main.rs` rewritten using `clap` derive parser. It now accepts `--script <PATH>`, `--mcp`, and `-V/--version`. The Lua examples (`examples/lua/*.lua`, 5 files) and MCP session example had been advertising these flags in documentation, but the binary previously ignored all CLI arguments and launched the GUI unconditionally.
+- New `tests/cli.rs` (6 tests): `--version` banner, `--script hello_cad.lua` executes, `--mcp` responds to a `tools/list` JSON-RPC request over stdio, error paths for unknown flags and missing script.
+
+**New audit test files (169 new tests total):**
+
+- `tests/cli.rs` — **6 tests**, all passing.
+- `crates/modeling/tests/real_world_kernel.rs` — **16 tests** (9 passing, 7 failing). Exercises full primitive → feature → boolean pipelines on realistic geometry (overlapping boxes, through-holes, all-edge fillets).
+- `crates/io/tests/real_world_io.rs` — **54 tests** (52 passing, 2 failing). Export→reimport roundtrips for all 11 formats plus 25 parser fuzz tests (zero panics on malformed input). The 2 failures surface real export bugs in STEP and IGES.
+- `crates/viewer/tests/gui_action_integration.rs` — **93 tests** (75 passing, 18 ignored). Dispatches every headless-reachable GuiAction variant and asserts Scene state changes. Two `#[ignore]` markers flag active bugs (Scene Difference sign, sketch solver convergence); the remaining 16 flag dispatcher stubs.
+
+**Known Bugs Found.** Audit found **5 Critical**, **5 High**, **1 Medium**, and **16 stub** defects. Full catalog with reproduction and proposed fix locations: see [`docs/V36_BUG_TRIAGE.md`](docs/V36_BUG_TRIAGE.md).
+
+- **Kernel (5):** non-manifold output from union and coplanar-face booleans (K1/K1b), subtract face-split incomplete for through-holes (K3, ~67% of expected volume), extrude edge-dedup collapses seam vertices (K2), fillet/chamfer non-composable when reapplied on same shell (K4).
+- **IO (2):** STEP exporter planarizes curved surfaces — cylinders lose curvature on roundtrip (I1, `step.rs:1114`); IGES exporter emits wireframe only, no face/shell records (I2, `iges.rs:458`).
+- **Viewer (2 bugs + 16 stubs):** Scene-level `Difference` returns volume *larger* than the minuend (U1, operand order at Scene/modeling boundary); sketch solver reports `converged=true` while `Horizontal` constraint residual is only halved (U2). 16 GuiAction variants are dispatcher stubs today — they accept the request and log it but produce no SceneObject.
+
+**What this means for the parity claim.** 576/576 features are dispatcher-reachable. The audit demonstrates that at least 11 of them produce structurally wrong output under realistic inputs, and 16 are no-ops. Round 2 fixes will update this assessment with real numbers.
+
+**No code was fixed in Round 1** — the intent was catalog-first. Round 2 priority order is in `docs/V36_BUG_TRIAGE.md`.
+
+**Verification.**
+- `cargo build --workspace` — zero errors.
+- `cargo clippy --workspace --all-targets --all-features -- -D warnings` — zero warnings.
+- `cargo test --workspace` — 2,558 passed, 9 failed, 18 ignored (V35 baseline 2,416 passing; 169 audit tests added; all 9 failures and 18 ignored tests are deliberate and are tracked in the triage).
+
+---
+
 #### V35: Integration Test Coverage — topology & io (2026-04-17)
 
 **100 new integration tests** for the topology crate (`crates/topology/tests/topology_advanced.rs`):
