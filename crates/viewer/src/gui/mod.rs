@@ -1045,6 +1045,59 @@ impl BcEditorState {
 }
 
 // ---------------------------------------------------------------------------
+// Active dialog (single-source-of-truth for stateful modals)
+// ---------------------------------------------------------------------------
+
+/// State for the joint editor modal.
+#[derive(Clone, Debug)]
+pub(crate) struct JointEditorState {
+    pub joint_type: AssemblyJointType,
+    pub comp_a: usize,
+    pub comp_b: usize,
+    pub axis: [f32; 3],
+    pub origin: [f32; 3],
+    pub angle: f64,
+    pub pitch: f64,
+    pub ratio: f64,
+}
+
+impl JointEditorState {
+    /// Default editor state for a given joint type. `comp_b` is set to `1`
+    /// when the assembly has \u{2265} 2 components; otherwise pinned to `0`
+    /// (used for the Grounded variant).
+    pub fn new(joint_type: AssemblyJointType, num_components: usize) -> Self {
+        Self {
+            joint_type,
+            comp_a: 0,
+            comp_b: if num_components >= 2 { 1 } else { 0 },
+            axis: [0.0, 0.0, 1.0],
+            origin: [0.0, 0.0, 0.0],
+            angle: 90.0,
+            pitch: 1.0,
+            ratio: 1.0,
+        }
+    }
+}
+
+/// The single stateful modal dialog currently open, if any.
+///
+/// Replaces the prior pattern of paired `show_X: bool` + scattered state fields
+/// for the four most state-rich dialogs (MaterialPicker, BcEditor, JointEditor,
+/// Bom). Other dialogs continue to use the loose `show_X: bool` pattern; they
+/// have minimal accompanying state and are left for a later refactoring pass.
+///
+/// `PartialEq` is intentionally not derived because `BomEntry` (kernel side)
+/// does not implement it. Use `matches!(dialog, ActiveDialog::X(_))` for
+/// variant checks.
+#[derive(Clone, Debug)]
+pub(crate) enum ActiveDialog {
+    MaterialPicker(MaterialPickerState),
+    BcEditor(BcEditorState),
+    JointEditor(JointEditorState),
+    Bom(Vec<cadkernel_modeling::BomEntry>),
+}
+
+// ---------------------------------------------------------------------------
 // GUI state persisted across frames
 // ---------------------------------------------------------------------------
 
@@ -1179,9 +1232,11 @@ pub(crate) struct GuiState {
     pub show_fem_solver: bool,
     pub fem_solver_tolerance: f64,
     pub fem_solver_max_iter: usize,
-    // Phase O-a: material picker + BC editor
-    pub material_picker_dialog: Option<MaterialPickerState>,
-    pub bc_editor_dialog: Option<BcEditorState>,
+    /// Single source of truth for the four stateful modal dialogs:
+    /// MaterialPicker, BcEditor, JointEditor, Bom. Only one may be open at a
+    /// time. Other dialogs (primitives, Part/PartDesign features, etc.)
+    /// continue to use the loose `show_X: bool` pattern.
+    pub active_dialog: Option<ActiveDialog>,
     pub pending_fem_material: cadkernel_modeling::FemMaterial,
     // Export options dialog state
     pub show_export_options: bool,
@@ -1192,17 +1247,6 @@ pub(crate) struct GuiState {
     // Assembly dialog state
     pub show_explode: bool,
     pub explode_factor: f64,
-    pub show_bom_dialog: bool,
-    pub bom_entries: Vec<cadkernel_modeling::BomEntry>,
-    pub show_joint_editor: bool,
-    pub joint_editor_type: Option<AssemblyJointType>,
-    pub joint_editor_comp_a: usize,
-    pub joint_editor_comp_b: usize,
-    pub joint_editor_axis: [f32; 3],
-    pub joint_editor_origin: [f32; 3],
-    pub joint_editor_angle: f64,
-    pub joint_editor_pitch: f64,
-    pub joint_editor_ratio: f64,
     // Draft state
     #[allow(dead_code)]
     pub draft_active_layer: String,
@@ -1440,8 +1484,7 @@ impl GuiState {
             show_fem_solver: false,
             fem_solver_tolerance: 1e-6,
             fem_solver_max_iter: 1000,
-            material_picker_dialog: None,
-            bc_editor_dialog: None,
+            active_dialog: None,
             pending_fem_material: cadkernel_modeling::FemMaterial::steel(),
             show_export_options: false,
             export_path: None,
@@ -1449,17 +1492,6 @@ impl GuiState {
             export_scale: 1.0,
             show_explode: false,
             explode_factor: 2.0,
-            show_bom_dialog: false,
-            bom_entries: Vec::new(),
-            show_joint_editor: false,
-            joint_editor_type: None,
-            joint_editor_comp_a: 0,
-            joint_editor_comp_b: 1,
-            joint_editor_axis: [0.0, 0.0, 1.0],
-            joint_editor_origin: [0.0, 0.0, 0.0],
-            joint_editor_angle: 90.0,
-            joint_editor_pitch: 1.0,
-            joint_editor_ratio: 1.0,
             draft_active_layer: "Default".into(),
             draft_snap_modes: [true; 8],
             show_mesh_smooth: false,
@@ -1546,12 +1578,12 @@ impl GuiState {
         asm.set_visible(cid, new_vis).is_ok()
     }
 
-    /// Populate BOM entries from the current assembly. Returns true if an
-    /// assembly exists and BOM was computed.
+    /// Populate BOM entries from the current assembly and open the BOM
+    /// dialog. Returns true if an assembly exists and BOM was computed.
     pub fn populate_bom_entries(&mut self) -> bool {
         if let Some(asm) = self.assembly.as_ref() {
-            self.bom_entries = asm.bill_of_materials();
-            self.show_bom_dialog = true;
+            let entries = asm.bill_of_materials();
+            self.active_dialog = Some(ActiveDialog::Bom(entries));
             true
         } else {
             false
@@ -1566,39 +1598,73 @@ impl GuiState {
         if n < jtype.min_components() {
             return false;
         }
-        self.joint_editor_type = Some(jtype);
-        self.joint_editor_comp_a = 0;
-        // When there's only one component (Grounded case), pin comp_b to 0.
-        self.joint_editor_comp_b = if n >= 2 { 1 } else { 0 };
-        self.show_joint_editor = true;
+        self.active_dialog = Some(ActiveDialog::JointEditor(JointEditorState::new(jtype, n)));
         true
+    }
+
+    /// Open the FEM material picker.
+    pub fn open_material_picker(&mut self) {
+        self.active_dialog = Some(ActiveDialog::MaterialPicker(MaterialPickerState::new()));
+    }
+
+    /// Open the FEM boundary-condition editor for a given kind.
+    pub fn open_bc_editor(&mut self, kind: BcKind) {
+        self.active_dialog = Some(ActiveDialog::BcEditor(BcEditorState::new(kind)));
+    }
+
+    /// Close whichever stateful dialog is currently open (no-op if none).
+    pub fn close_active_dialog(&mut self) {
+        self.active_dialog = None;
+    }
+
+    /// Borrow the joint-editor state if that dialog is active.
+    /// Only used by tests; the dialog renderer uses the `_mut` variant.
+    #[cfg(test)]
+    pub fn joint_editor_state(&self) -> Option<&JointEditorState> {
+        match &self.active_dialog {
+            Some(ActiveDialog::JointEditor(s)) => Some(s),
+            _ => None,
+        }
+    }
+
+    /// Mutably borrow the joint-editor state if that dialog is active.
+    pub fn joint_editor_state_mut(&mut self) -> Option<&mut JointEditorState> {
+        match &mut self.active_dialog {
+            Some(ActiveDialog::JointEditor(s)) => Some(s),
+            _ => None,
+        }
     }
 
     /// Commit the currently-edited joint to `assembly.joints` based on the
     /// editor state. Returns true on success.
     pub fn commit_assembly_joint(&mut self) -> bool {
         use cadkernel_modeling::JointType;
-        let jtype = match self.joint_editor_type {
-            Some(t) => t,
-            None => return false,
+        // Take the editor state out so we can re-borrow `self.assembly` mutably.
+        let state = match self.active_dialog.take() {
+            Some(ActiveDialog::JointEditor(s)) => s,
+            other => {
+                // Not a joint-editor dialog: restore and bail.
+                self.active_dialog = other;
+                return false;
+            }
         };
         let asm = match self.assembly.as_mut() {
             Some(a) => a,
             None => return false,
         };
-        let a = self.joint_editor_comp_a;
-        let b = self.joint_editor_comp_b;
+        let a = state.comp_a;
+        let b = state.comp_b;
         let axis = cadkernel_math::Vec3 {
-            x: self.joint_editor_axis[0] as f64,
-            y: self.joint_editor_axis[1] as f64,
-            z: self.joint_editor_axis[2] as f64,
+            x: state.axis[0] as f64,
+            y: state.axis[1] as f64,
+            z: state.axis[2] as f64,
         };
         let origin = cadkernel_math::Point3 {
-            x: self.joint_editor_origin[0] as f64,
-            y: self.joint_editor_origin[1] as f64,
-            z: self.joint_editor_origin[2] as f64,
+            x: state.origin[0] as f64,
+            y: state.origin[1] as f64,
+            z: state.origin[2] as f64,
         };
-        let joint = match jtype {
+        let joint = match state.joint_type {
             AssemblyJointType::Grounded => JointType::Grounded,
             AssemblyJointType::Fixed => JointType::FixedJoint { component_a: a, component_b: b },
             AssemblyJointType::Revolute => JointType::Revolute {
@@ -1614,10 +1680,10 @@ impl GuiState {
                 component_a: a, component_b: b, center: origin,
             },
             AssemblyJointType::Distance => JointType::AngleJoint {
-                component_a: a, component_b: b, angle: self.joint_editor_angle,
+                component_a: a, component_b: b, angle: state.angle,
             },
             AssemblyJointType::Angle => JointType::AngleJoint {
-                component_a: a, component_b: b, angle: self.joint_editor_angle,
+                component_a: a, component_b: b, angle: state.angle,
             },
             AssemblyJointType::Parallel => JointType::ParallelAxes {
                 component_a: a, component_b: b, axis_a: axis, axis_b: axis,
@@ -1626,21 +1692,19 @@ impl GuiState {
                 component_a: a, component_b: b, axis_a: axis, axis_b: axis,
             },
             AssemblyJointType::Gear => JointType::GearJoint {
-                component_a: a, component_b: b, ratio: self.joint_editor_ratio,
+                component_a: a, component_b: b, ratio: state.ratio,
             },
             AssemblyJointType::Rack => JointType::RackAndPinion {
-                component_a: a, component_b: b, pitch_radius: self.joint_editor_pitch,
+                component_a: a, component_b: b, pitch_radius: state.pitch,
             },
             AssemblyJointType::Screw => JointType::ScrewJoint {
-                component_a: a, component_b: b, axis, pitch: self.joint_editor_pitch,
+                component_a: a, component_b: b, axis, pitch: state.pitch,
             },
             AssemblyJointType::Belt => JointType::BeltJoint {
-                component_a: a, component_b: b, ratio: self.joint_editor_ratio,
+                component_a: a, component_b: b, ratio: state.ratio,
             },
         };
         asm.add_joint(joint);
-        self.show_joint_editor = false;
-        self.joint_editor_type = None;
         true
     }
 }
@@ -1899,10 +1963,13 @@ mod assembly_helper_tests {
         // Two "Gear" + one "Shaft" → 2 entries.
         gui.assembly = Some(make_assembly_with_n_named(&["Gear", "Gear", "Shaft"]));
         assert!(gui.populate_bom_entries());
-        assert!(gui.show_bom_dialog);
-        assert_eq!(gui.bom_entries.len(), 2);
-        let gear = gui.bom_entries.iter().find(|e| e.name == "Gear").unwrap();
-        let shaft = gui.bom_entries.iter().find(|e| e.name == "Shaft").unwrap();
+        let entries = match &gui.active_dialog {
+            Some(ActiveDialog::Bom(e)) => e.clone(),
+            other => panic!("expected Bom dialog, got {other:?}"),
+        };
+        assert_eq!(entries.len(), 2);
+        let gear = entries.iter().find(|e| e.name == "Gear").unwrap();
+        let shaft = entries.iter().find(|e| e.name == "Shaft").unwrap();
         assert_eq!(gear.quantity, 2);
         assert_eq!(shaft.quantity, 1);
     }
@@ -1911,7 +1978,7 @@ mod assembly_helper_tests {
     fn bill_of_materials_no_assembly_returns_false() {
         let mut gui = GuiState::new();
         assert!(!gui.populate_bom_entries());
-        assert!(!gui.show_bom_dialog);
+        assert!(gui.active_dialog.is_none());
     }
 
     #[test]
@@ -1919,8 +1986,7 @@ mod assembly_helper_tests {
         let mut gui = GuiState::new();
         gui.assembly = Some(make_assembly_with_n_named(&["Only"]));
         assert!(!gui.open_joint_editor(AssemblyJointType::Revolute));
-        assert!(!gui.show_joint_editor);
-        assert!(gui.joint_editor_type.is_none());
+        assert!(gui.active_dialog.is_none());
     }
 
     #[test]
@@ -1928,10 +1994,10 @@ mod assembly_helper_tests {
         let mut gui = GuiState::new();
         gui.assembly = Some(make_assembly_with_n_named(&["A", "B"]));
         assert!(gui.open_joint_editor(AssemblyJointType::Revolute));
-        assert!(gui.show_joint_editor);
-        assert_eq!(gui.joint_editor_type, Some(AssemblyJointType::Revolute));
-        assert_eq!(gui.joint_editor_comp_a, 0);
-        assert_eq!(gui.joint_editor_comp_b, 1);
+        let s = gui.joint_editor_state().expect("joint editor open");
+        assert_eq!(s.joint_type, AssemblyJointType::Revolute);
+        assert_eq!(s.comp_a, 0);
+        assert_eq!(s.comp_b, 1);
     }
 
     #[test]
@@ -1939,14 +2005,16 @@ mod assembly_helper_tests {
         let mut gui = GuiState::new();
         gui.assembly = Some(make_assembly_with_n_named(&["A", "B"]));
         assert!(gui.open_joint_editor(AssemblyJointType::Revolute));
-        gui.joint_editor_axis = [0.0, 0.0, 1.0];
-        gui.joint_editor_origin = [1.0, 2.0, 3.0];
+        {
+            let s = gui.joint_editor_state_mut().expect("joint editor open");
+            s.axis = [0.0, 0.0, 1.0];
+            s.origin = [1.0, 2.0, 3.0];
+        }
         assert!(gui.commit_assembly_joint());
         let joints = &gui.assembly.as_ref().unwrap().joints;
         assert_eq!(joints.len(), 1);
         assert!(matches!(joints[0], JointType::Revolute { .. }));
-        assert!(!gui.show_joint_editor);
-        assert!(gui.joint_editor_type.is_none());
+        assert!(gui.active_dialog.is_none());
     }
 
     #[test]
@@ -1954,8 +2022,8 @@ mod assembly_helper_tests {
         let mut gui = GuiState::new();
         gui.assembly = Some(make_assembly_with_n_named(&["Only"]));
         assert!(gui.open_joint_editor(AssemblyJointType::Grounded));
-        assert!(gui.show_joint_editor);
-        assert_eq!(gui.joint_editor_type, Some(AssemblyJointType::Grounded));
+        let s = gui.joint_editor_state().expect("joint editor open");
+        assert_eq!(s.joint_type, AssemblyJointType::Grounded);
     }
 
     #[test]
@@ -2056,6 +2124,24 @@ mod assembly_helper_tests {
             angle: 90.0,
         };
         assert_eq!(constraint_label(&ang), "Angle(6,8)");
+    }
+
+    /// Opening a second stateful dialog must replace the first — the
+    /// `ActiveDialog` enum encodes "at most one open" by construction.
+    #[test]
+    fn active_dialog_is_mutually_exclusive_by_construction() {
+        let mut gui = GuiState::new();
+        assert!(gui.active_dialog.is_none());
+
+        gui.open_material_picker();
+        assert!(matches!(gui.active_dialog, Some(ActiveDialog::MaterialPicker(_))));
+
+        // Opening a different stateful dialog evicts the previous one.
+        gui.open_bc_editor(BcKind::Force);
+        assert!(matches!(gui.active_dialog, Some(ActiveDialog::BcEditor(_))));
+
+        gui.close_active_dialog();
+        assert!(gui.active_dialog.is_none());
     }
 }
 

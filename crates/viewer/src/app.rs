@@ -3395,10 +3395,15 @@ impl CadApp {
                 GuiAction::BillOfMaterials => {
                     enum Msg { Ok(String), NoAssembly }
                     let msg = if self.gui.populate_bom_entries() {
-                        let n: usize = self.gui.bom_entries.iter().map(|e| e.quantity).sum();
+                        // populate_bom_entries() opened ActiveDialog::Bom(entries).
+                        let entries = match &self.gui.active_dialog {
+                            Some(crate::gui::ActiveDialog::Bom(e)) => e.as_slice(),
+                            _ => &[],
+                        };
+                        let n: usize = entries.iter().map(|e| e.quantity).sum();
                         Msg::Ok(format!(
                             "Assembly: BOM ({} entries, {n} parts)",
-                            self.gui.bom_entries.len()
+                            entries.len()
                         ))
                     } else {
                         Msg::NoAssembly
@@ -3642,10 +3647,13 @@ impl CadApp {
                     self.log_info(format!("FEM: material set to '{mat}'"));
                 }
                 GuiAction::OpenMaterialPicker => {
-                    self.gui.material_picker_dialog = Some(crate::gui::MaterialPickerState::new());
+                    self.gui.open_material_picker();
                 }
                 GuiAction::CommitMaterialPicker => {
-                    if let Some(s) = self.gui.material_picker_dialog.take() {
+                    // Take the dialog out so we can mutate `pending_fem_material`.
+                    if let Some(crate::gui::ActiveDialog::MaterialPicker(s)) =
+                        self.gui.active_dialog.take()
+                    {
                         self.gui.pending_fem_material = crate::gui::material_from_preset(
                             s.selected, s.youngs_modulus, s.poisson_ratio, s.density);
                         self.log_info(format!("FEM: material set to '{}'", s.selected.label()));
@@ -3655,11 +3663,13 @@ impl CadApp {
                     if self.gui.fem_analysis.is_none() {
                         self.gui.status_message = "FEM: no analysis \u{2014} create one first".into();
                     } else {
-                        self.gui.bc_editor_dialog = Some(crate::gui::BcEditorState::new(kind));
+                        self.gui.open_bc_editor(kind);
                     }
                 }
                 GuiAction::CommitBcEditor => {
-                    if let Some(s) = self.gui.bc_editor_dialog.take() {
+                    if let Some(crate::gui::ActiveDialog::BcEditor(s)) =
+                        self.gui.active_dialog.take()
+                    {
                         let total = self.gui.fem_analysis.as_mut().map(|c| {
                             c.add_bc(s.to_boundary_condition());
                             c.boundary_conditions.len()

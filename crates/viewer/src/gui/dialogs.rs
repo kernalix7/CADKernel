@@ -1911,13 +1911,13 @@ fn shortcut_section(ui: &mut egui::Ui, icon: &str, title: &str, shortcuts: &[(&s
 // ---------------------------------------------------------------------------
 
 pub(crate) fn draw_bom_dialog(ctx: &egui::Context, gui: &mut GuiState) {
-    if !gui.show_bom_dialog {
-        return;
-    }
+    let entries = match &gui.active_dialog {
+        Some(crate::gui::ActiveDialog::Bom(e)) => e.clone(),
+        _ => return,
+    };
+    let total: usize = entries.iter().map(|e| e.quantity).sum();
     let mut open = true;
     let mut close_clicked = false;
-    let total: usize = gui.bom_entries.iter().map(|e| e.quantity).sum();
-    let entries = gui.bom_entries.clone();
     egui::Window::new("Bill of Materials")
         .collapsible(false)
         .resizable(true)
@@ -1945,7 +1945,7 @@ pub(crate) fn draw_bom_dialog(ctx: &egui::Context, gui: &mut GuiState) {
             }
         });
     if !open || close_clicked {
-        gui.show_bom_dialog = false;
+        gui.close_active_dialog();
     }
 }
 
@@ -1954,19 +1954,21 @@ pub(crate) fn draw_bom_dialog(ctx: &egui::Context, gui: &mut GuiState) {
 // ---------------------------------------------------------------------------
 
 pub(crate) fn draw_joint_editor_dialog(ctx: &egui::Context, gui: &mut GuiState) {
-    if !gui.show_joint_editor || gui.joint_editor_type.is_none() {
-        return;
-    }
-    let jtype = gui.joint_editor_type.unwrap();
-    // Snapshot component (idx, name) pairs for ComboBox population.
+    // Snapshot component (idx, name) pairs for ComboBox population. Done
+    // before the mutable borrow of `active_dialog`.
     let comps: Vec<(usize, String)> = gui
         .assembly
         .as_ref()
         .map(|a| a.components.iter().enumerate().map(|(i, c)| (i, c.name.clone())).collect())
         .unwrap_or_default();
+
+    let state = match gui.joint_editor_state_mut() {
+        Some(s) => s,
+        None => return,
+    };
+    let jtype = state.joint_type;
     if comps.len() < jtype.min_components() {
-        gui.show_joint_editor = false;
-        gui.joint_editor_type = None;
+        gui.close_active_dialog();
         return;
     }
     let grounded = matches!(jtype, AssemblyJointType::Grounded);
@@ -1984,12 +1986,12 @@ pub(crate) fn draw_joint_editor_dialog(ctx: &egui::Context, gui: &mut GuiState) 
             egui::Grid::new("je_comps").num_columns(2).spacing([10.0, 4.0]).show(ui, |ui| {
                 ui.label("Component A:");
                 egui::ComboBox::from_id_salt("je_comp_a")
-                    .selected_text(comps.get(gui.joint_editor_comp_a)
+                    .selected_text(comps.get(state.comp_a)
                         .map(|(i, n)| format!("{i}: {n}"))
                         .unwrap_or_else(|| "?".into()))
                     .show_ui(ui, |ui| {
                         for (i, n) in &comps {
-                            ui.selectable_value(&mut gui.joint_editor_comp_a, *i,
+                            ui.selectable_value(&mut state.comp_a, *i,
                                 format!("{i}: {n}"));
                         }
                     });
@@ -1997,12 +1999,12 @@ pub(crate) fn draw_joint_editor_dialog(ctx: &egui::Context, gui: &mut GuiState) 
                 if !grounded {
                     ui.label("Component B:");
                     egui::ComboBox::from_id_salt("je_comp_b")
-                        .selected_text(comps.get(gui.joint_editor_comp_b)
+                        .selected_text(comps.get(state.comp_b)
                             .map(|(i, n)| format!("{i}: {n}"))
                             .unwrap_or_else(|| "?".into()))
                         .show_ui(ui, |ui| {
                             for (i, n) in &comps {
-                                ui.selectable_value(&mut gui.joint_editor_comp_b, *i,
+                                ui.selectable_value(&mut state.comp_b, *i,
                                     format!("{i}: {n}"));
                             }
                         });
@@ -2016,7 +2018,7 @@ pub(crate) fn draw_joint_editor_dialog(ctx: &egui::Context, gui: &mut GuiState) 
                     ui.label("Axis X/Y/Z:");
                     ui.horizontal(|ui| {
                         for k in 0..3 {
-                            ui.add(egui::DragValue::new(&mut gui.joint_editor_axis[k])
+                            ui.add(egui::DragValue::new(&mut state.axis[k])
                                 .speed(0.05));
                         }
                     });
@@ -2027,7 +2029,7 @@ pub(crate) fn draw_joint_editor_dialog(ctx: &egui::Context, gui: &mut GuiState) 
                     ui.label(lab);
                     ui.horizontal(|ui| {
                         for k in 0..3 {
-                            ui.add(egui::DragValue::new(&mut gui.joint_editor_origin[k])
+                            ui.add(egui::DragValue::new(&mut state.origin[k])
                                 .speed(0.1));
                         }
                     });
@@ -2035,19 +2037,19 @@ pub(crate) fn draw_joint_editor_dialog(ctx: &egui::Context, gui: &mut GuiState) 
                 }
                 if matches!(jtype, AssemblyJointType::Angle | AssemblyJointType::Distance) {
                     ui.label("Angle (deg):");
-                    ui.add(egui::DragValue::new(&mut gui.joint_editor_angle)
+                    ui.add(egui::DragValue::new(&mut state.angle)
                         .range(-360.0..=360.0).speed(1.0));
                     ui.end_row();
                 }
                 if matches!(jtype, AssemblyJointType::Screw | AssemblyJointType::Rack) {
                     ui.label("Pitch:");
-                    ui.add(egui::DragValue::new(&mut gui.joint_editor_pitch)
+                    ui.add(egui::DragValue::new(&mut state.pitch)
                         .range(0.01..=1000.0).speed(0.1));
                     ui.end_row();
                 }
                 if matches!(jtype, AssemblyJointType::Gear | AssemblyJointType::Belt) {
                     ui.label("Ratio:");
-                    ui.add(egui::DragValue::new(&mut gui.joint_editor_ratio)
+                    ui.add(egui::DragValue::new(&mut state.ratio)
                         .range(0.01..=100.0).speed(0.05));
                     ui.end_row();
                 }
@@ -2071,8 +2073,7 @@ pub(crate) fn draw_joint_editor_dialog(ctx: &egui::Context, gui: &mut GuiState) 
             });
         });
     if !open || do_cancel {
-        gui.show_joint_editor = false;
-        gui.joint_editor_type = None;
+        gui.close_active_dialog();
     } else if do_create {
         gui.actions.push(GuiAction::CommitAssemblyJoint);
     }
@@ -2106,10 +2107,12 @@ const MATERIAL_PRESETS: [MaterialPreset; 7] = [
 ];
 
 pub(crate) fn draw_material_picker_dialog(ctx: &egui::Context, gui: &mut GuiState) {
-    if gui.material_picker_dialog.is_none() { return; }
+    let state = match &mut gui.active_dialog {
+        Some(crate::gui::ActiveDialog::MaterialPicker(s)) => s,
+        _ => return,
+    };
     let mut open = true;
     let (mut do_ok, mut do_cancel) = (false, false);
-    let mut state = gui.material_picker_dialog.unwrap();
     egui::Window::new("FEM Material").collapsible(false).resizable(false)
         .default_width(320.0).open(&mut open).show(ctx, |ui| {
             dialog_section(ui, "Preset");
@@ -2135,20 +2138,25 @@ pub(crate) fn draw_material_picker_dialog(ctx: &egui::Context, gui: &mut GuiStat
             let (ok, cancel, _) = button_bar(ui, "OK");
             do_ok = ok; do_cancel = cancel;
         });
-    gui.material_picker_dialog = Some(state);
-    if !open || do_cancel { gui.material_picker_dialog = None; }
-    else if do_ok { gui.actions.push(GuiAction::CommitMaterialPicker); }
+    if !open || do_cancel {
+        gui.close_active_dialog();
+    } else if do_ok {
+        gui.actions.push(GuiAction::CommitMaterialPicker);
+    }
 }
 
 pub(crate) fn draw_bc_editor_dialog(ctx: &egui::Context, gui: &mut GuiState) {
-    if gui.bc_editor_dialog.is_none() { return; }
+    // Snapshot mesh sizes before taking the mutable borrow on `active_dialog`.
     let n_nodes = gui.fem_analysis.as_ref().map(|a| a.mesh.nodes.len()).unwrap_or(0);
     let n_elems = gui.fem_analysis.as_ref().map(|a| a.mesh.elements.len()).unwrap_or(0);
     let max_node = n_nodes.saturating_sub(1);
     let max_elem = n_elems.saturating_sub(1);
+    let state = match &mut gui.active_dialog {
+        Some(crate::gui::ActiveDialog::BcEditor(s)) => s,
+        _ => return,
+    };
     let mut open = true;
     let (mut do_ok, mut do_cancel) = (false, false);
-    let mut state = gui.bc_editor_dialog.unwrap();
     const ALL_KINDS: &[BcKind] = &[
         BcKind::FixedNode, BcKind::Force, BcKind::Pressure, BcKind::Displacement,
         BcKind::Gravity, BcKind::DistributedLoad, BcKind::Spring,
@@ -2209,7 +2217,9 @@ pub(crate) fn draw_bc_editor_dialog(ctx: &egui::Context, gui: &mut GuiState) {
             let (ok, cancel, _) = button_bar(ui, "OK");
             do_ok = ok; do_cancel = cancel;
         });
-    gui.bc_editor_dialog = Some(state);
-    if !open || do_cancel { gui.bc_editor_dialog = None; }
-    else if do_ok { gui.actions.push(GuiAction::CommitBcEditor); }
+    if !open || do_cancel {
+        gui.close_active_dialog();
+    } else if do_ok {
+        gui.actions.push(GuiAction::CommitBcEditor);
+    }
 }
