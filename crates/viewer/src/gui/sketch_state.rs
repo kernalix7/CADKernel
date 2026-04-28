@@ -204,3 +204,68 @@ impl SketchMode {
         self.validation_issues = validation.issues;
     }
 }
+
+/// Actions specific to the Sketcher workbench, dispatched through
+/// `GuiAction::Sketcher(SketcherAction)`. Workbench prefix dropped where the
+/// wrapper variant already provides scope.
+///
+/// Note: `PartialEq` is omitted because `WorkPlane` (in `Enter(_)`) does not
+/// implement it. The parent `GuiAction` enum has no derive either, so this
+/// diverges intentionally from `AssemblyAction` / `FemAction`.
+#[derive(Clone, Debug)]
+pub(crate) enum SketcherAction {
+    // Lifecycle
+    Enter(WorkPlane),
+    EnterOnSelectedFace,
+    Edit,
+    Close,
+    Cancel,
+
+    // Pointer / tool
+    Click(f64, f64),
+    SetTool(SketchTool),
+
+    // Geometric constraints
+    ConstrainHorizontal,
+    ConstrainVertical,
+    ConstrainLength(f64),
+    ConstrainParallel,
+    ConstrainPerpendicular,
+    ConstrainCoincident,
+    ConstrainTangent,
+    ConstrainEqual,
+    ConstrainSymmetric,
+    ConstrainFixed,
+    ConstrainBlock,
+    ConstrainDistance(f64),
+    ConstrainAngle(f64),
+    ConstrainRadius(f64),
+    ConstrainDiameter(f64),
+    ConstrainHDistance(f64),
+    ConstrainVDistance(f64),
+
+    // Tools
+    FilletCorner { radius: f64 },
+    ChamferCorner { distance: f64 },
+    TrimEdge,
+    SplitEdge,
+    ExtendEdge,
+    MirrorGeometry,
+    ExternalProjection,
+    CarbonCopy,
+    CopySelection,
+    PasteSelection(f64, f64),
+    MergePoints,
+
+    // B-spline
+    ConvertToBSpline,
+    IncreaseDegree,
+    DecreaseDegree,
+    InsertKnot,
+
+    // Toggles
+    ToggleConstruction,
+    ToggleGrid,
+    ToggleSnap,
+    ToggleConstraintsVisible,
+}

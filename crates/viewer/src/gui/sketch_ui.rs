@@ -1342,34 +1342,35 @@ fn draw_dimension_popup(ctx: &egui::Context, gui: &mut GuiState) {
             }
         } else {
             // New constraint
+            use super::SketcherAction as S;
             match popup.kind {
                 DimensionKind::Length => {
                     gui.constraint_length_value = v;
-                    gui.actions.push(GuiAction::SketchConstrainLength(v));
+                    gui.actions.push(GuiAction::Sketcher(S::ConstrainLength(v)));
                 }
                 DimensionKind::Distance => {
                     gui.constraint_distance_value = v;
-                    gui.actions.push(GuiAction::SketchConstrainDistance(v));
+                    gui.actions.push(GuiAction::Sketcher(S::ConstrainDistance(v)));
                 }
                 DimensionKind::Angle => {
                     gui.constraint_angle_value = v;
-                    gui.actions.push(GuiAction::SketchConstrainAngle(v));
+                    gui.actions.push(GuiAction::Sketcher(S::ConstrainAngle(v)));
                 }
                 DimensionKind::Radius => {
                     gui.constraint_radius_value = v;
-                    gui.actions.push(GuiAction::SketchConstrainRadius(v));
+                    gui.actions.push(GuiAction::Sketcher(S::ConstrainRadius(v)));
                 }
                 DimensionKind::Diameter => {
                     gui.constraint_radius_value = v / 2.0;
-                    gui.actions.push(GuiAction::SketchConstrainDiameter(v));
+                    gui.actions.push(GuiAction::Sketcher(S::ConstrainDiameter(v)));
                 }
                 DimensionKind::HDistance => {
                     gui.constraint_distance_value = v;
-                    gui.actions.push(GuiAction::SketchConstrainHDistance(v));
+                    gui.actions.push(GuiAction::Sketcher(S::ConstrainHDistance(v)));
                 }
                 DimensionKind::VDistance => {
                     gui.constraint_distance_value = v;
-                    gui.actions.push(GuiAction::SketchConstrainVDistance(v));
+                    gui.actions.push(GuiAction::Sketcher(S::ConstrainVDistance(v)));
                 }
             }
         }
@@ -1480,13 +1481,13 @@ fn apply_sketch_ctx_action(gui: &mut GuiState, action: SketchCtxAction) {
             }
         }
         SketchCtxAction::Horizontal => {
-            gui.actions.push(super::GuiAction::SketchConstrainHorizontal);
+            gui.actions.push(super::GuiAction::Sketcher(super::SketcherAction::ConstrainHorizontal));
         }
         SketchCtxAction::Vertical => {
-            gui.actions.push(super::GuiAction::SketchConstrainVertical);
+            gui.actions.push(super::GuiAction::Sketcher(super::SketcherAction::ConstrainVertical));
         }
         SketchCtxAction::Fixed => {
-            gui.actions.push(super::GuiAction::SketchConstrainFixed);
+            gui.actions.push(super::GuiAction::Sketcher(super::SketcherAction::ConstrainFixed));
         }
         SketchCtxAction::SelectAll => {
             let n_pts = sm.sketch.points.len();

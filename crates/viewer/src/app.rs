@@ -3,7 +3,8 @@
 
 use crate::gui::{
     self, AssemblyAction, FemAction, GizmoMode, GuiAction, GuiState, MirrorPlane, ReportLevel,
-    SelectedEntity, SelectionMode, SketchEntityRef, SketchMode, SketchTool, ViewportInfo,
+    SelectedEntity, SelectionMode, SketchEntityRef, SketchMode, SketchTool, SketcherAction,
+    ViewportInfo,
 };
 use crate::scripting::ScriptEngine;
 use crate::nav::{NavAction, NavConfig};
@@ -1547,96 +1548,8 @@ impl CadApp {
                     });
                 }
 
-                // -- Sketch actions --
-                GuiAction::EnterSketch(plane) => {
-                    self.gui.sketch_mode = Some(SketchMode::new(plane));
-                    self.gui.active_workbench = gui::Workbench::Sketcher;
-                    self.gui.status_message =
-                        "Sketch mode: click to add points, select tool from toolbar".into();
-                }
-
-                GuiAction::SketchOnSelectedFace => {
-                    if let Some(plane) = self.compute_face_workplane() {
-                        self.gui.sketch_mode = Some(SketchMode::new(plane));
-                        self.gui.active_workbench = gui::Workbench::Sketcher;
-                        self.gui.status_message = "Sketch on selected face".into();
-                        self.log_info("Sketch started on selected face");
-                    } else {
-                        self.gui.status_message = "No face selected for sketch".into();
-                    }
-                }
-
-                GuiAction::SketchClick(x, y) => {
-                    self.handle_sketch_click(x, y);
-                }
-
-                GuiAction::SetSketchTool(tool) => {
-                    if let Some(sm) = &mut self.gui.sketch_mode {
-                        sm.tool = tool;
-                        sm.pending_point = None;
-                        self.gui.status_message = format!("Sketch tool: {tool:?}");
-                    }
-                }
-
-                GuiAction::SketchConstrainHorizontal => {
-                    if let Some(sm) = &mut self.gui.sketch_mode {
-                        Self::apply_sketch_constraint_h(sm, &mut self.gui.status_message);
-                    }
-                }
-
-                GuiAction::SketchConstrainVertical => {
-                    if let Some(sm) = &mut self.gui.sketch_mode {
-                        Self::apply_sketch_constraint_v(sm, &mut self.gui.status_message);
-                    }
-                }
-
-                GuiAction::SketchConstrainLength(len) => {
-                    if let Some(sm) = &mut self.gui.sketch_mode {
-                        let mut applied = false;
-                        for e in &sm.selected_entities {
-                            if let SketchEntityRef::Line(i) = *e {
-                                if i < sm.sketch.lines.len() {
-                                    sm.sketch.add_constraint(Constraint::Length(
-                                        cadkernel_sketch::LineId(i), len,
-                                    ));
-                                    applied = true;
-                                }
-                            }
-                        }
-                        if !applied && !sm.sketch.lines.is_empty() {
-                            let lid = cadkernel_sketch::LineId(sm.sketch.lines.len() - 1);
-                            sm.sketch.add_constraint(Constraint::Length(lid, len));
-                            applied = true;
-                        }
-                        if applied {
-                            self.gui.status_message = format!("Added Length={len:.1} constraint");
-                        }
-                    }
-                }
-
-                GuiAction::CloseSketch => {
-                    self.close_sketch();
-                }
-
-                GuiAction::EditSketch => {
-                    if self.gui.sketch_mode.is_none() {
-                        if let Some((sketch, plane)) = self.gui.last_sketch.take() {
-                            let mut sm = SketchMode::new(plane);
-                            sm.sketch = sketch;
-                            sm.tool = SketchTool::Select;
-                            self.gui.sketch_mode = Some(sm);
-                            self.gui.active_workbench = crate::gui::Workbench::Sketcher;
-                            self.gui.status_message = "Editing previous sketch".into();
-                        } else {
-                            self.gui.status_message = "No previous sketch to edit".into();
-                        }
-                    }
-                }
-
-                GuiAction::CancelSketch => {
-                    self.gui.sketch_mode = None;
-                    self.gui.status_message = "Sketch cancelled".into();
-                }
+                // -- Sketcher workbench --
+                GuiAction::Sketcher(action) => self.process_sketcher_action(action),
 
                 // -- TechDraw actions --
                 GuiAction::TechDrawAddView(dir) => {
@@ -2568,686 +2481,6 @@ impl CadApp {
                     }
                 }
 
-                // -- Sketch constraint expansion (selection-aware) --
-                GuiAction::SketchConstrainCoincident => {
-                    if let Some(sm) = &mut self.gui.sketch_mode {
-                        let pts: Vec<usize> = sm.selected_entities.iter().filter_map(|e| {
-                            if let SketchEntityRef::Point(i) = e { Some(*i) } else { None }
-                        }).collect();
-                        if pts.len() >= 2 {
-                            sm.sketch.add_constraint(Constraint::Coincident(
-                                cadkernel_sketch::PointId(pts[0]),
-                                cadkernel_sketch::PointId(pts[1]),
-                            ));
-                            self.gui.status_message = "Coincident constraint added".into();
-                        } else {
-                            self.gui.status_message = "Select 2 points for Coincident".into();
-                        }
-                    }
-                }
-                GuiAction::SketchConstrainParallel => {
-                    if let Some(sm) = &mut self.gui.sketch_mode {
-                        let lines: Vec<usize> = sm.selected_entities.iter().filter_map(|e| {
-                            if let SketchEntityRef::Line(i) = e { Some(*i) } else { None }
-                        }).collect();
-                        if lines.len() >= 2 {
-                            sm.sketch.add_constraint(Constraint::Parallel(
-                                cadkernel_sketch::LineId(lines[0]),
-                                cadkernel_sketch::LineId(lines[1]),
-                            ));
-                            self.gui.status_message = "Parallel constraint added".into();
-                        } else {
-                            self.gui.status_message = "Select 2 lines for Parallel".into();
-                        }
-                    }
-                }
-                GuiAction::SketchConstrainPerpendicular => {
-                    if let Some(sm) = &mut self.gui.sketch_mode {
-                        let lines: Vec<usize> = sm.selected_entities.iter().filter_map(|e| {
-                            if let SketchEntityRef::Line(i) = e { Some(*i) } else { None }
-                        }).collect();
-                        if lines.len() >= 2 {
-                            sm.sketch.add_constraint(Constraint::Perpendicular(
-                                cadkernel_sketch::LineId(lines[0]),
-                                cadkernel_sketch::LineId(lines[1]),
-                            ));
-                            self.gui.status_message = "Perpendicular constraint added".into();
-                        } else {
-                            self.gui.status_message = "Select 2 lines for Perpendicular".into();
-                        }
-                    }
-                }
-                GuiAction::SketchConstrainTangent => {
-                    self.log_info("Select line + circle for Tangent (not yet supported)");
-                }
-                GuiAction::SketchConstrainEqual => {
-                    if let Some(sm) = &mut self.gui.sketch_mode {
-                        let lines: Vec<usize> = sm.selected_entities.iter().filter_map(|e| {
-                            if let SketchEntityRef::Line(i) = e { Some(*i) } else { None }
-                        }).collect();
-                        if lines.len() >= 2 {
-                            sm.sketch.add_constraint(Constraint::EqualLength(
-                                cadkernel_sketch::LineId(lines[0]),
-                                cadkernel_sketch::LineId(lines[1]),
-                            ));
-                            self.gui.status_message = "Equal length constraint added".into();
-                        } else {
-                            self.gui.status_message = "Select 2 lines for Equal".into();
-                        }
-                    }
-                }
-                GuiAction::SketchConstrainSymmetric => {
-                    self.log_info("Select 2 points + 1 line for Symmetric");
-                }
-                GuiAction::SketchConstrainFixed => {
-                    if let Some(sm) = &mut self.gui.sketch_mode {
-                        let mut applied = 0;
-                        for e in &sm.selected_entities {
-                            if let SketchEntityRef::Point(i) = *e {
-                                if i < sm.sketch.points.len() {
-                                    let pt = &sm.sketch.points[i];
-                                    sm.sketch.add_constraint(Constraint::Fixed(
-                                        cadkernel_sketch::PointId(i),
-                                        pt.position.x, pt.position.y,
-                                    ));
-                                    applied += 1;
-                                }
-                            }
-                        }
-                        if applied > 0 {
-                            self.gui.status_message = format!("Fixed {applied} point(s)");
-                        } else {
-                            self.gui.status_message = "Select point(s) for Fixed".into();
-                        }
-                    }
-                }
-                GuiAction::SketchConstrainBlock => {
-                    if let Some(sm) = &mut self.gui.sketch_mode {
-                        let mut applied = 0;
-                        for e in &sm.selected_entities {
-                            if let SketchEntityRef::Point(i) = *e {
-                                if i < sm.sketch.points.len() {
-                                    let pt = &sm.sketch.points[i];
-                                    sm.sketch.add_constraint(Constraint::Block(
-                                        cadkernel_sketch::PointId(i),
-                                        pt.position.x, pt.position.y,
-                                    ));
-                                    applied += 1;
-                                }
-                            }
-                        }
-                        if applied > 0 {
-                            self.gui.status_message = format!("Blocked {applied} point(s)");
-                        } else {
-                            self.gui.status_message = "Select point(s) for Block".into();
-                        }
-                    }
-                }
-                GuiAction::SketchConstrainDistance(val) => {
-                    if let Some(sm) = &mut self.gui.sketch_mode {
-                        let pts: Vec<usize> = sm.selected_entities.iter().filter_map(|e| {
-                            if let SketchEntityRef::Point(i) = e { Some(*i) } else { None }
-                        }).collect();
-                        if pts.len() >= 2 {
-                            sm.sketch.add_constraint(Constraint::Distance(
-                                cadkernel_sketch::PointId(pts[0]),
-                                cadkernel_sketch::PointId(pts[1]),
-                                val,
-                            ));
-                            self.gui.status_message = format!("Distance={val:.1} constraint added");
-                        } else {
-                            // Fall back to Length on selected/last line
-                            let mut applied = false;
-                            for e in &sm.selected_entities {
-                                if let SketchEntityRef::Line(i) = *e {
-                                    if i < sm.sketch.lines.len() {
-                                        sm.sketch.add_constraint(Constraint::Length(
-                                            cadkernel_sketch::LineId(i), val,
-                                        ));
-                                        applied = true;
-                                        break;
-                                    }
-                                }
-                            }
-                            if !applied && !sm.sketch.lines.is_empty() {
-                                let lid = cadkernel_sketch::LineId(sm.sketch.lines.len() - 1);
-                                sm.sketch.add_constraint(Constraint::Length(lid, val));
-                            }
-                            self.gui.status_message = format!("Distance={val:.1} constraint added");
-                        }
-                    }
-                }
-                GuiAction::SketchConstrainAngle(val) => {
-                    if let Some(sm) = &mut self.gui.sketch_mode {
-                        let lines: Vec<usize> = sm.selected_entities.iter().filter_map(|e| {
-                            if let SketchEntityRef::Line(i) = e { Some(*i) } else { None }
-                        }).collect();
-                        if lines.len() >= 2 {
-                            sm.sketch.add_constraint(Constraint::Angle(
-                                cadkernel_sketch::LineId(lines[0]),
-                                cadkernel_sketch::LineId(lines[1]),
-                                val.to_radians(),
-                            ));
-                            self.gui.status_message = format!("Angle={val:.1}° constraint added");
-                        } else {
-                            self.gui.status_message = "Select 2 lines for Angle".into();
-                        }
-                    }
-                }
-                GuiAction::SketchConstrainRadius(val) => {
-                    if let Some(sm) = &mut self.gui.sketch_mode {
-                        let mut applied = false;
-                        for e in &sm.selected_entities {
-                            if let SketchEntityRef::Circle(i) = *e {
-                                if i < sm.sketch.circles.len() {
-                                    let cid = sm.sketch.circles[i].center;
-                                    sm.sketch.add_constraint(Constraint::Radius(
-                                        cid, cid, val,
-                                    ));
-                                    applied = true;
-                                }
-                            }
-                        }
-                        if applied {
-                            self.gui.status_message = format!("Radius={val:.1} constraint added");
-                        } else {
-                            self.gui.status_message = "Select circle for Radius".into();
-                        }
-                    }
-                }
-                GuiAction::SketchConstrainDiameter(val) => {
-                    self.log_info(format!("Diameter={val:.1} — select circle first"));
-                }
-                GuiAction::SketchConstrainHDistance(val) => {
-                    if let Some(sm) = &mut self.gui.sketch_mode {
-                        let pts: Vec<usize> = sm.selected_entities.iter().filter_map(|e| {
-                            if let SketchEntityRef::Point(i) = e { Some(*i) } else { None }
-                        }).collect();
-                        if pts.len() >= 2 {
-                            sm.sketch.add_constraint(Constraint::HorizontalDistance(
-                                cadkernel_sketch::PointId(pts[0]),
-                                cadkernel_sketch::PointId(pts[1]),
-                                val,
-                            ));
-                            self.gui.status_message = format!("H-Distance={val:.1} added");
-                        } else {
-                            self.gui.status_message = "Select 2 points for H-Distance".into();
-                        }
-                    }
-                }
-                GuiAction::SketchConstrainVDistance(val) => {
-                    if let Some(sm) = &mut self.gui.sketch_mode {
-                        let pts: Vec<usize> = sm.selected_entities.iter().filter_map(|e| {
-                            if let SketchEntityRef::Point(i) = e { Some(*i) } else { None }
-                        }).collect();
-                        if pts.len() >= 2 {
-                            sm.sketch.add_constraint(Constraint::VerticalDistance(
-                                cadkernel_sketch::PointId(pts[0]),
-                                cadkernel_sketch::PointId(pts[1]),
-                                val,
-                            ));
-                            self.gui.status_message = format!("V-Distance={val:.1} added");
-                        } else {
-                            self.gui.status_message = "Select 2 points for V-Distance".into();
-                        }
-                    }
-                }
-
-                // -- Sketch tools --
-                GuiAction::SketchFilletCorner { radius } => {
-                    if let Some(sm) = &mut self.gui.sketch_mode {
-                        use crate::gui::SketchEntityRef::Line;
-                        let lines: Vec<usize> = sm.selected_entities.iter()
-                            .filter_map(|e| if let Line(i) = e { Some(*i) } else { None })
-                            .collect();
-                        if lines.len() == 2 {
-                            sm.save_snapshot();
-                            if cadkernel_sketch::fillet_sketch_corner(
-                                &mut sm.sketch,
-                                cadkernel_sketch::LineId(lines[0]),
-                                cadkernel_sketch::LineId(lines[1]),
-                                radius,
-                            ).is_some() {
-                                sm.selected_entities.clear();
-                                self.gui.status_message = format!("Corner filleted (r={radius:.1})");
-                            } else {
-                                sm.undo_stack.pop();
-                                self.gui.status_message = "Fillet failed: lines don't share a vertex".into();
-                            }
-                        } else {
-                            self.gui.status_message = "Select 2 lines to fillet".into();
-                        }
-                    }
-                }
-                GuiAction::SketchChamferCorner { distance } => {
-                    if let Some(sm) = &mut self.gui.sketch_mode {
-                        use crate::gui::SketchEntityRef::Line;
-                        let lines: Vec<usize> = sm.selected_entities.iter()
-                            .filter_map(|e| if let Line(i) = e { Some(*i) } else { None })
-                            .collect();
-                        if lines.len() == 2 {
-                            sm.save_snapshot();
-                            if cadkernel_sketch::chamfer_sketch_corner(
-                                &mut sm.sketch,
-                                cadkernel_sketch::LineId(lines[0]),
-                                cadkernel_sketch::LineId(lines[1]),
-                                distance,
-                            ).is_some() {
-                                sm.selected_entities.clear();
-                                self.gui.status_message = format!("Corner chamfered (d={distance:.1})");
-                            } else {
-                                sm.undo_stack.pop();
-                                self.gui.status_message = "Chamfer failed: lines don't share a vertex".into();
-                            }
-                        } else {
-                            self.gui.status_message = "Select 2 lines to chamfer".into();
-                        }
-                    }
-                }
-                GuiAction::SketchTrimEdge => {
-                    if let Some(sm) = &mut self.gui.sketch_mode {
-                        use crate::gui::SketchEntityRef::Line;
-                        let lines: Vec<usize> = sm.selected_entities.iter()
-                            .filter_map(|e| if let Line(i) = e { Some(*i) } else { None })
-                            .collect();
-                        if lines.len() == 2 {
-                            let l0 = cadkernel_sketch::LineId(lines[0]);
-                            let l1 = cadkernel_sketch::LineId(lines[1]);
-                            // Keep start point side of first line
-                            let keep = sm.sketch.lines[lines[0]].start;
-                            sm.save_snapshot();
-                            let result = cadkernel_sketch::trim_edge(&mut sm.sketch, l0, l1, keep);
-                            if result.trimmed {
-                                sm.selected_entities.clear();
-                                self.gui.status_message = "Edge trimmed".into();
-                            } else {
-                                sm.undo_stack.pop();
-                                self.gui.status_message = "Trim failed: lines don't intersect".into();
-                            }
-                        } else {
-                            self.gui.status_message = "Select 2 lines to trim".into();
-                        }
-                    }
-                }
-                GuiAction::SketchSplitEdge => {
-                    if let Some(sm) = &mut self.gui.sketch_mode {
-                        use crate::gui::SketchEntityRef::Line;
-                        let line_idx = sm.selected_entities.iter()
-                            .find_map(|e| if let Line(i) = e { Some(*i) } else { None });
-                        if let Some(idx) = line_idx {
-                            sm.save_snapshot();
-                            let _result = cadkernel_sketch::split_edge(
-                                &mut sm.sketch, cadkernel_sketch::LineId(idx), 0.5,
-                            );
-                            sm.selected_entities.clear();
-                            self.gui.status_message = "Edge split at midpoint".into();
-                        } else {
-                            self.gui.status_message = "Select a line to split".into();
-                        }
-                    }
-                }
-                GuiAction::SketchExtendEdge => {
-                    if let Some(sm) = &mut self.gui.sketch_mode {
-                        use crate::gui::SketchEntityRef::Line;
-                        let line_idx = sm.selected_entities.iter()
-                            .find_map(|e| if let Line(i) = e { Some(*i) } else { None });
-                        if let Some(idx) = line_idx {
-                            // Extend by 50% of current length toward end direction
-                            let l = sm.sketch.lines[idx];
-                            let s = sm.sketch.points[l.start.0].position;
-                            let e = sm.sketch.points[l.end.0].position;
-                            let tx = e.x + (e.x - s.x) * 0.5;
-                            let ty = e.y + (e.y - s.y) * 0.5;
-                            sm.save_snapshot();
-                            cadkernel_sketch::extend_edge(
-                                &mut sm.sketch, cadkernel_sketch::LineId(idx), tx, ty,
-                            );
-                            self.gui.status_message = "Edge extended".into();
-                        } else {
-                            self.gui.status_message = "Select a line to extend".into();
-                        }
-                    }
-                }
-                GuiAction::SketchMirrorGeometry => {
-                    if let Some(sm) = &mut self.gui.sketch_mode {
-                        // Need exactly 1 selected line as mirror axis + other selected points
-                        let mut axis_line: Option<usize> = None;
-                        let mut point_ids: Vec<cadkernel_sketch::PointId> = Vec::new();
-                        for e in &sm.selected_entities {
-                            match *e {
-                                SketchEntityRef::Line(i)
-                                    if axis_line.is_none() => {
-                                        axis_line = Some(i);
-                                    }
-                                SketchEntityRef::Point(i) => {
-                                    point_ids.push(cadkernel_sketch::PointId(i));
-                                }
-                                _ => {}
-                            }
-                        }
-                        if let Some(al) = axis_line {
-                            sm.save_snapshot();
-                            // If no explicit points selected, mirror all points except axis line endpoints
-                            if point_ids.is_empty() {
-                                let axis_s = sm.sketch.lines[al].start.0;
-                                let axis_e = sm.sketch.lines[al].end.0;
-                                for i in 0..sm.sketch.points.len() {
-                                    if i != axis_s && i != axis_e {
-                                        point_ids.push(cadkernel_sketch::PointId(i));
-                                    }
-                                }
-                            }
-                            let mirror_lid = cadkernel_sketch::LineId(al);
-                            let new_pts = sm.sketch.mirror_elements(&point_ids, mirror_lid);
-                            self.gui.status_message = format!(
-                                "Mirrored {} points → {} new points",
-                                point_ids.len(), new_pts.len()
-                            );
-                        } else {
-                            self.gui.status_message = "Mirror: select a line as mirror axis".into();
-                        }
-                    }
-                }
-                GuiAction::SketchCopySelection => {
-                    if let Some(sm) = &mut self.gui.sketch_mode {
-                        // Collect unique point indices from selected entities
-                        let mut pt_indices: Vec<usize> = Vec::new();
-                        let mut line_refs: Vec<(usize, usize)> = Vec::new();
-                        for e in &sm.selected_entities {
-                            match *e {
-                                SketchEntityRef::Point(i)
-                                    if !pt_indices.contains(&i) => { pt_indices.push(i); }
-                                SketchEntityRef::Line(i)
-                                    if i < sm.sketch.lines.len() => {
-                                        let s = sm.sketch.lines[i].start.0;
-                                        let e = sm.sketch.lines[i].end.0;
-                                        if !pt_indices.contains(&s) { pt_indices.push(s); }
-                                        if !pt_indices.contains(&e) { pt_indices.push(e); }
-                                        line_refs.push((s, e));
-                                    }
-                                _ => {}
-                            }
-                        }
-                        if pt_indices.is_empty() {
-                            self.gui.status_message = "Nothing to copy".into();
-                        } else {
-                            // Compute centroid
-                            let (mut cx, mut cy) = (0.0, 0.0);
-                            for &pi in &pt_indices {
-                                if pi < sm.sketch.points.len() {
-                                    cx += sm.sketch.points[pi].position.x;
-                                    cy += sm.sketch.points[pi].position.y;
-                                }
-                            }
-                            cx /= pt_indices.len() as f64;
-                            cy /= pt_indices.len() as f64;
-                            // Store relative offsets
-                            sm.clipboard_points.clear();
-                            sm.clipboard_lines.clear();
-                            let mut idx_map = std::collections::HashMap::new();
-                            for (new_i, &pi) in pt_indices.iter().enumerate() {
-                                if pi < sm.sketch.points.len() {
-                                    let p = &sm.sketch.points[pi];
-                                    sm.clipboard_points.push((p.position.x - cx, p.position.y - cy));
-                                    idx_map.insert(pi, new_i);
-                                }
-                            }
-                            for (s, e) in &line_refs {
-                                if let (Some(&si), Some(&ei)) = (idx_map.get(s), idx_map.get(e)) {
-                                    sm.clipboard_lines.push((si, ei));
-                                }
-                            }
-                            self.gui.status_message = format!(
-                                "Copied {} points, {} lines",
-                                sm.clipboard_points.len(), sm.clipboard_lines.len()
-                            );
-                        }
-                    }
-                }
-                GuiAction::SketchPasteSelection(px, py) => {
-                    if let Some(sm) = &mut self.gui.sketch_mode {
-                        if sm.clipboard_points.is_empty() {
-                            self.gui.status_message = "Clipboard empty".into();
-                        } else {
-                            sm.save_snapshot();
-                            // Create points at paste position + offsets
-                            let new_pts: Vec<cadkernel_sketch::PointId> = sm.clipboard_points
-                                .iter()
-                                .map(|&(dx, dy)| sm.sketch.add_point(px + dx, py + dy))
-                                .collect();
-                            // Recreate lines
-                            for &(si, ei) in &sm.clipboard_lines.clone() {
-                                if si < new_pts.len() && ei < new_pts.len() {
-                                    sm.sketch.add_line(new_pts[si], new_pts[ei]);
-                                }
-                            }
-                            self.gui.status_message = format!(
-                                "Pasted {} points at ({px:.1}, {py:.1})",
-                                new_pts.len()
-                            );
-                        }
-                    }
-                }
-                GuiAction::SketchMergePoints => {
-                    if let Some(sm) = &mut self.gui.sketch_mode {
-                        sm.save_snapshot();
-                        let eps = 0.01;
-                        let n = sm.sketch.points.len();
-                        // Build merge map: for each point, map to lowest index within epsilon
-                        let mut merge_to: Vec<usize> = (0..n).collect();
-                        for i in 0..n {
-                            for j in (i + 1)..n {
-                                let dx = sm.sketch.points[i].position.x - sm.sketch.points[j].position.x;
-                                let dy = sm.sketch.points[i].position.y - sm.sketch.points[j].position.y;
-                                if (dx * dx + dy * dy).sqrt() < eps {
-                                    merge_to[j] = merge_to[i];
-                                }
-                            }
-                        }
-                        // Remap all references
-                        let mut merged = 0usize;
-                        for line in &mut sm.sketch.lines {
-                            let ns = merge_to[line.start.0];
-                            let ne = merge_to[line.end.0];
-                            if ns != line.start.0 || ne != line.end.0 { merged += 1; }
-                            line.start = cadkernel_sketch::PointId(ns);
-                            line.end = cadkernel_sketch::PointId(ne);
-                        }
-                        for arc in &mut sm.sketch.arcs {
-                            arc.center = cadkernel_sketch::PointId(merge_to[arc.center.0]);
-                            arc.start_point = cadkernel_sketch::PointId(merge_to[arc.start_point.0]);
-                            arc.end_point = cadkernel_sketch::PointId(merge_to[arc.end_point.0]);
-                        }
-                        for circle in &mut sm.sketch.circles {
-                            circle.center = cadkernel_sketch::PointId(merge_to[circle.center.0]);
-                        }
-                        for ell in &mut sm.sketch.ellipses {
-                            ell.center = cadkernel_sketch::PointId(merge_to[ell.center.0]);
-                            ell.major_end = cadkernel_sketch::PointId(merge_to[ell.major_end.0]);
-                        }
-                        for bsp in &mut sm.sketch.bsplines {
-                            for cp in &mut bsp.control_points {
-                                *cp = cadkernel_sketch::PointId(merge_to[cp.0]);
-                            }
-                        }
-                        self.gui.status_message = format!("Merged {merged} point references");
-                    }
-                }
-                GuiAction::SketchExternalProjection => {
-                    if let Some(sm) = &mut self.gui.sketch_mode {
-                        // Project model vertices onto sketch plane
-                        let verts: Vec<Point3> = self.model.vertices.iter()
-                            .map(|(_, v)| v.point)
-                            .collect();
-                        if verts.is_empty() {
-                            self.gui.status_message = "No model vertices to project".into();
-                        } else {
-                            sm.save_snapshot();
-                            let ids = external_projection(
-                                &mut sm.sketch, &verts, &sm.plane,
-                            );
-                            self.gui.status_message = format!(
-                                "Projected {} vertices onto sketch", ids.len()
-                            );
-                        }
-                    }
-                }
-                GuiAction::SketchCarbonCopy => {
-                    if let Some(sm) = &mut self.gui.sketch_mode {
-                        if let Some((ref source, _)) = self.gui.last_sketch {
-                            sm.save_snapshot();
-                            if carbon_copy(source, &mut sm.sketch).is_ok() {
-                                self.gui.status_message = "Carbon copy applied".into();
-                            } else {
-                                self.gui.status_message = "Carbon copy failed".into();
-                            }
-                        } else {
-                            self.gui.status_message = "No previous sketch to copy from".into();
-                        }
-                    }
-                }
-                GuiAction::SketchConvertToBSpline => {
-                    if let Some(sm) = &mut self.gui.sketch_mode {
-                        // Convert first selected line/arc/circle to B-spline
-                        let entity_id = sm.selected_entities.first().and_then(|e| match *e {
-                            SketchEntityRef::Line(i) => Some(i),
-                            SketchEntityRef::Arc(i) => Some(sm.sketch.lines.len() + i),
-                            SketchEntityRef::Circle(i) => Some(sm.sketch.lines.len() + sm.sketch.arcs.len() + i),
-                            _ => None,
-                        });
-                        if let Some(eid) = entity_id {
-                            sm.save_snapshot();
-                            match geometry_to_bspline(&mut sm.sketch, eid) {
-                                Ok(bid) => {
-                                    self.gui.status_message = format!("Converted to B-Spline {}", bid.0);
-                                }
-                                Err(e) => {
-                                    self.gui.status_message = format!("Convert failed: {e}");
-                                }
-                            }
-                        } else {
-                            self.gui.status_message = "Select a line, arc, or circle to convert".into();
-                        }
-                    }
-                }
-                GuiAction::SketchIncreaseDegree => {
-                    if let Some(sm) = &mut self.gui.sketch_mode {
-                        let bsp_id = sm.selected_entities.iter().find_map(|e| match *e {
-                            SketchEntityRef::BSpline(i) => Some(cadkernel_sketch::BSplineId(i)),
-                            _ => None,
-                        });
-                        if let Some(bid) = bsp_id {
-                            sm.save_snapshot();
-                            match increase_bspline_degree(&mut sm.sketch, bid) {
-                                Ok(()) => {
-                                    let deg = sm.sketch.bsplines[bid.0].degree;
-                                    self.gui.status_message = format!("B-Spline degree → {deg}");
-                                }
-                                Err(e) => self.gui.status_message = format!("Increase degree: {e}"),
-                            }
-                        } else {
-                            self.gui.status_message = "Select a B-Spline to increase degree".into();
-                        }
-                    }
-                }
-                GuiAction::SketchDecreaseDegree => {
-                    if let Some(sm) = &mut self.gui.sketch_mode {
-                        let bsp_id = sm.selected_entities.iter().find_map(|e| match *e {
-                            SketchEntityRef::BSpline(i) => Some(cadkernel_sketch::BSplineId(i)),
-                            _ => None,
-                        });
-                        if let Some(bid) = bsp_id {
-                            sm.save_snapshot();
-                            match decrease_bspline_degree(&mut sm.sketch, bid) {
-                                Ok(()) => {
-                                    let deg = sm.sketch.bsplines[bid.0].degree;
-                                    self.gui.status_message = format!("B-Spline degree → {deg}");
-                                }
-                                Err(e) => self.gui.status_message = format!("Decrease degree: {e}"),
-                            }
-                        } else {
-                            self.gui.status_message = "Select a B-Spline to decrease degree".into();
-                        }
-                    }
-                }
-                GuiAction::SketchInsertKnot => {
-                    if let Some(sm) = &mut self.gui.sketch_mode {
-                        let bsp_id = sm.selected_entities.iter().find_map(|e| match *e {
-                            SketchEntityRef::BSpline(i) => Some(cadkernel_sketch::BSplineId(i)),
-                            _ => None,
-                        });
-                        if let Some(bid) = bsp_id {
-                            sm.save_snapshot();
-                            match insert_knot(&mut sm.sketch, bid, 0.5) {
-                                Ok(()) => {
-                                    let n = sm.sketch.bsplines[bid.0].control_points.len();
-                                    self.gui.status_message = format!("Inserted knot (now {n} CPs)");
-                                }
-                                Err(e) => self.gui.status_message = format!("Insert knot: {e}"),
-                            }
-                        } else {
-                            self.gui.status_message = "Select a B-Spline to insert knot".into();
-                        }
-                    }
-                }
-
-                // -- Sketch toggles --
-                GuiAction::ToggleSketchConstruction => {
-                    if let Some(sm) = &mut self.gui.sketch_mode {
-                        // If entities are selected, toggle them between construction/normal
-                        if !sm.selected_entities.is_empty() {
-                            sm.save_snapshot();
-                            let mut toggled = 0usize;
-                            for e in &sm.selected_entities {
-                                match *e {
-                                    SketchEntityRef::Point(i) => {
-                                        let pid = cadkernel_sketch::PointId(i);
-                                        if let Some(pos) = sm.sketch.construction_points.iter().position(|p| *p == pid) {
-                                            sm.sketch.construction_points.remove(pos);
-                                        } else {
-                                            sm.sketch.mark_construction_point(pid);
-                                        }
-                                        toggled += 1;
-                                    }
-                                    SketchEntityRef::Line(i) => {
-                                        let lid = cadkernel_sketch::LineId(i);
-                                        if let Some(pos) = sm.sketch.construction_lines.iter().position(|l| *l == lid) {
-                                            sm.sketch.construction_lines.remove(pos);
-                                        } else {
-                                            sm.sketch.mark_construction_line(lid);
-                                        }
-                                        toggled += 1;
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            if toggled > 0 {
-                                self.gui.status_message = format!("Toggled {toggled} entities construction mode");
-                            }
-                        } else {
-                            // No selection: toggle global construction mode for new entities
-                            sm.construction_mode = !sm.construction_mode;
-                            let state = if sm.construction_mode { "ON" } else { "OFF" };
-                            self.gui.status_message = format!("Construction mode: {state}");
-                        }
-                    }
-                }
-                GuiAction::ToggleSketchGrid => {
-                    if let Some(sm) = &mut self.gui.sketch_mode {
-                        sm.show_grid = !sm.show_grid;
-                    }
-                }
-                GuiAction::ToggleSketchSnap => {
-                    if let Some(sm) = &mut self.gui.sketch_mode {
-                        sm.snap_enabled = !sm.snap_enabled;
-                    }
-                }
-                GuiAction::ToggleSketchConstraintsVisible => {
-                    if let Some(sm) = &mut self.gui.sketch_mode {
-                        sm.show_constraints = !sm.show_constraints;
-                    }
-                }
-
                 // -- Part: Join / Compound / Convert --
                 GuiAction::FaceFromWires => self.log_info("Part: face from wires"),
                 GuiAction::ConnectShapes => self.log_info("Part: connect shapes"),
@@ -4015,6 +3248,780 @@ impl CadApp {
             FemAction::ShowVonMises => self.log_info("FEM: show von Mises"),
             FemAction::Summary => self.log_info("FEM: summary"),
             FemAction::Report => self.log_info("FEM: report"),
+        }
+    }
+
+    /// Dispatch a `SketcherAction` (sub-enum of `GuiAction::Sketcher`).
+    /// Extracted from `process_actions` so the main dispatcher stays
+    /// readable; behaviour is identical to the pre-refactor inline arms.
+    fn process_sketcher_action(&mut self, action: SketcherAction) {
+        use SketcherAction as S;
+        match action {
+            // -- Lifecycle --
+            S::Enter(plane) => {
+                self.gui.sketch_mode = Some(SketchMode::new(plane));
+                self.gui.active_workbench = gui::Workbench::Sketcher;
+                self.gui.status_message =
+                    "Sketch mode: click to add points, select tool from toolbar".into();
+            }
+            S::EnterOnSelectedFace => {
+                if let Some(plane) = self.compute_face_workplane() {
+                    self.gui.sketch_mode = Some(SketchMode::new(plane));
+                    self.gui.active_workbench = gui::Workbench::Sketcher;
+                    self.gui.status_message = "Sketch on selected face".into();
+                    self.log_info("Sketch started on selected face");
+                } else {
+                    self.gui.status_message = "No face selected for sketch".into();
+                }
+            }
+            S::Edit => {
+                if self.gui.sketch_mode.is_none() {
+                    if let Some((sketch, plane)) = self.gui.last_sketch.take() {
+                        let mut sm = SketchMode::new(plane);
+                        sm.sketch = sketch;
+                        sm.tool = SketchTool::Select;
+                        self.gui.sketch_mode = Some(sm);
+                        self.gui.active_workbench = crate::gui::Workbench::Sketcher;
+                        self.gui.status_message = "Editing previous sketch".into();
+                    } else {
+                        self.gui.status_message = "No previous sketch to edit".into();
+                    }
+                }
+            }
+            S::Close => {
+                self.close_sketch();
+            }
+            S::Cancel => {
+                self.gui.sketch_mode = None;
+                self.gui.status_message = "Sketch cancelled".into();
+            }
+
+            // -- Pointer / tool --
+            S::Click(x, y) => {
+                self.handle_sketch_click(x, y);
+            }
+            S::SetTool(tool) => {
+                if let Some(sm) = &mut self.gui.sketch_mode {
+                    sm.tool = tool;
+                    sm.pending_point = None;
+                    self.gui.status_message = format!("Sketch tool: {tool:?}");
+                }
+            }
+
+            // -- Geometric constraints --
+            S::ConstrainHorizontal => {
+                if let Some(sm) = &mut self.gui.sketch_mode {
+                    Self::apply_sketch_constraint_h(sm, &mut self.gui.status_message);
+                }
+            }
+            S::ConstrainVertical => {
+                if let Some(sm) = &mut self.gui.sketch_mode {
+                    Self::apply_sketch_constraint_v(sm, &mut self.gui.status_message);
+                }
+            }
+            S::ConstrainLength(len) => {
+                if let Some(sm) = &mut self.gui.sketch_mode {
+                    let mut applied = false;
+                    for e in &sm.selected_entities {
+                        if let SketchEntityRef::Line(i) = *e {
+                            if i < sm.sketch.lines.len() {
+                                sm.sketch.add_constraint(Constraint::Length(
+                                    cadkernel_sketch::LineId(i), len,
+                                ));
+                                applied = true;
+                            }
+                        }
+                    }
+                    if !applied && !sm.sketch.lines.is_empty() {
+                        let lid = cadkernel_sketch::LineId(sm.sketch.lines.len() - 1);
+                        sm.sketch.add_constraint(Constraint::Length(lid, len));
+                        applied = true;
+                    }
+                    if applied {
+                        self.gui.status_message = format!("Added Length={len:.1} constraint");
+                    }
+                }
+            }
+            S::ConstrainCoincident => {
+                if let Some(sm) = &mut self.gui.sketch_mode {
+                    let pts: Vec<usize> = sm.selected_entities.iter().filter_map(|e| {
+                        if let SketchEntityRef::Point(i) = e { Some(*i) } else { None }
+                    }).collect();
+                    if pts.len() >= 2 {
+                        sm.sketch.add_constraint(Constraint::Coincident(
+                            cadkernel_sketch::PointId(pts[0]),
+                            cadkernel_sketch::PointId(pts[1]),
+                        ));
+                        self.gui.status_message = "Coincident constraint added".into();
+                    } else {
+                        self.gui.status_message = "Select 2 points for Coincident".into();
+                    }
+                }
+            }
+            S::ConstrainParallel => {
+                if let Some(sm) = &mut self.gui.sketch_mode {
+                    let lines: Vec<usize> = sm.selected_entities.iter().filter_map(|e| {
+                        if let SketchEntityRef::Line(i) = e { Some(*i) } else { None }
+                    }).collect();
+                    if lines.len() >= 2 {
+                        sm.sketch.add_constraint(Constraint::Parallel(
+                            cadkernel_sketch::LineId(lines[0]),
+                            cadkernel_sketch::LineId(lines[1]),
+                        ));
+                        self.gui.status_message = "Parallel constraint added".into();
+                    } else {
+                        self.gui.status_message = "Select 2 lines for Parallel".into();
+                    }
+                }
+            }
+            S::ConstrainPerpendicular => {
+                if let Some(sm) = &mut self.gui.sketch_mode {
+                    let lines: Vec<usize> = sm.selected_entities.iter().filter_map(|e| {
+                        if let SketchEntityRef::Line(i) = e { Some(*i) } else { None }
+                    }).collect();
+                    if lines.len() >= 2 {
+                        sm.sketch.add_constraint(Constraint::Perpendicular(
+                            cadkernel_sketch::LineId(lines[0]),
+                            cadkernel_sketch::LineId(lines[1]),
+                        ));
+                        self.gui.status_message = "Perpendicular constraint added".into();
+                    } else {
+                        self.gui.status_message = "Select 2 lines for Perpendicular".into();
+                    }
+                }
+            }
+            S::ConstrainTangent => {
+                self.log_info("Select line + circle for Tangent (not yet supported)");
+            }
+            S::ConstrainEqual => {
+                if let Some(sm) = &mut self.gui.sketch_mode {
+                    let lines: Vec<usize> = sm.selected_entities.iter().filter_map(|e| {
+                        if let SketchEntityRef::Line(i) = e { Some(*i) } else { None }
+                    }).collect();
+                    if lines.len() >= 2 {
+                        sm.sketch.add_constraint(Constraint::EqualLength(
+                            cadkernel_sketch::LineId(lines[0]),
+                            cadkernel_sketch::LineId(lines[1]),
+                        ));
+                        self.gui.status_message = "Equal length constraint added".into();
+                    } else {
+                        self.gui.status_message = "Select 2 lines for Equal".into();
+                    }
+                }
+            }
+            S::ConstrainSymmetric => {
+                self.log_info("Select 2 points + 1 line for Symmetric");
+            }
+            S::ConstrainFixed => {
+                if let Some(sm) = &mut self.gui.sketch_mode {
+                    let mut applied = 0;
+                    for e in &sm.selected_entities {
+                        if let SketchEntityRef::Point(i) = *e {
+                            if i < sm.sketch.points.len() {
+                                let pt = &sm.sketch.points[i];
+                                sm.sketch.add_constraint(Constraint::Fixed(
+                                    cadkernel_sketch::PointId(i),
+                                    pt.position.x, pt.position.y,
+                                ));
+                                applied += 1;
+                            }
+                        }
+                    }
+                    if applied > 0 {
+                        self.gui.status_message = format!("Fixed {applied} point(s)");
+                    } else {
+                        self.gui.status_message = "Select point(s) for Fixed".into();
+                    }
+                }
+            }
+            S::ConstrainBlock => {
+                if let Some(sm) = &mut self.gui.sketch_mode {
+                    let mut applied = 0;
+                    for e in &sm.selected_entities {
+                        if let SketchEntityRef::Point(i) = *e {
+                            if i < sm.sketch.points.len() {
+                                let pt = &sm.sketch.points[i];
+                                sm.sketch.add_constraint(Constraint::Block(
+                                    cadkernel_sketch::PointId(i),
+                                    pt.position.x, pt.position.y,
+                                ));
+                                applied += 1;
+                            }
+                        }
+                    }
+                    if applied > 0 {
+                        self.gui.status_message = format!("Blocked {applied} point(s)");
+                    } else {
+                        self.gui.status_message = "Select point(s) for Block".into();
+                    }
+                }
+            }
+            S::ConstrainDistance(val) => {
+                if let Some(sm) = &mut self.gui.sketch_mode {
+                    let pts: Vec<usize> = sm.selected_entities.iter().filter_map(|e| {
+                        if let SketchEntityRef::Point(i) = e { Some(*i) } else { None }
+                    }).collect();
+                    if pts.len() >= 2 {
+                        sm.sketch.add_constraint(Constraint::Distance(
+                            cadkernel_sketch::PointId(pts[0]),
+                            cadkernel_sketch::PointId(pts[1]),
+                            val,
+                        ));
+                        self.gui.status_message = format!("Distance={val:.1} constraint added");
+                    } else {
+                        // Fall back to Length on selected/last line
+                        let mut applied = false;
+                        for e in &sm.selected_entities {
+                            if let SketchEntityRef::Line(i) = *e {
+                                if i < sm.sketch.lines.len() {
+                                    sm.sketch.add_constraint(Constraint::Length(
+                                        cadkernel_sketch::LineId(i), val,
+                                    ));
+                                    applied = true;
+                                    break;
+                                }
+                            }
+                        }
+                        if !applied && !sm.sketch.lines.is_empty() {
+                            let lid = cadkernel_sketch::LineId(sm.sketch.lines.len() - 1);
+                            sm.sketch.add_constraint(Constraint::Length(lid, val));
+                        }
+                        self.gui.status_message = format!("Distance={val:.1} constraint added");
+                    }
+                }
+            }
+            S::ConstrainAngle(val) => {
+                if let Some(sm) = &mut self.gui.sketch_mode {
+                    let lines: Vec<usize> = sm.selected_entities.iter().filter_map(|e| {
+                        if let SketchEntityRef::Line(i) = e { Some(*i) } else { None }
+                    }).collect();
+                    if lines.len() >= 2 {
+                        sm.sketch.add_constraint(Constraint::Angle(
+                            cadkernel_sketch::LineId(lines[0]),
+                            cadkernel_sketch::LineId(lines[1]),
+                            val.to_radians(),
+                        ));
+                        self.gui.status_message = format!("Angle={val:.1}° constraint added");
+                    } else {
+                        self.gui.status_message = "Select 2 lines for Angle".into();
+                    }
+                }
+            }
+            S::ConstrainRadius(val) => {
+                if let Some(sm) = &mut self.gui.sketch_mode {
+                    let mut applied = false;
+                    for e in &sm.selected_entities {
+                        if let SketchEntityRef::Circle(i) = *e {
+                            if i < sm.sketch.circles.len() {
+                                let cid = sm.sketch.circles[i].center;
+                                sm.sketch.add_constraint(Constraint::Radius(
+                                    cid, cid, val,
+                                ));
+                                applied = true;
+                            }
+                        }
+                    }
+                    if applied {
+                        self.gui.status_message = format!("Radius={val:.1} constraint added");
+                    } else {
+                        self.gui.status_message = "Select circle for Radius".into();
+                    }
+                }
+            }
+            S::ConstrainDiameter(val) => {
+                self.log_info(format!("Diameter={val:.1} — select circle first"));
+            }
+            S::ConstrainHDistance(val) => {
+                if let Some(sm) = &mut self.gui.sketch_mode {
+                    let pts: Vec<usize> = sm.selected_entities.iter().filter_map(|e| {
+                        if let SketchEntityRef::Point(i) = e { Some(*i) } else { None }
+                    }).collect();
+                    if pts.len() >= 2 {
+                        sm.sketch.add_constraint(Constraint::HorizontalDistance(
+                            cadkernel_sketch::PointId(pts[0]),
+                            cadkernel_sketch::PointId(pts[1]),
+                            val,
+                        ));
+                        self.gui.status_message = format!("H-Distance={val:.1} added");
+                    } else {
+                        self.gui.status_message = "Select 2 points for H-Distance".into();
+                    }
+                }
+            }
+            S::ConstrainVDistance(val) => {
+                if let Some(sm) = &mut self.gui.sketch_mode {
+                    let pts: Vec<usize> = sm.selected_entities.iter().filter_map(|e| {
+                        if let SketchEntityRef::Point(i) = e { Some(*i) } else { None }
+                    }).collect();
+                    if pts.len() >= 2 {
+                        sm.sketch.add_constraint(Constraint::VerticalDistance(
+                            cadkernel_sketch::PointId(pts[0]),
+                            cadkernel_sketch::PointId(pts[1]),
+                            val,
+                        ));
+                        self.gui.status_message = format!("V-Distance={val:.1} added");
+                    } else {
+                        self.gui.status_message = "Select 2 points for V-Distance".into();
+                    }
+                }
+            }
+
+            // -- Tools --
+            S::FilletCorner { radius } => {
+                if let Some(sm) = &mut self.gui.sketch_mode {
+                    use crate::gui::SketchEntityRef::Line;
+                    let lines: Vec<usize> = sm.selected_entities.iter()
+                        .filter_map(|e| if let Line(i) = e { Some(*i) } else { None })
+                        .collect();
+                    if lines.len() == 2 {
+                        sm.save_snapshot();
+                        if cadkernel_sketch::fillet_sketch_corner(
+                            &mut sm.sketch,
+                            cadkernel_sketch::LineId(lines[0]),
+                            cadkernel_sketch::LineId(lines[1]),
+                            radius,
+                        ).is_some() {
+                            sm.selected_entities.clear();
+                            self.gui.status_message = format!("Corner filleted (r={radius:.1})");
+                        } else {
+                            sm.undo_stack.pop();
+                            self.gui.status_message = "Fillet failed: lines don't share a vertex".into();
+                        }
+                    } else {
+                        self.gui.status_message = "Select 2 lines to fillet".into();
+                    }
+                }
+            }
+            S::ChamferCorner { distance } => {
+                if let Some(sm) = &mut self.gui.sketch_mode {
+                    use crate::gui::SketchEntityRef::Line;
+                    let lines: Vec<usize> = sm.selected_entities.iter()
+                        .filter_map(|e| if let Line(i) = e { Some(*i) } else { None })
+                        .collect();
+                    if lines.len() == 2 {
+                        sm.save_snapshot();
+                        if cadkernel_sketch::chamfer_sketch_corner(
+                            &mut sm.sketch,
+                            cadkernel_sketch::LineId(lines[0]),
+                            cadkernel_sketch::LineId(lines[1]),
+                            distance,
+                        ).is_some() {
+                            sm.selected_entities.clear();
+                            self.gui.status_message = format!("Corner chamfered (d={distance:.1})");
+                        } else {
+                            sm.undo_stack.pop();
+                            self.gui.status_message = "Chamfer failed: lines don't share a vertex".into();
+                        }
+                    } else {
+                        self.gui.status_message = "Select 2 lines to chamfer".into();
+                    }
+                }
+            }
+            S::TrimEdge => {
+                if let Some(sm) = &mut self.gui.sketch_mode {
+                    use crate::gui::SketchEntityRef::Line;
+                    let lines: Vec<usize> = sm.selected_entities.iter()
+                        .filter_map(|e| if let Line(i) = e { Some(*i) } else { None })
+                        .collect();
+                    if lines.len() == 2 {
+                        let l0 = cadkernel_sketch::LineId(lines[0]);
+                        let l1 = cadkernel_sketch::LineId(lines[1]);
+                        // Keep start point side of first line
+                        let keep = sm.sketch.lines[lines[0]].start;
+                        sm.save_snapshot();
+                        let result = cadkernel_sketch::trim_edge(&mut sm.sketch, l0, l1, keep);
+                        if result.trimmed {
+                            sm.selected_entities.clear();
+                            self.gui.status_message = "Edge trimmed".into();
+                        } else {
+                            sm.undo_stack.pop();
+                            self.gui.status_message = "Trim failed: lines don't intersect".into();
+                        }
+                    } else {
+                        self.gui.status_message = "Select 2 lines to trim".into();
+                    }
+                }
+            }
+            S::SplitEdge => {
+                if let Some(sm) = &mut self.gui.sketch_mode {
+                    use crate::gui::SketchEntityRef::Line;
+                    let line_idx = sm.selected_entities.iter()
+                        .find_map(|e| if let Line(i) = e { Some(*i) } else { None });
+                    if let Some(idx) = line_idx {
+                        sm.save_snapshot();
+                        let _result = cadkernel_sketch::split_edge(
+                            &mut sm.sketch, cadkernel_sketch::LineId(idx), 0.5,
+                        );
+                        sm.selected_entities.clear();
+                        self.gui.status_message = "Edge split at midpoint".into();
+                    } else {
+                        self.gui.status_message = "Select a line to split".into();
+                    }
+                }
+            }
+            S::ExtendEdge => {
+                if let Some(sm) = &mut self.gui.sketch_mode {
+                    use crate::gui::SketchEntityRef::Line;
+                    let line_idx = sm.selected_entities.iter()
+                        .find_map(|e| if let Line(i) = e { Some(*i) } else { None });
+                    if let Some(idx) = line_idx {
+                        // Extend by 50% of current length toward end direction
+                        let l = sm.sketch.lines[idx];
+                        let s = sm.sketch.points[l.start.0].position;
+                        let e = sm.sketch.points[l.end.0].position;
+                        let tx = e.x + (e.x - s.x) * 0.5;
+                        let ty = e.y + (e.y - s.y) * 0.5;
+                        sm.save_snapshot();
+                        cadkernel_sketch::extend_edge(
+                            &mut sm.sketch, cadkernel_sketch::LineId(idx), tx, ty,
+                        );
+                        self.gui.status_message = "Edge extended".into();
+                    } else {
+                        self.gui.status_message = "Select a line to extend".into();
+                    }
+                }
+            }
+            S::MirrorGeometry => {
+                if let Some(sm) = &mut self.gui.sketch_mode {
+                    // Need exactly 1 selected line as mirror axis + other selected points
+                    let mut axis_line: Option<usize> = None;
+                    let mut point_ids: Vec<cadkernel_sketch::PointId> = Vec::new();
+                    for e in &sm.selected_entities {
+                        match *e {
+                            SketchEntityRef::Line(i)
+                                if axis_line.is_none() => {
+                                    axis_line = Some(i);
+                                }
+                            SketchEntityRef::Point(i) => {
+                                point_ids.push(cadkernel_sketch::PointId(i));
+                            }
+                            _ => {}
+                        }
+                    }
+                    if let Some(al) = axis_line {
+                        sm.save_snapshot();
+                        // If no explicit points selected, mirror all points except axis line endpoints
+                        if point_ids.is_empty() {
+                            let axis_s = sm.sketch.lines[al].start.0;
+                            let axis_e = sm.sketch.lines[al].end.0;
+                            for i in 0..sm.sketch.points.len() {
+                                if i != axis_s && i != axis_e {
+                                    point_ids.push(cadkernel_sketch::PointId(i));
+                                }
+                            }
+                        }
+                        let mirror_lid = cadkernel_sketch::LineId(al);
+                        let new_pts = sm.sketch.mirror_elements(&point_ids, mirror_lid);
+                        self.gui.status_message = format!(
+                            "Mirrored {} points → {} new points",
+                            point_ids.len(), new_pts.len()
+                        );
+                    } else {
+                        self.gui.status_message = "Mirror: select a line as mirror axis".into();
+                    }
+                }
+            }
+            S::ExternalProjection => {
+                if let Some(sm) = &mut self.gui.sketch_mode {
+                    // Project model vertices onto sketch plane
+                    let verts: Vec<Point3> = self.model.vertices.iter()
+                        .map(|(_, v)| v.point)
+                        .collect();
+                    if verts.is_empty() {
+                        self.gui.status_message = "No model vertices to project".into();
+                    } else {
+                        sm.save_snapshot();
+                        let ids = external_projection(
+                            &mut sm.sketch, &verts, &sm.plane,
+                        );
+                        self.gui.status_message = format!(
+                            "Projected {} vertices onto sketch", ids.len()
+                        );
+                    }
+                }
+            }
+            S::CarbonCopy => {
+                if let Some(sm) = &mut self.gui.sketch_mode {
+                    if let Some((ref source, _)) = self.gui.last_sketch {
+                        sm.save_snapshot();
+                        if carbon_copy(source, &mut sm.sketch).is_ok() {
+                            self.gui.status_message = "Carbon copy applied".into();
+                        } else {
+                            self.gui.status_message = "Carbon copy failed".into();
+                        }
+                    } else {
+                        self.gui.status_message = "No previous sketch to copy from".into();
+                    }
+                }
+            }
+            S::CopySelection => {
+                if let Some(sm) = &mut self.gui.sketch_mode {
+                    // Collect unique point indices from selected entities
+                    let mut pt_indices: Vec<usize> = Vec::new();
+                    let mut line_refs: Vec<(usize, usize)> = Vec::new();
+                    for e in &sm.selected_entities {
+                        match *e {
+                            SketchEntityRef::Point(i)
+                                if !pt_indices.contains(&i) => { pt_indices.push(i); }
+                            SketchEntityRef::Line(i)
+                                if i < sm.sketch.lines.len() => {
+                                    let s = sm.sketch.lines[i].start.0;
+                                    let e = sm.sketch.lines[i].end.0;
+                                    if !pt_indices.contains(&s) { pt_indices.push(s); }
+                                    if !pt_indices.contains(&e) { pt_indices.push(e); }
+                                    line_refs.push((s, e));
+                                }
+                            _ => {}
+                        }
+                    }
+                    if pt_indices.is_empty() {
+                        self.gui.status_message = "Nothing to copy".into();
+                    } else {
+                        // Compute centroid
+                        let (mut cx, mut cy) = (0.0, 0.0);
+                        for &pi in &pt_indices {
+                            if pi < sm.sketch.points.len() {
+                                cx += sm.sketch.points[pi].position.x;
+                                cy += sm.sketch.points[pi].position.y;
+                            }
+                        }
+                        cx /= pt_indices.len() as f64;
+                        cy /= pt_indices.len() as f64;
+                        // Store relative offsets
+                        sm.clipboard_points.clear();
+                        sm.clipboard_lines.clear();
+                        let mut idx_map = std::collections::HashMap::new();
+                        for (new_i, &pi) in pt_indices.iter().enumerate() {
+                            if pi < sm.sketch.points.len() {
+                                let p = &sm.sketch.points[pi];
+                                sm.clipboard_points.push((p.position.x - cx, p.position.y - cy));
+                                idx_map.insert(pi, new_i);
+                            }
+                        }
+                        for (s, e) in &line_refs {
+                            if let (Some(&si), Some(&ei)) = (idx_map.get(s), idx_map.get(e)) {
+                                sm.clipboard_lines.push((si, ei));
+                            }
+                        }
+                        self.gui.status_message = format!(
+                            "Copied {} points, {} lines",
+                            sm.clipboard_points.len(), sm.clipboard_lines.len()
+                        );
+                    }
+                }
+            }
+            S::PasteSelection(px, py) => {
+                if let Some(sm) = &mut self.gui.sketch_mode {
+                    if sm.clipboard_points.is_empty() {
+                        self.gui.status_message = "Clipboard empty".into();
+                    } else {
+                        sm.save_snapshot();
+                        // Create points at paste position + offsets
+                        let new_pts: Vec<cadkernel_sketch::PointId> = sm.clipboard_points
+                            .iter()
+                            .map(|&(dx, dy)| sm.sketch.add_point(px + dx, py + dy))
+                            .collect();
+                        // Recreate lines
+                        for &(si, ei) in &sm.clipboard_lines.clone() {
+                            if si < new_pts.len() && ei < new_pts.len() {
+                                sm.sketch.add_line(new_pts[si], new_pts[ei]);
+                            }
+                        }
+                        self.gui.status_message = format!(
+                            "Pasted {} points at ({px:.1}, {py:.1})",
+                            new_pts.len()
+                        );
+                    }
+                }
+            }
+            S::MergePoints => {
+                if let Some(sm) = &mut self.gui.sketch_mode {
+                    sm.save_snapshot();
+                    let eps = 0.01;
+                    let n = sm.sketch.points.len();
+                    // Build merge map: for each point, map to lowest index within epsilon
+                    let mut merge_to: Vec<usize> = (0..n).collect();
+                    for i in 0..n {
+                        for j in (i + 1)..n {
+                            let dx = sm.sketch.points[i].position.x - sm.sketch.points[j].position.x;
+                            let dy = sm.sketch.points[i].position.y - sm.sketch.points[j].position.y;
+                            if (dx * dx + dy * dy).sqrt() < eps {
+                                merge_to[j] = merge_to[i];
+                            }
+                        }
+                    }
+                    // Remap all references
+                    let mut merged = 0usize;
+                    for line in &mut sm.sketch.lines {
+                        let ns = merge_to[line.start.0];
+                        let ne = merge_to[line.end.0];
+                        if ns != line.start.0 || ne != line.end.0 { merged += 1; }
+                        line.start = cadkernel_sketch::PointId(ns);
+                        line.end = cadkernel_sketch::PointId(ne);
+                    }
+                    for arc in &mut sm.sketch.arcs {
+                        arc.center = cadkernel_sketch::PointId(merge_to[arc.center.0]);
+                        arc.start_point = cadkernel_sketch::PointId(merge_to[arc.start_point.0]);
+                        arc.end_point = cadkernel_sketch::PointId(merge_to[arc.end_point.0]);
+                    }
+                    for circle in &mut sm.sketch.circles {
+                        circle.center = cadkernel_sketch::PointId(merge_to[circle.center.0]);
+                    }
+                    for ell in &mut sm.sketch.ellipses {
+                        ell.center = cadkernel_sketch::PointId(merge_to[ell.center.0]);
+                        ell.major_end = cadkernel_sketch::PointId(merge_to[ell.major_end.0]);
+                    }
+                    for bsp in &mut sm.sketch.bsplines {
+                        for cp in &mut bsp.control_points {
+                            *cp = cadkernel_sketch::PointId(merge_to[cp.0]);
+                        }
+                    }
+                    self.gui.status_message = format!("Merged {merged} point references");
+                }
+            }
+
+            // -- B-spline --
+            S::ConvertToBSpline => {
+                if let Some(sm) = &mut self.gui.sketch_mode {
+                    // Convert first selected line/arc/circle to B-spline
+                    let entity_id = sm.selected_entities.first().and_then(|e| match *e {
+                        SketchEntityRef::Line(i) => Some(i),
+                        SketchEntityRef::Arc(i) => Some(sm.sketch.lines.len() + i),
+                        SketchEntityRef::Circle(i) => Some(sm.sketch.lines.len() + sm.sketch.arcs.len() + i),
+                        _ => None,
+                    });
+                    if let Some(eid) = entity_id {
+                        sm.save_snapshot();
+                        match geometry_to_bspline(&mut sm.sketch, eid) {
+                            Ok(bid) => {
+                                self.gui.status_message = format!("Converted to B-Spline {}", bid.0);
+                            }
+                            Err(e) => {
+                                self.gui.status_message = format!("Convert failed: {e}");
+                            }
+                        }
+                    } else {
+                        self.gui.status_message = "Select a line, arc, or circle to convert".into();
+                    }
+                }
+            }
+            S::IncreaseDegree => {
+                if let Some(sm) = &mut self.gui.sketch_mode {
+                    let bsp_id = sm.selected_entities.iter().find_map(|e| match *e {
+                        SketchEntityRef::BSpline(i) => Some(cadkernel_sketch::BSplineId(i)),
+                        _ => None,
+                    });
+                    if let Some(bid) = bsp_id {
+                        sm.save_snapshot();
+                        match increase_bspline_degree(&mut sm.sketch, bid) {
+                            Ok(()) => {
+                                let deg = sm.sketch.bsplines[bid.0].degree;
+                                self.gui.status_message = format!("B-Spline degree → {deg}");
+                            }
+                            Err(e) => self.gui.status_message = format!("Increase degree: {e}"),
+                        }
+                    } else {
+                        self.gui.status_message = "Select a B-Spline to increase degree".into();
+                    }
+                }
+            }
+            S::DecreaseDegree => {
+                if let Some(sm) = &mut self.gui.sketch_mode {
+                    let bsp_id = sm.selected_entities.iter().find_map(|e| match *e {
+                        SketchEntityRef::BSpline(i) => Some(cadkernel_sketch::BSplineId(i)),
+                        _ => None,
+                    });
+                    if let Some(bid) = bsp_id {
+                        sm.save_snapshot();
+                        match decrease_bspline_degree(&mut sm.sketch, bid) {
+                            Ok(()) => {
+                                let deg = sm.sketch.bsplines[bid.0].degree;
+                                self.gui.status_message = format!("B-Spline degree → {deg}");
+                            }
+                            Err(e) => self.gui.status_message = format!("Decrease degree: {e}"),
+                        }
+                    } else {
+                        self.gui.status_message = "Select a B-Spline to decrease degree".into();
+                    }
+                }
+            }
+            S::InsertKnot => {
+                if let Some(sm) = &mut self.gui.sketch_mode {
+                    let bsp_id = sm.selected_entities.iter().find_map(|e| match *e {
+                        SketchEntityRef::BSpline(i) => Some(cadkernel_sketch::BSplineId(i)),
+                        _ => None,
+                    });
+                    if let Some(bid) = bsp_id {
+                        sm.save_snapshot();
+                        match insert_knot(&mut sm.sketch, bid, 0.5) {
+                            Ok(()) => {
+                                let n = sm.sketch.bsplines[bid.0].control_points.len();
+                                self.gui.status_message = format!("Inserted knot (now {n} CPs)");
+                            }
+                            Err(e) => self.gui.status_message = format!("Insert knot: {e}"),
+                        }
+                    } else {
+                        self.gui.status_message = "Select a B-Spline to insert knot".into();
+                    }
+                }
+            }
+
+            // -- Toggles --
+            S::ToggleConstruction => {
+                if let Some(sm) = &mut self.gui.sketch_mode {
+                    // If entities are selected, toggle them between construction/normal
+                    if !sm.selected_entities.is_empty() {
+                        sm.save_snapshot();
+                        let mut toggled = 0usize;
+                        for e in &sm.selected_entities {
+                            match *e {
+                                SketchEntityRef::Point(i) => {
+                                    let pid = cadkernel_sketch::PointId(i);
+                                    if let Some(pos) = sm.sketch.construction_points.iter().position(|p| *p == pid) {
+                                        sm.sketch.construction_points.remove(pos);
+                                    } else {
+                                        sm.sketch.mark_construction_point(pid);
+                                    }
+                                    toggled += 1;
+                                }
+                                SketchEntityRef::Line(i) => {
+                                    let lid = cadkernel_sketch::LineId(i);
+                                    if let Some(pos) = sm.sketch.construction_lines.iter().position(|l| *l == lid) {
+                                        sm.sketch.construction_lines.remove(pos);
+                                    } else {
+                                        sm.sketch.mark_construction_line(lid);
+                                    }
+                                    toggled += 1;
+                                }
+                                _ => {}
+                            }
+                        }
+                        if toggled > 0 {
+                            self.gui.status_message = format!("Toggled {toggled} entities construction mode");
+                        }
+                    } else {
+                        // No selection: toggle global construction mode for new entities
+                        sm.construction_mode = !sm.construction_mode;
+                        let state = if sm.construction_mode { "ON" } else { "OFF" };
+                        self.gui.status_message = format!("Construction mode: {state}");
+                    }
+                }
+            }
+            S::ToggleGrid => {
+                if let Some(sm) = &mut self.gui.sketch_mode {
+                    sm.show_grid = !sm.show_grid;
+                }
+            }
+            S::ToggleSnap => {
+                if let Some(sm) = &mut self.gui.sketch_mode {
+                    sm.snap_enabled = !sm.snap_enabled;
+                }
+            }
+            S::ToggleConstraintsVisible => {
+                if let Some(sm) = &mut self.gui.sketch_mode {
+                    sm.show_constraints = !sm.show_constraints;
+                }
+            }
         }
     }
 
@@ -6120,7 +6127,7 @@ impl ApplicationHandler for CadApp {
                                             self.try_sketch_dimension_edit();
                                         } else if let Some((sx, sy)) = pos {
                                             if let Some(pt) = self.screen_to_sketch_plane(sx, sy) {
-                                                self.gui.actions.push(GuiAction::SketchClick(pt.0, pt.1));
+                                                self.gui.actions.push(GuiAction::Sketcher(SketcherAction::Click(pt.0, pt.1)));
                                             }
                                         }
                                     }
@@ -6419,7 +6426,7 @@ impl ApplicationHandler for CadApp {
                                 sm.selected_entities.clear();
                                 self.gui.status_message = "Cleared".into();
                             } else {
-                                self.gui.actions.push(GuiAction::CancelSketch);
+                                self.gui.actions.push(GuiAction::Sketcher(SketcherAction::Cancel));
                             }
                         } else if self.scene.selected_id().is_some() {
                             self.scene.deselect_all();
@@ -6705,11 +6712,11 @@ impl ApplicationHandler for CadApp {
                         }
                     }
                     PhysicalKey::Code(KeyCode::KeyC) if ctrl && self.gui.sketch_mode.is_some() => {
-                        self.gui.actions.push(GuiAction::SketchCopySelection);
+                        self.gui.actions.push(GuiAction::Sketcher(SketcherAction::CopySelection));
                     }
                     PhysicalKey::Code(KeyCode::KeyV) if ctrl && self.gui.sketch_mode.is_some() => {
                         // Paste at origin (0,0); user can drag to reposition
-                        self.gui.actions.push(GuiAction::SketchPasteSelection(0.0, 0.0));
+                        self.gui.actions.push(GuiAction::Sketcher(SketcherAction::PasteSelection(0.0, 0.0)));
                     }
                     PhysicalKey::Code(KeyCode::KeyO) if ctrl => {
                         if let Some(path) = rfd::FileDialog::new()

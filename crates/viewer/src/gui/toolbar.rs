@@ -2612,25 +2612,26 @@ fn draw_partdesign_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
 }
 
 fn draw_sketcher_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
+    use super::SketcherAction as S;
     let in_sketch = gui.sketch_mode.is_some();
     if !in_sketch {
         let has_face = gui.selected_entities.iter().any(|e| matches!(e, super::SelectedEntity::Face(_)));
         if has_face {
             if icon_button(ui, ToolIcon::SketchRect, "On Face", "Sketch on selected face", "") {
-                gui.actions.push(GuiAction::SketchOnSelectedFace);
+                gui.actions.push(GuiAction::Sketcher(S::EnterOnSelectedFace));
             }
             toolbar_separator(ui);
         }
         if icon_button(ui, ToolIcon::SketchRect, "XY Plane", "Sketch on XY plane", "") {
-            gui.actions.push(GuiAction::EnterSketch(WorkPlane::xy()));
+            gui.actions.push(GuiAction::Sketcher(S::Enter(WorkPlane::xy())));
         }
         if icon_button(ui, ToolIcon::SketchRect, "XZ Plane", "Sketch on XZ plane", "") {
-            gui.actions.push(GuiAction::EnterSketch(WorkPlane::xz()));
+            gui.actions.push(GuiAction::Sketcher(S::Enter(WorkPlane::xz())));
         }
         if gui.last_sketch.is_some() {
             toolbar_separator(ui);
             if icon_button(ui, ToolIcon::SketchSelect, "Edit Sketch", "Reopen last sketch for editing", "") {
-                gui.actions.push(GuiAction::EditSketch);
+                gui.actions.push(GuiAction::Sketcher(S::Edit));
             }
         }
     } else {
@@ -2655,7 +2656,7 @@ fn draw_sketcher_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
             (ToolIcon::SketchBSpline, SketchTool::BSpline, "B-Spline", "B"),
         ] {
             if icon_toggle(ui, icon, current_tool == tool, title, shortcut) {
-                gui.actions.push(GuiAction::SetSketchTool(tool));
+                gui.actions.push(GuiAction::Sketcher(S::SetTool(tool)));
             }
         }
 
@@ -2672,7 +2673,7 @@ fn draw_sketcher_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
                 ] {
                     if ui.selectable_label(false, label).clicked() {
                         gui.actions
-                            .push(GuiAction::SetSketchTool(SketchTool::Polygon { sides }));
+                            .push(GuiAction::Sketcher(S::SetTool(SketchTool::Polygon { sides })));
                     }
                 }
             });
@@ -2682,28 +2683,28 @@ fn draw_sketcher_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
         section_label(ui, "Constraints");
         // -- Constraints --
         if icon_button(ui, ToolIcon::Coincident, "Coincident", "Coincident constraint", "") {
-            gui.actions.push(GuiAction::SketchConstrainCoincident);
+            gui.actions.push(GuiAction::Sketcher(S::ConstrainCoincident));
         }
         if icon_button(ui, ToolIcon::Horizontal, "Horizontal", "Horizontal constraint", "H") {
-            gui.actions.push(GuiAction::SketchConstrainHorizontal);
+            gui.actions.push(GuiAction::Sketcher(S::ConstrainHorizontal));
         }
         if icon_button(ui, ToolIcon::Vertical, "Vertical", "Vertical constraint", "V") {
-            gui.actions.push(GuiAction::SketchConstrainVertical);
+            gui.actions.push(GuiAction::Sketcher(S::ConstrainVertical));
         }
         if icon_button(ui, ToolIcon::Parallel, "Parallel", "Parallel constraint", "") {
-            gui.actions.push(GuiAction::SketchConstrainParallel);
+            gui.actions.push(GuiAction::Sketcher(S::ConstrainParallel));
         }
         if icon_button(ui, ToolIcon::Perpendicular, "Perpendicular", "Perpendicular constraint", "") {
-            gui.actions.push(GuiAction::SketchConstrainPerpendicular);
+            gui.actions.push(GuiAction::Sketcher(S::ConstrainPerpendicular));
         }
         if icon_button(ui, ToolIcon::Tangent, "Tangent", "Tangent constraint", "") {
-            gui.actions.push(GuiAction::SketchConstrainTangent);
+            gui.actions.push(GuiAction::Sketcher(S::ConstrainTangent));
         }
         if icon_button(ui, ToolIcon::Equal, "Equal", "Equal constraint", "") {
-            gui.actions.push(GuiAction::SketchConstrainEqual);
+            gui.actions.push(GuiAction::Sketcher(S::ConstrainEqual));
         }
         if icon_button(ui, ToolIcon::Symmetric, "Symmetric", "Symmetric constraint", "") {
-            gui.actions.push(GuiAction::SketchConstrainSymmetric);
+            gui.actions.push(GuiAction::Sketcher(S::ConstrainSymmetric));
         }
         if icon_button(ui, ToolIcon::LengthConstraint, "Length", "Length constraint", "") {
             gui.dimension_popup = Some(super::DimensionPopup {
@@ -2746,10 +2747,10 @@ fn draw_sketcher_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
             });
         }
         if icon_button(ui, ToolIcon::FixPin, "Fix", "Fix position", "") {
-            gui.actions.push(GuiAction::SketchConstrainFixed);
+            gui.actions.push(GuiAction::Sketcher(S::ConstrainFixed));
         }
         if icon_button(ui, ToolIcon::FixPin, "Block", "Block constraint", "") {
-            gui.actions.push(GuiAction::SketchConstrainBlock);
+            gui.actions.push(GuiAction::Sketcher(S::ConstrainBlock));
         }
         if icon_button(ui, ToolIcon::Distance, "H-Dist", "Horizontal distance", "") {
             gui.dimension_popup = Some(super::DimensionPopup {
@@ -2773,41 +2774,41 @@ fn draw_sketcher_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
         section_label(ui, "Tools");
         // -- Tools --
         if icon_button(ui, ToolIcon::SketchFillet, "Fillet", "Fillet corner", "") {
-            gui.actions.push(GuiAction::SketchFilletCorner {
+            gui.actions.push(GuiAction::Sketcher(S::FilletCorner {
                 radius: gui.sketch_fillet_radius,
-            });
+            }));
         }
         if icon_button(ui, ToolIcon::SketchChamfer, "Chamfer", "Chamfer corner", "") {
-            gui.actions.push(GuiAction::SketchChamferCorner {
+            gui.actions.push(GuiAction::Sketcher(S::ChamferCorner {
                 distance: gui.sketch_chamfer_distance,
-            });
+            }));
         }
         if icon_button(ui, ToolIcon::Trim, "Trim", "Trim edge", "") {
-            gui.actions.push(GuiAction::SketchTrimEdge);
+            gui.actions.push(GuiAction::Sketcher(S::TrimEdge));
         }
         if icon_button(ui, ToolIcon::Extend, "Extend", "Extend edge", "") {
-            gui.actions.push(GuiAction::SketchExtendEdge);
+            gui.actions.push(GuiAction::Sketcher(S::ExtendEdge));
         }
         if icon_button(ui, ToolIcon::SketchBSpline, "Split", "Split edge at point", "") {
-            gui.actions.push(GuiAction::SketchSplitEdge);
+            gui.actions.push(GuiAction::Sketcher(S::SplitEdge));
         }
         if icon_button(ui, ToolIcon::Mirror, "Mirror", "Mirror sketch geometry", "") {
-            gui.actions.push(GuiAction::SketchMirrorGeometry);
+            gui.actions.push(GuiAction::Sketcher(S::MirrorGeometry));
         }
         if icon_button(ui, ToolIcon::SketchLine, "External", "External edge projection", "") {
-            gui.actions.push(GuiAction::SketchExternalProjection);
+            gui.actions.push(GuiAction::Sketcher(S::ExternalProjection));
         }
         if icon_button(ui, ToolIcon::SketchLine, "Carbon Copy", "Carbon copy geometry", "") {
-            gui.actions.push(GuiAction::SketchCarbonCopy);
+            gui.actions.push(GuiAction::Sketcher(S::CarbonCopy));
         }
         if icon_button(ui, ToolIcon::SketchSelect, "Copy", "Copy selected entities", "Ctrl+C") {
-            gui.actions.push(GuiAction::SketchCopySelection);
+            gui.actions.push(GuiAction::Sketcher(S::CopySelection));
         }
         if icon_button(ui, ToolIcon::SketchSelect, "Paste", "Paste copied entities at origin", "Ctrl+V") {
-            gui.actions.push(GuiAction::SketchPasteSelection(0.0, 0.0));
+            gui.actions.push(GuiAction::Sketcher(S::PasteSelection(0.0, 0.0)));
         }
         if icon_button(ui, ToolIcon::Coincident, "Merge Pts", "Merge coincident points", "") {
-            gui.actions.push(GuiAction::SketchMergePoints);
+            gui.actions.push(GuiAction::Sketcher(S::MergePoints));
         }
 
         toolbar_separator(ui);
@@ -2815,16 +2816,16 @@ fn draw_sketcher_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
         section_label(ui, "B-Spline");
         // -- B-Spline tools --
         if icon_button(ui, ToolIcon::SketchBSpline, "To B-Spline", "Convert to B-Spline", "") {
-            gui.actions.push(GuiAction::SketchConvertToBSpline);
+            gui.actions.push(GuiAction::Sketcher(S::ConvertToBSpline));
         }
         if icon_button(ui, ToolIcon::MoveUp, "+Degree", "Increase B-Spline degree", "") {
-            gui.actions.push(GuiAction::SketchIncreaseDegree);
+            gui.actions.push(GuiAction::Sketcher(S::IncreaseDegree));
         }
         if icon_button(ui, ToolIcon::MoveDown, "-Degree", "Decrease B-Spline degree", "") {
-            gui.actions.push(GuiAction::SketchDecreaseDegree);
+            gui.actions.push(GuiAction::Sketcher(S::DecreaseDegree));
         }
         if icon_button(ui, ToolIcon::SketchPoint, "Insert Knot", "Insert knot", "") {
-            gui.actions.push(GuiAction::SketchInsertKnot);
+            gui.actions.push(GuiAction::Sketcher(S::InsertKnot));
         }
 
         toolbar_separator(ui);
@@ -2843,10 +2844,10 @@ fn draw_sketcher_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
             .is_some_and(|s| s.show_constraints);
 
         if icon_toggle(ui, ToolIcon::Construction, construction, "Construction", "Toggle construction mode") {
-            gui.actions.push(GuiAction::ToggleSketchConstruction);
+            gui.actions.push(GuiAction::Sketcher(S::ToggleConstruction));
         }
         if icon_toggle(ui, ToolIcon::Grid, grid_on, "Grid", "Toggle grid") {
-            gui.actions.push(GuiAction::ToggleSketchGrid);
+            gui.actions.push(GuiAction::Sketcher(S::ToggleGrid));
         }
         if let Some(sm) = &mut gui.sketch_mode {
             ui.add(
@@ -2858,10 +2859,10 @@ fn draw_sketcher_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
             );
         }
         if icon_toggle(ui, ToolIcon::Snap, snap_on, "Snap", "Toggle snap") {
-            gui.actions.push(GuiAction::ToggleSketchSnap);
+            gui.actions.push(GuiAction::Sketcher(S::ToggleSnap));
         }
         if icon_toggle(ui, ToolIcon::ShowConstraints, constr_vis, "Constraints", "Toggle constraints visible") {
-            gui.actions.push(GuiAction::ToggleSketchConstraintsVisible);
+            gui.actions.push(GuiAction::Sketcher(S::ToggleConstraintsVisible));
         }
 
         toolbar_separator(ui);
@@ -2881,10 +2882,10 @@ fn draw_sketcher_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
 
         // -- Close/Cancel --
         if icon_button(ui, ToolIcon::Accept, "Close", "Solve and extrude sketch", "") {
-            gui.actions.push(GuiAction::CloseSketch);
+            gui.actions.push(GuiAction::Sketcher(S::Close));
         }
         if icon_button(ui, ToolIcon::Cancel, "Cancel", "Discard sketch", "") {
-            gui.actions.push(GuiAction::CancelSketch);
+            gui.actions.push(GuiAction::Sketcher(S::Cancel));
         }
     }
 }

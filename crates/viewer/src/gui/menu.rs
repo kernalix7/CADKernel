@@ -782,89 +782,91 @@ fn draw_part_design_menu(ui: &mut egui::Ui, gui: &mut GuiState) {
 }
 
 fn draw_sketch_menu(ui: &mut egui::Ui, gui: &mut GuiState) {
+    use super::SketcherAction as S;
+    let sk = GuiAction::Sketcher;
     ui.menu_button("Sketch", |ui| {
         let in_sketch = gui.sketch_mode.is_some();
         ui.menu_button("Geometry", |ui| {
-            menu_action_sc(ui, gui, "Select", "S", GuiAction::SetSketchTool(SketchTool::Select));
+            menu_action_sc(ui, gui, "Select", "S", sk(S::SetTool(SketchTool::Select)));
             ui.separator();
-            menu_action(ui, gui, "Point", GuiAction::SetSketchTool(SketchTool::Point));
-            menu_action_sc(ui, gui, "Line", "L", GuiAction::SetSketchTool(SketchTool::Line));
-            menu_action_sc(ui, gui, "Rectangle", "R", GuiAction::SetSketchTool(SketchTool::Rectangle));
-            menu_action_sc(ui, gui, "Circle", "C", GuiAction::SetSketchTool(SketchTool::Circle));
-            menu_action_sc(ui, gui, "Arc", "A", GuiAction::SetSketchTool(SketchTool::Arc));
-            menu_action_sc(ui, gui, "Ellipse", "E", GuiAction::SetSketchTool(SketchTool::Ellipse));
-            menu_action_sc(ui, gui, "Polyline", "W", GuiAction::SetSketchTool(SketchTool::Polyline));
-            menu_action(ui, gui, "Slot", GuiAction::SetSketchTool(SketchTool::Slot));
-            menu_action_sc(ui, gui, "B-Spline", "B", GuiAction::SetSketchTool(SketchTool::BSpline));
-            menu_action_sc(ui, gui, "Polygon", "N", GuiAction::SetSketchTool(SketchTool::Polygon { sides: 6 }));
+            menu_action(ui, gui, "Point", sk(S::SetTool(SketchTool::Point)));
+            menu_action_sc(ui, gui, "Line", "L", sk(S::SetTool(SketchTool::Line)));
+            menu_action_sc(ui, gui, "Rectangle", "R", sk(S::SetTool(SketchTool::Rectangle)));
+            menu_action_sc(ui, gui, "Circle", "C", sk(S::SetTool(SketchTool::Circle)));
+            menu_action_sc(ui, gui, "Arc", "A", sk(S::SetTool(SketchTool::Arc)));
+            menu_action_sc(ui, gui, "Ellipse", "E", sk(S::SetTool(SketchTool::Ellipse)));
+            menu_action_sc(ui, gui, "Polyline", "W", sk(S::SetTool(SketchTool::Polyline)));
+            menu_action(ui, gui, "Slot", sk(S::SetTool(SketchTool::Slot)));
+            menu_action_sc(ui, gui, "B-Spline", "B", sk(S::SetTool(SketchTool::BSpline)));
+            menu_action_sc(ui, gui, "Polygon", "N", sk(S::SetTool(SketchTool::Polygon { sides: 6 })));
         });
         ui.menu_button("Constraints", |ui| {
             menu_section(ui, "Geometric");
-            menu_action_sc(ui, gui, "Horizontal", "H", GuiAction::SketchConstrainHorizontal);
-            menu_action_sc(ui, gui, "Vertical", "V", GuiAction::SketchConstrainVertical);
-            menu_action(ui, gui, "Parallel", GuiAction::SketchConstrainParallel);
-            menu_action(ui, gui, "Perpendicular", GuiAction::SketchConstrainPerpendicular);
-            menu_action(ui, gui, "Coincident", GuiAction::SketchConstrainCoincident);
-            menu_action(ui, gui, "Tangent", GuiAction::SketchConstrainTangent);
-            menu_action(ui, gui, "Equal", GuiAction::SketchConstrainEqual);
-            menu_action(ui, gui, "Symmetric", GuiAction::SketchConstrainSymmetric);
-            menu_action_sc(ui, gui, "Fixed", "F", GuiAction::SketchConstrainFixed);
-            menu_action(ui, gui, "Block", GuiAction::SketchConstrainBlock);
+            menu_action_sc(ui, gui, "Horizontal", "H", sk(S::ConstrainHorizontal));
+            menu_action_sc(ui, gui, "Vertical", "V", sk(S::ConstrainVertical));
+            menu_action(ui, gui, "Parallel", sk(S::ConstrainParallel));
+            menu_action(ui, gui, "Perpendicular", sk(S::ConstrainPerpendicular));
+            menu_action(ui, gui, "Coincident", sk(S::ConstrainCoincident));
+            menu_action(ui, gui, "Tangent", sk(S::ConstrainTangent));
+            menu_action(ui, gui, "Equal", sk(S::ConstrainEqual));
+            menu_action(ui, gui, "Symmetric", sk(S::ConstrainSymmetric));
+            menu_action_sc(ui, gui, "Fixed", "F", sk(S::ConstrainFixed));
+            menu_action(ui, gui, "Block", sk(S::ConstrainBlock));
             ui.separator();
             menu_section(ui, "Dimensional");
-            menu_action(ui, gui, "Length...", GuiAction::SketchConstrainLength(gui.constraint_length_value));
-            menu_action(ui, gui, "Distance...", GuiAction::SketchConstrainDistance(gui.constraint_distance_value));
-            menu_action(ui, gui, "Angle...", GuiAction::SketchConstrainAngle(gui.constraint_angle_value));
-            menu_action(ui, gui, "Radius...", GuiAction::SketchConstrainRadius(gui.constraint_radius_value));
-            menu_action(ui, gui, "Diameter...", GuiAction::SketchConstrainDiameter(gui.constraint_radius_value * 2.0));
-            menu_action(ui, gui, "H Distance...", GuiAction::SketchConstrainHDistance(gui.constraint_distance_value));
-            menu_action(ui, gui, "V Distance...", GuiAction::SketchConstrainVDistance(gui.constraint_distance_value));
+            menu_action(ui, gui, "Length...", sk(S::ConstrainLength(gui.constraint_length_value)));
+            menu_action(ui, gui, "Distance...", sk(S::ConstrainDistance(gui.constraint_distance_value)));
+            menu_action(ui, gui, "Angle...", sk(S::ConstrainAngle(gui.constraint_angle_value)));
+            menu_action(ui, gui, "Radius...", sk(S::ConstrainRadius(gui.constraint_radius_value)));
+            menu_action(ui, gui, "Diameter...", sk(S::ConstrainDiameter(gui.constraint_radius_value * 2.0)));
+            menu_action(ui, gui, "H Distance...", sk(S::ConstrainHDistance(gui.constraint_distance_value)));
+            menu_action(ui, gui, "V Distance...", sk(S::ConstrainVDistance(gui.constraint_distance_value)));
         });
         ui.menu_button("Tools", |ui| {
-            menu_action(ui, gui, "Fillet Corner...", GuiAction::SketchFilletCorner { radius: gui.sketch_fillet_radius });
-            menu_action(ui, gui, "Chamfer Corner...", GuiAction::SketchChamferCorner { distance: gui.sketch_chamfer_distance });
+            menu_action(ui, gui, "Fillet Corner...", sk(S::FilletCorner { radius: gui.sketch_fillet_radius }));
+            menu_action(ui, gui, "Chamfer Corner...", sk(S::ChamferCorner { distance: gui.sketch_chamfer_distance }));
             ui.separator();
-            menu_action(ui, gui, "Trim Edge", GuiAction::SketchTrimEdge);
-            menu_action(ui, gui, "Split Edge", GuiAction::SketchSplitEdge);
-            menu_action(ui, gui, "Extend Edge", GuiAction::SketchExtendEdge);
+            menu_action(ui, gui, "Trim Edge", sk(S::TrimEdge));
+            menu_action(ui, gui, "Split Edge", sk(S::SplitEdge));
+            menu_action(ui, gui, "Extend Edge", sk(S::ExtendEdge));
             ui.separator();
-            menu_action(ui, gui, "Mirror Geometry", GuiAction::SketchMirrorGeometry);
-            menu_action(ui, gui, "External Projection", GuiAction::SketchExternalProjection);
-            menu_action(ui, gui, "Carbon Copy", GuiAction::SketchCarbonCopy);
+            menu_action(ui, gui, "Mirror Geometry", sk(S::MirrorGeometry));
+            menu_action(ui, gui, "External Projection", sk(S::ExternalProjection));
+            menu_action(ui, gui, "Carbon Copy", sk(S::CarbonCopy));
         });
         ui.menu_button("B-Spline", |ui| {
-            menu_action_sc(ui, gui, "B-Spline Tool", "B", GuiAction::SetSketchTool(SketchTool::BSpline));
+            menu_action_sc(ui, gui, "B-Spline Tool", "B", sk(S::SetTool(SketchTool::BSpline)));
             ui.separator();
-            menu_action(ui, gui, "Convert to B-Spline", GuiAction::SketchConvertToBSpline);
-            menu_action(ui, gui, "Increase Degree", GuiAction::SketchIncreaseDegree);
-            menu_action(ui, gui, "Decrease Degree", GuiAction::SketchDecreaseDegree);
-            menu_action(ui, gui, "Insert Knot", GuiAction::SketchInsertKnot);
+            menu_action(ui, gui, "Convert to B-Spline", sk(S::ConvertToBSpline));
+            menu_action(ui, gui, "Increase Degree", sk(S::IncreaseDegree));
+            menu_action(ui, gui, "Decrease Degree", sk(S::DecreaseDegree));
+            menu_action(ui, gui, "Insert Knot", sk(S::InsertKnot));
         });
         ui.separator();
         ui.menu_button("Toggles", |ui| {
-            menu_action_sc(ui, gui, "Construction Mode", "X", GuiAction::ToggleSketchConstruction);
-            menu_action_sc(ui, gui, "Grid", "G", GuiAction::ToggleSketchGrid);
-            menu_action_sc(ui, gui, "Snap", "Shift+S", GuiAction::ToggleSketchSnap);
-            menu_action(ui, gui, "Show Constraints", GuiAction::ToggleSketchConstraintsVisible);
+            menu_action_sc(ui, gui, "Construction Mode", "X", sk(S::ToggleConstruction));
+            menu_action_sc(ui, gui, "Grid", "G", sk(S::ToggleGrid));
+            menu_action_sc(ui, gui, "Snap", "Shift+S", sk(S::ToggleSnap));
+            menu_action(ui, gui, "Show Constraints", sk(S::ToggleConstraintsVisible));
         });
         ui.separator();
         if in_sketch {
-            menu_action_sc(ui, gui, "Close Sketch", "Enter", GuiAction::CloseSketch);
-            menu_action_sc(ui, gui, "Cancel Sketch", "Esc", GuiAction::CancelSketch);
+            menu_action_sc(ui, gui, "Close Sketch", "Enter", sk(S::Close));
+            menu_action_sc(ui, gui, "Cancel Sketch", "Esc", sk(S::Cancel));
         } else {
-            menu_action(ui, gui, "New Sketch (XY)", GuiAction::EnterSketch(
+            menu_action(ui, gui, "New Sketch (XY)", sk(S::Enter(
                 cadkernel_sketch::WorkPlane::xy()
-            ));
-            menu_action(ui, gui, "New Sketch (XZ)", GuiAction::EnterSketch(
+            )));
+            menu_action(ui, gui, "New Sketch (XZ)", sk(S::Enter(
                 cadkernel_sketch::WorkPlane::xz()
-            ));
-            menu_action(ui, gui, "New Sketch (YZ)", GuiAction::EnterSketch(
+            )));
+            menu_action(ui, gui, "New Sketch (YZ)", sk(S::Enter(
                 cadkernel_sketch::WorkPlane::new(
                     cadkernel_math::Point3::ORIGIN,
                     cadkernel_math::Vec3::X,
                     cadkernel_math::Vec3::Y,
                 )
-            ));
+            )));
         }
     });
 }

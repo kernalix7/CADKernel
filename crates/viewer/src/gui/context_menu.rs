@@ -365,19 +365,19 @@ pub(crate) fn viewport_context_menu(
         }
         ui.separator();
         if ui.button("Sketch on XY").clicked() {
-            gui.actions.push(GuiAction::EnterSketch(WorkPlane::xy()));
+            gui.actions.push(GuiAction::Sketcher(super::SketcherAction::Enter(WorkPlane::xy())));
             ui.close_menu();
         }
         if ui.button("Sketch on XZ").clicked() {
-            gui.actions.push(GuiAction::EnterSketch(WorkPlane::xz()));
+            gui.actions.push(GuiAction::Sketcher(super::SketcherAction::Enter(WorkPlane::xz())));
             ui.close_menu();
         }
         if ui.button("Sketch on YZ").clicked() {
-            gui.actions.push(GuiAction::EnterSketch(WorkPlane::new(
+            gui.actions.push(GuiAction::Sketcher(super::SketcherAction::Enter(WorkPlane::new(
                 cadkernel_math::Point3::ORIGIN,
                 cadkernel_math::Vec3::X,
                 cadkernel_math::Vec3::Y,
-            )));
+            ))));
             ui.close_menu();
         }
     });
@@ -484,7 +484,7 @@ fn face_context_menu(ui: &mut egui::Ui, gui: &mut GuiState, has_sel: bool) {
 
     ui.add_enabled_ui(has_face, |ui| {
         if ui.button("Create Sketch on Face").clicked() {
-            gui.actions.push(GuiAction::SketchOnSelectedFace);
+            gui.actions.push(GuiAction::Sketcher(super::SketcherAction::EnterOnSelectedFace));
             ui.close_menu();
         }
     });
