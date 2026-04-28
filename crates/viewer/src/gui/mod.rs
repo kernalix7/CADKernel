@@ -22,7 +22,7 @@ mod view_cube;
 // imports without churn.
 pub(crate) use self::assembly::{AssemblyAction, AssemblyJointType, JointEditorState};
 pub(crate) use self::fem::{
-    BcEditorState, BcKind, MaterialPickerState, MaterialPreset, material_from_preset,
+    BcEditorState, BcKind, FemAction, MaterialPickerState, MaterialPreset, material_from_preset,
 };
 pub(crate) use self::sketch_state::{
     DimensionKind, DimensionPopup, SketchEntityRef, SketchMode, SketchTool,
@@ -460,25 +460,7 @@ pub(crate) enum GuiAction {
     SurfaceCoons,
 
     // -- FEM workbench --
-    CreateFemAnalysis,
-    SetFemMaterial(String),
-    OpenMaterialPicker,
-    CommitMaterialPicker,
-    OpenBcEditor(BcKind),
-    CommitBcEditor,
-    GenTetMesh { element_size: f64 },
-    GenHexMesh { nx: u32, ny: u32, nz: u32 },
-    AddFemConstraint(FemConstraintType),
-    SolveStatic,
-    SolveModal { modes: usize },
-    SolveThermal,
-    SolveBuckling { modes: usize },
-    SolveNonlinear,
-    ShowStress,
-    ShowDisplacement,
-    ShowVonMises,
-    FemSummary,
-    FemReport,
+    Fem(FemAction),
 
     // -- TechDraw expanded --
     TechDrawNewPage,

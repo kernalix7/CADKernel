@@ -745,7 +745,7 @@ fn emit_create_action(gui: &mut GuiState, task: &ActiveTask) {
             gui.actions.push(GuiAction::StatusMessage("Ruled surface created".into()));
         }
         ActiveTask::FemMesh { element_size, .. } => {
-            gui.actions.push(GuiAction::GenTetMesh { element_size: *element_size });
+            gui.actions.push(GuiAction::Fem(super::FemAction::GenTetMesh { element_size: *element_size }));
         }
         ActiveTask::BooleanOp { op_type, width, height, depth, offset_x, offset_y, offset_z, .. } => {
             let offset = [*offset_x, *offset_y, *offset_z];

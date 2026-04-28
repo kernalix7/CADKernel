@@ -2,7 +2,7 @@
 //! viewport.
 
 use crate::gui::{
-    self, AssemblyAction, GizmoMode, GuiAction, GuiState, MirrorPlane, ReportLevel,
+    self, AssemblyAction, FemAction, GizmoMode, GuiAction, GuiState, MirrorPlane, ReportLevel,
     SelectedEntity, SelectionMode, SketchEntityRef, SketchMode, SketchTool, ViewportInfo,
 };
 use crate::scripting::ScriptEngine;
@@ -3473,124 +3473,7 @@ impl CadApp {
                 GuiAction::SurfaceCoons => self.log_info("Surface: Coons"),
 
                 // -- FEM workbench --
-                GuiAction::CreateFemAnalysis => {
-                    let solid_opt = self.current_solid;
-                    let msg = if let Some(solid) = solid_opt {
-                        match cadkernel_modeling::generate_tet_mesh(&self.model, solid, 1.0) {
-                            Ok(mesh) => {
-                                let n_nodes = mesh.nodes.len();
-                                let n_elems = mesh.elements.len();
-                                self.gui.fem_analysis = Some(
-                                    cadkernel_modeling::AnalysisContainer::new(
-                                        mesh,
-                                        self.gui.pending_fem_material.clone(),
-                                    ),
-                                );
-                                Ok(format!(
-                                    "FEM: new analysis ({n_nodes} nodes, {n_elems} elements)"
-                                ))
-                            }
-                            Err(e) => Err(format!("FEM mesh error: {e}")),
-                        }
-                    } else {
-                        Err("FEM: no solid to mesh".into())
-                    };
-                    match msg {
-                        Ok(m) => self.log_info(m),
-                        Err(m) => self.log_warning(m),
-                    }
-                }
-                GuiAction::SetFemMaterial(ref mat) => {
-                    self.log_info(format!("FEM: material set to '{mat}'"));
-                }
-                GuiAction::OpenMaterialPicker => {
-                    self.gui.open_material_picker();
-                }
-                GuiAction::CommitMaterialPicker => {
-                    // Take the dialog out so we can mutate `pending_fem_material`.
-                    if let Some(crate::gui::ActiveDialog::MaterialPicker(s)) =
-                        self.gui.active_dialog.take()
-                    {
-                        self.gui.pending_fem_material = crate::gui::material_from_preset(
-                            s.selected, s.youngs_modulus, s.poisson_ratio, s.density);
-                        self.log_info(format!("FEM: material set to '{}'", s.selected.label()));
-                    }
-                }
-                GuiAction::OpenBcEditor(kind) => {
-                    if self.gui.fem_analysis.is_none() {
-                        self.gui.status_message = "FEM: no analysis \u{2014} create one first".into();
-                    } else {
-                        self.gui.open_bc_editor(kind);
-                    }
-                }
-                GuiAction::CommitBcEditor => {
-                    if let Some(crate::gui::ActiveDialog::BcEditor(s)) =
-                        self.gui.active_dialog.take()
-                    {
-                        let total = self.gui.fem_analysis.as_mut().map(|c| {
-                            c.add_bc(s.to_boundary_condition());
-                            c.boundary_conditions.len()
-                        });
-                        match total {
-                            Some(n) => self.log_info(format!(
-                                "FEM: BC added ({}, node {}) \u{2014} total {n}",
-                                s.bc_kind.label(), s.node_index)),
-                            None => self.gui.status_message =
-                                "FEM: no analysis \u{2014} create one first".into(),
-                        }
-                    }
-                }
-                GuiAction::GenTetMesh { element_size } => {
-                    self.log_info(format!("FEM: generate tet mesh (size={element_size:.2})"));
-                }
-                GuiAction::GenHexMesh { nx, ny, nz } => {
-                    self.log_info(format!("FEM: generate hex mesh ({nx}x{ny}x{nz})"));
-                }
-                GuiAction::AddFemConstraint(ref ctype) => {
-                    self.log_info(format!("FEM: constraint {ctype:?}"));
-                }
-                GuiAction::SolveStatic => {
-                    enum Msg { Ok(String), Err(String), NoAnalysis }
-                    let msg = if let Some(container) = self.gui.fem_analysis.as_mut() {
-                        let n_bc = container.boundary_conditions.len();
-                        match container.run_static() {
-                            Ok(()) => {
-                                let max_disp = container
-                                    .result
-                                    .as_ref()
-                                    .map(|r| r.max_displacement)
-                                    .unwrap_or(0.0);
-                                Msg::Ok(format!(
-                                    "FEM: static solved ({n_bc} BCs, max |u|={max_disp:.4e})"
-                                ))
-                            }
-                            Err(e) => Msg::Err(format!("FEM solve error: {e}")),
-                        }
-                    } else {
-                        Msg::NoAnalysis
-                    };
-                    match msg {
-                        Msg::Ok(m) => self.log_info(m),
-                        Msg::Err(m) => self.log_warning(m),
-                        Msg::NoAnalysis => {
-                            self.gui.status_message =
-                                "FEM: no analysis — create one first".into();
-                        }
-                    }
-                }
-                GuiAction::SolveModal { modes } => {
-                    self.log_info(format!("FEM: modal solve ({modes} modes)"));
-                }
-                GuiAction::SolveThermal => self.log_info("FEM: thermal solve"),
-                GuiAction::SolveBuckling { modes } => {
-                    self.log_info(format!("FEM: buckling solve ({modes} modes)"));
-                }
-                GuiAction::SolveNonlinear => self.log_info("FEM: nonlinear solve"),
-                GuiAction::ShowStress => self.log_info("FEM: show stress"),
-                GuiAction::ShowDisplacement => self.log_info("FEM: show displacement"),
-                GuiAction::ShowVonMises => self.log_info("FEM: show von Mises"),
-                GuiAction::FemSummary => self.log_info("FEM: summary"),
-                GuiAction::FemReport => self.log_info("FEM: report"),
+                GuiAction::Fem(action) => self.process_fem_action(action),
 
                 // -- TechDraw expanded --
                 GuiAction::TechDrawNewPage => self.log_info("TechDraw: new page"),
@@ -4006,6 +3889,132 @@ impl CadApp {
                     Msg::Fail => self.log_warning("Assembly: failed to commit joint"),
                 }
             }
+        }
+    }
+
+    /// Dispatch a `FemAction` (sub-enum of `GuiAction::Fem`). Extracted from
+    /// `process_actions` so the main dispatcher stays readable; behaviour is
+    /// identical to the pre-refactor inline arms.
+    fn process_fem_action(&mut self, action: FemAction) {
+        match action {
+            FemAction::CreateAnalysis => {
+                let solid_opt = self.current_solid;
+                let msg = if let Some(solid) = solid_opt {
+                    match cadkernel_modeling::generate_tet_mesh(&self.model, solid, 1.0) {
+                        Ok(mesh) => {
+                            let n_nodes = mesh.nodes.len();
+                            let n_elems = mesh.elements.len();
+                            self.gui.fem_analysis = Some(
+                                cadkernel_modeling::AnalysisContainer::new(
+                                    mesh,
+                                    self.gui.pending_fem_material.clone(),
+                                ),
+                            );
+                            Ok(format!(
+                                "FEM: new analysis ({n_nodes} nodes, {n_elems} elements)"
+                            ))
+                        }
+                        Err(e) => Err(format!("FEM mesh error: {e}")),
+                    }
+                } else {
+                    Err("FEM: no solid to mesh".into())
+                };
+                match msg {
+                    Ok(m) => self.log_info(m),
+                    Err(m) => self.log_warning(m),
+                }
+            }
+            FemAction::SetMaterial(mat) => {
+                self.log_info(format!("FEM: material set to '{mat}'"));
+            }
+            FemAction::OpenMaterialPicker => {
+                self.gui.open_material_picker();
+            }
+            FemAction::CommitMaterialPicker => {
+                // Take the dialog out so we can mutate `pending_fem_material`.
+                if let Some(crate::gui::ActiveDialog::MaterialPicker(s)) =
+                    self.gui.active_dialog.take()
+                {
+                    self.gui.pending_fem_material = crate::gui::material_from_preset(
+                        s.selected, s.youngs_modulus, s.poisson_ratio, s.density);
+                    self.log_info(format!("FEM: material set to '{}'", s.selected.label()));
+                }
+            }
+            FemAction::OpenBcEditor(kind) => {
+                if self.gui.fem_analysis.is_none() {
+                    self.gui.status_message = "FEM: no analysis \u{2014} create one first".into();
+                } else {
+                    self.gui.open_bc_editor(kind);
+                }
+            }
+            FemAction::CommitBcEditor => {
+                if let Some(crate::gui::ActiveDialog::BcEditor(s)) =
+                    self.gui.active_dialog.take()
+                {
+                    let total = self.gui.fem_analysis.as_mut().map(|c| {
+                        c.add_bc(s.to_boundary_condition());
+                        c.boundary_conditions.len()
+                    });
+                    match total {
+                        Some(n) => self.log_info(format!(
+                            "FEM: BC added ({}, node {}) \u{2014} total {n}",
+                            s.bc_kind.label(), s.node_index)),
+                        None => self.gui.status_message =
+                            "FEM: no analysis \u{2014} create one first".into(),
+                    }
+                }
+            }
+            FemAction::GenTetMesh { element_size } => {
+                self.log_info(format!("FEM: generate tet mesh (size={element_size:.2})"));
+            }
+            FemAction::GenHexMesh { nx, ny, nz } => {
+                self.log_info(format!("FEM: generate hex mesh ({nx}x{ny}x{nz})"));
+            }
+            FemAction::AddConstraint(ctype) => {
+                self.log_info(format!("FEM: constraint {ctype:?}"));
+            }
+            FemAction::SolveStatic => {
+                enum Msg { Ok(String), Err(String), NoAnalysis }
+                let msg = if let Some(container) = self.gui.fem_analysis.as_mut() {
+                    let n_bc = container.boundary_conditions.len();
+                    match container.run_static() {
+                        Ok(()) => {
+                            let max_disp = container
+                                .result
+                                .as_ref()
+                                .map(|r| r.max_displacement)
+                                .unwrap_or(0.0);
+                            Msg::Ok(format!(
+                                "FEM: static solved ({n_bc} BCs, max |u|={max_disp:.4e})"
+                            ))
+                        }
+                        Err(e) => Msg::Err(format!("FEM solve error: {e}")),
+                    }
+                } else {
+                    Msg::NoAnalysis
+                };
+                match msg {
+                    Msg::Ok(m) => self.log_info(m),
+                    Msg::Err(m) => self.log_warning(m),
+                    Msg::NoAnalysis => {
+                        self.gui.status_message =
+                            "FEM: no analysis — create one first".into();
+                    }
+                }
+            }
+            FemAction::SolveModal { modes } => {
+                self.log_info(format!("FEM: modal solve ({modes} modes)"));
+            }
+            FemAction::SolveThermal => self.log_info("FEM: thermal solve"),
+            FemAction::SolveBuckling { modes } => {
+                self.log_info(format!("FEM: buckling solve ({modes} modes)"));
+            }
+            FemAction::SolveNonlinear => self.log_info("FEM: nonlinear solve"),
+            FemAction::ShowStress => self.log_info("FEM: show stress"),
+            FemAction::ShowDisplacement => self.log_info("FEM: show displacement"),
+            FemAction::ShowVonMises => self.log_info("FEM: show von Mises"),
+            FemAction::Summary => self.log_info("FEM: summary"),
+            FemAction::Report => self.log_info("FEM: report"),
         }
     }
 

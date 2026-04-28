@@ -3338,11 +3338,12 @@ fn draw_surface_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
 }
 
 fn draw_fem_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
+    use super::FemAction as F;
     use super::task_panel::ActiveTask;
     section_label(ui, "Setup");
     // -- Setup --
     if icon_button(ui, ToolIcon::FemAnalysis, "Analysis", "Create FEM analysis", "") {
-        gui.actions.push(GuiAction::CreateFemAnalysis);
+        gui.actions.push(GuiAction::Fem(F::CreateAnalysis));
     }
     if icon_button(ui, ToolIcon::FemMaterial, "Material", "Assign material", "") {
         gui.show_fem_material = true;
@@ -3358,9 +3359,9 @@ fn draw_fem_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
         });
     }
     if icon_button(ui, ToolIcon::FemRefine, "Refine", "Refine FEM mesh", "") {
-        gui.actions.push(GuiAction::GenTetMesh {
+        gui.actions.push(GuiAction::Fem(F::GenTetMesh {
             element_size: gui.fem_element_size * 0.5,
-        });
+        }));
     }
     if icon_button(ui, ToolIcon::FemSmooth, "Smooth", "Smooth FEM mesh", "") {
         gui.actions
@@ -3377,27 +3378,27 @@ fn draw_fem_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
     // -- Constraints --
     if icon_button(ui, ToolIcon::FemFixed, "Fixed", "Fixed boundary condition", "") {
         gui.actions
-            .push(GuiAction::AddFemConstraint(FemConstraintType::Fixed));
+            .push(GuiAction::Fem(F::AddConstraint(FemConstraintType::Fixed)));
     }
     if icon_button(ui, ToolIcon::FemForce, "Force", "Applied force", "") {
         gui.actions
-            .push(GuiAction::AddFemConstraint(FemConstraintType::Force));
+            .push(GuiAction::Fem(F::AddConstraint(FemConstraintType::Force)));
     }
     if icon_button(ui, ToolIcon::FemPressure, "Pressure", "Pressure load", "") {
         gui.actions
-            .push(GuiAction::AddFemConstraint(FemConstraintType::Pressure));
+            .push(GuiAction::Fem(F::AddConstraint(FemConstraintType::Pressure)));
     }
     if icon_button(ui, ToolIcon::FemDisplacement, "Displacement", "Prescribed displacement", "") {
         gui.actions
-            .push(GuiAction::AddFemConstraint(FemConstraintType::Displacement));
+            .push(GuiAction::Fem(F::AddConstraint(FemConstraintType::Displacement)));
     }
     if icon_button(ui, ToolIcon::FemGravity, "Gravity", "Gravity load", "") {
         gui.actions
-            .push(GuiAction::AddFemConstraint(FemConstraintType::Gravity));
+            .push(GuiAction::Fem(F::AddConstraint(FemConstraintType::Gravity)));
     }
     if icon_button(ui, ToolIcon::FemSpring, "Spring", "Spring element", "") {
         gui.actions
-            .push(GuiAction::AddFemConstraint(FemConstraintType::Spring));
+            .push(GuiAction::Fem(F::AddConstraint(FemConstraintType::Spring)));
     }
 
     toolbar_separator(ui);
@@ -3405,19 +3406,19 @@ fn draw_fem_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
     section_label(ui, "Solve");
     // -- Solve --
     if icon_button(ui, ToolIcon::SolveStatic, "Static", "Static structural analysis", "") {
-        gui.actions.push(GuiAction::SolveStatic);
+        gui.actions.push(GuiAction::Fem(F::SolveStatic));
     }
     if icon_button(ui, ToolIcon::SolveModal, "Modal", "Modal analysis", "") {
-        gui.actions.push(GuiAction::SolveModal { modes: 10 });
+        gui.actions.push(GuiAction::Fem(F::SolveModal { modes: 10 }));
     }
     if icon_button(ui, ToolIcon::SolveThermal, "Thermal", "Thermal analysis", "") {
-        gui.actions.push(GuiAction::SolveThermal);
+        gui.actions.push(GuiAction::Fem(F::SolveThermal));
     }
     if icon_button(ui, ToolIcon::SolveBuckling, "Buckling", "Buckling analysis", "") {
-        gui.actions.push(GuiAction::SolveBuckling { modes: 5 });
+        gui.actions.push(GuiAction::Fem(F::SolveBuckling { modes: 5 }));
     }
     if icon_button(ui, ToolIcon::SolveNonlinear, "Nonlinear", "Nonlinear analysis", "") {
-        gui.actions.push(GuiAction::SolveNonlinear);
+        gui.actions.push(GuiAction::Fem(F::SolveNonlinear));
     }
 
     toolbar_separator(ui);
@@ -3425,18 +3426,18 @@ fn draw_fem_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
     section_label(ui, "Results");
     // -- Results --
     if icon_button(ui, ToolIcon::ShowStress, "Stress", "Show stress field", "") {
-        gui.actions.push(GuiAction::ShowStress);
+        gui.actions.push(GuiAction::Fem(F::ShowStress));
     }
     if icon_button(ui, ToolIcon::ShowDisplacement, "Displacement", "Show displacement field", "") {
-        gui.actions.push(GuiAction::ShowDisplacement);
+        gui.actions.push(GuiAction::Fem(F::ShowDisplacement));
     }
     if icon_button(ui, ToolIcon::ShowVonMises, "Von Mises", "Show von Mises stress", "") {
-        gui.actions.push(GuiAction::ShowVonMises);
+        gui.actions.push(GuiAction::Fem(F::ShowVonMises));
     }
     if icon_button(ui, ToolIcon::FemSummary, "Summary", "FEM result summary", "") {
-        gui.actions.push(GuiAction::FemSummary);
+        gui.actions.push(GuiAction::Fem(F::Summary));
     }
     if icon_button(ui, ToolIcon::FemReport, "Report", "Generate FEM report", "") {
-        gui.actions.push(GuiAction::FemReport);
+        gui.actions.push(GuiAction::Fem(F::Report));
     }
 }

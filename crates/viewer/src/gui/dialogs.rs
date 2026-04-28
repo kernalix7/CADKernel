@@ -1028,7 +1028,7 @@ pub(crate) fn draw_create_dialogs(ctx: &egui::Context, gui: &mut GuiState) {
                         }
                     });
                 let (ok, cancel, _) = button_bar(ui, "Apply");
-                if ok { gui.actions.push(GuiAction::SetFemMaterial(gui.fem_material_preset.clone())); gui.show_fem_material = false; }
+                if ok { gui.actions.push(GuiAction::Fem(super::FemAction::SetMaterial(gui.fem_material_preset.clone()))); gui.show_fem_material = false; }
                 if cancel { gui.show_fem_material = false; }
             });
     }
@@ -1045,7 +1045,7 @@ pub(crate) fn draw_create_dialogs(ctx: &egui::Context, gui: &mut GuiState) {
                     param_field(ui, "Element Size", &mut gui.fem_element_size, 0.1..=100.0, 0.1, "Smaller = finer mesh");
                 });
                 let (ok, cancel, reset) = button_bar(ui, "Generate");
-                if ok { gui.actions.push(GuiAction::GenTetMesh { element_size: gui.fem_element_size }); gui.show_fem_mesh = false; }
+                if ok { gui.actions.push(GuiAction::Fem(super::FemAction::GenTetMesh { element_size: gui.fem_element_size })); gui.show_fem_mesh = false; }
                 if cancel { gui.show_fem_mesh = false; }
                 if reset { gui.fem_element_size = 1.0; }
             });
@@ -1077,7 +1077,7 @@ pub(crate) fn draw_create_dialogs(ctx: &egui::Context, gui: &mut GuiState) {
                     });
                 }
                 let (ok, cancel, _) = button_bar(ui, "Apply");
-                if ok { gui.actions.push(GuiAction::AddFemConstraint(gui.fem_constraint_type)); gui.show_fem_constraint = false; }
+                if ok { gui.actions.push(GuiAction::Fem(super::FemAction::AddConstraint(gui.fem_constraint_type))); gui.show_fem_constraint = false; }
                 if cancel { gui.show_fem_constraint = false; }
             });
     }
@@ -2143,7 +2143,7 @@ pub(crate) fn draw_material_picker_dialog(ctx: &egui::Context, gui: &mut GuiStat
     if !open || do_cancel {
         gui.close_active_dialog();
     } else if do_ok {
-        gui.actions.push(GuiAction::CommitMaterialPicker);
+        gui.actions.push(GuiAction::Fem(super::FemAction::CommitMaterialPicker));
     }
 }
 
@@ -2222,6 +2222,6 @@ pub(crate) fn draw_bc_editor_dialog(ctx: &egui::Context, gui: &mut GuiState) {
     if !open || do_cancel {
         gui.close_active_dialog();
     } else if do_ok {
-        gui.actions.push(GuiAction::CommitBcEditor);
+        gui.actions.push(GuiAction::Fem(super::FemAction::CommitBcEditor));
     }
 }

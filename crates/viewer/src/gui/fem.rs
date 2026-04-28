@@ -4,6 +4,31 @@
 //! here are used by `ActiveDialog` (declared in `gui/mod.rs`) and consumed by
 //! the dialog renderers in `gui/dialogs.rs`.
 
+/// Actions specific to the FEM workbench, dispatched through
+/// `GuiAction::Fem(FemAction)`.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum FemAction {
+    CreateAnalysis,
+    SetMaterial(String),
+    OpenMaterialPicker,
+    CommitMaterialPicker,
+    OpenBcEditor(BcKind),
+    CommitBcEditor,
+    GenTetMesh { element_size: f64 },
+    GenHexMesh { nx: u32, ny: u32, nz: u32 },
+    AddConstraint(super::FemConstraintType),
+    SolveStatic,
+    SolveModal { modes: usize },
+    SolveThermal,
+    SolveBuckling { modes: usize },
+    SolveNonlinear,
+    ShowStress,
+    ShowDisplacement,
+    ShowVonMises,
+    Summary,
+    Report,
+}
+
 // -- FEM material picker / BC editor (Phase O-a) --
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum MaterialPreset {

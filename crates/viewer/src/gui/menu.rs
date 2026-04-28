@@ -1124,62 +1124,63 @@ fn draw_surface_menu(ui: &mut egui::Ui, gui: &mut GuiState) {
 }
 
 fn draw_fem_menu(ui: &mut egui::Ui, gui: &mut GuiState) {
+    use super::FemAction as F;
     ui.menu_button("FEM", |ui| {
         ui.menu_button("Analysis", |ui| {
-            menu_action(ui, gui, "New Analysis", GuiAction::CreateFemAnalysis);
-            menu_action(ui, gui, "Summary", GuiAction::FemSummary);
-            menu_action(ui, gui, "Report", GuiAction::FemReport);
+            menu_action(ui, gui, "New Analysis", GuiAction::Fem(F::CreateAnalysis));
+            menu_action(ui, gui, "Summary", GuiAction::Fem(F::Summary));
+            menu_action(ui, gui, "Report", GuiAction::Fem(F::Report));
         });
         ui.menu_button("Material", |ui| {
-            menu_action(ui, gui, "Pick Material...", GuiAction::OpenMaterialPicker);
+            menu_action(ui, gui, "Pick Material...", GuiAction::Fem(F::OpenMaterialPicker));
             ui.separator();
-            menu_action(ui, gui, "Steel", GuiAction::SetFemMaterial("steel".into()));
-            menu_action(ui, gui, "Aluminum", GuiAction::SetFemMaterial("aluminum".into()));
+            menu_action(ui, gui, "Steel", GuiAction::Fem(F::SetMaterial("steel".into())));
+            menu_action(ui, gui, "Aluminum", GuiAction::Fem(F::SetMaterial("aluminum".into())));
         });
         ui.menu_button("Boundary Conditions", |ui| {
             ui.menu_button("Loads", |ui| {
-                menu_action(ui, gui, "Force...", GuiAction::OpenBcEditor(BcKind::Force));
-                menu_action(ui, gui, "Pressure...", GuiAction::OpenBcEditor(BcKind::Pressure));
-                menu_action(ui, gui, "Gravity...", GuiAction::OpenBcEditor(BcKind::Gravity));
-                menu_action(ui, gui, "Distributed Load...", GuiAction::OpenBcEditor(BcKind::DistributedLoad));
-                menu_action(ui, gui, "Centrifugal Load...", GuiAction::OpenBcEditor(BcKind::CentrifugalLoad));
-                menu_action(ui, gui, "Self Weight...", GuiAction::OpenBcEditor(BcKind::SelfWeight));
-                menu_action(ui, gui, "Body Load...", GuiAction::OpenBcEditor(BcKind::BodyLoad));
+                menu_action(ui, gui, "Force...", GuiAction::Fem(F::OpenBcEditor(BcKind::Force)));
+                menu_action(ui, gui, "Pressure...", GuiAction::Fem(F::OpenBcEditor(BcKind::Pressure)));
+                menu_action(ui, gui, "Gravity...", GuiAction::Fem(F::OpenBcEditor(BcKind::Gravity)));
+                menu_action(ui, gui, "Distributed Load...", GuiAction::Fem(F::OpenBcEditor(BcKind::DistributedLoad)));
+                menu_action(ui, gui, "Centrifugal Load...", GuiAction::Fem(F::OpenBcEditor(BcKind::CentrifugalLoad)));
+                menu_action(ui, gui, "Self Weight...", GuiAction::Fem(F::OpenBcEditor(BcKind::SelfWeight)));
+                menu_action(ui, gui, "Body Load...", GuiAction::Fem(F::OpenBcEditor(BcKind::BodyLoad)));
             });
             ui.menu_button("Constraints", |ui| {
-                menu_action(ui, gui, "Fixed Node...", GuiAction::OpenBcEditor(BcKind::FixedNode));
-                menu_action(ui, gui, "Displacement...", GuiAction::OpenBcEditor(BcKind::Displacement));
-                menu_action(ui, gui, "Spring...", GuiAction::OpenBcEditor(BcKind::Spring));
-                menu_action(ui, gui, "Spring Constraint...", GuiAction::OpenBcEditor(BcKind::SpringConstraint));
+                menu_action(ui, gui, "Fixed Node...", GuiAction::Fem(F::OpenBcEditor(BcKind::FixedNode)));
+                menu_action(ui, gui, "Displacement...", GuiAction::Fem(F::OpenBcEditor(BcKind::Displacement)));
+                menu_action(ui, gui, "Spring...", GuiAction::Fem(F::OpenBcEditor(BcKind::Spring)));
+                menu_action(ui, gui, "Spring Constraint...", GuiAction::Fem(F::OpenBcEditor(BcKind::SpringConstraint)));
             });
             ui.menu_button("Thermal", |ui| {
-                menu_action(ui, gui, "Initial Temperature...", GuiAction::OpenBcEditor(BcKind::InitialTemperature));
+                menu_action(ui, gui, "Initial Temperature...", GuiAction::Fem(F::OpenBcEditor(BcKind::InitialTemperature)));
             });
         });
         ui.menu_button("Mesh", |ui| {
-            menu_action(ui, gui, "Generate Tet Mesh", GuiAction::GenTetMesh { element_size: 1.0 });
-            menu_action(ui, gui, "Generate Hex Mesh", GuiAction::GenHexMesh { nx: 10, ny: 10, nz: 10 });
+            menu_action(ui, gui, "Generate Tet Mesh", GuiAction::Fem(F::GenTetMesh { element_size: 1.0 }));
+            menu_action(ui, gui, "Generate Hex Mesh", GuiAction::Fem(F::GenHexMesh { nx: 10, ny: 10, nz: 10 }));
         });
         ui.menu_button("Constraints", |ui| {
-            menu_action(ui, gui, "Fixed", GuiAction::AddFemConstraint(FemConstraintType::Fixed));
-            menu_action(ui, gui, "Force", GuiAction::AddFemConstraint(FemConstraintType::Force));
-            menu_action(ui, gui, "Pressure", GuiAction::AddFemConstraint(FemConstraintType::Pressure));
-            menu_action(ui, gui, "Displacement", GuiAction::AddFemConstraint(FemConstraintType::Displacement));
-            menu_action(ui, gui, "Gravity", GuiAction::AddFemConstraint(FemConstraintType::Gravity));
-            menu_action(ui, gui, "Spring", GuiAction::AddFemConstraint(FemConstraintType::Spring));
+            menu_action(ui, gui, "Fixed", GuiAction::Fem(F::AddConstraint(FemConstraintType::Fixed)));
+            menu_action(ui, gui, "Force", GuiAction::Fem(F::AddConstraint(FemConstraintType::Force)));
+            menu_action(ui, gui, "Pressure", GuiAction::Fem(F::AddConstraint(FemConstraintType::Pressure)));
+            menu_action(ui, gui, "Displacement", GuiAction::Fem(F::AddConstraint(FemConstraintType::Displacement)));
+            menu_action(ui, gui, "Gravity", GuiAction::Fem(F::AddConstraint(FemConstraintType::Gravity)));
+            menu_action(ui, gui, "Spring", GuiAction::Fem(F::AddConstraint(FemConstraintType::Spring)));
         });
         ui.separator();
         ui.menu_button("Solve", |ui| {
-            menu_action(ui, gui, "Static Analysis", GuiAction::SolveStatic);
-            menu_action(ui, gui, "Modal Analysis", GuiAction::SolveModal { modes: 6 });
-            menu_action(ui, gui, "Thermal Analysis", GuiAction::SolveThermal);
-            menu_action(ui, gui, "Buckling Analysis", GuiAction::SolveBuckling { modes: 3 });
-            menu_action(ui, gui, "Nonlinear Analysis", GuiAction::SolveNonlinear);
+            menu_action(ui, gui, "Static Analysis", GuiAction::Fem(F::SolveStatic));
+            menu_action(ui, gui, "Modal Analysis", GuiAction::Fem(F::SolveModal { modes: 6 }));
+            menu_action(ui, gui, "Thermal Analysis", GuiAction::Fem(F::SolveThermal));
+            menu_action(ui, gui, "Buckling Analysis", GuiAction::Fem(F::SolveBuckling { modes: 3 }));
+            menu_action(ui, gui, "Nonlinear Analysis", GuiAction::Fem(F::SolveNonlinear));
         });
         ui.menu_button("Results", |ui| {
-            menu_action(ui, gui, "Show Stress", GuiAction::ShowStress);
-            menu_action(ui, gui, "Show Displacement", GuiAction::ShowDisplacement);
-            menu_action(ui, gui, "Show Von Mises", GuiAction::ShowVonMises);
+            menu_action(ui, gui, "Show Stress", GuiAction::Fem(F::ShowStress));
+            menu_action(ui, gui, "Show Displacement", GuiAction::Fem(F::ShowDisplacement));
+            menu_action(ui, gui, "Show Von Mises", GuiAction::Fem(F::ShowVonMises));
         });
     });
 }
