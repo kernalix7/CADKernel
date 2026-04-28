@@ -2,8 +2,8 @@
 //! viewport.
 
 use crate::gui::{
-    self, GizmoMode, GuiAction, GuiState, MirrorPlane, ReportLevel, SelectedEntity, SelectionMode,
-    SketchEntityRef, SketchMode, SketchTool, ViewportInfo,
+    self, AssemblyAction, GizmoMode, GuiAction, GuiState, MirrorPlane, ReportLevel,
+    SelectedEntity, SelectionMode, SketchEntityRef, SketchMode, SketchTool, ViewportInfo,
 };
 use crate::scripting::ScriptEngine;
 use crate::nav::{NavAction, NavConfig};
@@ -3330,150 +3330,7 @@ impl CadApp {
                 }
 
                 // -- Assembly workbench --
-                GuiAction::CreateAssembly => {
-                    self.gui.assembly = Some(cadkernel_modeling::Assembly::new("New Assembly"));
-                    self.log_info("Assembly: created new assembly");
-                }
-                GuiAction::InsertComponent => {
-                    let solid = self.current_solid;
-                    let msg = {
-                        let assembly = self.gui.assembly.get_or_insert_with(|| {
-                            cadkernel_modeling::Assembly::new("New Assembly")
-                        });
-                        if let Some(s) = solid {
-                            let n = assembly.num_components();
-                            let id = assembly.add_component(&format!("Component {}", n + 1), s);
-                            Some(format!(
-                                "Assembly: inserted component {} ({} total)",
-                                id.0,
-                                assembly.num_components()
-                            ))
-                        } else {
-                            None
-                        }
-                    };
-                    match msg {
-                        Some(m) => self.log_info(m),
-                        None => {
-                            self.gui.status_message =
-                                "Assembly: no solid selected to insert as component".into();
-                        }
-                    }
-                }
-                GuiAction::SolveAssembly => {
-                    enum SolveMsg {
-                        Ok(String),
-                        Warn(String),
-                        Err(String),
-                        NoAssembly,
-                    }
-                    let msg = if let Some(assembly) = self.gui.assembly.as_mut() {
-                        let n = assembly.num_constraints();
-                        match assembly.solve(100) {
-                            Ok(true) => SolveMsg::Ok(format!("Assembly: solved {n} constraints")),
-                            Ok(false) => SolveMsg::Warn(format!(
-                                "Assembly: solver did not converge ({n} constraints)"
-                            )),
-                            Err(e) => SolveMsg::Err(format!("Assembly solve error: {e}")),
-                        }
-                    } else {
-                        SolveMsg::NoAssembly
-                    };
-                    match msg {
-                        SolveMsg::Ok(m) => self.log_info(m),
-                        SolveMsg::Warn(m) => self.log_warning(m),
-                        SolveMsg::Err(m) => self.log_error(m),
-                        SolveMsg::NoAssembly => {
-                            self.gui.status_message =
-                                "Assembly: no assembly — create one first".into();
-                        }
-                    }
-                }
-                GuiAction::ExplodedView { factor } => {
-                    self.log_info(format!("Assembly: exploded view factor={factor:.1}"));
-                }
-                GuiAction::BillOfMaterials => {
-                    enum Msg { Ok(String), NoAssembly }
-                    let msg = if self.gui.populate_bom_entries() {
-                        // populate_bom_entries() opened ActiveDialog::Bom(entries).
-                        let entries = match &self.gui.active_dialog {
-                            Some(crate::gui::ActiveDialog::Bom(e)) => e.as_slice(),
-                            _ => &[],
-                        };
-                        let n: usize = entries.iter().map(|e| e.quantity).sum();
-                        Msg::Ok(format!(
-                            "Assembly: BOM ({} entries, {n} parts)",
-                            entries.len()
-                        ))
-                    } else {
-                        Msg::NoAssembly
-                    };
-                    match msg {
-                        Msg::Ok(m) => self.log_info(m),
-                        Msg::NoAssembly => {
-                            self.gui.status_message =
-                                "Assembly: no assembly — create one first".into();
-                            self.log_warning("Assembly: no assembly for BOM");
-                        }
-                    }
-                }
-                GuiAction::DOFAnalysis => {
-                    enum Msg { Ok(String), NoAssembly }
-                    let msg = if let Some(asm) = self.gui.assembly.as_ref() {
-                        let n = asm.num_components();
-                        let c = asm.num_constraints();
-                        let j = asm.joint_count();
-                        let dof = (n as i64) * 6 - (c as i64) - (j as i64);
-                        Msg::Ok(format!(
-                            "Assembly DOF: {n} comps × 6 - {c} constraints - {j} joints = {dof}"
-                        ))
-                    } else {
-                        Msg::NoAssembly
-                    };
-                    match msg {
-                        Msg::Ok(m) => self.log_info(m),
-                        Msg::NoAssembly => self.log_warning("Assembly: no assembly for DOF"),
-                    }
-                }
-                GuiAction::AddAssemblyJoint(joint) => {
-                    enum Msg { Ok(String), TooFew }
-                    let msg = if self.gui.open_joint_editor(joint) {
-                        Msg::Ok(format!("Assembly: edit joint {}", joint.label()))
-                    } else {
-                        Msg::TooFew
-                    };
-                    match msg {
-                        Msg::Ok(m) => self.log_info(m),
-                        Msg::TooFew => self.log_warning(
-                            "Assembly: need at least 2 components to add a joint",
-                        ),
-                    }
-                }
-                GuiAction::ToggleAssemblyComponentVisibility(idx) => {
-                    enum Msg { Ok(String), Fail }
-                    let msg = if self.gui.toggle_assembly_component_visibility(idx) {
-                        Msg::Ok(format!("Assembly: toggled component {idx} visibility"))
-                    } else {
-                        Msg::Fail
-                    };
-                    match msg {
-                        Msg::Ok(m) => self.log_info(m),
-                        Msg::Fail => self.log_warning("Assembly: toggle visibility failed"),
-                    }
-                }
-                GuiAction::CommitAssemblyJoint => {
-                    enum Msg { Ok(String), Fail }
-                    let msg = if self.gui.commit_assembly_joint() {
-                        let n = self.gui.assembly.as_ref().map(|a| a.joint_count()).unwrap_or(0);
-                        Msg::Ok(format!("Assembly: joint added ({n} total)"))
-                    } else {
-                        Msg::Fail
-                    };
-                    match msg {
-                        Msg::Ok(m) => self.log_info(m),
-                        Msg::Fail => self.log_warning("Assembly: failed to commit joint"),
-                    }
-                }
+                GuiAction::Assembly(action) => self.process_assembly_action(action),
 
                 // -- Draft workbench --
                 GuiAction::DraftLine => self.log_info("Draft: line"),
@@ -3995,6 +3852,158 @@ impl CadApp {
                 GuiAction::StopMcpServer => {
                     self.gui.mcp_running = false;
                     self.log_info("MCP server stopped");
+                }
+            }
+        }
+    }
+
+    /// Dispatch an `AssemblyAction` (sub-enum of `GuiAction::Assembly`).
+    /// Extracted from `process_actions` so the main dispatcher stays
+    /// readable; behaviour is identical to the pre-refactor inline arms.
+    fn process_assembly_action(&mut self, action: AssemblyAction) {
+        match action {
+            AssemblyAction::Create => {
+                self.gui.assembly = Some(cadkernel_modeling::Assembly::new("New Assembly"));
+                self.log_info("Assembly: created new assembly");
+            }
+            AssemblyAction::InsertComponent => {
+                let solid = self.current_solid;
+                let msg = {
+                    let assembly = self.gui.assembly.get_or_insert_with(|| {
+                        cadkernel_modeling::Assembly::new("New Assembly")
+                    });
+                    if let Some(s) = solid {
+                        let n = assembly.num_components();
+                        let id = assembly.add_component(&format!("Component {}", n + 1), s);
+                        Some(format!(
+                            "Assembly: inserted component {} ({} total)",
+                            id.0,
+                            assembly.num_components()
+                        ))
+                    } else {
+                        None
+                    }
+                };
+                match msg {
+                    Some(m) => self.log_info(m),
+                    None => {
+                        self.gui.status_message =
+                            "Assembly: no solid selected to insert as component".into();
+                    }
+                }
+            }
+            AssemblyAction::Solve => {
+                enum SolveMsg {
+                    Ok(String),
+                    Warn(String),
+                    Err(String),
+                    NoAssembly,
+                }
+                let msg = if let Some(assembly) = self.gui.assembly.as_mut() {
+                    let n = assembly.num_constraints();
+                    match assembly.solve(100) {
+                        Ok(true) => SolveMsg::Ok(format!("Assembly: solved {n} constraints")),
+                        Ok(false) => SolveMsg::Warn(format!(
+                            "Assembly: solver did not converge ({n} constraints)"
+                        )),
+                        Err(e) => SolveMsg::Err(format!("Assembly solve error: {e}")),
+                    }
+                } else {
+                    SolveMsg::NoAssembly
+                };
+                match msg {
+                    SolveMsg::Ok(m) => self.log_info(m),
+                    SolveMsg::Warn(m) => self.log_warning(m),
+                    SolveMsg::Err(m) => self.log_error(m),
+                    SolveMsg::NoAssembly => {
+                        self.gui.status_message =
+                            "Assembly: no assembly — create one first".into();
+                    }
+                }
+            }
+            AssemblyAction::Explode { factor } => {
+                self.log_info(format!("Assembly: exploded view factor={factor:.1}"));
+            }
+            AssemblyAction::BillOfMaterials => {
+                enum Msg { Ok(String), NoAssembly }
+                let msg = if self.gui.populate_bom_entries() {
+                    // populate_bom_entries() opened ActiveDialog::Bom(entries).
+                    let entries = match &self.gui.active_dialog {
+                        Some(crate::gui::ActiveDialog::Bom(e)) => e.as_slice(),
+                        _ => &[],
+                    };
+                    let n: usize = entries.iter().map(|e| e.quantity).sum();
+                    Msg::Ok(format!(
+                        "Assembly: BOM ({} entries, {n} parts)",
+                        entries.len()
+                    ))
+                } else {
+                    Msg::NoAssembly
+                };
+                match msg {
+                    Msg::Ok(m) => self.log_info(m),
+                    Msg::NoAssembly => {
+                        self.gui.status_message =
+                            "Assembly: no assembly — create one first".into();
+                        self.log_warning("Assembly: no assembly for BOM");
+                    }
+                }
+            }
+            AssemblyAction::DofAnalysis => {
+                enum Msg { Ok(String), NoAssembly }
+                let msg = if let Some(asm) = self.gui.assembly.as_ref() {
+                    let n = asm.num_components();
+                    let c = asm.num_constraints();
+                    let j = asm.joint_count();
+                    let dof = (n as i64) * 6 - (c as i64) - (j as i64);
+                    Msg::Ok(format!(
+                        "Assembly DOF: {n} comps × 6 - {c} constraints - {j} joints = {dof}"
+                    ))
+                } else {
+                    Msg::NoAssembly
+                };
+                match msg {
+                    Msg::Ok(m) => self.log_info(m),
+                    Msg::NoAssembly => self.log_warning("Assembly: no assembly for DOF"),
+                }
+            }
+            AssemblyAction::AddJoint(joint) => {
+                enum Msg { Ok(String), TooFew }
+                let msg = if self.gui.open_joint_editor(joint) {
+                    Msg::Ok(format!("Assembly: edit joint {}", joint.label()))
+                } else {
+                    Msg::TooFew
+                };
+                match msg {
+                    Msg::Ok(m) => self.log_info(m),
+                    Msg::TooFew => self.log_warning(
+                        "Assembly: need at least 2 components to add a joint",
+                    ),
+                }
+            }
+            AssemblyAction::ToggleComponentVisibility(idx) => {
+                enum Msg { Ok(String), Fail }
+                let msg = if self.gui.toggle_assembly_component_visibility(idx) {
+                    Msg::Ok(format!("Assembly: toggled component {idx} visibility"))
+                } else {
+                    Msg::Fail
+                };
+                match msg {
+                    Msg::Ok(m) => self.log_info(m),
+                    Msg::Fail => self.log_warning("Assembly: toggle visibility failed"),
+                }
+            }
+            AssemblyAction::CommitJoint => {
+                enum Msg { Ok(String), Fail }
+                let msg = if self.gui.commit_assembly_joint() {
+                    let n = self.gui.assembly.as_ref().map(|a| a.joint_count()).unwrap_or(0);
+                    Msg::Ok(format!("Assembly: joint added ({n} total)"))
+                } else {
+                    Msg::Fail
+                };
+                match msg {
+                    Msg::Ok(m) => self.log_info(m),
+                    Msg::Fail => self.log_warning("Assembly: failed to commit joint"),
                 }
             }
         }

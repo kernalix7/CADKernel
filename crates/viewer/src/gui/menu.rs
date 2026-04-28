@@ -1022,15 +1022,16 @@ fn draw_techdraw_menu(ui: &mut egui::Ui, gui: &mut GuiState) {
 }
 
 fn draw_assembly_menu(ui: &mut egui::Ui, gui: &mut GuiState) {
+    use super::AssemblyAction as A;
     ui.menu_button("Assembly", |ui| {
-        menu_action(ui, gui, "Create Assembly", GuiAction::CreateAssembly);
-        menu_action(ui, gui, "Insert Component", GuiAction::InsertComponent);
+        menu_action(ui, gui, "Create Assembly", GuiAction::Assembly(A::Create));
+        menu_action(ui, gui, "Insert Component", GuiAction::Assembly(A::InsertComponent));
         ui.separator();
         menu_action(
             ui,
             gui,
             "Ground Component",
-            GuiAction::AddAssemblyJoint(AssemblyJointType::Grounded),
+            GuiAction::Assembly(A::AddJoint(AssemblyJointType::Grounded)),
         );
         ui.menu_button("Joints", |ui| {
             for jt in [
@@ -1048,14 +1049,14 @@ fn draw_assembly_menu(ui: &mut egui::Ui, gui: &mut GuiState) {
                 AssemblyJointType::Screw,
                 AssemblyJointType::Belt,
             ] {
-                menu_action(ui, gui, jt.label(), GuiAction::AddAssemblyJoint(jt));
+                menu_action(ui, gui, jt.label(), GuiAction::Assembly(A::AddJoint(jt)));
             }
         });
         ui.separator();
-        menu_action(ui, gui, "Solve Assembly", GuiAction::SolveAssembly);
-        menu_action(ui, gui, "Exploded View", GuiAction::ExplodedView { factor: 2.0 });
-        menu_action(ui, gui, "Bill of Materials", GuiAction::BillOfMaterials);
-        menu_action(ui, gui, "DOF Analysis", GuiAction::DOFAnalysis);
+        menu_action(ui, gui, "Solve Assembly", GuiAction::Assembly(A::Solve));
+        menu_action(ui, gui, "Exploded View", GuiAction::Assembly(A::Explode { factor: 2.0 }));
+        menu_action(ui, gui, "Bill of Materials", GuiAction::Assembly(A::BillOfMaterials));
+        menu_action(ui, gui, "DOF Analysis", GuiAction::Assembly(A::DofAnalysis));
     });
 }
 

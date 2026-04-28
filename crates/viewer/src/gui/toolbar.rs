@@ -3107,25 +3107,26 @@ fn draw_techdraw_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
 }
 
 fn draw_assembly_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
+    use super::AssemblyAction as A;
     section_label(ui, "Assembly");
     // -- Assembly --
     if icon_button(ui, ToolIcon::AssemblyNew, "New", "New assembly", "") {
-        gui.actions.push(GuiAction::CreateAssembly);
+        gui.actions.push(GuiAction::Assembly(A::Create));
     }
     if icon_button(ui, ToolIcon::InsertComponent, "Insert", "Insert component", "") {
-        gui.actions.push(GuiAction::InsertComponent);
+        gui.actions.push(GuiAction::Assembly(A::InsertComponent));
     }
     if icon_button(ui, ToolIcon::Solve, "Solve", "Solve assembly", "") {
-        gui.actions.push(GuiAction::SolveAssembly);
+        gui.actions.push(GuiAction::Assembly(A::Solve));
     }
     if icon_button(ui, ToolIcon::ExplodeView, "Explode", "Exploded view", "") {
         gui.show_explode = true;
     }
     if icon_button(ui, ToolIcon::Bom, "BOM", "Bill of materials", "") {
-        gui.actions.push(GuiAction::BillOfMaterials);
+        gui.actions.push(GuiAction::Assembly(A::BillOfMaterials));
     }
     if icon_button(ui, ToolIcon::Dof, "DOF", "Degrees of freedom analysis", "") {
-        gui.actions.push(GuiAction::DOFAnalysis);
+        gui.actions.push(GuiAction::Assembly(A::DofAnalysis));
     }
 
     toolbar_separator(ui);
@@ -3148,7 +3149,7 @@ fn draw_assembly_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
         (ToolIcon::JointBelt, AssemblyJointType::Belt, "Belt/chain joint"),
     ] {
         if icon_button(ui, icon, tip, "", "") {
-            gui.actions.push(GuiAction::AddAssemblyJoint(jtype));
+            gui.actions.push(GuiAction::Assembly(A::AddJoint(jtype)));
         }
     }
 }

@@ -8,6 +8,21 @@
 
 use super::{ActiveDialog, GuiState};
 
+/// Actions specific to the Assembly workbench, dispatched through
+/// `GuiAction::Assembly(AssemblyAction)`.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) enum AssemblyAction {
+    Create,
+    InsertComponent,
+    Solve,
+    Explode { factor: f64 },
+    BillOfMaterials,
+    DofAnalysis,
+    AddJoint(AssemblyJointType),
+    ToggleComponentVisibility(usize),
+    CommitJoint,
+}
+
 // -- Assembly joint types --
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum AssemblyJointType {

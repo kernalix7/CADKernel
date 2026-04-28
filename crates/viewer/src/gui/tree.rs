@@ -1397,7 +1397,9 @@ pub(crate) fn draw_assembly_section(
                         ui.horizontal(|ui| {
                             let eye = if *visible { "\u{25C9}" } else { "\u{25CB}" };
                             if ui.small_button(eye).on_hover_text("Toggle visibility").clicked() {
-                                gui.actions.push(GuiAction::ToggleAssemblyComponentVisibility(*i));
+                                gui.actions.push(GuiAction::Assembly(
+                                    super::AssemblyAction::ToggleComponentVisibility(*i),
+                                ));
                             }
                             let resp = ui.label(format!("\u{1F4E6} {name}"))
                                 .on_hover_text("Double-click to focus");

@@ -20,7 +20,7 @@ mod view_cube;
 // Re-exports so that sibling files (`dialogs.rs`, `menu.rs`, `toolbar.rs`)
 // can keep their existing `use super::{BcKind, AssemblyJointType, SketchMode, ...}`
 // imports without churn.
-pub(crate) use self::assembly::{AssemblyJointType, JointEditorState};
+pub(crate) use self::assembly::{AssemblyAction, AssemblyJointType, JointEditorState};
 pub(crate) use self::fem::{
     BcEditorState, BcKind, MaterialPickerState, MaterialPreset, material_from_preset,
 };
@@ -413,15 +413,7 @@ pub(crate) enum GuiAction {
     MoveFeatureDown,
 
     // -- Assembly workbench --
-    CreateAssembly,
-    InsertComponent,
-    SolveAssembly,
-    ExplodedView { factor: f64 },
-    BillOfMaterials,
-    DOFAnalysis,
-    AddAssemblyJoint(AssemblyJointType),
-    ToggleAssemblyComponentVisibility(usize),
-    CommitAssemblyJoint,
+    Assembly(AssemblyAction),
 
     // -- Draft workbench --
     DraftLine,

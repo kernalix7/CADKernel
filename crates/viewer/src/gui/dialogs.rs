@@ -1118,7 +1118,9 @@ pub(crate) fn draw_create_dialogs(ctx: &egui::Context, gui: &mut GuiState) {
                 });
                 let (ok, cancel, reset) = button_bar(ui, "Apply");
                 if ok {
-                    gui.actions.push(GuiAction::ExplodedView { factor: gui.explode_factor });
+                    gui.actions.push(GuiAction::Assembly(
+                        super::AssemblyAction::Explode { factor: gui.explode_factor },
+                    ));
                     gui.show_explode = false;
                 }
                 if cancel { gui.show_explode = false; }
@@ -2075,7 +2077,7 @@ pub(crate) fn draw_joint_editor_dialog(ctx: &egui::Context, gui: &mut GuiState) 
     if !open || do_cancel {
         gui.close_active_dialog();
     } else if do_create {
-        gui.actions.push(GuiAction::CommitAssemblyJoint);
+        gui.actions.push(GuiAction::Assembly(super::AssemblyAction::CommitJoint));
     }
 }
 
