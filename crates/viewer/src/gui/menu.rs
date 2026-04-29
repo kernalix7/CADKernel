@@ -672,23 +672,24 @@ fn draw_part_menu(ui: &mut egui::Ui, gui: &mut GuiState) {
             if ui.button("Helix...").clicked() { gui.active_task = Some(task_panel::ActiveTask::Helix { radius: 5.0, pitch: 3.0, turns: 3.0, tube_radius: 0.5, preview_id: None }); ui.close_menu(); }
         });
         ui.separator();
+        use super::PartAction as Pa;
         ui.menu_button("Boolean", |ui| {
             menu_action(ui, gui, "Union", GuiAction::BooleanSceneUnion);
             menu_action(ui, gui, "Subtract", GuiAction::BooleanSceneSubtract);
             menu_action(ui, gui, "Intersect", GuiAction::BooleanSceneIntersect);
             ui.separator();
-            menu_action(ui, gui, "Boolean Fragments", GuiAction::BooleanFragments);
-            menu_action(ui, gui, "Slice to Compound", GuiAction::SliceToCompound);
+            menu_action(ui, gui, "Boolean Fragments", GuiAction::Part(Pa::BooleanFragments));
+            menu_action(ui, gui, "Slice to Compound", GuiAction::Part(Pa::SliceToCompound));
         });
         ui.menu_button("Join", |ui| {
-            menu_action(ui, gui, "Face from Wires", GuiAction::FaceFromWires);
-            menu_action(ui, gui, "Connect Shapes", GuiAction::ConnectShapes);
-            menu_action(ui, gui, "Embed Shapes", GuiAction::EmbedShapes);
-            menu_action(ui, gui, "Cutout Shapes", GuiAction::CutoutShapes);
+            menu_action(ui, gui, "Face from Wires", GuiAction::Part(Pa::FaceFromWires));
+            menu_action(ui, gui, "Connect Shapes", GuiAction::Part(Pa::ConnectShapes));
+            menu_action(ui, gui, "Embed Shapes", GuiAction::Part(Pa::EmbedShapes));
+            menu_action(ui, gui, "Cutout Shapes", GuiAction::Part(Pa::CutoutShapes));
         });
         ui.menu_button("Compound", |ui| {
-            menu_action(ui, gui, "Explode Compound", GuiAction::ExplodeCompound);
-            menu_action(ui, gui, "Compound Filter", GuiAction::CompoundFilter);
+            menu_action(ui, gui, "Explode Compound", GuiAction::Part(Pa::ExplodeCompound));
+            menu_action(ui, gui, "Compound Filter", GuiAction::Part(Pa::CompoundFilter));
         });
         ui.separator();
         ui.menu_button("Transform", |ui| {
@@ -697,18 +698,18 @@ fn draw_part_menu(ui: &mut egui::Ui, gui: &mut GuiState) {
             menu_action(ui, gui, "Mirror YZ", GuiAction::MirrorSolid(super::MirrorPlane::YZ));
             ui.separator();
             menu_action(ui, gui, "Scale...", GuiAction::ScaleSolid { factor: 2.0 });
-            menu_action(ui, gui, "Transformed Copy...", GuiAction::TransformedCopy { dx: 10.0, dy: 0.0, dz: 0.0 });
+            menu_action(ui, gui, "Transformed Copy...", GuiAction::Part(Pa::TransformedCopy { dx: 10.0, dy: 0.0, dz: 0.0 }));
             ui.separator();
             menu_action(ui, gui, "Linear Pattern X", GuiAction::LinearPattern { count: 3, spacing: 10.0, axis: 0 });
             menu_action(ui, gui, "Linear Pattern Y", GuiAction::LinearPattern { count: 3, spacing: 10.0, axis: 1 });
             menu_action(ui, gui, "Linear Pattern Z", GuiAction::LinearPattern { count: 3, spacing: 10.0, axis: 2 });
         });
         ui.menu_button("Convert", |ui| {
-            menu_action(ui, gui, "Points from Shape", GuiAction::PointsFromShape);
-            menu_action(ui, gui, "Convert to Solid", GuiAction::ConvertToSolid);
-            menu_action(ui, gui, "Auto Defeature...", GuiAction::AutoDefeaturing { threshold: 1.0 });
-            menu_action(ui, gui, "Project Curves on Surface", GuiAction::ProjectCurvesOnSurface);
-            menu_action(ui, gui, "Coons Patch", GuiAction::CoonsPatch);
+            menu_action(ui, gui, "Points from Shape", GuiAction::Part(Pa::PointsFromShape));
+            menu_action(ui, gui, "Convert to Solid", GuiAction::Part(Pa::ConvertToSolid));
+            menu_action(ui, gui, "Auto Defeature...", GuiAction::Part(Pa::AutoDefeaturing { threshold: 1.0 }));
+            menu_action(ui, gui, "Project Curves on Surface", GuiAction::Part(Pa::ProjectCurvesOnSurface));
+            menu_action(ui, gui, "Coons Patch", GuiAction::Part(Pa::CoonsPatch));
         });
         ui.separator();
         ui.menu_button("Features", |ui| {

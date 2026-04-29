@@ -2411,16 +2411,17 @@ fn draw_part_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
 
     toolbar_separator(ui);
 
+    use super::PartAction as Pa;
     section_label(ui, "Join");
     // -- Join --
     gated_button!(ui, sel, ToolIcon::Connect, "Connect", "Connect shapes (select object)", "", {
-        gui.actions.push(GuiAction::ConnectShapes);
+        gui.actions.push(GuiAction::Part(Pa::ConnectShapes));
     });
     gated_button!(ui, sel, ToolIcon::Embed, "Embed", "Embed shapes (select object)", "", {
-        gui.actions.push(GuiAction::EmbedShapes);
+        gui.actions.push(GuiAction::Part(Pa::EmbedShapes));
     });
     gated_button!(ui, sel, ToolIcon::Cutout, "Cutout", "Cutout shapes (select object)", "", {
-        gui.actions.push(GuiAction::CutoutShapes);
+        gui.actions.push(GuiAction::Part(Pa::CutoutShapes));
     });
 
     toolbar_separator(ui);
@@ -2428,16 +2429,16 @@ fn draw_part_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
     section_label(ui, "Compound");
     // -- Compound --
     gated_button!(ui, sel, ToolIcon::Explode, "Explode", "Explode compound (select object)", "", {
-        gui.actions.push(GuiAction::ExplodeCompound);
+        gui.actions.push(GuiAction::Part(Pa::ExplodeCompound));
     });
     gated_button!(ui, sel, ToolIcon::Filter, "Filter", "Compound filter (select object)", "", {
-        gui.actions.push(GuiAction::CompoundFilter);
+        gui.actions.push(GuiAction::Part(Pa::CompoundFilter));
     });
     gated_button!(ui, sel, ToolIcon::Fragments, "Fragments", "Boolean fragments (select object)", "", {
-        gui.actions.push(GuiAction::BooleanFragments);
+        gui.actions.push(GuiAction::Part(Pa::BooleanFragments));
     });
     gated_button!(ui, sel, ToolIcon::Slice, "Slice", "Slice to compound (select object)", "", {
-        gui.actions.push(GuiAction::SliceToCompound);
+        gui.actions.push(GuiAction::Part(Pa::SliceToCompound));
     });
 
     toolbar_separator(ui);
@@ -2445,10 +2446,10 @@ fn draw_part_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
     section_label(ui, "Convert");
     // -- Convert --
     gated_button!(ui, sel, ToolIcon::Points, "Points", "Points from shape (select object)", "", {
-        gui.actions.push(GuiAction::PointsFromShape);
+        gui.actions.push(GuiAction::Part(Pa::PointsFromShape));
     });
     gated_button!(ui, sel, ToolIcon::ToSolid, "To Solid", "Convert to solid (select object)", "", {
-        gui.actions.push(GuiAction::ConvertToSolid);
+        gui.actions.push(GuiAction::Part(Pa::ConvertToSolid));
     });
     gated_button!(ui, sel, ToolIcon::Defeature, "Defeature", "Auto-defeaturing (select object)", "", {
         gui.show_defeaturing = true;

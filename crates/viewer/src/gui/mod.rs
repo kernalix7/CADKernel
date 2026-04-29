@@ -7,6 +7,7 @@ pub(crate) mod fem;
 pub(crate) mod mesh;
 mod menu;
 mod overlays;
+pub(crate) mod part;
 mod properties;
 pub(crate) mod surface;
 mod report;
@@ -27,6 +28,7 @@ pub(crate) use self::fem::{
     BcEditorState, BcKind, FemAction, MaterialPickerState, MaterialPreset, material_from_preset,
 };
 pub(crate) use self::mesh::MeshAction;
+pub(crate) use self::part::PartAction;
 pub(crate) use self::surface::SurfaceAction;
 pub(crate) use self::sketch_state::{
     DimensionKind, DimensionPopup, SketchEntityRef, SketcherAction, SketchMode, SketchTool,
@@ -320,23 +322,8 @@ pub(crate) enum GuiAction {
     BooleanSceneSubtract,
     BooleanSceneIntersect,
 
-    // -- Part: Join operations --
-    FaceFromWires,
-    ConnectShapes,
-    EmbedShapes,
-    CutoutShapes,
-    // -- Part: Compound operations --
-    ExplodeCompound,
-    CompoundFilter,
-    BooleanFragments,
-    SliceToCompound,
-    // -- Part: Convert operations --
-    PointsFromShape,
-    ConvertToSolid,
-    AutoDefeaturing { threshold: f64 },
-    TransformedCopy { dx: f64, dy: f64, dz: f64 },
-    ProjectCurvesOnSurface,
-    CoonsPatch,
+    // -- Part workbench --
+    Part(PartAction),
 
     // -- PartDesign: Feature operations --
     PadSketch { depth: f64, symmetric: bool },

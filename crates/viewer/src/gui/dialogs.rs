@@ -922,7 +922,7 @@ pub(crate) fn draw_create_dialogs(ctx: &egui::Context, gui: &mut GuiState) {
                 });
                 let (ok, cancel, reset) = button_bar(ui, "Apply");
                 if ok {
-                    gui.actions.push(GuiAction::AutoDefeaturing { threshold: gui.defeaturing_threshold });
+                    gui.actions.push(GuiAction::Part(super::PartAction::AutoDefeaturing { threshold: gui.defeaturing_threshold }));
                     gui.show_defeaturing = false;
                 }
                 if cancel { gui.show_defeaturing = false; }

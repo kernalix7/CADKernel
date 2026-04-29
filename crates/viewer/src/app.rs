@@ -3,8 +3,8 @@
 
 use crate::gui::{
     self, AssemblyAction, FemAction, GizmoMode, GuiAction, GuiState, MeshAction, MirrorPlane,
-    ReportLevel, SelectedEntity, SelectionMode, SketchEntityRef, SketchMode, SketchTool,
-    SketcherAction, SurfaceAction, ViewportInfo,
+    PartAction, ReportLevel, SelectedEntity, SelectionMode, SketchEntityRef, SketchMode,
+    SketchTool, SketcherAction, SurfaceAction, ViewportInfo,
 };
 use crate::scripting::ScriptEngine;
 use crate::nav::{NavAction, NavConfig};
@@ -2357,25 +2357,8 @@ impl CadApp {
                     }
                 }
 
-                // -- Part: Join / Compound / Convert --
-                GuiAction::FaceFromWires => self.log_info("Part: face from wires"),
-                GuiAction::ConnectShapes => self.log_info("Part: connect shapes"),
-                GuiAction::EmbedShapes => self.log_info("Part: embed shapes"),
-                GuiAction::CutoutShapes => self.log_info("Part: cutout shapes"),
-                GuiAction::ExplodeCompound => self.log_info("Part: explode compound"),
-                GuiAction::CompoundFilter => self.log_info("Part: compound filter"),
-                GuiAction::BooleanFragments => self.log_info("Part: boolean fragments"),
-                GuiAction::SliceToCompound => self.log_info("Part: slice to compound"),
-                GuiAction::PointsFromShape => self.log_info("Part: points from shape"),
-                GuiAction::ConvertToSolid => self.log_info("Part: convert to solid"),
-                GuiAction::AutoDefeaturing { threshold } => {
-                    self.log_info(format!("Part: auto-defeaturing threshold={threshold:.2}"));
-                }
-                GuiAction::TransformedCopy { dx, dy, dz } => {
-                    self.log_info(format!("Part: transformed copy ({dx:.1}, {dy:.1}, {dz:.1})"));
-                }
-                GuiAction::ProjectCurvesOnSurface => self.log_info("Part: project curves on surface"),
-                GuiAction::CoonsPatch => self.log_info("Part: Coons patch"),
+                // -- Part workbench --
+                GuiAction::Part(action) => self.process_part_action(action),
 
                 // -- PartDesign features --
                 GuiAction::PadSketch { depth, symmetric } => {
@@ -4034,6 +4017,30 @@ impl CadApp {
                 }
             }
             S::Coons => self.log_info("Surface: Coons"),
+        }
+    }
+
+    fn process_part_action(&mut self, action: PartAction) {
+        use PartAction as P;
+        match action {
+            P::FaceFromWires => self.log_info("Part: face from wires"),
+            P::ConnectShapes => self.log_info("Part: connect shapes"),
+            P::EmbedShapes => self.log_info("Part: embed shapes"),
+            P::CutoutShapes => self.log_info("Part: cutout shapes"),
+            P::ExplodeCompound => self.log_info("Part: explode compound"),
+            P::CompoundFilter => self.log_info("Part: compound filter"),
+            P::BooleanFragments => self.log_info("Part: boolean fragments"),
+            P::SliceToCompound => self.log_info("Part: slice to compound"),
+            P::PointsFromShape => self.log_info("Part: points from shape"),
+            P::ConvertToSolid => self.log_info("Part: convert to solid"),
+            P::AutoDefeaturing { threshold } => {
+                self.log_info(format!("Part: auto-defeaturing threshold={threshold:.2}"));
+            }
+            P::TransformedCopy { dx, dy, dz } => {
+                self.log_info(format!("Part: transformed copy ({dx:.1}, {dy:.1}, {dz:.1})"));
+            }
+            P::ProjectCurvesOnSurface => self.log_info("Part: project curves on surface"),
+            P::CoonsPatch => self.log_info("Part: Coons patch"),
         }
     }
 
