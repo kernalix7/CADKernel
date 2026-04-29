@@ -3159,6 +3159,7 @@ fn draw_assembly_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
 }
 
 fn draw_draft_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
+    use super::DraftAction as D;
     use super::task_panel::ActiveTask;
     section_label(ui, "Draw");
     // -- Draw --
@@ -3168,7 +3169,7 @@ fn draw_draft_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
         });
     }
     if icon_button(ui, ToolIcon::DraftWire, "Wire", "Draft wire", "") {
-        gui.actions.push(GuiAction::DraftWire);
+        gui.actions.push(GuiAction::Draft(D::Wire));
     }
     if icon_button(ui, ToolIcon::DraftCircle, "Circle", "Draft circle", "") {
         gui.active_task = Some(ActiveTask::DraftCircle {
@@ -3196,19 +3197,19 @@ fn draw_draft_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
         });
     }
     if icon_button(ui, ToolIcon::DraftBSpline, "B-Spline", "Draft B-spline", "") {
-        gui.actions.push(GuiAction::DraftBSpline);
+        gui.actions.push(GuiAction::Draft(D::BSpline));
     }
     if icon_button(ui, ToolIcon::DraftBezier, "Bezier", "Draft Bezier curve", "") {
-        gui.actions.push(GuiAction::DraftBezier);
+        gui.actions.push(GuiAction::Draft(D::Bezier));
     }
     if icon_button(ui, ToolIcon::DraftPoint, "Point", "Draft point", "") {
-        gui.actions.push(GuiAction::DraftPoint);
+        gui.actions.push(GuiAction::Draft(D::Point));
     }
     if icon_button(ui, ToolIcon::DraftFacebind, "Facebinder", "Draft facebinder", "") {
-        gui.actions.push(GuiAction::DraftFacebinder);
+        gui.actions.push(GuiAction::Draft(D::Facebinder));
     }
     if icon_button(ui, ToolIcon::DraftHatch, "Hatch", "Draft hatch", "") {
-        gui.actions.push(GuiAction::DraftHatch);
+        gui.actions.push(GuiAction::Draft(D::Hatch));
     }
 
     toolbar_separator(ui);
@@ -3216,28 +3217,28 @@ fn draw_draft_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
     section_label(ui, "Modify");
     // -- Modify --
     if icon_button(ui, ToolIcon::DraftMove, "Move", "Move selection", "") {
-        gui.actions.push(GuiAction::DraftMove);
+        gui.actions.push(GuiAction::Draft(D::Move));
     }
     if icon_button(ui, ToolIcon::DraftRotate, "Rotate", "Rotate selection", "") {
-        gui.actions.push(GuiAction::DraftRotate);
+        gui.actions.push(GuiAction::Draft(D::Rotate));
     }
     if icon_button(ui, ToolIcon::DraftScale, "Scale", "Scale selection", "") {
-        gui.actions.push(GuiAction::DraftScale);
+        gui.actions.push(GuiAction::Draft(D::Scale));
     }
     if icon_button(ui, ToolIcon::DraftMirror, "Mirror", "Mirror selection", "") {
-        gui.actions.push(GuiAction::DraftMirror);
+        gui.actions.push(GuiAction::Draft(D::Mirror));
     }
     if icon_button(ui, ToolIcon::DraftOffset, "Offset", "Offset shape", "") {
-        gui.actions.push(GuiAction::DraftOffset);
+        gui.actions.push(GuiAction::Draft(D::Offset));
     }
     if icon_button(ui, ToolIcon::DraftTrim, "Trim", "Trim/extend", "") {
-        gui.actions.push(GuiAction::DraftTrim);
+        gui.actions.push(GuiAction::Draft(D::Trim));
     }
     if icon_button(ui, ToolIcon::DraftStretch, "Stretch", "Stretch selection", "") {
-        gui.actions.push(GuiAction::DraftStretch);
+        gui.actions.push(GuiAction::Draft(D::Stretch));
     }
     if icon_button(ui, ToolIcon::DraftClone, "Clone", "Clone object", "") {
-        gui.actions.push(GuiAction::DraftClone);
+        gui.actions.push(GuiAction::Draft(D::Clone));
     }
 
     toolbar_separator(ui);
@@ -3245,16 +3246,16 @@ fn draw_draft_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
     section_label(ui, "Array");
     // -- Array --
     if icon_button(ui, ToolIcon::DraftArrayRect, "Rect Array", "Rectangular array", "") {
-        gui.actions.push(GuiAction::DraftArrayRect);
+        gui.actions.push(GuiAction::Draft(D::ArrayRect));
     }
     if icon_button(ui, ToolIcon::DraftArrayPolar, "Polar Array", "Polar array", "") {
-        gui.actions.push(GuiAction::DraftArrayPolar);
+        gui.actions.push(GuiAction::Draft(D::ArrayPolar));
     }
     if icon_button(ui, ToolIcon::DraftArrayPath, "Path Array", "Path array", "") {
-        gui.actions.push(GuiAction::DraftArrayPath);
+        gui.actions.push(GuiAction::Draft(D::ArrayPath));
     }
     if icon_button(ui, ToolIcon::DraftArrayPoint, "Point Array", "Point array", "") {
-        gui.actions.push(GuiAction::DraftArrayPoint);
+        gui.actions.push(GuiAction::Draft(D::ArrayPoint));
     }
 
     toolbar_separator(ui);
@@ -3262,13 +3263,13 @@ fn draw_draft_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
     section_label(ui, "Annotation");
     // -- Annotation --
     if icon_button(ui, ToolIcon::DraftDimension, "Dimension", "Dimension", "") {
-        gui.actions.push(GuiAction::DraftDimension);
+        gui.actions.push(GuiAction::Draft(D::Dimension));
     }
     if icon_button(ui, ToolIcon::DraftLabel, "Label", "Label", "") {
-        gui.actions.push(GuiAction::DraftLabel);
+        gui.actions.push(GuiAction::Draft(D::Label));
     }
     if icon_button(ui, ToolIcon::DraftText, "Text", "Text", "") {
-        gui.actions.push(GuiAction::DraftText);
+        gui.actions.push(GuiAction::Draft(D::Text));
     }
 
     toolbar_separator(ui);
@@ -3276,16 +3277,16 @@ fn draw_draft_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
     section_label(ui, "Convert");
     // -- Convert --
     if icon_button(ui, ToolIcon::DraftUpgrade, "Upgrade", "Upgrade shape", "") {
-        gui.actions.push(GuiAction::DraftUpgrade);
+        gui.actions.push(GuiAction::Draft(D::Upgrade));
     }
     if icon_button(ui, ToolIcon::DraftDowngrade, "Downgrade", "Downgrade shape", "") {
-        gui.actions.push(GuiAction::DraftDowngrade);
+        gui.actions.push(GuiAction::Draft(D::Downgrade));
     }
     if icon_button(ui, ToolIcon::DraftWireToBSpline, "Wire to BSpline", "Wire to BSpline", "") {
-        gui.actions.push(GuiAction::DraftWireToBSpline);
+        gui.actions.push(GuiAction::Draft(D::WireToBSpline));
     }
     if icon_button(ui, ToolIcon::DraftToSketch, "To Sketch", "Convert to sketch", "") {
-        gui.actions.push(GuiAction::DraftToSketch);
+        gui.actions.push(GuiAction::Draft(D::ToSketch));
     }
 
     toolbar_separator(ui);
@@ -3306,7 +3307,7 @@ fn draw_draft_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
         if icon_toggle(ui, snap_icons[i], gui.draft_snap_modes[i], snap_labels[i], "") {
             gui.draft_snap_modes[i] = !gui.draft_snap_modes[i];
             gui.actions
-                .push(GuiAction::ToggleDraftSnap(snap_labels[i].into()));
+                .push(GuiAction::Draft(D::ToggleSnap(snap_labels[i].into())));
         }
     }
 }

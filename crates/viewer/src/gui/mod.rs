@@ -3,6 +3,7 @@
 pub(crate) mod assembly;
 mod context_menu;
 mod dialogs;
+pub(crate) mod draft;
 pub(crate) mod fem;
 pub(crate) mod mesh;
 mod menu;
@@ -25,6 +26,7 @@ mod view_cube;
 // can keep their existing `use super::{BcKind, AssemblyJointType, SketchMode, ...}`
 // imports without churn.
 pub(crate) use self::assembly::{AssemblyAction, AssemblyJointType, JointEditorState};
+pub(crate) use self::draft::DraftAction;
 pub(crate) use self::fem::{
     BcEditorState, BcKind, FemAction, MaterialPickerState, MaterialPreset, material_from_preset,
 };
@@ -334,39 +336,7 @@ pub(crate) enum GuiAction {
     Assembly(AssemblyAction),
 
     // -- Draft workbench --
-    DraftLine,
-    DraftWire,
-    DraftCircle,
-    DraftArc,
-    DraftEllipse,
-    DraftRectangle,
-    DraftPolygon,
-    DraftBSpline,
-    DraftBezier,
-    DraftPoint,
-    DraftFacebinder,
-    DraftHatch,
-    DraftMove,
-    DraftRotate,
-    DraftScale,
-    DraftMirror,
-    DraftOffset,
-    DraftTrim,
-    DraftStretch,
-    DraftClone,
-    DraftArrayRect,
-    DraftArrayPolar,
-    DraftArrayPath,
-    DraftArrayPoint,
-    DraftDimension,
-    DraftLabel,
-    DraftText,
-    DraftUpgrade,
-    DraftDowngrade,
-    DraftWireToBSpline,
-    DraftToSketch,
-    SetDraftLayer(String),
-    ToggleDraftSnap(String),
+    Draft(DraftAction),
 
     // -- Surface workbench --
     Surface(SurfaceAction),

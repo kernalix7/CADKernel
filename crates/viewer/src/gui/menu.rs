@@ -1067,51 +1067,52 @@ fn draw_assembly_menu(ui: &mut egui::Ui, gui: &mut GuiState) {
 }
 
 fn draw_draft_menu(ui: &mut egui::Ui, gui: &mut GuiState) {
+    use super::DraftAction as D;
     ui.menu_button("Draft", |ui| {
         ui.menu_button("Drawing", |ui| {
-            menu_action(ui, gui, "Line", GuiAction::DraftLine);
-            menu_action(ui, gui, "Wire", GuiAction::DraftWire);
-            menu_action(ui, gui, "Circle", GuiAction::DraftCircle);
-            menu_action(ui, gui, "Arc", GuiAction::DraftArc);
-            menu_action(ui, gui, "Ellipse", GuiAction::DraftEllipse);
-            menu_action(ui, gui, "Rectangle", GuiAction::DraftRectangle);
-            menu_action(ui, gui, "Polygon", GuiAction::DraftPolygon);
-            menu_action(ui, gui, "B-Spline", GuiAction::DraftBSpline);
-            menu_action(ui, gui, "Bezier", GuiAction::DraftBezier);
-            menu_action(ui, gui, "Point", GuiAction::DraftPoint);
-            menu_action(ui, gui, "Facebinder", GuiAction::DraftFacebinder);
-            menu_action(ui, gui, "Hatch", GuiAction::DraftHatch);
+            menu_action(ui, gui, "Line", GuiAction::Draft(D::Line));
+            menu_action(ui, gui, "Wire", GuiAction::Draft(D::Wire));
+            menu_action(ui, gui, "Circle", GuiAction::Draft(D::Circle));
+            menu_action(ui, gui, "Arc", GuiAction::Draft(D::Arc));
+            menu_action(ui, gui, "Ellipse", GuiAction::Draft(D::Ellipse));
+            menu_action(ui, gui, "Rectangle", GuiAction::Draft(D::Rectangle));
+            menu_action(ui, gui, "Polygon", GuiAction::Draft(D::Polygon));
+            menu_action(ui, gui, "B-Spline", GuiAction::Draft(D::BSpline));
+            menu_action(ui, gui, "Bezier", GuiAction::Draft(D::Bezier));
+            menu_action(ui, gui, "Point", GuiAction::Draft(D::Point));
+            menu_action(ui, gui, "Facebinder", GuiAction::Draft(D::Facebinder));
+            menu_action(ui, gui, "Hatch", GuiAction::Draft(D::Hatch));
         });
         ui.menu_button("Modification", |ui| {
-            menu_action(ui, gui, "Move", GuiAction::DraftMove);
-            menu_action(ui, gui, "Rotate", GuiAction::DraftRotate);
-            menu_action(ui, gui, "Scale", GuiAction::DraftScale);
-            menu_action(ui, gui, "Mirror", GuiAction::DraftMirror);
-            menu_action(ui, gui, "Offset", GuiAction::DraftOffset);
-            menu_action(ui, gui, "Trim", GuiAction::DraftTrim);
-            menu_action(ui, gui, "Stretch", GuiAction::DraftStretch);
-            menu_action(ui, gui, "Clone", GuiAction::DraftClone);
+            menu_action(ui, gui, "Move", GuiAction::Draft(D::Move));
+            menu_action(ui, gui, "Rotate", GuiAction::Draft(D::Rotate));
+            menu_action(ui, gui, "Scale", GuiAction::Draft(D::Scale));
+            menu_action(ui, gui, "Mirror", GuiAction::Draft(D::Mirror));
+            menu_action(ui, gui, "Offset", GuiAction::Draft(D::Offset));
+            menu_action(ui, gui, "Trim", GuiAction::Draft(D::Trim));
+            menu_action(ui, gui, "Stretch", GuiAction::Draft(D::Stretch));
+            menu_action(ui, gui, "Clone", GuiAction::Draft(D::Clone));
         });
         ui.menu_button("Arrays", |ui| {
-            menu_action(ui, gui, "Rectangular Array", GuiAction::DraftArrayRect);
-            menu_action(ui, gui, "Polar Array", GuiAction::DraftArrayPolar);
-            menu_action(ui, gui, "Path Array", GuiAction::DraftArrayPath);
-            menu_action(ui, gui, "Point Array", GuiAction::DraftArrayPoint);
+            menu_action(ui, gui, "Rectangular Array", GuiAction::Draft(D::ArrayRect));
+            menu_action(ui, gui, "Polar Array", GuiAction::Draft(D::ArrayPolar));
+            menu_action(ui, gui, "Path Array", GuiAction::Draft(D::ArrayPath));
+            menu_action(ui, gui, "Point Array", GuiAction::Draft(D::ArrayPoint));
         });
         ui.menu_button("Annotation", |ui| {
-            menu_action(ui, gui, "Dimension", GuiAction::DraftDimension);
-            menu_action(ui, gui, "Label", GuiAction::DraftLabel);
-            menu_action(ui, gui, "Text", GuiAction::DraftText);
+            menu_action(ui, gui, "Dimension", GuiAction::Draft(D::Dimension));
+            menu_action(ui, gui, "Label", GuiAction::Draft(D::Label));
+            menu_action(ui, gui, "Text", GuiAction::Draft(D::Text));
         });
         ui.menu_button("Conversion", |ui| {
-            menu_action(ui, gui, "Upgrade", GuiAction::DraftUpgrade);
-            menu_action(ui, gui, "Downgrade", GuiAction::DraftDowngrade);
-            menu_action(ui, gui, "Wire to B-Spline", GuiAction::DraftWireToBSpline);
-            menu_action(ui, gui, "Draft to Sketch", GuiAction::DraftToSketch);
+            menu_action(ui, gui, "Upgrade", GuiAction::Draft(D::Upgrade));
+            menu_action(ui, gui, "Downgrade", GuiAction::Draft(D::Downgrade));
+            menu_action(ui, gui, "Wire to B-Spline", GuiAction::Draft(D::WireToBSpline));
+            menu_action(ui, gui, "Draft to Sketch", GuiAction::Draft(D::ToSketch));
         });
         ui.menu_button("Snap", |ui| {
             for snap in ["Midpoint", "Endpoint", "Center", "Perpendicular", "Grid", "Intersection", "Extension", "Nearest"] {
-                menu_action(ui, gui, snap, GuiAction::ToggleDraftSnap(snap.to_lowercase()));
+                menu_action(ui, gui, snap, GuiAction::Draft(D::ToggleSnap(snap.to_lowercase())));
             }
         });
     });

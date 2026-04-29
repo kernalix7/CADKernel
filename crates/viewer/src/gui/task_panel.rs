@@ -721,22 +721,22 @@ fn emit_create_action(gui: &mut GuiState, task: &ActiveTask) {
             }));
         }
         ActiveTask::DraftLine { .. } => {
-            gui.actions.push(GuiAction::DraftLine);
+            gui.actions.push(GuiAction::Draft(super::DraftAction::Line));
         }
         ActiveTask::DraftCircle { .. } => {
-            gui.actions.push(GuiAction::DraftCircle);
+            gui.actions.push(GuiAction::Draft(super::DraftAction::Circle));
         }
         ActiveTask::DraftRectangle { .. } => {
-            gui.actions.push(GuiAction::DraftRectangle);
+            gui.actions.push(GuiAction::Draft(super::DraftAction::Rectangle));
         }
         ActiveTask::DraftPolygon { .. } => {
-            gui.actions.push(GuiAction::DraftPolygon);
+            gui.actions.push(GuiAction::Draft(super::DraftAction::Polygon));
         }
         ActiveTask::DraftArc { .. } => {
-            gui.actions.push(GuiAction::DraftArc);
+            gui.actions.push(GuiAction::Draft(super::DraftAction::Arc));
         }
         ActiveTask::DraftEllipse { .. } => {
-            gui.actions.push(GuiAction::DraftEllipse);
+            gui.actions.push(GuiAction::Draft(super::DraftAction::Ellipse));
         }
         ActiveTask::SurfacePipe { .. } => {
             gui.actions.push(GuiAction::Surface(super::SurfaceAction::Pipe));

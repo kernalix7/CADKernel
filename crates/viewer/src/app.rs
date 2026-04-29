@@ -2,9 +2,9 @@
 //! viewport.
 
 use crate::gui::{
-    self, AssemblyAction, FemAction, GizmoMode, GuiAction, GuiState, MeshAction, MirrorPlane,
-    PartAction, PartDesignAction, ReportLevel, SelectedEntity, SelectionMode, SketchEntityRef,
-    SketchMode, SketchTool, SketcherAction, SurfaceAction, ViewportInfo,
+    self, AssemblyAction, DraftAction, FemAction, GizmoMode, GuiAction, GuiState, MeshAction,
+    MirrorPlane, PartAction, PartDesignAction, ReportLevel, SelectedEntity, SelectionMode,
+    SketchEntityRef, SketchMode, SketchTool, SketcherAction, SurfaceAction, ViewportInfo,
 };
 use crate::scripting::ScriptEngine;
 use crate::nav::{NavAction, NavConfig};
@@ -2367,84 +2367,7 @@ impl CadApp {
                 GuiAction::Assembly(action) => self.process_assembly_action(action),
 
                 // -- Draft workbench --
-                GuiAction::DraftLine => self.log_info("Draft: line"),
-                GuiAction::DraftWire => self.log_info("Draft: wire"),
-                GuiAction::DraftCircle => self.log_info("Draft: circle"),
-                GuiAction::DraftArc => self.log_info("Draft: arc"),
-                GuiAction::DraftEllipse => self.log_info("Draft: ellipse"),
-                GuiAction::DraftRectangle => {
-                    self.snapshot_before("Draft Rectangle");
-                    let mut model = BRepModel::new();
-                    match make_rectangle_wire(Point3::ORIGIN, 2.0, 1.0, Vec3::Z) {
-                        Ok(mut pts) => {
-                            // make_rectangle_wire closes the polyline by repeating
-                            // the origin; filling() expects distinct boundary points.
-                            pts.pop();
-                            match filling(&mut model, &pts, 1) {
-                                Ok(r) => {
-                                    self.add_to_scene(
-                                        "Draft Rectangle",
-                                        model, r.solid,
-                                        Some(crate::scene::CreationParams::DraftRectangle { width: 2.0, height: 1.0 }),
-                                    );
-                                    self.log_info("Draft: rectangle");
-                                }
-                                Err(e) => self.log_error(format!("DraftRectangle fill error: {e}")),
-                            }
-                        }
-                        Err(e) => self.log_error(format!("DraftRectangle error: {e}")),
-                    }
-                }
-                GuiAction::DraftPolygon => {
-                    self.snapshot_before("Draft Polygon");
-                    let mut model = BRepModel::new();
-                    match make_polygon_wire(Point3::ORIGIN, Vec3::Z, 1.0, 6) {
-                        Ok(pts) => {
-                            match filling(&mut model, &pts, 1) {
-                                Ok(r) => {
-                                    self.add_to_scene(
-                                        "Draft Polygon",
-                                        model, r.solid,
-                                        Some(crate::scene::CreationParams::DraftPolygon { radius: 1.0, sides: 6 }),
-                                    );
-                                    self.log_info("Draft: polygon");
-                                }
-                                Err(e) => self.log_error(format!("DraftPolygon fill error: {e}")),
-                            }
-                        }
-                        Err(e) => self.log_error(format!("DraftPolygon error: {e}")),
-                    }
-                }
-                GuiAction::DraftBSpline => self.log_info("Draft: B-spline"),
-                GuiAction::DraftBezier => self.log_info("Draft: Bezier"),
-                GuiAction::DraftPoint => self.log_info("Draft: point"),
-                GuiAction::DraftFacebinder => self.log_info("Draft: facebinder"),
-                GuiAction::DraftHatch => self.log_info("Draft: hatch"),
-                GuiAction::DraftMove => self.log_info("Draft: move"),
-                GuiAction::DraftRotate => self.log_info("Draft: rotate"),
-                GuiAction::DraftScale => self.log_info("Draft: scale"),
-                GuiAction::DraftMirror => self.log_info("Draft: mirror"),
-                GuiAction::DraftOffset => self.log_info("Draft: offset"),
-                GuiAction::DraftTrim => self.log_info("Draft: trim"),
-                GuiAction::DraftStretch => self.log_info("Draft: stretch"),
-                GuiAction::DraftClone => self.log_info("Draft: clone"),
-                GuiAction::DraftArrayRect => self.log_info("Draft: rectangular array"),
-                GuiAction::DraftArrayPolar => self.log_info("Draft: polar array"),
-                GuiAction::DraftArrayPath => self.log_info("Draft: path array"),
-                GuiAction::DraftArrayPoint => self.log_info("Draft: point array"),
-                GuiAction::DraftDimension => self.log_info("Draft: dimension"),
-                GuiAction::DraftLabel => self.log_info("Draft: label"),
-                GuiAction::DraftText => self.log_info("Draft: text"),
-                GuiAction::DraftUpgrade => self.log_info("Draft: upgrade"),
-                GuiAction::DraftDowngrade => self.log_info("Draft: downgrade"),
-                GuiAction::DraftWireToBSpline => self.log_info("Draft: wire to B-spline"),
-                GuiAction::DraftToSketch => self.log_info("Draft: convert to sketch"),
-                GuiAction::SetDraftLayer(ref layer) => {
-                    self.log_info(format!("Draft: set layer '{layer}'"));
-                }
-                GuiAction::ToggleDraftSnap(ref mode) => {
-                    self.log_info(format!("Draft: toggle snap '{mode}'"));
-                }
+                GuiAction::Draft(action) => self.process_draft_action(action),
 
                 // -- Surface workbench --
                 GuiAction::Surface(action) => self.process_surface_action(action),
@@ -4054,6 +3977,89 @@ impl CadApp {
                     self.log_info("Feature moved down");
                 }
             }
+        }
+    }
+
+    fn process_draft_action(&mut self, action: DraftAction) {
+        use DraftAction as D;
+        match action {
+            D::Line => self.log_info("Draft: line"),
+            D::Wire => self.log_info("Draft: wire"),
+            D::Circle => self.log_info("Draft: circle"),
+            D::Arc => self.log_info("Draft: arc"),
+            D::Ellipse => self.log_info("Draft: ellipse"),
+            D::Rectangle => {
+                self.snapshot_before("Draft Rectangle");
+                let mut model = BRepModel::new();
+                match make_rectangle_wire(Point3::ORIGIN, 2.0, 1.0, Vec3::Z) {
+                    Ok(mut pts) => {
+                        pts.pop();
+                        match filling(&mut model, &pts, 1) {
+                            Ok(r) => {
+                                self.add_to_scene(
+                                    "Draft Rectangle",
+                                    model,
+                                    r.solid,
+                                    Some(crate::scene::CreationParams::DraftRectangle {
+                                        width: 2.0,
+                                        height: 1.0,
+                                    }),
+                                );
+                                self.log_info("Draft: rectangle");
+                            }
+                            Err(e) => self.log_error(format!("DraftRectangle fill error: {e}")),
+                        }
+                    }
+                    Err(e) => self.log_error(format!("DraftRectangle error: {e}")),
+                }
+            }
+            D::Polygon => {
+                self.snapshot_before("Draft Polygon");
+                let mut model = BRepModel::new();
+                match make_polygon_wire(Point3::ORIGIN, Vec3::Z, 1.0, 6) {
+                    Ok(pts) => match filling(&mut model, &pts, 1) {
+                        Ok(r) => {
+                            self.add_to_scene(
+                                "Draft Polygon",
+                                model,
+                                r.solid,
+                                Some(crate::scene::CreationParams::DraftPolygon {
+                                    radius: 1.0,
+                                    sides: 6,
+                                }),
+                            );
+                            self.log_info("Draft: polygon");
+                        }
+                        Err(e) => self.log_error(format!("DraftPolygon fill error: {e}")),
+                    },
+                    Err(e) => self.log_error(format!("DraftPolygon error: {e}")),
+                }
+            }
+            D::BSpline => self.log_info("Draft: B-spline"),
+            D::Bezier => self.log_info("Draft: Bezier"),
+            D::Point => self.log_info("Draft: point"),
+            D::Facebinder => self.log_info("Draft: facebinder"),
+            D::Hatch => self.log_info("Draft: hatch"),
+            D::Move => self.log_info("Draft: move"),
+            D::Rotate => self.log_info("Draft: rotate"),
+            D::Scale => self.log_info("Draft: scale"),
+            D::Mirror => self.log_info("Draft: mirror"),
+            D::Offset => self.log_info("Draft: offset"),
+            D::Trim => self.log_info("Draft: trim"),
+            D::Stretch => self.log_info("Draft: stretch"),
+            D::Clone => self.log_info("Draft: clone"),
+            D::ArrayRect => self.log_info("Draft: rectangular array"),
+            D::ArrayPolar => self.log_info("Draft: polar array"),
+            D::ArrayPath => self.log_info("Draft: path array"),
+            D::ArrayPoint => self.log_info("Draft: point array"),
+            D::Dimension => self.log_info("Draft: dimension"),
+            D::Label => self.log_info("Draft: label"),
+            D::Text => self.log_info("Draft: text"),
+            D::Upgrade => self.log_info("Draft: upgrade"),
+            D::Downgrade => self.log_info("Draft: downgrade"),
+            D::WireToBSpline => self.log_info("Draft: wire to B-spline"),
+            D::ToSketch => self.log_info("Draft: convert to sketch"),
+            D::ToggleSnap(mode) => self.log_info(format!("Draft: toggle snap '{mode}'")),
         }
     }
 
