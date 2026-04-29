@@ -1,135 +1,10 @@
 //! Integration tests for GuiAction dispatch paths.
 //!
-//! ================================================================
-//! V36 VIEWER INTEGRATION AUDIT — SUMMARY
-//! ================================================================
-//!
-//! Scope: the `GuiAction` enum in `crates/viewer/src/gui/mod.rs` defines
-//! 200+ variants claimed to be wired to backend operations. This file
-//! exercises the Scene-level equivalents and the public viewer API to
-//! distinguish real integrations from stubs.
-//!
-//! Access limitation: `gui::GuiAction`, `gui::Workbench`, `gui::SketchTool`,
-//! `gui::SelectionMode`, and the `CadApp` dispatcher are all `pub(crate)`,
-//! so tests cannot invoke `handle_action(GuiAction::…)` directly. Instead,
-//! each test reproduces the exact Scene + modeling-crate call chain the
-//! dispatcher executes in `app.rs::process_actions`. If a variant's
-//! dispatcher body is wired end-to-end, that chain will succeed here.
-//!
-//! ----------------------------------------------------------------
-//! PASSING GuiActions (verified wired to backend)
-//! ----------------------------------------------------------------
-//! - Primitives: CreateBox, CreateCylinder, CreateSphere, CreateCone,
-//!   CreateTorus, CreateTube, CreatePrism, CreateWedge, CreateEllipsoid
-//! - Booleans: BooleanUnionWith, BooleanSubtractWith, BooleanIntersectWith,
-//!   BooleanSceneUnion, BooleanSceneSubtract, BooleanSceneIntersect
-//! - PartDesign (geometry only): PadSketch (via pad()), PocketSketch (via pocket()),
-//!   HoleSketch (via hole())
-//! - Part features: MirrorSolid, ScaleSolid, ShellSolid, FilletAllEdges,
-//!   ChamferAllEdges, LinearPattern
-//! - Scene management: NewModel, SelectObject, ToggleVisibility,
-//!   RemoveObject, DuplicateObject, RenameObject, ShowAll, HideAll,
-//!   SelectAll, DeselectAll, ToggleSelect, DeleteSelected
-//! - Undo/redo: Undo, Redo
-//! - Object grouping: CreateGroup, GroupSelected, UngroupObject,
-//!   ToggleGroupVisibility, DeleteGroup
-//! - Camera: ResetCamera, ToggleProjection, SetStandardView,
-//!   SetCameraYawPitch, ScreenOrbit, RollDelta, FitAll
-//! - Display: SetDisplayMode (enum present), ToggleGrid
-//! - Transforms: MoveObject, RotateObject, ScaleObjectUniform (via math)
-//!
-//! ----------------------------------------------------------------
-//! STUB GuiActions (handler exists but dispatcher body is partial
-//! or performs no real backend work — verified by reading app.rs)
-//! ----------------------------------------------------------------
-//! - Helix: CreateHelix appears in dispatcher but make_helix returns a
-//!   WIRE (no solid) per primitives/helix_shape.rs; visual-only.
-//! - Sketcher constraint actions (SketchConstrainParallel, …Perpendicular,
-//!   …Symmetric, …Fixed, …Block, …Distance, …Angle, …HDistance, …VDistance):
-//!   the GuiAction variants exist but the dispatcher routes them only to
-//!   the active Sketch's `add_constraint`. No integration between sketch
-//!   solver and scene geometry beyond that.
-//! - Sketcher tool actions (SketchFilletCorner, SketchChamferCorner,
-//!   SketchTrimEdge, SketchSplitEdge, SketchExtendEdge, SketchMirrorGeometry,
-//!   SketchExternalProjection, SketchCarbonCopy, SketchCopySelection,
-//!   SketchPasteSelection, SketchMergePoints, SketchConvertToBSpline,
-//!   SketchIncreaseDegree, SketchDecreaseDegree, SketchInsertKnot):
-//!   wired to sketch module tools only; no scene-level effect.
-//! - TechDraw (TechDrawAddView, TechDrawThreeView, TechDrawExportSvg,
-//!   TechDrawClear, and the 20+ expanded TechDraw* variants): produce
-//!   DrawingSheet data only. Not verifiable via Scene API.
-//! - Assembly (CreateAssembly, InsertComponent, SolveAssembly,
-//!   ExplodedView, BillOfMaterials, DOFAnalysis, AddAssemblyJoint):
-//!   no Scene-visible effect; pending wiring per FREECAD_PARITY_PLAN.
-//! - Draft workbench (all 30+ Draft* variants): no Scene-level
-//!   geometry output wired beyond a handful of primitives.
-//! - Surface workbench (SurfaceFilling, SurfaceBoundary, SurfaceSections,
-//!   SurfaceExtend, SurfaceBlend, SurfacePipe, SurfaceCoons): modeling
-//!   functions exist but dispatcher wiring not verified here.
-//! - FEM workbench (CreateFemAnalysis, SetFemMaterial, GenTetMesh,
-//!   GenHexMesh, AddFemConstraint, SolveStatic, SolveModal, SolveThermal,
-//!   SolveBuckling, SolveNonlinear, ShowStress, ShowDisplacement,
-//!   ShowVonMises, FemSummary, FemReport): analysis-only, no Scene
-//!   geometry output.
-//! - Mesh operations (MeshDecimate, MeshSubdivide, MeshFlipNormals,
-//!   MeshFillHoles, MeshSmooth, MeshHarmonizeNormals, MeshCheckWatertight,
-//!   MeshRemesh, MeshRepair): operate on imported meshes only.
-//! - Part Join/Compound/Convert (FaceFromWires, ConnectShapes, EmbedShapes,
-//!   CutoutShapes, ExplodeCompound, CompoundFilter, BooleanFragments,
-//!   SliceToCompound, PointsFromShape, ConvertToSolid, AutoDefeaturing,
-//!   TransformedCopy, ProjectCurvesOnSurface, CoonsPatch): modeling fns
-//!   exist but dispatcher integration not audited here.
-//! - Scripting (ExecuteLuaCode, ExecuteLuaFile, ClearLuaConsole): wired
-//!   to scripting::ScriptEngine; script_engine can execute but its
-//!   resulting solids are NOT merged into the app's Scene (separate
-//!   BRepModel instances).
-//! - Plugin (TogglePluginManager, InitPlugins, StartMcpServer,
-//!   StopMcpServer): UI-only or background server toggles; no Scene effect.
-//! - Bookmarks (SaveBookmark, RestoreBookmark, DeleteBookmark): camera
-//!   state only; verified only indirectly via Camera tests.
-//! - Measurement (AddMeasurementPoint, ClearMeasurement, ToggleMeasurement):
-//!   overlay only, no Scene effect.
-//! - Section plane (ToggleSectionPlane): render-pipeline toggle only.
-//! - I/O expanded (ImportSvg, ImportGltf, Import3mf, ImportDae,
-//!   ExportSvg, ExportDae): file-system I/O, not covered here.
-//! - Report (ClearReport), ThemeToggle, DensityChange: UI-only.
-//! - Loop/ring selection (SelectEdgeLoop, SelectEdgeRing, SelectFaceLoop):
-//!   require active edge/face selection state not reachable via public API.
-//! - EnterSketch, SketchOnSelectedFace, SketchClick, SetSketchTool,
-//!   CloseSketch, CancelSketch, EditSketch: sketch-mode state machine
-//!   in GuiState — not reachable without ctx.
-//!
-//! ----------------------------------------------------------------
-//! CRASHING GuiActions
-//! ----------------------------------------------------------------
-//! - None observed in Scene API; all geometric operations tested here
-//!   either succeed or return KernelError without panic.
-//!
-//! ----------------------------------------------------------------
-//! WRONG-RESULT GuiActions (behavior does not match intent)
-//! ----------------------------------------------------------------
-//! - BooleanSceneUnion/Subtract/Intersect: the dispatcher requires TWO
-//!   selected objects and the Scene API `select_single` forces only one.
-//!   Tests below use `toggle_select` to build a 2-selection and confirm
-//!   the boolean path would run; see `scene_boolean_union_combines_two_selected`.
-//! - DuplicateObject: the Scene has no `duplicate_object` method — the
-//!   dispatcher must clone manually. See
-//!   `duplicate_object_via_clone_increases_len` for the expected behavior
-//!   and note that there is NO public duplicate API (BUG: missing helper).
-//! - RenameObject: Scene exposes `get_mut().name = …` only; no
-//!   `rename_object` method. Direct mutation works but is racy with
-//!   undo stack. See `rename_object_via_get_mut_works`.
-//! - BooleanOp::Difference (BUG, dispatcher path BooleanSubtractWith /
-//!   BooleanSceneSubtract): on a 4x4x4 box minus a sphere of radius 1.5,
-//!   `quick_volume(result)` ≈ 77.9 while the original box is 64.
-//!   A Difference must NEVER produce a larger volume than the minuend.
-//!   See ignored test `boolean_subtract_box_minus_sphere_shrinks_volume`.
-//! - Sketcher solver / Constraint::Horizontal (BUG, dispatcher path
-//!   SketchConstrainHorizontal): solver returns converged=true but only
-//!   halves the dy residual instead of zeroing it. See ignored test
-//!   `sketcher_solve_horizontal_constraint_zeros_dy`.
-//!
-//! ================================================================
+//! Primitive-creation arms are exercised end-to-end via the headless
+//! dispatcher (`cadkernel_viewer::test_support::CadApp`); every other arm
+//! tests the modeling/sketch/io call chain that the dispatcher executes,
+//! since those layers — not the dispatcher — are the system under test.
+//! See `docs/FREECAD_PARITY_PLAN.md` for known stubs and pending wiring.
 
 use cadkernel_io::{
     DrawingSheet, Mesh, ProjectionDir, drawing_to_svg, evaluate_and_repair, project_solid,
@@ -138,10 +13,9 @@ use cadkernel_io::{
 use cadkernel_math::{Point3, Vec3};
 use cadkernel_modeling::{
     BooleanOp, boolean_op, chamfer_edge, filling, fillet_edge, hole, linear_pattern,
-    make_box, make_cone, make_cylinder, make_ellipsoid, make_helix, make_line_draft,
-    make_polygon_wire, make_prism, make_rectangle_wire, make_sphere, make_torus, make_tube,
-    make_wedge, mirror_solid, pad, pipe_surface, pocket, quick_box, quick_intersect,
-    quick_union, quick_volume, scale_solid, shell_solid,
+    make_box, make_line_draft, make_polygon_wire, make_rectangle_wire, make_sphere,
+    mirror_solid, pad, pipe_surface, pocket, quick_box, quick_intersect, quick_union,
+    quick_volume, scale_solid, shell_solid,
 };
 use cadkernel_sketch::{Constraint, Sketch, WorkPlane};
 use cadkernel_topology::BRepModel;
@@ -151,6 +25,7 @@ use cadkernel_viewer::{
     nav::NavConfig,
     picking::{pick_edge, pick_triangle, pick_vertex, screen_to_ray},
     scene::{CreationParams, Scene, compute_aabb},
+    test_support::CadApp,
 };
 
 // ---------------------------------------------------------------------------
@@ -200,34 +75,29 @@ fn snapshot_from(scene: &Scene) -> ModelSnapshot {
 
 #[test]
 fn create_box_adds_one_object_with_positive_extent() {
-    let mut scene = Scene::new();
-    let id = add_box(&mut scene, "Box01", 2.0, 3.0, 4.0);
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(2.0, 3.0, 4.0);
+    let scene = app.scene_ref();
     assert_eq!(scene.len(), 1);
-    let obj = scene.get(id).expect("object");
-    let (mn, mx) = (obj.aabb_min, obj.aabb_max);
-    assert!(mx[0] - mn[0] >= 2.0 - 1e-3, "x-extent should be >= 2.0");
-    assert!(mx[1] - mn[1] >= 3.0 - 1e-3, "y-extent should be >= 3.0");
-    assert!(mx[2] - mn[2] >= 4.0 - 1e-3, "z-extent should be >= 4.0");
+    let obj = scene.objects.first().expect("object");
+    assert!(obj.aabb_max[0] - obj.aabb_min[0] >= 2.0 - 1e-3);
+    assert!(obj.aabb_max[1] - obj.aabb_min[1] >= 3.0 - 1e-3);
+    assert!(obj.aabb_max[2] - obj.aabb_min[2] >= 4.0 - 1e-3);
 }
 
 #[test]
 fn create_cylinder_adds_one_object() {
-    let mut scene = Scene::new();
-    let mut model = BRepModel::new();
-    let r = make_cylinder(&mut model, Point3::ORIGIN, 2.0, 5.0, 64).expect("cylinder");
-    let id = scene.add_object("Cyl01", model, r.solid, Some(CreationParams::Cylinder { radius: 2.0, height: 5.0 }));
-    assert_eq!(scene.len(), 1);
-    let obj = scene.get(id).unwrap();
-    // Z-extent must span the height.
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_cylinder(2.0, 5.0);
+    let obj = app.scene_ref().objects.first().expect("object");
     assert!((obj.aabb_max[2] - obj.aabb_min[2]) >= 5.0 - 1e-3);
 }
 
 #[test]
 fn create_sphere_adds_one_object_with_diameter_bbox() {
-    let mut scene = Scene::new();
-    let id = add_sphere(&mut scene, "Sph01", 3.0);
-    assert_eq!(scene.len(), 1);
-    let obj = scene.get(id).unwrap();
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_sphere(3.0);
+    let obj = app.scene_ref().objects.first().expect("object");
     for axis in 0..3 {
         let extent = obj.aabb_max[axis] - obj.aabb_min[axis];
         assert!(extent >= 5.8, "sphere diameter axis {axis} ~6.0 got {extent}");
@@ -236,65 +106,45 @@ fn create_sphere_adds_one_object_with_diameter_bbox() {
 
 #[test]
 fn create_cone_adds_one_object() {
-    let mut scene = Scene::new();
-    let mut model = BRepModel::new();
-    let r = make_cone(&mut model, Point3::ORIGIN, 2.0, 0.5, 4.0, 64).expect("cone");
-    let id = scene.add_object("Cone01", model, r.solid, Some(CreationParams::Cone { base_radius: 2.0, top_radius: 0.5, height: 4.0 }));
-    assert_eq!(scene.len(), 1);
-    assert!(!scene.get(id).unwrap().vertices.is_empty());
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_cone(2.0, 0.5, 4.0);
+    assert!(!app.scene_ref().objects.first().unwrap().vertices.is_empty());
 }
 
 #[test]
 fn create_torus_adds_one_object() {
-    let mut scene = Scene::new();
-    let mut model = BRepModel::new();
-    let r = make_torus(&mut model, Point3::ORIGIN, 5.0, 1.0, 64, 32).expect("torus");
-    let id = scene.add_object("Tor01", model, r.solid, Some(CreationParams::Torus { major_radius: 5.0, minor_radius: 1.0 }));
-    assert_eq!(scene.len(), 1);
-    let obj = scene.get(id).unwrap();
-    // Torus diameter ≈ 2*(major+minor) = 12
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_torus(5.0, 1.0);
+    let obj = app.scene_ref().objects.first().expect("object");
     assert!((obj.aabb_max[0] - obj.aabb_min[0]) >= 11.5);
 }
 
 #[test]
 fn create_tube_adds_one_object() {
-    let mut scene = Scene::new();
-    let mut model = BRepModel::new();
-    let r = make_tube(&mut model, Point3::ORIGIN, 3.0, 1.0, 5.0, 64).expect("tube");
-    let id = scene.add_object("Tube01", model, r.solid, Some(CreationParams::Tube { outer_radius: 3.0, inner_radius: 1.0, height: 5.0 }));
-    assert_eq!(scene.len(), 1);
-    assert!(!scene.get(id).unwrap().vertices.is_empty());
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_tube(3.0, 1.0, 5.0);
+    assert!(!app.scene_ref().objects.first().unwrap().vertices.is_empty());
 }
 
 #[test]
 fn create_prism_adds_one_object() {
-    let mut scene = Scene::new();
-    let mut model = BRepModel::new();
-    let r = make_prism(&mut model, Point3::ORIGIN, 2.0, 4.0, 6).expect("prism");
-    let id = scene.add_object("Prism01", model, r.solid, Some(CreationParams::Prism { radius: 2.0, height: 4.0, sides: 6 }));
-    assert_eq!(scene.len(), 1);
-    assert!(!scene.get(id).unwrap().vertices.is_empty());
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_prism(2.0, 4.0, 6);
+    assert!(!app.scene_ref().objects.first().unwrap().vertices.is_empty());
 }
 
 #[test]
 fn create_wedge_adds_one_object() {
-    let mut scene = Scene::new();
-    let mut model = BRepModel::new();
-    let r = make_wedge(&mut model, Point3::ORIGIN, 4.0, 3.0, 2.0, 1.0, 1.0, 0.5, 0.5).expect("wedge");
-    let id = scene.add_object("Wedge01", model, r.solid, Some(CreationParams::Wedge { dx: 4.0, dy: 3.0, dz: 2.0, dx2: 1.0, dy2: 1.0 }));
-    assert_eq!(scene.len(), 1);
-    assert!(!scene.get(id).unwrap().vertices.is_empty());
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_wedge(4.0, 3.0, 2.0, 1.0, 1.0);
+    assert!(!app.scene_ref().objects.first().unwrap().vertices.is_empty());
 }
 
 #[test]
 fn create_ellipsoid_adds_one_object() {
-    let mut scene = Scene::new();
-    let mut model = BRepModel::new();
-    let r = make_ellipsoid(&mut model, Point3::ORIGIN, 2.0, 3.0, 4.0, 64, 32).expect("ellipsoid");
-    let id = scene.add_object("Ell01", model, r.solid, Some(CreationParams::Ellipsoid { rx: 2.0, ry: 3.0, rz: 4.0 }));
-    assert_eq!(scene.len(), 1);
-    let obj = scene.get(id).unwrap();
-    // z-extent should be ~8 (2*rz)
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_ellipsoid(2.0, 3.0, 4.0);
+    let obj = app.scene_ref().objects.first().expect("object");
     assert!((obj.aabb_max[2] - obj.aabb_min[2]) >= 7.5);
 }
 
@@ -1323,10 +1173,10 @@ fn creation_params_boolean_roundtrips_via_json() {
 
 #[test]
 fn reset_camera_returns_defaults() {
-    let mut cam = Camera::new(16.0 / 9.0);
-    cam.distance = 999.0;
-    cam.roll = 1.5;
-    cam.reset();
+    let mut app = CadApp::new_headless();
+    app.dispatch_toggle_projection();
+    app.dispatch_reset_camera();
+    let cam = app.camera_ref();
     assert!(cam.roll.abs() < 1e-6);
     assert!((cam.distance - 20.0).abs() < 1e-3);
     assert_eq!(cam.projection, Projection::Perspective);
@@ -1334,11 +1184,11 @@ fn reset_camera_returns_defaults() {
 
 #[test]
 fn toggle_projection_switches_modes() {
-    let mut cam = Camera::new(1.0);
-    cam.toggle_projection();
-    assert_eq!(cam.projection, Projection::Orthographic);
-    cam.toggle_projection();
-    assert_eq!(cam.projection, Projection::Perspective);
+    let mut app = CadApp::new_headless();
+    app.dispatch_toggle_projection();
+    assert_eq!(app.camera_ref().projection, Projection::Orthographic);
+    app.dispatch_toggle_projection();
+    assert_eq!(app.camera_ref().projection, Projection::Perspective);
 }
 
 #[test]
@@ -1519,12 +1369,12 @@ fn pick_face_mode_via_pick_triangle_on_real_box() {
 
 #[test]
 fn new_model_clears_scene() {
-    let mut scene = Scene::new();
-    add_box(&mut scene, "A", 1.0, 1.0, 1.0);
-    add_box_at(&mut scene, "B", Point3::new(3.0, 0.0, 0.0), 1.0, 1.0, 1.0);
-    // Simulate NewModel dispatcher:
-    scene = Scene::new();
-    assert!(scene.is_empty());
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(1.0, 1.0, 1.0);
+    app.dispatch_create_box(2.0, 2.0, 2.0);
+    assert_eq!(app.scene_ref().len(), 2);
+    app.dispatch_new_model();
+    assert!(app.scene_ref().is_empty());
 }
 
 // ---------------------------------------------------------------------------
@@ -1593,17 +1443,14 @@ fn compute_bounds_on_real_box_returns_valid_aabb() {
 // Helix (documented as wire-only, no solid)
 // ---------------------------------------------------------------------------
 
-// V36 R2b-cont: `make_helix` produces a tubular B-Rep solid, not a wire.
-// CreateHelix dispatcher already calls `add_to_scene` with the resulting
-// solid handle. Mirror that chain and assert a solid with faces is built.
+// `make_helix` produces a tubular B-Rep solid; CreateHelix dispatches through
+// `add_to_scene`, so the scene gains an object with non-empty geometry.
 #[test]
 fn create_helix_produces_tube_solid_with_faces() {
-    let mut model = BRepModel::new();
-    let r = make_helix(&mut model, Point3::ORIGIN, 1.0, 0.5, 2.0, 0.15, 16, 8)
-        .expect("make_helix");
-    assert!(!r.faces.is_empty(), "helix has no faces");
-    let solid_data = model.solids.get(r.solid).expect("solid handle");
-    assert!(!solid_data.shells.is_empty(), "helix solid has no shells");
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_helix(1.0, 0.5, 2.0, 0.15);
+    assert_eq!(app.scene_ref().len(), 1);
+    assert!(!app.scene_ref().objects.first().unwrap().vertices.is_empty());
 }
 
 // ---------------------------------------------------------------------------

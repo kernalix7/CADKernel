@@ -125,7 +125,8 @@ impl CameraAnimation {
 // Application state
 // ---------------------------------------------------------------------------
 
-pub(crate) struct CadApp {
+#[doc(hidden)]
+pub struct CadApp {
     runtime: Option<RuntimeState>,
     /// Multi-object scene (replaces single model/mesh/solid).
     scene: crate::scene::Scene,
@@ -7015,4 +7016,115 @@ pub fn run_gui() {
     app.gui.show_properties = settings.show_properties;
     app.gui.recent_files = settings.recent_files;
     event_loop.run_app(&mut app).unwrap();
+}
+
+// ---------------------------------------------------------------------------
+// Headless test surface
+// ---------------------------------------------------------------------------
+//
+// Re-exported from `lib.rs` as `cadkernel_viewer::test_support`. These wrappers
+// push a single `GuiAction` onto `gui.actions` and run the production
+// dispatcher (`process_actions`) — runtime is `None`, so all GPU/winit calls
+// are skipped via existing `if let Some(rt)` guards. Tests can then assert on
+// the resulting `Scene` / `Camera` to verify dispatcher wiring end-to-end
+// without duplicating modeling-crate calls.
+//
+// Kept internal-only via `#[doc(hidden)]`. The `GuiAction` enum and its
+// sub-enums stay `pub(crate)`; tests pass primitive arguments and the helpers
+// build the action internally.
+
+impl CadApp {
+    /// Headless `CadApp` constructor for integration tests.
+    #[doc(hidden)]
+    pub fn new_headless() -> Self {
+        Self::new()
+    }
+
+    /// Read-only view of the scene populated by dispatched actions.
+    #[doc(hidden)]
+    pub fn scene_ref(&self) -> &crate::scene::Scene {
+        &self.scene
+    }
+
+    /// Read-only view of the camera updated by dispatched actions.
+    #[doc(hidden)]
+    pub fn camera_ref(&self) -> &Camera {
+        &self.camera
+    }
+
+    fn dispatch(&mut self, action: GuiAction) {
+        self.gui.actions.push(action);
+        self.process_actions();
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_new_model(&mut self) {
+        self.dispatch(GuiAction::NewModel);
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_create_box(&mut self, width: f64, height: f64, depth: f64) {
+        self.dispatch(GuiAction::CreateBox { width, height, depth });
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_create_cylinder(&mut self, radius: f64, height: f64) {
+        self.dispatch(GuiAction::CreateCylinder { radius, height });
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_create_sphere(&mut self, radius: f64) {
+        self.dispatch(GuiAction::CreateSphere { radius });
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_create_cone(&mut self, base_radius: f64, top_radius: f64, height: f64) {
+        self.dispatch(GuiAction::CreateCone { base_radius, top_radius, height });
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_create_torus(&mut self, major_radius: f64, minor_radius: f64) {
+        self.dispatch(GuiAction::CreateTorus { major_radius, minor_radius });
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_create_tube(&mut self, outer_radius: f64, inner_radius: f64, height: f64) {
+        self.dispatch(GuiAction::CreateTube { outer_radius, inner_radius, height });
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_create_prism(&mut self, radius: f64, height: f64, sides: usize) {
+        self.dispatch(GuiAction::CreatePrism { radius, height, sides });
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_create_wedge(&mut self, dx: f64, dy: f64, dz: f64, dx2: f64, dy2: f64) {
+        self.dispatch(GuiAction::CreateWedge { dx, dy, dz, dx2, dy2 });
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_create_ellipsoid(&mut self, rx: f64, ry: f64, rz: f64) {
+        self.dispatch(GuiAction::CreateEllipsoid { rx, ry, rz });
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_create_helix(
+        &mut self,
+        radius: f64,
+        pitch: f64,
+        turns: f64,
+        tube_radius: f64,
+    ) {
+        self.dispatch(GuiAction::CreateHelix { radius, pitch, turns, tube_radius });
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_reset_camera(&mut self) {
+        self.dispatch(GuiAction::ResetCamera);
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_toggle_projection(&mut self) {
+        self.dispatch(GuiAction::ToggleProjection);
+    }
 }

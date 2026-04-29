@@ -22,6 +22,17 @@ pub use render::{
     mesh_to_vertices,
 };
 
+#[doc(hidden)]
+pub mod test_support {
+    //! Headless dispatcher harness for integration tests.
+    //!
+    //! Not part of the stable public API. The `GuiAction` enum and its
+    //! sub-enums remain `pub(crate)`; this module exposes typed wrappers that
+    //! construct the action internally and drive the production dispatcher
+    //! (`CadApp::process_actions`) with `runtime = None`.
+    pub use crate::app::CadApp;
+}
+
 use cadkernel_io::Mesh;
 use nav::{NavAction, NavConfig as NavCfg};
 use render::{DisplayMode as DM, GpuState, GridConfig, MouseState};
