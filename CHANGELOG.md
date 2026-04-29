@@ -9,6 +9,22 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Docs
+
+#### Bilingual docs single-source policy — English canonical + DEVELOPER_WIKI Section 3 backport (2026-04-29)
+
+**Policy adopted.** English doc files are now declared canonical. Korean files (`docs/CHANGELOG.ko.md`, `docs/DEVELOPER_WIKI.ko.md`) may use shorter summary entries — omitting sub-bullets and code snippets when the English entry has them. When entries differ, English wins. Recent CHANGELOG versions still target parity; older versions may have Korean summaries only.
+
+**Root cause.** A prior session expanded `docs/DEVELOPER_WIKI.ko.md` Section 3 "Crate-by-Crate Guide" to ~590 lines (adding per-subsection type tables, code examples, and operation tables) without updating the English `docs/DEVELOPER_WIKI.md` Section 3, which remained at ~120 lines. This created inverted drift where the Korean wiki was more complete than the English source.
+
+**Backport.** `docs/DEVELOPER_WIKI.md` Section 3 was expanded from ~120 to ~490 lines to match the Korean version's detail level. Content ported: type tables for math types, Curve/Surface trait signatures with code blocks, EntityStore code example, BRepModel API code block, Persistent Naming code block, full constraint table for sketch, all per-crate operation tables (modeling additive/subtractive, assembly, draft ops 37-entry table, surface ops, join/compound ops, io mesh ops 29-entry table).
+
+**Policy text.** Added to `CLAUDE.md` and `.cursorrules` Section 5 "Documentation Updates": *"English files are canonical. Korean files may use shorter summary entries; omit sub-bullets and code snippets when the English entry has them. When entries differ, English wins."*
+
+**Verification.** `cargo test --workspace --no-fail-fast` — **2,660 passed, 0 failed, 0 ignored** (docs-only change; no source touched). `diff` of CLAUDE.md and .cursorrules rule sections — empty (byte-identical policy text applied to both).
+
+---
+
 ### Refactored
 
 #### Viewer architecture overhaul — module split + ActiveDialog enum + GuiAction sub-enums (2026-04-29)

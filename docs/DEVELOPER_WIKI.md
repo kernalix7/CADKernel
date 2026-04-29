@@ -102,49 +102,517 @@ cadkernel (root)        full integration
 
 ### 3.1 cadkernel-core
 
-Shared foundational types: `KernelError` (6 variants), `KernelResult<T>`. Implements `Display`, `Error`, `From<std::io::Error>`.
+**Role**: Shared foundational types used by every crate.
+
+**Key types**:
+
+```rust
+pub enum KernelError {
+    InvalidHandle(&'static str),
+    InvalidArgument(String),
+    ValidationFailed(String),
+    TopologyError(String),
+    GeometryError(String),
+    IoError(String),
+}
+
+pub type KernelResult<T> = Result<T, KernelError>;
+```
+
+**Design notes**: `KernelError` implements `Clone + PartialEq + Eq` for direct comparison in tests. Supports `From<std::io::Error>` for `?` operator use.
+
+---
 
 ### 3.2 cadkernel-math
 
-All math primitives needed for CAD operations.
+**Role**: All math primitives needed for CAD operations.
 
-**Types**: `Vec2/3/4`, `Point2/3`, `Mat3/4`, `Transform`, `Quaternion`, `Ray3`, `BoundingBox`, `EPSILON`.
+| Type | File | Description |
+|------|------|-------------|
+| `Vec2`, `Vec3`, `Vec4` | `vector.rs` | 2D/3D/4D vectors. `Copy`, `Default`, `Display`, `From` |
+| `Point2`, `Point3` | `point.rs` | 2D/3D points. Interconvertible with vectors (`From`) |
+| `Mat3`, `Mat4` | `matrix.rs` | nalgebra wrappers. Inverse, determinant |
+| `Transform` | `transform.rs` | Translation, rotation, scale, mirror, composition |
+| `Quaternion` | `quaternion.rs` | Unit quaternion. Axis-angle conversion, SLERP |
+| `Ray3` | `ray.rs` | 3D ray. Projection, closest point, distance |
+| `BoundingBox` | `bbox.rs` | AABB. Union, intersection, containment test |
+| `EPSILON` | `tolerance.rs` | Default tolerance `1e-9` |
 
-**Full operator support**: `+`, `-`, `*`, `/`, `+=`, `-=`, `*=`, `/=`, `Neg`, `Sum`, `f64 * Vec`, `Point ± Vec`, `From<[f64;N]>`, `From<(f64,...)>`, `From<Vec3> for Point3` (and reverse).
+**Operator support**:
 
-**`linalg` module**: Re-exports `nalgebra::DMatrix`, `DVector`, `LU`.
+```rust
+// Bidirectional vector-scalar multiplication
+let v = Vec3::X * 2.0;   // Vec3 * f64
+let v = 2.0 * Vec3::X;   // f64 * Vec3
+
+// Point-vector arithmetic
+let p = Point3::ORIGIN + Vec3::X;   // Point + Vec → Point
+let p = Point3::ORIGIN - Vec3::X;   // Point - Vec → Point
+let v = point_a - point_b;          // Point - Point → Vec
+
+// Compound assignment
+let mut v = Vec3::X;
+v += Vec3::Y;  // AddAssign
+v *= 2.0;      // MulAssign
+
+// Summation
+let total: Vec3 = vec![Vec3::X, Vec3::Y].into_iter().sum();
+```
+
+**Type conversions**:
+
+```rust
+// Vec ↔ Point
+let p = Point3::from(Vec3::new(1.0, 2.0, 3.0));
+let v = Vec3::from(Point3::new(1.0, 2.0, 3.0));
+
+// From arrays/tuples
+let v = Vec3::from([1.0, 2.0, 3.0]);
+let p = Point3::from((1.0, 2.0, 3.0));
+
+// nalgebra interop
+let na_vec = v.to_nalgebra();
+let v = Vec3::from_nalgebra(na_vec);
+```
+
+**`linalg` module**: Re-exports `nalgebra::DMatrix`, `DVector`, `LU`. Sketch crate and others access nalgebra through this module rather than a direct dependency.
+
+---
 
 ### 3.3 cadkernel-geometry
 
-**Curve trait** with 10 methods (5 required, 5 default). Implementations: `Line`, `LineSegment`, `Arc`, `Circle`, `Ellipse`, `NurbsCurve`.
+**Role**: Trait definitions and implementations for parametric curves and surfaces.
 
-**Surface trait** with 7 methods (3 required, 4 default). Implementations: `Plane`, `Cylinder`, `Sphere`, `Cone`, `Torus`, `NurbsSurface`.
+#### Curve trait
 
-**Intersect module**: Surface-surface (4 pairs) and line-surface (3 pairs). Result types: `SsiResult`, `RayHit`, `IntersectionEllipse`.
+```rust
+pub trait Curve: Send + Sync {
+    fn point_at(&self, t: f64) -> Point3;
+    fn tangent_at(&self, t: f64) -> Vec3;
+    fn domain(&self) -> (f64, f64);
+    fn length(&self) -> f64;
+    fn is_closed(&self) -> bool;
 
-All constructors return `KernelResult<Self>` for input validation.
+    // Default implementations (finite difference)
+    fn second_derivative_at(&self, t: f64) -> Vec3;
+    fn curvature_at(&self, t: f64) -> f64;
+    fn reversed(&self) -> Box<dyn Curve>;
+    fn project_point(&self, point: Point3) -> f64;
+    fn bounding_box(&self) -> BoundingBox;
+}
+```
+
+#### Curve implementations
+
+| Type | Struct | Notes |
+|------|--------|-------|
+| Line | `Line`, `LineSegment` | `Copy`, `PartialEq` |
+| Arc | `Arc` | Start/end angles |
+| Circle | `Circle` | `new()` → `KernelResult<Self>` (zero-vector normal check) |
+| Ellipse | `Ellipse` | `Copy`. Ramanujan approximation for length |
+| NURBS | `NurbsCurve` | `new()` → `KernelResult<Self>` (knot/weight validation) |
+
+#### Surface trait
+
+```rust
+pub trait Surface: Send + Sync {
+    fn point_at(&self, u: f64, v: f64) -> Point3;
+    fn normal_at(&self, u: f64, v: f64) -> Vec3;
+    fn domain(&self) -> ((f64, f64), (f64, f64));
+
+    // Default implementations
+    fn du(&self, u: f64, v: f64) -> Vec3;
+    fn dv(&self, u: f64, v: f64) -> Vec3;
+    fn project_point(&self, point: Point3) -> (f64, f64);
+    fn bounding_box(&self) -> BoundingBox;
+}
+```
+
+#### Surface implementations
+
+| Type | Struct | Notes |
+|------|--------|-------|
+| Plane | `Plane` | `new()` → `KernelResult`. Convenience constructors `xy()`, `xz()`, `yz()` |
+| Cylinder | `Cylinder` | `new()` → `KernelResult` |
+| Sphere | `Sphere` | Standard spherical coordinates |
+| Cone | `Cone` | `Copy`, `PartialEq` |
+| Torus | `Torus` | `Copy`, `PartialEq` |
+| NURBS | `NurbsSurface` | `new()` → `KernelResult` |
+
+#### Intersect module
+
+- **Surface-Surface**: Plane-Plane, Plane-Sphere, Plane-Cylinder, Sphere-Sphere
+- **Line-Surface**: Line vs Plane, Sphere, Cylinder
+- **Result types**: `SsiResult` (Empty, Point, Line, Circle, Ellipse, Coincident), `RayHit`
+- **Naming**: Intersection result ellipse = `IntersectionEllipse` (distinct from curve type `Ellipse`)
+
+---
 
 ### 3.4 cadkernel-topology
 
-B-Rep half-edge data structure with generational arena storage.
+**Role**: B-Rep (Boundary Representation) half-edge data structure and Persistent Naming system.
 
-**Entities**: Vertex, Edge, HalfEdge, Loop, Wire, Face, Shell, Solid.
+#### Entity hierarchy
 
-**Persistent Naming**: `Tag` (hierarchical history path), `NameMap` (bidirectional Tag ↔ Handle mapping), `ShapeHistory` (operation records).
+```
+Solid ← Shell ← Face ← Loop ← HalfEdge ← Edge ← Vertex
+                                                    ↕
+                                          Wire (independent chain)
+```
 
-**BRepModel**: Full API for creation, traversal (5 helpers), validation (twin symmetry, loop cycles, Euler characteristic), and transformation.
+| Entity | Struct | Description |
+|--------|--------|-------------|
+| Vertex | `VertexData` | 3D point + tag |
+| Edge | `EdgeData` | Two-vertex connection. Optional `Arc<dyn Curve + Send + Sync>` |
+| HalfEdge | `HalfEdgeData` | Directed half-edge. origin, twin, next, prev, edge, loop |
+| Loop | `LoopData` | Circular list of half-edges. Outer/inner (hole) boundary of a Face |
+| Wire | `WireData` | Ordered chain of half-edges (independent of Loop) |
+| Face | `FaceData` | Outer loop + inner loops. Optional `Arc<dyn Surface + Send + Sync>` |
+| Shell | `ShellData` | Collection of Faces |
+| Solid | `SolidData` | Collection of Shells |
+
+#### EntityStore<T>
+
+Arena-based O(1) insert/remove/lookup storage. Generation counter detects stale handles.
+
+```rust
+let mut store = EntityStore::new();
+let h = store.insert(value);       // O(1)
+let val = store.get(h);            // O(1), generation check
+store.remove(h);                   // O(1), increments generation
+store.len();                       // O(1) (alive_count cache)
+```
+
+#### BRepModel API
+
+```rust
+let mut model = BRepModel::new();
+
+// Creation
+let v = model.make_vertex(Point3::new(0.0, 0.0, 0.0));
+let e = model.add_edge(v1, v2);
+let l = model.make_loop(&[he1, he2, he3])?;  // KernelResult
+let f = model.make_face(l);
+let s = model.make_shell(&[f1, f2, f3]);
+
+// Tagged creation (Persistent Naming)
+let f = model.make_face_tagged(l, tag);
+let w = model.make_wire_tagged(hes, true, tag);
+
+// Lookup
+model.find_vertex_by_tag(&tag);
+model.find_face_by_tag(&tag);
+model.find_wire_by_tag(&tag);
+
+// Traversal
+model.loop_half_edges(he);            // → Vec<Handle<HalfEdgeData>>
+model.vertices_of_face(face)?;        // → KernelResult<Vec<Handle<VertexData>>>
+model.edges_of_face(face)?;
+model.faces_of_edge(edge)?;
+model.faces_around_vertex(vertex)?;
+
+// Validation & transformation
+model.validate()?;                    // twin symmetry, loop cycles, Euler characteristic
+model.transform(&transform);          // applies affine transform to all vertices
+```
+
+#### Persistent Naming
+
+```rust
+// Tag = entity kind + chain of history segments
+let tag = Tag::generated(EntityKind::Face, OperationId(1), 0);
+let split_tag = tag.split(OperationId(2), 1);
+let modified_tag = tag.modified(OperationId(3));
+
+// NameMap: bidirectional Tag ↔ Handle mapping
+let mut map = NameMap::new();
+map.insert(tag.clone(), EntityRef::Face(face_h));
+let found = map.get_face(&tag);       // Option<Handle<FaceData>>
+```
+
+---
 
 ### 3.5 cadkernel-sketch
 
-2D parametric sketch with 24 constraint types (Coincident, Horizontal, Vertical, Parallel, Perpendicular, PointOnLine, PointOnCircle, Symmetric, Distance, Angle, Radius, Length, Fixed, Tangent, EqualLength, Midpoint, Collinear, EqualRadius, Concentric, Diameter, Block, HorizontalDistance, VerticalDistance, PointOnObject). Entity types: Point, Line, Arc, Circle, Ellipse, BSpline, EllipticalArc, HyperbolicArc, ParabolicArc (9 total). Helper methods: `add_polyline`, `add_regular_polygon`, `add_arc_3pt`, `add_circle_3pt`, `add_ellipse_3pt`, `add_centered_rectangle`, `add_rounded_rectangle`, `add_arc_slot`. Sketch editing tools (`tools.rs`): `fillet_sketch_corner`, `chamfer_sketch_corner`, `trim_edge`, `split_edge`, `extend_edge`. Sketch validation (`validate.rs`): `validate_sketch` with 7 issue types. Construction geometry: `toggle_construction_mode`, `mark_construction_point`, `mark_construction_line`. Newton-Raphson solver with Armijo backtracking. Profile extraction to 3D via `WorkPlane`.
+**Role**: 2D parametric sketch with Newton-Raphson constraint solver.
+
+#### Sketch entities
+
+```rust
+let mut sketch = Sketch::new();
+let p0 = sketch.add_point(0.0, 0.0);
+let p1 = sketch.add_point(10.0, 0.0);
+let l  = sketch.add_line(p0, p1);
+let a  = sketch.add_arc(center, start, end);
+let c  = sketch.add_circle(center, radius_pt);
+```
+
+#### Entity types (9)
+
+Point, Line, Arc, Circle, Ellipse, BSpline, EllipticalArc, HyperbolicArc, ParabolicArc
+
+#### Geometry helpers
+
+`add_polyline`, `add_regular_polygon`, `add_arc_3pt`, `add_circle_3pt`, `add_ellipse_3pt`, `add_centered_rectangle`, `add_rounded_rectangle`, `add_arc_slot`
+
+#### Sketch editing tools (`tools.rs`)
+
+| Function | Description |
+|----------|-------------|
+| `fillet_sketch_corner` | Corner fillet (arc insertion) |
+| `chamfer_sketch_corner` | Corner chamfer (line insertion) |
+| `trim_edge` | Trim edge at intersection |
+| `split_edge` | Split edge at a given point |
+| `extend_edge` | Extend edge to a target |
+
+#### Sketch validation (`validate.rs`)
+
+`validate_sketch` — 7 issue types (open profile, duplicate point, zero-length edge, etc.)
+
+#### Construction geometry
+
+`toggle_construction_mode`, `mark_construction_point`, `mark_construction_line`
+
+#### 24 constraint types
+
+| Constraint | Parameters |
+|-----------|-----------|
+| `Fixed(point, x, y)` | Pin point to fixed coordinates |
+| `Horizontal(line)` | Horizontal |
+| `Vertical(line)` | Vertical |
+| `Length(line, length)` | Line segment length |
+| `Distance(p1, p2, dist)` | Distance between two points |
+| `Coincident(p1, p2)` | Two points coincident |
+| `Parallel(l1, l2)` | Two lines parallel |
+| `Perpendicular(l1, l2)` | Two lines perpendicular |
+| `Equal(l1, l2)` | Two lines equal length |
+| `PointOnLine(point, line)` | Point lies on line |
+| `PointOnCircle(point, circle)` | Point lies on circle |
+| `Symmetric(p1, p2, line)` | Symmetric about line |
+| `Angle(l1, l2, angle)` | Angle between two lines |
+| `Radius(circle, radius)` | Circle radius |
+| `Tangent(line, circle)` | Line-circle tangent |
+| `MidPoint(point, l)` | Point at midpoint of line |
+| `Collinear(l1, l2)` | On same line |
+| `EqualRadius(c1, c2)` | Equal radii |
+| `Concentric(c1, c2)` | Concentric circles |
+| `Diameter(p, c, d)` | Diameter |
+| `Block(p, x, y)` | Lock position |
+| `HorizontalDistance(p1, p2, d)` | Horizontal distance |
+| `VerticalDistance(p1, p2, d)` | Vertical distance |
+| `PointOnObject(p, l)` | Point on object |
+
+#### Solver
+
+```rust
+let result = solve(&mut sketch, max_iter: 200, tolerance: 1e-10);
+// SolverResult { converged, iterations, residual }
+```
+
+Algorithm: Newton-Raphson + Armijo backtracking (uses nalgebra DMatrix/DVector).
+
+#### 3D profile extraction
+
+```rust
+let wp = WorkPlane::xy();  // or xz(), custom
+let profile_3d: Vec<Point3> = extract_profile(&sketch, &wp);
+```
+
+---
 
 ### 3.6 cadkernel-modeling
 
-Primitive builders (13 total: `make_box`, `make_cylinder`, `make_sphere`, `make_cone`, `make_torus`, `make_tube`, `make_prism`, `make_wedge`, `make_ellipsoid`, `make_helix`, `make_spiral`, `make_polygon`, `make_plane_face`), feature operations (`extrude`, `revolve`, `pad`, `pocket`, `groove`, `hole`, `countersunk_hole`, `fillet_edge`, `draft_faces`, `split_solid`, `chamfer_edge`, `sweep`, `loft`, `mirror_solid`, `scale_solid`, `shell_solid`, `linear_pattern`, `circular_pattern`, `section_solid`, `offset_solid`, `thickness_solid`, `multi_transform`), boolean operations (`Union`, `Subtract`, `Intersect`, `boolean_xor`), query functions (`point_in_solid`, `closest_point_on_solid`, `check_geometry`, `check_watertight`), assembly module (`Assembly`, `Component`, `AssemblyConstraint`, interference detection), draft operations (37 functions in `draft_ops.rs`: wire creation, manipulation, solid transforms, arrays, annotations, snapping, queries), surface operations (`ruled_surface`, `surface_from_curves`, `extend_surface`, `pipe_surface`, `filling`, `sections`, `curve_on_mesh`), join operations (`connect_shapes`, `embed_shapes`, `cutout_shapes` in `join.rs`), compound operations (`boolean_fragments`, `slice_to_compound`, `compound_filter`, `explode_compound` in `compound_ops.rs`), shape operations (`face_from_wires`, `points_from_shape` in `face_from_wires.rs`), `Body` (PartDesign feature tree), `Compound` (solid grouping), `make_involute_gear` (parametric gear profile). Assembly module with DOF analysis (`analyze_dof`), iterative constraint solver (`solve`), 13 joint types including RackAndPinion/ScrewJoint/BeltJoint, `rotation()` placement helper. Additive/subtractive operations (20 total, in `additive.rs`): `additive_box`/`subtractive_box`, `additive_cylinder`/`subtractive_cylinder`, `additive_sphere`/`subtractive_sphere`, `additive_cone`/`subtractive_cone`, `additive_torus`/`subtractive_torus`, `additive_helix`/`subtractive_helix`, `additive_ellipsoid`/`subtractive_ellipsoid`, `additive_prism`/`subtractive_prism`, `additive_wedge`/`subtractive_wedge`, plus `subtractive_loft` and `subtractive_pipe`. All return `KernelResult`. All auto-generate persistent naming tags.
+**Role**: Solid creation and transformation operations.
+
+#### Primitive builders
+
+| Function | Return | Result |
+|----------|--------|--------|
+| `make_box(dx, dy, dz)` | `KernelResult<BoxResult>` | 8 vertices, 6 faces |
+| `make_cylinder(radius, height, segments)` | `KernelResult<CylinderResult>` | N-gon top/bottom + N side faces |
+| `make_sphere(radius, segments, rings)` | `KernelResult<SphereResult>` | UV sphere |
+| `make_spiral(center, r, growth, turns, tube_r)` | `KernelResult<SpiralResult>` | Archimedean spiral |
+| `make_polygon(center, r, sides, height)` | `KernelResult<PolygonResult>` | Regular polygon prism |
+| `make_plane_face(origin, w, h)` | `KernelResult<PlaneFaceResult>` | Planar rectangle |
+| `make_involute_gear(module, teeth, angle, width)` | `KernelResult<GearResult>` | Involute gear profile |
+
+#### Feature operations
+
+| Function | Parameters | Return |
+|----------|-----------|--------|
+| `extrude`, `revolve`, `pad`, `pocket`, `groove` | Profile + direction/axis | `KernelResult<*Result>` |
+| `fillet_edge`, `chamfer_edge`, `draft_faces` | Edge/face + parameters | `KernelResult<*Result>` |
+| `sweep`, `loft`, `mirror_solid`, `scale_solid` | Profile/solid + path/factor | `KernelResult<*Result>` |
+| `shell_solid`, `split_solid`, `section_solid` | Solid + parameters | `KernelResult<*Result>` |
+| `offset_solid`, `thickness_solid` | Solid + distance/thickness | `KernelResult<*Result>` |
+| `linear_pattern`, `circular_pattern` | Solid + direction/axis + count | `KernelResult<PatternResult>` |
+| `hole`, `countersunk_hole` | Solid + location/direction/radius | `KernelResult<HoleResult>` |
+
+#### Additive/subtractive operations (20, `additive.rs`)
+
+| Additive | Subtractive | Shape |
+|----------|------------|-------|
+| `additive_box` | `subtractive_box` | Box |
+| `additive_cylinder` | `subtractive_cylinder` | Cylinder |
+| `additive_sphere` | `subtractive_sphere` | Sphere |
+| `additive_cone` | `subtractive_cone` | Cone |
+| `additive_torus` | `subtractive_torus` | Torus |
+| `additive_helix` | `subtractive_helix` | Helix |
+| `additive_ellipsoid` | `subtractive_ellipsoid` | Ellipsoid |
+| `additive_prism` | `subtractive_prism` | Prism |
+| `additive_wedge` | `subtractive_wedge` | Wedge |
+| — | `subtractive_loft` | Subtractive loft |
+| — | `subtractive_pipe` | Subtractive pipe |
+
+#### Assembly
+
+| Struct/Function | Description |
+|----------------|-------------|
+| `Assembly` | Component tree + constraint system |
+| `Component` | Solid + placement transform (Mat4) + visibility |
+| `AssemblyConstraint` | Fixed, Coincident, Concentric, Distance, Angle |
+| `JointType` | 13 joint types (RackAndPinion, ScrewJoint, BeltJoint included) |
+| `check_interference()` | Bounding-box interference detection |
+| `analyze_dof()` | DOF analysis per constraint/joint |
+| `solve()` | Iterative constraint solver (distance constraints supported) |
+| `rotation()` | Placement transform helper |
+
+#### Draft operations (37, `draft_ops.rs`)
+
+| Function | Description |
+|----------|-------------|
+| `make_wire()` | 3D polyline wire |
+| `make_bspline_wire()` | B-spline wire |
+| `clone_solid()` | Deep solid clone |
+| `rectangular_array()` | 2D grid pattern |
+| `path_array()` | Path-along copy |
+| `make_fillet_wire()` | Fillet wire |
+| `make_circle_wire()` | Circle wire |
+| `make_arc_wire()` | Arc wire |
+| `make_ellipse_wire()` | Ellipse wire |
+| `make_rectangle_wire()` | Rectangle wire |
+| `make_polygon_wire()` | Polygon wire |
+| `make_bezier_wire()` | Bezier wire |
+| `make_arc_3pt_wire()` | 3-point arc wire |
+| `make_chamfer_wire()` | Chamfer wire |
+| `make_point()` | Point creation |
+| `offset_wire()` | Wire offset |
+| `join_wires()` | Wire join |
+| `split_wire()` | Wire split |
+| `upgrade_wire()` | Wire upgrade |
+| `downgrade_solid()` | Solid downgrade |
+| `wire_to_bspline()` | Wire → B-spline |
+| `bspline_to_wire()` | B-spline → wire |
+| `stretch_wire()` | Wire stretch |
+| `move_solid()` | Solid move |
+| `rotate_solid()` | Solid rotate |
+| `scale_solid_draft()` | Solid scale (Draft) |
+| `mirror_solid_draft()` | Solid mirror (Draft) |
+| `polar_array()` | Polar array |
+| `point_array()` | Point array |
+| `make_draft_dimension()` | Draft dimension |
+| `make_label()` | Label creation |
+| `make_dimension_text()` | Dimension text |
+| `snap_to_endpoint()` | Endpoint snap |
+| `snap_to_midpoint()` | Midpoint snap |
+| `snap_to_nearest()` | Nearest-point snap |
+| `wire_length()` | Wire length |
+| `wire_area()` | Wire area |
+
+New types: `DraftDimension`, `DraftLabel`, `SnapResult`, `WireResult`, `BSplineWireResult`, `ArrayResult`, `CloneResult`
+
+#### Surface operations
+
+| Function | Description |
+|----------|-------------|
+| `ruled_surface()` | Linear-interpolation surface between two curves |
+| `surface_from_curves()` | Surface from profile curve network |
+| `extend_surface()` | Surface extension in normal direction |
+| `pipe_surface()` | Tubular solid along a path |
+| `filling()` | N-sided boundary patch |
+| `sections()` | Surface skinning through profiles |
+| `curve_on_mesh()` | Project polyline onto mesh |
+
+#### Join operations (`join.rs`)
+
+| Function | Description |
+|----------|-------------|
+| `connect_shapes()` | Shape connection |
+| `embed_shapes()` | Shape embedding |
+| `cutout_shapes()` | Shape cutout |
+
+#### Compound operations (`compound_ops.rs`)
+
+| Function | Description |
+|----------|-------------|
+| `boolean_fragments()` | Boolean fragments |
+| `slice_to_compound()` | Slice to compound |
+| `compound_filter()` | Compound filter |
+| `explode_compound()` | Compound explode |
+
+#### Shape operations (`face_from_wires.rs`)
+
+| Function | Description |
+|----------|-------------|
+| `face_from_wires()` | Face from wires |
+| `points_from_shape()` | Point extraction from shape |
+
+#### Boolean operations
+
+```rust
+let result_model = boolean_op(&model_a, solid_a, &model_b, solid_b, BooleanOp::Union)?;
+// BooleanOp: Union, Subtract, Intersect
+```
+
+Pipeline: Broad Phase (AABB) → Classification (Inside/Outside/Boundary) → Evaluation (result model construction).
+
+> All functions auto-generate persistent naming tags.
+
+---
 
 ### 3.7 cadkernel-io
 
-Tessellation (`tessellate_solid`, `tessellate_face`, `tessellate_solid_parallel`), export/import for 10 formats (STL, OBJ, glTF, SVG, JSON, STEP, IGES, DXF, PLY, 3MF, BREP), TechDraw (`project_solid`, `three_view_drawing`, `section_view`, `detail_view`, `drawing_to_svg`, `DimensionType` with 6 annotation types, 10 advanced annotations: ArcLengthDimension, ExtentDimension, ChamferDimension, WeldSymbol, BalloonAnnotation, Centerline, BoltCircleCenterlines, CosmeticLine, BreakLine), mesh operations (29 total: `decimate_mesh`, `fill_holes`, `compute_curvature`, `subdivide_mesh`, `flip_normals`, `smooth_mesh`, `mesh_boolean_union`, `mesh_boolean_intersection`, `mesh_boolean_difference`, `cut_mesh_with_plane`, `mesh_section_from_plane`, `mesh_cross_sections`, `split_mesh_by_components`, `harmonize_normals`, `check_mesh_watertight`, `regular_solid`, `face_info`, `bounding_box_info`, `curvature_plot`, `add_triangle`, `unwrap_mesh`, `unwrap_face`, `remove_components_by_size`, `remove_component`, `trim_mesh`, `segment_mesh`, `remesh`, `evaluate_and_repair`, `scale_mesh`). Exported types: `FaceInfo`, `MeshBoundingBox`, `MeshRepairReport`, `MeshSegment`, `RegularSolidType`, `UnwrapResult`, `UvCoord`.
+**Role**: B-Rep model mesh tessellation and file I/O.
+
+#### Tessellation & export
+
+Tessellation (`tessellate_solid`, `tessellate_face`, `tessellate_solid_parallel`), export/import for 11 formats (STL, OBJ, glTF, SVG, JSON, STEP, IGES, DXF, PLY, 3MF, BREP), TechDraw (`project_solid`, `three_view_drawing`, `section_view`, `detail_view`, `drawing_to_svg`, `DimensionType` with 6 annotation types, 10 advanced annotations: ArcLengthDimension, ExtentDimension, ChamferDimension, WeldSymbol, BalloonAnnotation, Centerline, BoltCircleCenterlines, CosmeticLine, BreakLine).
+
+#### Mesh operations (29)
+
+| Function | Description |
+|----------|-------------|
+| `decimate_mesh()` | Edge-collapse mesh simplification |
+| `fill_holes()` | Boundary loop detection + fan triangulation |
+| `compute_curvature()` | Cotangent-weighted mean curvature |
+| `subdivide_mesh()` | Midpoint subdivision (1 → 4 triangles) |
+| `flip_normals()` | Winding reversal + normal negation |
+| `smooth_mesh()` | Laplacian smoothing |
+| `mesh_boolean_union()` | Mesh boolean union |
+| `mesh_boolean_intersection()` | AABB-filtered mesh boolean intersection |
+| `mesh_boolean_difference()` | AABB-filtered mesh boolean difference |
+| `cut_mesh_with_plane()` | Plane clipping |
+| `mesh_section_from_plane()` | Section contour extraction |
+| `mesh_cross_sections()` | Multi-plane parallel cross-sections along axis |
+| `split_mesh_by_components()` | Component separation |
+| `harmonize_normals()` | BFS winding propagation |
+| `check_mesh_watertight()` | Watertight check |
+| `regular_solid()` | 5 Platonic solids (tetrahedron through icosahedron) |
+| `face_info()` | Per-face area, normal, centroid |
+| `bounding_box_info()` | Mesh AABB (center, size, diagonal) |
+| `curvature_plot()` | Curvature → RGB color mapping |
+| `add_triangle()` | Single triangle addition |
+| `unwrap_mesh()` | Principal-axis projection UV unwrapping |
+| `unwrap_face()` | Single-face UV coordinate computation |
+| `remove_components_by_size()` | Remove small components |
+| `remove_component()` | Remove specific component |
+| `trim_mesh()` | Bounding-box mesh trimming |
+| `segment_mesh()` | Normal-based region-growing segmentation |
+| `remesh()` | Adaptive edge-length refinement |
+| `evaluate_and_repair()` | Degenerate removal + vertex merge + normal harmonization |
+| `scale_mesh()` | Per-axis mesh scaling |
+
+Exported types: `FaceInfo`, `MeshBoundingBox`, `MeshRepairReport`, `MeshSegment`, `RegularSolidType`, `UnwrapResult`, `UvCoord`
 
 ### 3.8 cadkernel-viewer
 
