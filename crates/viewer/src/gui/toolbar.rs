@@ -2931,32 +2931,33 @@ fn draw_mesh_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
 
     section_label(ui, "Repair");
     // -- Repair --
+    use super::MeshAction as M;
     if icon_button(ui, ToolIcon::Decimate, "Decimate", "Reduce triangles 50%", "") {
-        gui.actions.push(GuiAction::MeshDecimate(0.5));
+        gui.actions.push(GuiAction::Mesh(M::Decimate(0.5)));
     }
     if icon_button(ui, ToolIcon::Subdivide, "Subdivide", "Subdivide mesh", "") {
-        gui.actions.push(GuiAction::MeshSubdivide);
+        gui.actions.push(GuiAction::Mesh(M::Subdivide));
     }
     if icon_button(ui, ToolIcon::FillHoles, "Fill Holes", "Fill boundary holes", "") {
-        gui.actions.push(GuiAction::MeshFillHoles);
+        gui.actions.push(GuiAction::Mesh(M::FillHoles));
     }
     if icon_button(ui, ToolIcon::FlipNormals, "Flip Normals", "Reverse normals", "") {
-        gui.actions.push(GuiAction::MeshFlipNormals);
+        gui.actions.push(GuiAction::Mesh(M::FlipNormals));
     }
     if icon_button(ui, ToolIcon::Smooth, "Smooth", "Laplacian smoothing", "") {
         gui.show_mesh_smooth = true;
     }
     if icon_button(ui, ToolIcon::Harmonize, "Harmonize", "Consistent normals", "") {
-        gui.actions.push(GuiAction::MeshHarmonizeNormals);
+        gui.actions.push(GuiAction::Mesh(M::HarmonizeNormals));
     }
     if icon_button(ui, ToolIcon::Watertight, "Watertight?", "Check watertight", "") {
-        gui.actions.push(GuiAction::MeshCheckWatertight);
+        gui.actions.push(GuiAction::Mesh(M::CheckWatertight));
     }
     if icon_button(ui, ToolIcon::Remesh, "Remesh", "Remesh to target edge", "") {
         gui.show_mesh_remesh = true;
     }
     if icon_button(ui, ToolIcon::Repair, "Repair", "Auto-repair mesh", "") {
-        gui.actions.push(GuiAction::MeshRepair);
+        gui.actions.push(GuiAction::Mesh(M::Repair));
     }
 }
 

@@ -928,17 +928,19 @@ fn draw_mesh_menu(ui: &mut egui::Ui, gui: &mut GuiState) {
         });
         ui.separator();
         ui.menu_button("Modify", |ui| {
-            menu_action(ui, gui, "Decimate (50%)", GuiAction::MeshDecimate(0.5));
-            menu_action(ui, gui, "Subdivide", GuiAction::MeshSubdivide);
-            menu_action(ui, gui, "Smooth", GuiAction::MeshSmooth { iterations: 3, factor: 0.5 });
-            menu_action(ui, gui, "Fill Holes", GuiAction::MeshFillHoles);
-            menu_action(ui, gui, "Remesh...", GuiAction::MeshRemesh { target_edge_len: 1.0 });
-            menu_action(ui, gui, "Repair", GuiAction::MeshRepair);
+            use super::MeshAction as M;
+            menu_action(ui, gui, "Decimate (50%)", GuiAction::Mesh(M::Decimate(0.5)));
+            menu_action(ui, gui, "Subdivide", GuiAction::Mesh(M::Subdivide));
+            menu_action(ui, gui, "Smooth", GuiAction::Mesh(M::Smooth { iterations: 3, factor: 0.5 }));
+            menu_action(ui, gui, "Fill Holes", GuiAction::Mesh(M::FillHoles));
+            menu_action(ui, gui, "Remesh...", GuiAction::Mesh(M::Remesh { target_edge_len: 1.0 }));
+            menu_action(ui, gui, "Repair", GuiAction::Mesh(M::Repair));
         });
         ui.menu_button("Analyze", |ui| {
-            menu_action(ui, gui, "Check Watertight", GuiAction::MeshCheckWatertight);
-            menu_action(ui, gui, "Harmonize Normals", GuiAction::MeshHarmonizeNormals);
-            menu_action(ui, gui, "Flip Normals", GuiAction::MeshFlipNormals);
+            use super::MeshAction as M;
+            menu_action(ui, gui, "Check Watertight", GuiAction::Mesh(M::CheckWatertight));
+            menu_action(ui, gui, "Harmonize Normals", GuiAction::Mesh(M::HarmonizeNormals));
+            menu_action(ui, gui, "Flip Normals", GuiAction::Mesh(M::FlipNormals));
             menu_action(ui, gui, "Check Geometry", GuiAction::CheckGeometry);
         });
     });

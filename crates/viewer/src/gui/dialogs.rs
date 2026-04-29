@@ -669,9 +669,9 @@ pub(crate) fn draw_create_dialogs(ctx: &egui::Context, gui: &mut GuiState) {
                 });
                 let (ok, cancel, reset) = button_bar(ui, "Apply");
                 if ok {
-                    gui.actions.push(GuiAction::MeshSmooth {
+                    gui.actions.push(GuiAction::Mesh(super::MeshAction::Smooth {
                         iterations: gui.mesh_smooth_iters, factor: gui.mesh_smooth_factor,
-                    });
+                    }));
                     gui.show_mesh_smooth = false;
                 }
                 if cancel { gui.show_mesh_smooth = false; }
@@ -692,7 +692,9 @@ pub(crate) fn draw_create_dialogs(ctx: &egui::Context, gui: &mut GuiState) {
                 });
                 let (ok, cancel, reset) = button_bar(ui, "Apply");
                 if ok {
-                    gui.actions.push(GuiAction::MeshRemesh { target_edge_len: gui.mesh_remesh_edge_len });
+                    gui.actions.push(GuiAction::Mesh(super::MeshAction::Remesh {
+                        target_edge_len: gui.mesh_remesh_edge_len,
+                    }));
                     gui.show_mesh_remesh = false;
                 }
                 if cancel { gui.show_mesh_remesh = false; }

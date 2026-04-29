@@ -2,9 +2,9 @@
 //! viewport.
 
 use crate::gui::{
-    self, AssemblyAction, FemAction, GizmoMode, GuiAction, GuiState, MirrorPlane, ReportLevel,
-    SelectedEntity, SelectionMode, SketchEntityRef, SketchMode, SketchTool, SketcherAction,
-    ViewportInfo,
+    self, AssemblyAction, FemAction, GizmoMode, GuiAction, GuiState, MeshAction, MirrorPlane,
+    ReportLevel, SelectedEntity, SelectionMode, SketchEntityRef, SketchMode, SketchTool,
+    SketcherAction, ViewportInfo,
 };
 use crate::scripting::ScriptEngine;
 use crate::nav::{NavAction, NavConfig};
@@ -1609,63 +1609,7 @@ impl CadApp {
                 }
 
                 // -- Mesh operations --
-                GuiAction::MeshDecimate(ratio) => {
-                    if let Some(mesh) = &self.current_mesh {
-                        match cadkernel_io::decimate_mesh(mesh, ratio) {
-                            Ok(new_mesh) => {
-                                let count = new_mesh.indices.len();
-                                self.set_mesh(new_mesh);
-                                self.log_info(format!("Decimated to {count} triangles"));
-                            }
-                            Err(e) => {
-                                self.log_error(format!("Decimate failed: {e}"));
-                            }
-                        }
-                    } else {
-                        self.log_warning("No mesh to decimate");
-                    }
-                }
-                GuiAction::MeshSubdivide => {
-                    if let Some(mesh) = &self.current_mesh {
-                        match cadkernel_io::subdivide_mesh(mesh) {
-                            Ok(new_mesh) => {
-                                let count = new_mesh.indices.len();
-                                self.set_mesh(new_mesh);
-                                self.log_info(format!("Subdivided to {count} triangles"));
-                            }
-                            Err(e) => {
-                                self.log_error(format!("Subdivide failed: {e}"));
-                            }
-                        }
-                    } else {
-                        self.log_warning("No mesh to subdivide");
-                    }
-                }
-                GuiAction::MeshFillHoles => {
-                    if let Some(mesh) = &self.current_mesh {
-                        match cadkernel_io::fill_holes(mesh) {
-                            Ok(new_mesh) => {
-                                let count = new_mesh.indices.len();
-                                self.set_mesh(new_mesh);
-                                self.log_info(format!("Filled holes: {count} triangles"));
-                            }
-                            Err(e) => {
-                                self.log_error(format!("Fill holes failed: {e}"));
-                            }
-                        }
-                    } else {
-                        self.gui.status_message = "No mesh".into();
-                    }
-                }
-                GuiAction::MeshFlipNormals => {
-                    if let Some(mesh) = &self.current_mesh {
-                        let new_mesh = cadkernel_io::flip_normals(mesh);
-                        self.set_mesh(new_mesh);
-                        self.log_info("Normals flipped");
-                    } else {
-                        self.gui.status_message = "No mesh".into();
-                    }
-                }
+                GuiAction::Mesh(action) => self.process_mesh_action(action),
 
                 // -- Export formats --
                 GuiAction::ExportStep(path) => {
@@ -1982,74 +1926,6 @@ impl CadApp {
                         }
                     } else {
                         self.gui.status_message = "No solid for pattern".into();
-                    }
-                }
-
-                // -- Mesh operations (new) --
-                GuiAction::MeshSmooth { iterations, factor } => {
-                    if let Some(mesh) = &self.current_mesh {
-                        let new_mesh = cadkernel_io::smooth_mesh(mesh, iterations, factor);
-                        let count = new_mesh.vertices.len();
-                        self.set_mesh(new_mesh);
-                        self.log_info(format!("Smoothed: {iterations} iters, factor={factor:.2} ({count} verts)"));
-                    } else {
-                        self.gui.status_message = "No mesh to smooth".into();
-                    }
-                }
-                GuiAction::MeshHarmonizeNormals => {
-                    if let Some(mesh) = &self.current_mesh {
-                        let new_mesh = cadkernel_io::harmonize_normals(mesh);
-                        self.set_mesh(new_mesh);
-                        self.log_info("Normals harmonized");
-                    } else {
-                        self.gui.status_message = "No mesh".into();
-                    }
-                }
-                GuiAction::MeshCheckWatertight => {
-                    if let Some(mesh) = &self.current_mesh {
-                        let is_wt = cadkernel_io::check_mesh_watertight(mesh);
-                        if is_wt {
-                            self.log_info("Mesh is watertight");
-                        } else {
-                            self.log_warning("Mesh is NOT watertight (has boundary edges)");
-                        }
-                    } else {
-                        self.gui.status_message = "No mesh".into();
-                    }
-                }
-                GuiAction::MeshRemesh { target_edge_len } => {
-                    if let Some(mesh) = &self.current_mesh {
-                        match cadkernel_io::remesh(mesh, target_edge_len) {
-                            Ok(new_mesh) => {
-                                let count = new_mesh.indices.len();
-                                self.set_mesh(new_mesh);
-                                self.log_info(format!("Remeshed: {count} triangles (edge≤{target_edge_len:.2})"));
-                            }
-                            Err(e) => {
-                                self.log_error(format!("Remesh error: {e}"));
-                            }
-                        }
-                    } else {
-                        self.gui.status_message = "No mesh to remesh".into();
-                    }
-                }
-                GuiAction::MeshRepair => {
-                    if let Some(mesh) = &self.current_mesh {
-                        let (repaired, report) = cadkernel_io::evaluate_and_repair(mesh);
-                        let msg = format!(
-                            "Repair: {} degenerate removed, {} duplicates merged, normals {}",
-                            report.degenerate_removed,
-                            report.duplicate_vertices_merged,
-                            if report.normals_harmonized {
-                                "harmonized"
-                            } else {
-                                "OK"
-                            }
-                        );
-                        self.set_mesh(repaired);
-                        self.log_info(msg);
-                    } else {
-                        self.gui.status_message = "No mesh to repair".into();
                     }
                 }
 
@@ -4020,6 +3896,135 @@ impl CadApp {
             S::ToggleConstraintsVisible => {
                 if let Some(sm) = &mut self.gui.sketch_mode {
                     sm.show_constraints = !sm.show_constraints;
+                }
+            }
+        }
+    }
+
+    fn process_mesh_action(&mut self, action: MeshAction) {
+        use MeshAction as M;
+        match action {
+            M::Decimate(ratio) => {
+                if let Some(mesh) = &self.current_mesh {
+                    match cadkernel_io::decimate_mesh(mesh, ratio) {
+                        Ok(new_mesh) => {
+                            let count = new_mesh.indices.len();
+                            self.set_mesh(new_mesh);
+                            self.log_info(format!("Decimated to {count} triangles"));
+                        }
+                        Err(e) => {
+                            self.log_error(format!("Decimate failed: {e}"));
+                        }
+                    }
+                } else {
+                    self.log_warning("No mesh to decimate");
+                }
+            }
+            M::Subdivide => {
+                if let Some(mesh) = &self.current_mesh {
+                    match cadkernel_io::subdivide_mesh(mesh) {
+                        Ok(new_mesh) => {
+                            let count = new_mesh.indices.len();
+                            self.set_mesh(new_mesh);
+                            self.log_info(format!("Subdivided to {count} triangles"));
+                        }
+                        Err(e) => {
+                            self.log_error(format!("Subdivide failed: {e}"));
+                        }
+                    }
+                } else {
+                    self.log_warning("No mesh to subdivide");
+                }
+            }
+            M::FillHoles => {
+                if let Some(mesh) = &self.current_mesh {
+                    match cadkernel_io::fill_holes(mesh) {
+                        Ok(new_mesh) => {
+                            let count = new_mesh.indices.len();
+                            self.set_mesh(new_mesh);
+                            self.log_info(format!("Filled holes: {count} triangles"));
+                        }
+                        Err(e) => {
+                            self.log_error(format!("Fill holes failed: {e}"));
+                        }
+                    }
+                } else {
+                    self.gui.status_message = "No mesh".into();
+                }
+            }
+            M::FlipNormals => {
+                if let Some(mesh) = &self.current_mesh {
+                    let new_mesh = cadkernel_io::flip_normals(mesh);
+                    self.set_mesh(new_mesh);
+                    self.log_info("Normals flipped");
+                } else {
+                    self.gui.status_message = "No mesh".into();
+                }
+            }
+            M::Smooth { iterations, factor } => {
+                if let Some(mesh) = &self.current_mesh {
+                    let new_mesh = cadkernel_io::smooth_mesh(mesh, iterations, factor);
+                    let count = new_mesh.vertices.len();
+                    self.set_mesh(new_mesh);
+                    self.log_info(format!("Smoothed: {iterations} iters, factor={factor:.2} ({count} verts)"));
+                } else {
+                    self.gui.status_message = "No mesh to smooth".into();
+                }
+            }
+            M::HarmonizeNormals => {
+                if let Some(mesh) = &self.current_mesh {
+                    let new_mesh = cadkernel_io::harmonize_normals(mesh);
+                    self.set_mesh(new_mesh);
+                    self.log_info("Normals harmonized");
+                } else {
+                    self.gui.status_message = "No mesh".into();
+                }
+            }
+            M::CheckWatertight => {
+                if let Some(mesh) = &self.current_mesh {
+                    let is_wt = cadkernel_io::check_mesh_watertight(mesh);
+                    if is_wt {
+                        self.log_info("Mesh is watertight");
+                    } else {
+                        self.log_warning("Mesh is NOT watertight (has boundary edges)");
+                    }
+                } else {
+                    self.gui.status_message = "No mesh".into();
+                }
+            }
+            M::Remesh { target_edge_len } => {
+                if let Some(mesh) = &self.current_mesh {
+                    match cadkernel_io::remesh(mesh, target_edge_len) {
+                        Ok(new_mesh) => {
+                            let count = new_mesh.indices.len();
+                            self.set_mesh(new_mesh);
+                            self.log_info(format!("Remeshed: {count} triangles (edge\u{2264}{target_edge_len:.2})"));
+                        }
+                        Err(e) => {
+                            self.log_error(format!("Remesh error: {e}"));
+                        }
+                    }
+                } else {
+                    self.gui.status_message = "No mesh to remesh".into();
+                }
+            }
+            M::Repair => {
+                if let Some(mesh) = &self.current_mesh {
+                    let (repaired, report) = cadkernel_io::evaluate_and_repair(mesh);
+                    let msg = format!(
+                        "Repair: {} degenerate removed, {} duplicates merged, normals {}",
+                        report.degenerate_removed,
+                        report.duplicate_vertices_merged,
+                        if report.normals_harmonized {
+                            "harmonized"
+                        } else {
+                            "OK"
+                        }
+                    );
+                    self.set_mesh(repaired);
+                    self.log_info(msg);
+                } else {
+                    self.gui.status_message = "No mesh to repair".into();
                 }
             }
         }

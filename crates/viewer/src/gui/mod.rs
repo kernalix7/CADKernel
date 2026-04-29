@@ -4,6 +4,7 @@ pub(crate) mod assembly;
 mod context_menu;
 mod dialogs;
 pub(crate) mod fem;
+pub(crate) mod mesh;
 mod menu;
 mod overlays;
 mod properties;
@@ -24,6 +25,7 @@ pub(crate) use self::assembly::{AssemblyAction, AssemblyJointType, JointEditorSt
 pub(crate) use self::fem::{
     BcEditorState, BcKind, FemAction, MaterialPickerState, MaterialPreset, material_from_preset,
 };
+pub(crate) use self::mesh::MeshAction;
 pub(crate) use self::sketch_state::{
     DimensionKind, DimensionPopup, SketchEntityRef, SketcherAction, SketchMode, SketchTool,
 };
@@ -282,20 +284,7 @@ pub(crate) enum GuiAction {
     TechDrawThreeView,
     TechDrawExportSvg(PathBuf),
     TechDrawClear,
-    MeshDecimate(f64),
-    MeshSubdivide,
-    MeshFlipNormals,
-    MeshFillHoles,
-    MeshSmooth {
-        iterations: usize,
-        factor: f64,
-    },
-    MeshHarmonizeNormals,
-    MeshCheckWatertight,
-    MeshRemesh {
-        target_edge_len: f64,
-    },
-    MeshRepair,
+    Mesh(MeshAction),
     MeasureSolid,
     CheckGeometry,
     SelectAll,
