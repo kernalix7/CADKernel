@@ -482,8 +482,7 @@ pub fn make_circle_wire(
     } else {
         Vec3::new(0.0, 1.0, 0.0)
     };
-    let u = n.cross(arbitrary);
-    let u = u.normalized().unwrap();
+    let u = n.cross(arbitrary).normalized().unwrap_or(Vec3::X);
     let v = n.cross(u);
 
     let mut points = Vec::with_capacity(segments + 1);
@@ -597,7 +596,7 @@ pub fn make_ellipse_wire(
     } else {
         Vec3::new(0.0, 1.0, 0.0)
     };
-    let u = n.cross(arbitrary).normalized().unwrap();
+    let u = n.cross(arbitrary).normalized().unwrap_or(Vec3::X);
     let v = n.cross(u);
 
     let mut points = Vec::with_capacity(segments + 1);
@@ -633,7 +632,7 @@ pub fn make_rectangle_wire(
     } else {
         Vec3::new(0.0, 1.0, 0.0)
     };
-    let u = n.cross(arbitrary).normalized().unwrap();
+    let u = n.cross(arbitrary).normalized().unwrap_or(Vec3::X);
     let v = n.cross(u);
 
     Ok(vec![
@@ -1081,7 +1080,11 @@ pub fn snap_to_endpoint(wire: &[Point3], query: Point3) -> Option<SnapResult> {
             point: p,
             distance: p.distance_to(query),
         })
-        .min_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap())
+        .min_by(|a, b| {
+            a.distance
+                .partial_cmp(&b.distance)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
 }
 
 /// Find the nearest edge midpoint in a wire to the query point.
@@ -1097,7 +1100,11 @@ pub fn snap_to_midpoint(wire: &[Point3], query: Point3) -> Option<SnapResult> {
                 distance: mid.distance_to(query),
             }
         })
-        .min_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap())
+        .min_by(|a, b| {
+            a.distance
+                .partial_cmp(&b.distance)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
 }
 
 /// Find the nearest point on any wire edge to the query point.
@@ -1124,7 +1131,11 @@ pub fn snap_to_nearest(wire: &[Point3], query: Point3) -> Option<SnapResult> {
                 distance: closest.distance_to(query),
             }
         })
-        .min_by(|a, b| a.distance.partial_cmp(&b.distance).unwrap())
+        .min_by(|a, b| {
+            a.distance
+                .partial_cmp(&b.distance)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
 }
 
 /// Compute wire length (sum of segment lengths).
@@ -2959,6 +2970,28 @@ mod tests {
         .unwrap();
         assert_eq!(pts.len(), 5);
         assert!(pts[0].distance_to(pts[4]) < 1e-10);
+    }
+
+    #[test]
+    fn test_make_circle_wire_x_axis_normal_no_panic() {
+        // Regression: with normal=X axis, the internal axis-selection branch
+        // (n.x.abs() >= 0.9) is taken; ensure no panic on the cross-product
+        // normalization fallback path.
+        let pts = make_circle_wire(Point3::ORIGIN, Vec3::new(1.0, 0.0, 0.0), 1.0, 8).unwrap();
+        assert_eq!(pts.len(), 9);
+        let zero_normal = make_circle_wire(Point3::ORIGIN, Vec3::ZERO, 1.0, 8);
+        assert!(zero_normal.is_err());
+    }
+
+    #[test]
+    fn test_snap_helpers_nan_input_no_panic() {
+        // Regression: NaN in query coords previously hit partial_cmp().unwrap().
+        let wire = vec![Point3::ORIGIN, Point3::new(1.0, 0.0, 0.0)];
+        let nan_query = Point3::new(f64::NAN, 0.0, 0.0);
+        // All three snap helpers must return Some without panicking.
+        assert!(snap_to_endpoint(&wire, nan_query).is_some());
+        assert!(snap_to_midpoint(&wire, nan_query).is_some());
+        assert!(snap_to_nearest(&wire, nan_query).is_some());
     }
 
     #[test]

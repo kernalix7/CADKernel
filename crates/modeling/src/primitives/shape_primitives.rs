@@ -132,7 +132,7 @@ pub fn make_ellipse_shape(
     } else {
         Vec3::new(0.0, 1.0, 0.0)
     };
-    let major_axis = n.cross(arbitrary).normalized().unwrap();
+    let major_axis = n.cross(arbitrary).normalized().unwrap_or(Vec3::X);
     let ellipse = Ellipse::new(center, normal, major_axis, semi_major, semi_minor);
 
     let segments = DEFAULT_WIRE_SEGMENTS;
