@@ -476,7 +476,11 @@ pub fn shaft_design(
         result_model = Some(match result_model {
             None => seg_model,
             Some(prev) => {
-                let prev_solid = prev.solids.iter().next().unwrap().0;
+                let prev_solid = prev.solids.iter().next().map(|(h, _)| h).ok_or_else(|| {
+                    cadkernel_core::KernelError::ValidationFailed(
+                        "shaft_design: prior boolean union produced an empty model".into(),
+                    )
+                })?;
                 boolean_op(&prev, prev_solid, &seg_model, r.solid, BooleanOp::Union)?
             }
         });
@@ -484,7 +488,11 @@ pub fn shaft_design(
     }
 
     let _ = model;
-    Ok(result_model.unwrap())
+    result_model.ok_or_else(|| {
+        cadkernel_core::KernelError::ValidationFailed(
+            "shaft_design: no result produced (unreachable when segments are validated non-empty)".into(),
+        )
+    })
 }
 
 /// Creates a reference copy of selected faces from a source model.

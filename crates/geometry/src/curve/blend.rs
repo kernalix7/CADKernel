@@ -1,3 +1,4 @@
+use cadkernel_core::KernelResult;
 use cadkernel_math::Point3;
 
 use crate::curve::nurbs::NurbsCurve;
@@ -13,7 +14,7 @@ pub fn blend_curve(
     curve1: &dyn Curve,
     curve2: &dyn Curve,
     continuity: usize,
-) -> NurbsCurve {
+) -> KernelResult<NurbsCurve> {
     let (_, t1_end) = curve1.domain();
     let (t2_start, _) = curve2.domain();
 
@@ -71,7 +72,6 @@ pub fn blend_curve(
     let control_points = vec![p0, p1, p2, p3];
 
     NurbsCurve::new(3, control_points, weights, knots)
-        .expect("blend_curve: cubic Bezier construction must not fail")
 }
 
 #[cfg(test)]
@@ -84,7 +84,7 @@ mod tests {
         let c1 = LineSegment::new(Point3::ORIGIN, Point3::new(1.0, 0.0, 0.0));
         let c2 = LineSegment::new(Point3::new(2.0, 1.0, 0.0), Point3::new(3.0, 1.0, 0.0));
 
-        let blend = blend_curve(&c1, &c2, 0);
+        let blend = blend_curve(&c1, &c2, 0).expect("valid inputs");
 
         // Start should match end of c1
         let start = blend.point_at(0.0);
@@ -100,7 +100,7 @@ mod tests {
         let c1 = LineSegment::new(Point3::ORIGIN, Point3::new(1.0, 0.0, 0.0));
         let c2 = LineSegment::new(Point3::new(2.0, 1.0, 0.0), Point3::new(3.0, 1.0, 0.0));
 
-        let blend = blend_curve(&c1, &c2, 1);
+        let blend = blend_curve(&c1, &c2, 1).expect("valid inputs");
 
         // Tangent at start should be in the same direction as c1's tangent (along X)
         let tang_start = blend.tangent_at(0.0);
@@ -117,7 +117,7 @@ mod tests {
         let c1 = LineSegment::new(Point3::ORIGIN, Point3::new(1.0, 0.0, 0.0));
         let c2 = LineSegment::new(Point3::new(4.0, 0.0, 0.0), Point3::new(5.0, 0.0, 0.0));
 
-        let blend = blend_curve(&c1, &c2, 0);
+        let blend = blend_curve(&c1, &c2, 0).expect("valid inputs");
 
         // Domain should be [0, 1]
         assert_eq!(blend.domain(), (0.0, 1.0));
