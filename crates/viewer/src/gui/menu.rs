@@ -949,45 +949,46 @@ fn draw_mesh_menu(ui: &mut egui::Ui, gui: &mut GuiState) {
 }
 
 fn draw_techdraw_menu(ui: &mut egui::Ui, gui: &mut GuiState) {
+    use super::TechDrawAction as T;
     ui.menu_button("TechDraw", |ui| {
         ui.menu_button("Page", |ui| {
-            menu_action(ui, gui, "New Page", GuiAction::TechDrawNewPage);
-            menu_action(ui, gui, "From Template...", GuiAction::TechDrawFromTemplate);
-            menu_action(ui, gui, "Redraw Page", GuiAction::TechDrawRedraw);
+            menu_action(ui, gui, "New Page", GuiAction::TechDraw(T::NewPage));
+            menu_action(ui, gui, "From Template...", GuiAction::TechDraw(T::FromTemplate));
+            menu_action(ui, gui, "Redraw Page", GuiAction::TechDraw(T::Redraw));
         });
         ui.menu_button("Views", |ui| {
-            menu_action(ui, gui, "Front View", GuiAction::TechDrawAddView(cadkernel_io::ProjectionDir::Front));
-            menu_action(ui, gui, "Top View", GuiAction::TechDrawAddView(cadkernel_io::ProjectionDir::Top));
-            menu_action(ui, gui, "Right View", GuiAction::TechDrawAddView(cadkernel_io::ProjectionDir::Right));
-            menu_action(ui, gui, "Isometric View", GuiAction::TechDrawAddView(cadkernel_io::ProjectionDir::Isometric));
+            menu_action(ui, gui, "Front View", GuiAction::TechDraw(T::AddView(cadkernel_io::ProjectionDir::Front)));
+            menu_action(ui, gui, "Top View", GuiAction::TechDraw(T::AddView(cadkernel_io::ProjectionDir::Top)));
+            menu_action(ui, gui, "Right View", GuiAction::TechDraw(T::AddView(cadkernel_io::ProjectionDir::Right)));
+            menu_action(ui, gui, "Isometric View", GuiAction::TechDraw(T::AddView(cadkernel_io::ProjectionDir::Isometric)));
             ui.separator();
-            menu_action(ui, gui, "3-View Layout", GuiAction::TechDrawThreeView);
-            menu_action(ui, gui, "Section View", GuiAction::TechDrawSectionView);
-            menu_action(ui, gui, "Detail View", GuiAction::TechDrawDetailView);
-            menu_action(ui, gui, "Broken View", GuiAction::TechDrawBrokenView);
+            menu_action(ui, gui, "3-View Layout", GuiAction::TechDraw(T::ThreeView));
+            menu_action(ui, gui, "Section View", GuiAction::TechDraw(T::SectionView));
+            menu_action(ui, gui, "Detail View", GuiAction::TechDraw(T::DetailView));
+            menu_action(ui, gui, "Broken View", GuiAction::TechDraw(T::BrokenView));
         });
         ui.separator();
         ui.menu_button("Dimensions", |ui| {
-            menu_action(ui, gui, "Linear Dimension", GuiAction::TechDrawDimLinear);
-            menu_action(ui, gui, "Radius Dimension", GuiAction::TechDrawDimRadius);
-            menu_action(ui, gui, "Diameter Dimension", GuiAction::TechDrawDimDiameter);
-            menu_action(ui, gui, "Angle Dimension", GuiAction::TechDrawDimAngle);
-            menu_action(ui, gui, "Arc Length", GuiAction::TechDrawDimArcLen);
-            menu_action(ui, gui, "Area", GuiAction::TechDrawDimArea);
+            menu_action(ui, gui, "Linear Dimension", GuiAction::TechDraw(T::DimLinear));
+            menu_action(ui, gui, "Radius Dimension", GuiAction::TechDraw(T::DimRadius));
+            menu_action(ui, gui, "Diameter Dimension", GuiAction::TechDraw(T::DimDiameter));
+            menu_action(ui, gui, "Angle Dimension", GuiAction::TechDraw(T::DimAngle));
+            menu_action(ui, gui, "Arc Length", GuiAction::TechDraw(T::DimArcLen));
+            menu_action(ui, gui, "Area", GuiAction::TechDraw(T::DimArea));
         });
         ui.menu_button("Annotations", |ui| {
-            menu_action(ui, gui, "Text", GuiAction::TechDrawText);
-            menu_action(ui, gui, "Rich Text", GuiAction::TechDrawRichText);
-            menu_action(ui, gui, "Balloon", GuiAction::TechDrawBalloon);
-            menu_action(ui, gui, "Leader Line", GuiAction::TechDrawLeader);
-            menu_action(ui, gui, "Weld Symbol", GuiAction::TechDrawWeld);
-            menu_action(ui, gui, "Surface Finish", GuiAction::TechDrawSurfFinish);
+            menu_action(ui, gui, "Text", GuiAction::TechDraw(T::Text));
+            menu_action(ui, gui, "Rich Text", GuiAction::TechDraw(T::RichText));
+            menu_action(ui, gui, "Balloon", GuiAction::TechDraw(T::Balloon));
+            menu_action(ui, gui, "Leader Line", GuiAction::TechDraw(T::Leader));
+            menu_action(ui, gui, "Weld Symbol", GuiAction::TechDraw(T::Weld));
+            menu_action(ui, gui, "Surface Finish", GuiAction::TechDraw(T::SurfFinish));
         });
         ui.menu_button("Centerlines", |ui| {
-            menu_action(ui, gui, "Center on Face", GuiAction::TechDrawCenterFace);
-            menu_action(ui, gui, "Center Lines", GuiAction::TechDrawCenterLines);
-            menu_action(ui, gui, "Center Points", GuiAction::TechDrawCenterPoints);
-            menu_action(ui, gui, "Bolt Circle", GuiAction::TechDrawBoltCircle);
+            menu_action(ui, gui, "Center on Face", GuiAction::TechDraw(T::CenterFace));
+            menu_action(ui, gui, "Center Lines", GuiAction::TechDraw(T::CenterLines));
+            menu_action(ui, gui, "Center Points", GuiAction::TechDraw(T::CenterPoints));
+            menu_action(ui, gui, "Bolt Circle", GuiAction::TechDraw(T::BoltCircle));
         });
         ui.separator();
         ui.menu_button("Export", |ui| {
@@ -997,7 +998,7 @@ fn draw_techdraw_menu(ui: &mut egui::Ui, gui: &mut GuiState) {
                     .set_file_name("drawing.svg")
                     .save_file()
                 {
-                    gui.actions.push(GuiAction::TechDrawExportSvg(path));
+                    gui.actions.push(GuiAction::TechDraw(T::ExportSvg(path)));
                 }
                 ui.close_menu();
             }
@@ -1007,7 +1008,7 @@ fn draw_techdraw_menu(ui: &mut egui::Ui, gui: &mut GuiState) {
                     .set_file_name("drawing.dxf")
                     .save_file()
                 {
-                    gui.actions.push(GuiAction::TechDrawExportDxf(path));
+                    gui.actions.push(GuiAction::TechDraw(T::ExportDxf(path)));
                 }
                 ui.close_menu();
             }
@@ -1017,13 +1018,13 @@ fn draw_techdraw_menu(ui: &mut egui::Ui, gui: &mut GuiState) {
                     .set_file_name("drawing.pdf")
                     .save_file()
                 {
-                    gui.actions.push(GuiAction::TechDrawExportPdf(path));
+                    gui.actions.push(GuiAction::TechDraw(T::ExportPdf(path)));
                 }
                 ui.close_menu();
             }
         });
         ui.separator();
-        menu_action(ui, gui, "Clear All", GuiAction::TechDrawClear);
+        menu_action(ui, gui, "Clear All", GuiAction::TechDraw(T::Clear));
     });
 }
 

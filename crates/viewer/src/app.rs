@@ -4,7 +4,8 @@
 use crate::gui::{
     self, AssemblyAction, DraftAction, FemAction, GizmoMode, GuiAction, GuiState, MeshAction,
     MirrorPlane, PartAction, PartDesignAction, ReportLevel, SelectedEntity, SelectionMode,
-    SketchEntityRef, SketchMode, SketchTool, SketcherAction, SurfaceAction, ViewportInfo,
+    SketchEntityRef, SketchMode, SketchTool, SketcherAction, SurfaceAction, TechDrawAction,
+    ViewportInfo,
 };
 use crate::scripting::ScriptEngine;
 use crate::nav::{NavAction, NavConfig};
@@ -1551,62 +1552,8 @@ impl CadApp {
                 // -- Sketcher workbench --
                 GuiAction::Sketcher(action) => self.process_sketcher_action(action),
 
-                // -- TechDraw actions --
-                GuiAction::TechDrawAddView(dir) => {
-                    if let Some(solid) = self.current_solid {
-                        let view =
-                            cadkernel_io::project_solid(&self.model, solid, dir);
-                        let n_edges = view.edges.len();
-                        let sheet = self
-                            .gui
-                            .techdraw_sheet
-                            .get_or_insert_with(cadkernel_io::DrawingSheet::a4_landscape);
-                        sheet.views.push(view);
-                        self.gui.status_message =
-                            format!("TechDraw: added {} view ({n_edges} edges)", dir.label());
-                    } else {
-                        self.gui.status_message =
-                            "TechDraw: no solid to project".into();
-                    }
-                }
-
-                GuiAction::TechDrawThreeView => {
-                    if let Some(solid) = self.current_solid {
-                        let sheet =
-                            cadkernel_io::three_view_drawing(&self.model, solid);
-                        let total: usize = sheet.views.iter().map(|v| v.edges.len()).sum();
-                        self.gui.techdraw_sheet = Some(sheet);
-                        self.gui.status_message =
-                            format!("TechDraw: 3-view drawing ({total} edges)");
-                    } else {
-                        self.gui.status_message =
-                            "TechDraw: no solid to project".into();
-                    }
-                }
-
-                GuiAction::TechDrawExportSvg(path) => {
-                    if let Some(sheet) = &self.gui.techdraw_sheet {
-                        let svg = cadkernel_io::drawing_to_svg(sheet);
-                        match std::fs::write(&path, svg.render()) {
-                            Ok(()) => {
-                                self.gui.status_message =
-                                    format!("Exported SVG: {}", path.display());
-                            }
-                            Err(e) => {
-                                self.gui.status_message =
-                                    format!("SVG export failed: {e}");
-                            }
-                        }
-                    } else {
-                        self.gui.status_message =
-                            "TechDraw: no drawing to export".into();
-                    }
-                }
-
-                GuiAction::TechDrawClear => {
-                    self.gui.techdraw_sheet = None;
-                    self.gui.status_message = "TechDraw: cleared".into();
-                }
+                // -- TechDraw workbench --
+                GuiAction::TechDraw(action) => self.process_techdraw_action(action),
 
                 // -- Mesh operations --
                 GuiAction::Mesh(action) => self.process_mesh_action(action),
@@ -2374,36 +2321,6 @@ impl CadApp {
 
                 // -- FEM workbench --
                 GuiAction::Fem(action) => self.process_fem_action(action),
-
-                // -- TechDraw expanded --
-                GuiAction::TechDrawNewPage => self.log_info("TechDraw: new page"),
-                GuiAction::TechDrawFromTemplate => self.log_info("TechDraw: from template"),
-                GuiAction::TechDrawRedraw => self.log_info("TechDraw: redraw"),
-                GuiAction::TechDrawSectionView => self.log_info("TechDraw: section view"),
-                GuiAction::TechDrawDetailView => self.log_info("TechDraw: detail view"),
-                GuiAction::TechDrawBrokenView => self.log_info("TechDraw: broken view"),
-                GuiAction::TechDrawDimLinear => self.log_info("TechDraw: dim linear"),
-                GuiAction::TechDrawDimRadius => self.log_info("TechDraw: dim radius"),
-                GuiAction::TechDrawDimDiameter => self.log_info("TechDraw: dim diameter"),
-                GuiAction::TechDrawDimAngle => self.log_info("TechDraw: dim angle"),
-                GuiAction::TechDrawDimArcLen => self.log_info("TechDraw: dim arc length"),
-                GuiAction::TechDrawDimArea => self.log_info("TechDraw: dim area"),
-                GuiAction::TechDrawText => self.log_info("TechDraw: text"),
-                GuiAction::TechDrawRichText => self.log_info("TechDraw: rich text"),
-                GuiAction::TechDrawBalloon => self.log_info("TechDraw: balloon"),
-                GuiAction::TechDrawLeader => self.log_info("TechDraw: leader"),
-                GuiAction::TechDrawWeld => self.log_info("TechDraw: weld symbol"),
-                GuiAction::TechDrawSurfFinish => self.log_info("TechDraw: surface finish"),
-                GuiAction::TechDrawCenterFace => self.log_info("TechDraw: center face"),
-                GuiAction::TechDrawCenterLines => self.log_info("TechDraw: center lines"),
-                GuiAction::TechDrawCenterPoints => self.log_info("TechDraw: center points"),
-                GuiAction::TechDrawBoltCircle => self.log_info("TechDraw: bolt circle"),
-                GuiAction::TechDrawExportDxf(ref path) => {
-                    self.log_info(format!("TechDraw: export DXF → {}", path.display()));
-                }
-                GuiAction::TechDrawExportPdf(ref path) => {
-                    self.log_info(format!("TechDraw: export PDF → {}", path.display()));
-                }
 
                 // -- I/O expanded --
                 GuiAction::ImportSvg(ref path) => {
@@ -4060,6 +3977,85 @@ impl CadApp {
             D::WireToBSpline => self.log_info("Draft: wire to B-spline"),
             D::ToSketch => self.log_info("Draft: convert to sketch"),
             D::ToggleSnap(mode) => self.log_info(format!("Draft: toggle snap '{mode}'")),
+        }
+    }
+
+    fn process_techdraw_action(&mut self, action: TechDrawAction) {
+        use TechDrawAction as T;
+        match action {
+            T::AddView(dir) => {
+                if let Some(solid) = self.current_solid {
+                    let view = cadkernel_io::project_solid(&self.model, solid, dir);
+                    let n_edges = view.edges.len();
+                    let sheet = self
+                        .gui
+                        .techdraw_sheet
+                        .get_or_insert_with(cadkernel_io::DrawingSheet::a4_landscape);
+                    sheet.views.push(view);
+                    self.gui.status_message =
+                        format!("TechDraw: added {} view ({n_edges} edges)", dir.label());
+                } else {
+                    self.gui.status_message = "TechDraw: no solid to project".into();
+                }
+            }
+            T::ThreeView => {
+                if let Some(solid) = self.current_solid {
+                    let sheet = cadkernel_io::three_view_drawing(&self.model, solid);
+                    let total: usize = sheet.views.iter().map(|v| v.edges.len()).sum();
+                    self.gui.techdraw_sheet = Some(sheet);
+                    self.gui.status_message = format!("TechDraw: 3-view drawing ({total} edges)");
+                } else {
+                    self.gui.status_message = "TechDraw: no solid to project".into();
+                }
+            }
+            T::ExportSvg(path) => {
+                if let Some(sheet) = &self.gui.techdraw_sheet {
+                    let svg = cadkernel_io::drawing_to_svg(sheet);
+                    match std::fs::write(&path, svg.render()) {
+                        Ok(()) => {
+                            self.gui.status_message =
+                                format!("Exported SVG: {}", path.display());
+                        }
+                        Err(e) => {
+                            self.gui.status_message = format!("SVG export failed: {e}");
+                        }
+                    }
+                } else {
+                    self.gui.status_message = "TechDraw: no drawing to export".into();
+                }
+            }
+            T::Clear => {
+                self.gui.techdraw_sheet = None;
+                self.gui.status_message = "TechDraw: cleared".into();
+            }
+            T::NewPage => self.log_info("TechDraw: new page"),
+            T::FromTemplate => self.log_info("TechDraw: from template"),
+            T::Redraw => self.log_info("TechDraw: redraw"),
+            T::SectionView => self.log_info("TechDraw: section view"),
+            T::DetailView => self.log_info("TechDraw: detail view"),
+            T::BrokenView => self.log_info("TechDraw: broken view"),
+            T::DimLinear => self.log_info("TechDraw: dim linear"),
+            T::DimRadius => self.log_info("TechDraw: dim radius"),
+            T::DimDiameter => self.log_info("TechDraw: dim diameter"),
+            T::DimAngle => self.log_info("TechDraw: dim angle"),
+            T::DimArcLen => self.log_info("TechDraw: dim arc length"),
+            T::DimArea => self.log_info("TechDraw: dim area"),
+            T::Text => self.log_info("TechDraw: text"),
+            T::RichText => self.log_info("TechDraw: rich text"),
+            T::Balloon => self.log_info("TechDraw: balloon"),
+            T::Leader => self.log_info("TechDraw: leader"),
+            T::Weld => self.log_info("TechDraw: weld symbol"),
+            T::SurfFinish => self.log_info("TechDraw: surface finish"),
+            T::CenterFace => self.log_info("TechDraw: center face"),
+            T::CenterLines => self.log_info("TechDraw: center lines"),
+            T::CenterPoints => self.log_info("TechDraw: center points"),
+            T::BoltCircle => self.log_info("TechDraw: bolt circle"),
+            T::ExportDxf(path) => {
+                self.log_info(format!("TechDraw: export DXF \u{2192} {}", path.display()));
+            }
+            T::ExportPdf(path) => {
+                self.log_info(format!("TechDraw: export PDF \u{2192} {}", path.display()));
+            }
         }
     }
 

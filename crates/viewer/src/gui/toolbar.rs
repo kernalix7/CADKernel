@@ -2965,17 +2965,18 @@ fn draw_mesh_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
 
 fn draw_techdraw_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
     use cadkernel_io::ProjectionDir;
+    use super::TechDrawAction as T;
 
     section_label(ui, "Page");
     // -- Page --
     if icon_button(ui, ToolIcon::NewPage, "New Page", "New drawing page", "") {
-        gui.actions.push(GuiAction::TechDrawNewPage);
+        gui.actions.push(GuiAction::TechDraw(T::NewPage));
     }
     if icon_button(ui, ToolIcon::Template, "Template", "From template", "") {
-        gui.actions.push(GuiAction::TechDrawFromTemplate);
+        gui.actions.push(GuiAction::TechDraw(T::FromTemplate));
     }
     if icon_button(ui, ToolIcon::Redraw, "Redraw", "Redraw page", "") {
-        gui.actions.push(GuiAction::TechDrawRedraw);
+        gui.actions.push(GuiAction::TechDraw(T::Redraw));
     }
 
     toolbar_separator(ui);
@@ -2984,31 +2985,31 @@ fn draw_techdraw_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
     // -- Views --
     if icon_button(ui, ToolIcon::ViewFront, "Front", "Front projection", "") {
         gui.actions
-            .push(GuiAction::TechDrawAddView(ProjectionDir::Front));
+            .push(GuiAction::TechDraw(T::AddView(ProjectionDir::Front)));
     }
     if icon_button(ui, ToolIcon::ViewTop, "Top", "Top projection", "") {
         gui.actions
-            .push(GuiAction::TechDrawAddView(ProjectionDir::Top));
+            .push(GuiAction::TechDraw(T::AddView(ProjectionDir::Top)));
     }
     if icon_button(ui, ToolIcon::ViewRight, "Right", "Right projection", "") {
         gui.actions
-            .push(GuiAction::TechDrawAddView(ProjectionDir::Right));
+            .push(GuiAction::TechDraw(T::AddView(ProjectionDir::Right)));
     }
     if icon_button(ui, ToolIcon::ViewIso, "Isometric", "Isometric projection", "") {
         gui.actions
-            .push(GuiAction::TechDrawAddView(ProjectionDir::Isometric));
+            .push(GuiAction::TechDraw(T::AddView(ProjectionDir::Isometric)));
     }
     if icon_button(ui, ToolIcon::SectionView, "Section", "Section view", "") {
-        gui.actions.push(GuiAction::TechDrawSectionView);
+        gui.actions.push(GuiAction::TechDraw(T::SectionView));
     }
     if icon_button(ui, ToolIcon::DetailView, "Detail", "Detail view", "") {
-        gui.actions.push(GuiAction::TechDrawDetailView);
+        gui.actions.push(GuiAction::TechDraw(T::DetailView));
     }
     if icon_button(ui, ToolIcon::BrokenView, "Broken", "Broken view", "") {
-        gui.actions.push(GuiAction::TechDrawBrokenView);
+        gui.actions.push(GuiAction::TechDraw(T::BrokenView));
     }
     if icon_button(ui, ToolIcon::ThreeView, "3-View", "Standard 3-view drawing", "") {
-        gui.actions.push(GuiAction::TechDrawThreeView);
+        gui.actions.push(GuiAction::TechDraw(T::ThreeView));
     }
 
     toolbar_separator(ui);
@@ -3016,22 +3017,22 @@ fn draw_techdraw_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
     section_label(ui, "Dimensions");
     // -- Dimensions --
     if icon_button(ui, ToolIcon::DimLinear, "Linear", "Linear dimension", "") {
-        gui.actions.push(GuiAction::TechDrawDimLinear);
+        gui.actions.push(GuiAction::TechDraw(T::DimLinear));
     }
     if icon_button(ui, ToolIcon::DimRadius, "Radius", "Radius dimension", "") {
-        gui.actions.push(GuiAction::TechDrawDimRadius);
+        gui.actions.push(GuiAction::TechDraw(T::DimRadius));
     }
     if icon_button(ui, ToolIcon::DimDiameter, "Diameter", "Diameter dimension", "") {
-        gui.actions.push(GuiAction::TechDrawDimDiameter);
+        gui.actions.push(GuiAction::TechDraw(T::DimDiameter));
     }
     if icon_button(ui, ToolIcon::DimAngle, "Angle", "Angle dimension", "") {
-        gui.actions.push(GuiAction::TechDrawDimAngle);
+        gui.actions.push(GuiAction::TechDraw(T::DimAngle));
     }
     if icon_button(ui, ToolIcon::DimArcLen, "Arc Length", "Arc length dimension", "") {
-        gui.actions.push(GuiAction::TechDrawDimArcLen);
+        gui.actions.push(GuiAction::TechDraw(T::DimArcLen));
     }
     if icon_button(ui, ToolIcon::DimArea, "Area", "Area dimension", "") {
-        gui.actions.push(GuiAction::TechDrawDimArea);
+        gui.actions.push(GuiAction::TechDraw(T::DimArea));
     }
 
     toolbar_separator(ui);
@@ -3039,22 +3040,22 @@ fn draw_techdraw_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
     section_label(ui, "Annotations");
     // -- Annotations --
     if icon_button(ui, ToolIcon::TextAnnot, "Text", "Add text", "") {
-        gui.actions.push(GuiAction::TechDrawText);
+        gui.actions.push(GuiAction::TechDraw(T::Text));
     }
     if icon_button(ui, ToolIcon::RichText, "Rich Text", "Rich text annotation", "") {
-        gui.actions.push(GuiAction::TechDrawRichText);
+        gui.actions.push(GuiAction::TechDraw(T::RichText));
     }
     if icon_button(ui, ToolIcon::Balloon, "Balloon", "Balloon annotation", "") {
-        gui.actions.push(GuiAction::TechDrawBalloon);
+        gui.actions.push(GuiAction::TechDraw(T::Balloon));
     }
     if icon_button(ui, ToolIcon::Leader, "Leader", "Leader line", "") {
-        gui.actions.push(GuiAction::TechDrawLeader);
+        gui.actions.push(GuiAction::TechDraw(T::Leader));
     }
     if icon_button(ui, ToolIcon::Weld, "Weld", "Weld symbol", "") {
-        gui.actions.push(GuiAction::TechDrawWeld);
+        gui.actions.push(GuiAction::TechDraw(T::Weld));
     }
     if icon_button(ui, ToolIcon::SurfFinish, "Surface Finish", "Surface finish symbol", "") {
-        gui.actions.push(GuiAction::TechDrawSurfFinish);
+        gui.actions.push(GuiAction::TechDraw(T::SurfFinish));
     }
 
     toolbar_separator(ui);
@@ -3062,16 +3063,16 @@ fn draw_techdraw_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
     section_label(ui, "Centerlines");
     // -- Centerlines --
     if icon_button(ui, ToolIcon::CenterFace, "Face Center", "Face centerlines", "") {
-        gui.actions.push(GuiAction::TechDrawCenterFace);
+        gui.actions.push(GuiAction::TechDraw(T::CenterFace));
     }
     if icon_button(ui, ToolIcon::CenterLines, "Centerlines", "Centerlines between lines", "") {
-        gui.actions.push(GuiAction::TechDrawCenterLines);
+        gui.actions.push(GuiAction::TechDraw(T::CenterLines));
     }
     if icon_button(ui, ToolIcon::CenterPoints, "Center Points", "Centerlines from points", "") {
-        gui.actions.push(GuiAction::TechDrawCenterPoints);
+        gui.actions.push(GuiAction::TechDraw(T::CenterPoints));
     }
     if icon_button(ui, ToolIcon::BoltCircle, "Bolt Circle", "Bolt circle centerlines", "") {
-        gui.actions.push(GuiAction::TechDrawBoltCircle);
+        gui.actions.push(GuiAction::TechDraw(T::BoltCircle));
     }
 
     toolbar_separator(ui);
@@ -3084,7 +3085,7 @@ fn draw_techdraw_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
             .set_file_name("drawing.svg")
             .save_file()
         {
-            gui.actions.push(GuiAction::TechDrawExportSvg(path));
+            gui.actions.push(GuiAction::TechDraw(T::ExportSvg(path)));
         }
     }
     if icon_button(ui, ToolIcon::ExportDxf, "DXF", "Export to DXF", "") {
@@ -3093,7 +3094,7 @@ fn draw_techdraw_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
             .set_file_name("drawing.dxf")
             .save_file()
         {
-            gui.actions.push(GuiAction::TechDrawExportDxf(path));
+            gui.actions.push(GuiAction::TechDraw(T::ExportDxf(path)));
         }
     }
     if icon_button(ui, ToolIcon::ExportPdf, "PDF", "Export to PDF", "") {
@@ -3102,11 +3103,11 @@ fn draw_techdraw_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
             .set_file_name("drawing.pdf")
             .save_file()
         {
-            gui.actions.push(GuiAction::TechDrawExportPdf(path));
+            gui.actions.push(GuiAction::TechDraw(T::ExportPdf(path)));
         }
     }
     if icon_button(ui, ToolIcon::Clear, "Clear", "Clear all views", "") {
-        gui.actions.push(GuiAction::TechDrawClear);
+        gui.actions.push(GuiAction::TechDraw(T::Clear));
     }
 }
 

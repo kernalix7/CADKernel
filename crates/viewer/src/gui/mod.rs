@@ -17,6 +17,7 @@ pub(crate) mod sketch_state;
 mod sketch_ui;
 mod status_bar;
 pub(crate) mod task_panel;
+pub(crate) mod techdraw;
 pub(crate) mod theme;
 mod toolbar;
 mod tree;
@@ -37,6 +38,7 @@ pub(crate) use self::surface::SurfaceAction;
 pub(crate) use self::sketch_state::{
     DimensionKind, DimensionPopup, SketchEntityRef, SketcherAction, SketchMode, SketchTool,
 };
+pub(crate) use self::techdraw::TechDrawAction;
 
 use crate::nav::NavConfig;
 use crate::render::{Camera, DisplayMode, GridConfig, StandardView};
@@ -288,10 +290,7 @@ pub(crate) enum GuiAction {
         axis: u8,
     },
     Sketcher(SketcherAction),
-    TechDrawAddView(cadkernel_io::ProjectionDir),
-    TechDrawThreeView,
-    TechDrawExportSvg(PathBuf),
-    TechDrawClear,
+    TechDraw(TechDrawAction),
     Mesh(MeshAction),
     MeasureSolid,
     CheckGeometry,
@@ -343,32 +342,6 @@ pub(crate) enum GuiAction {
 
     // -- FEM workbench --
     Fem(FemAction),
-
-    // -- TechDraw expanded --
-    TechDrawNewPage,
-    TechDrawFromTemplate,
-    TechDrawRedraw,
-    TechDrawSectionView,
-    TechDrawDetailView,
-    TechDrawBrokenView,
-    TechDrawDimLinear,
-    TechDrawDimRadius,
-    TechDrawDimDiameter,
-    TechDrawDimAngle,
-    TechDrawDimArcLen,
-    TechDrawDimArea,
-    TechDrawText,
-    TechDrawRichText,
-    TechDrawBalloon,
-    TechDrawLeader,
-    TechDrawWeld,
-    TechDrawSurfFinish,
-    TechDrawCenterFace,
-    TechDrawCenterLines,
-    TechDrawCenterPoints,
-    TechDrawBoltCircle,
-    TechDrawExportDxf(PathBuf),
-    TechDrawExportPdf(PathBuf),
 
     // -- I/O expanded --
     ImportSvg(PathBuf),
