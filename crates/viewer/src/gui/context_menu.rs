@@ -411,23 +411,24 @@ pub(crate) fn tree_context_menu(
     ui.separator();
 
     // PartDesign feature tree operations
+    use super::PartDesignAction as Pd;
     if ui.button("Suppress Feature").clicked() {
-        gui.actions.push(GuiAction::SuppressFeature);
+        gui.actions.push(GuiAction::PartDesign(Pd::SuppressFeature));
         ui.close_menu();
     }
     if ui.button("Set as Tip").clicked() {
-        gui.actions.push(GuiAction::SetTip);
+        gui.actions.push(GuiAction::PartDesign(Pd::SetTip));
         ui.close_menu();
     }
 
     ui.separator();
 
     if ui.button("Move Up").clicked() {
-        gui.actions.push(GuiAction::MoveFeatureUp);
+        gui.actions.push(GuiAction::PartDesign(Pd::MoveFeatureUp));
         ui.close_menu();
     }
     if ui.button("Move Down").clicked() {
-        gui.actions.push(GuiAction::MoveFeatureDown);
+        gui.actions.push(GuiAction::PartDesign(Pd::MoveFeatureDown));
         ui.close_menu();
     }
 }

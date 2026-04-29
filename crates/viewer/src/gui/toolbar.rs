@@ -2505,10 +2505,11 @@ fn draw_partdesign_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
         (ToolIcon::AddLoft, "Add Loft", "Additive loft (select object)", ""),
         (ToolIcon::AddPipe, "Add Pipe", "Additive pipe (select object)", ""),
     ];
+    use super::PartDesignAction as Pd;
     if let Some(idx) = flyout_button(ui, "flyout_pd_additive", ADD_GROUP, sel) {
         gui.actions.push(match idx {
-            0 => GuiAction::AdditiveLoft,
-            _ => GuiAction::AdditivePipe,
+            0 => GuiAction::PartDesign(Pd::AdditiveLoft),
+            _ => GuiAction::PartDesign(Pd::AdditivePipe),
         });
     }
 
@@ -2519,8 +2520,8 @@ fn draw_partdesign_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
     ];
     if let Some(idx) = flyout_button(ui, "flyout_pd_subtractive", SUB_GROUP, sel) {
         gui.actions.push(match idx {
-            0 => GuiAction::SubtractiveLoft,
-            _ => GuiAction::SubtractivePipe,
+            0 => GuiAction::PartDesign(Pd::SubtractiveLoft),
+            _ => GuiAction::PartDesign(Pd::SubtractivePipe),
         });
     }
 
@@ -2582,16 +2583,16 @@ fn draw_partdesign_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
     section_label(ui, "Body");
     // -- Body --
     gated_button!(ui, sel, ToolIcon::Suppress, "Suppress", "Suppress feature (select object)", "", {
-        gui.actions.push(GuiAction::SuppressFeature);
+        gui.actions.push(GuiAction::PartDesign(Pd::SuppressFeature));
     });
     gated_button!(ui, sel, ToolIcon::SetTip, "Set Tip", "Set tip feature (select object)", "", {
-        gui.actions.push(GuiAction::SetTip);
+        gui.actions.push(GuiAction::PartDesign(Pd::SetTip));
     });
     gated_button!(ui, sel, ToolIcon::MoveUp, "Up", "Move feature up (select object)", "", {
-        gui.actions.push(GuiAction::MoveFeatureUp);
+        gui.actions.push(GuiAction::PartDesign(Pd::MoveFeatureUp));
     });
     gated_button!(ui, sel, ToolIcon::MoveDown, "Down", "Move feature down (select object)", "", {
-        gui.actions.push(GuiAction::MoveFeatureDown);
+        gui.actions.push(GuiAction::PartDesign(Pd::MoveFeatureDown));
     });
 
     toolbar_separator(ui);

@@ -665,28 +665,28 @@ fn emit_create_action(gui: &mut GuiState, task: &ActiveTask) {
             });
         }
         ActiveTask::Pad { depth, symmetric, .. } => {
-            gui.actions.push(GuiAction::PadSketch {
+            gui.actions.push(GuiAction::PartDesign(super::PartDesignAction::PadSketch {
                 depth: *depth, symmetric: *symmetric,
-            });
+            }));
         }
         ActiveTask::Pocket { depth, through_all, .. } => {
-            gui.actions.push(GuiAction::PocketSketch {
+            gui.actions.push(GuiAction::PartDesign(super::PartDesignAction::PocketSketch {
                 depth: *depth, through_all: *through_all,
-            });
+            }));
         }
         ActiveTask::Hole { radius, depth, countersink, countersink_angle, .. } => {
             if *countersink {
-                gui.actions.push(GuiAction::CountersunkHoleSketch {
+                gui.actions.push(GuiAction::PartDesign(super::PartDesignAction::CountersunkHoleSketch {
                     radius: *radius, depth: *depth, countersink_angle: *countersink_angle,
-                });
+                }));
             } else {
-                gui.actions.push(GuiAction::HoleSketch {
+                gui.actions.push(GuiAction::PartDesign(super::PartDesignAction::HoleSketch {
                     radius: *radius, depth: *depth,
-                });
+                }));
             }
         }
         ActiveTask::Groove { angle, .. } => {
-            gui.actions.push(GuiAction::GrooveSketch { angle: *angle });
+            gui.actions.push(GuiAction::PartDesign(super::PartDesignAction::GrooveSketch { angle: *angle }));
         }
         ActiveTask::Fillet { radius, .. } => {
             gui.actions.push(GuiAction::FilletAllEdges { radius: *radius });
@@ -711,14 +711,14 @@ fn emit_create_action(gui: &mut GuiState, task: &ActiveTask) {
             });
         }
         ActiveTask::Sprocket { teeth, roller_diameter, pitch, bore, .. } => {
-            gui.actions.push(GuiAction::CreateSprocket {
+            gui.actions.push(GuiAction::PartDesign(super::PartDesignAction::CreateSprocket {
                 teeth: *teeth, roller_diameter: *roller_diameter, pitch: *pitch, bore: *bore,
-            });
+            }));
         }
         ActiveTask::InvoluteGear { teeth, module_val, pressure_angle, .. } => {
-            gui.actions.push(GuiAction::CreateInvoluteGear {
+            gui.actions.push(GuiAction::PartDesign(super::PartDesignAction::CreateInvoluteGear {
                 teeth: *teeth, module_val: *module_val, pressure_angle: *pressure_angle,
-            });
+            }));
         }
         ActiveTask::DraftLine { .. } => {
             gui.actions.push(GuiAction::DraftLine);

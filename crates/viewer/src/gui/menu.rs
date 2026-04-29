@@ -721,11 +721,12 @@ fn draw_part_menu(ui: &mut egui::Ui, gui: &mut GuiState) {
 }
 
 fn draw_part_design_menu(ui: &mut egui::Ui, gui: &mut GuiState) {
+    use super::PartDesignAction as Pd;
     ui.menu_button("PartDesign", |ui| {
         ui.menu_button("Additive", |ui| {
-            menu_action_sc(ui, gui, "Pad", "P", GuiAction::PadSketch { depth: 10.0, symmetric: false });
-            menu_action(ui, gui, "Additive Loft", GuiAction::AdditiveLoft);
-            menu_action(ui, gui, "Additive Pipe", GuiAction::AdditivePipe);
+            menu_action_sc(ui, gui, "Pad", "P", GuiAction::PartDesign(Pd::PadSketch { depth: 10.0, symmetric: false }));
+            menu_action(ui, gui, "Additive Loft", GuiAction::PartDesign(Pd::AdditiveLoft));
+            menu_action(ui, gui, "Additive Pipe", GuiAction::PartDesign(Pd::AdditivePipe));
             ui.separator();
             if ui.button("Additive Box...").clicked() { gui.active_task = Some(task_panel::ActiveTask::Box { width: 10.0, height: 10.0, depth: 10.0, preview_id: None }); ui.close_menu(); }
             if ui.button("Additive Cylinder...").clicked() { gui.active_task = Some(task_panel::ActiveTask::Cylinder { radius: 5.0, height: 10.0, preview_id: None }); ui.close_menu(); }
@@ -734,15 +735,15 @@ fn draw_part_design_menu(ui: &mut egui::Ui, gui: &mut GuiState) {
             if ui.button("Additive Torus...").clicked() { gui.active_task = Some(task_panel::ActiveTask::Torus { major_radius: 5.0, minor_radius: 1.5, preview_id: None }); ui.close_menu(); }
         });
         ui.menu_button("Subtractive", |ui| {
-            menu_action(ui, gui, "Pocket", GuiAction::PocketSketch { depth: 10.0, through_all: false });
-            menu_action(ui, gui, "Groove", GuiAction::GrooveSketch { angle: 360.0 });
-            menu_action(ui, gui, "Subtractive Loft", GuiAction::SubtractiveLoft);
-            menu_action(ui, gui, "Subtractive Pipe", GuiAction::SubtractivePipe);
+            menu_action(ui, gui, "Pocket", GuiAction::PartDesign(Pd::PocketSketch { depth: 10.0, through_all: false }));
+            menu_action(ui, gui, "Groove", GuiAction::PartDesign(Pd::GrooveSketch { angle: 360.0 }));
+            menu_action(ui, gui, "Subtractive Loft", GuiAction::PartDesign(Pd::SubtractiveLoft));
+            menu_action(ui, gui, "Subtractive Pipe", GuiAction::PartDesign(Pd::SubtractivePipe));
             ui.separator();
-            menu_action(ui, gui, "Hole...", GuiAction::HoleSketch { radius: 5.0, depth: 10.0 });
-            menu_action(ui, gui, "Countersunk Hole...", GuiAction::CountersunkHoleSketch {
+            menu_action(ui, gui, "Hole...", GuiAction::PartDesign(Pd::HoleSketch { radius: 5.0, depth: 10.0 }));
+            menu_action(ui, gui, "Countersunk Hole...", GuiAction::PartDesign(Pd::CountersunkHoleSketch {
                 radius: 5.0, depth: 10.0, countersink_angle: 90.0,
-            });
+            }));
         });
         ui.separator();
         ui.menu_button("Features", |ui| {
@@ -761,23 +762,23 @@ fn draw_part_design_menu(ui: &mut egui::Ui, gui: &mut GuiState) {
         });
         ui.separator();
         ui.menu_button("Mechanical", |ui| {
-            menu_action(ui, gui, "Involute Gear...", GuiAction::CreateInvoluteGear {
+            menu_action(ui, gui, "Involute Gear...", GuiAction::PartDesign(Pd::CreateInvoluteGear {
                 teeth: 20, module_val: 2.0, pressure_angle: 20.0,
-            });
-            menu_action(ui, gui, "Sprocket...", GuiAction::CreateSprocket {
+            }));
+            menu_action(ui, gui, "Sprocket...", GuiAction::PartDesign(Pd::CreateSprocket {
                 teeth: 15, roller_diameter: 8.0, pitch: 12.7, bore: 10.0,
-            });
-            menu_action(ui, gui, "Shaft Design...", GuiAction::CreateShaftDesign {
+            }));
+            menu_action(ui, gui, "Shaft Design...", GuiAction::PartDesign(Pd::CreateShaftDesign {
                 segments: vec![(10.0, 5.0), (20.0, 8.0), (10.0, 5.0)],
-            });
+            }));
         });
         ui.separator();
         ui.menu_button("Body", |ui| {
-            menu_action(ui, gui, "Shape Binder", GuiAction::ShapeBinder);
-            menu_action(ui, gui, "Suppress Feature", GuiAction::SuppressFeature);
-            menu_action(ui, gui, "Set Tip", GuiAction::SetTip);
-            menu_action(ui, gui, "Move Feature Up", GuiAction::MoveFeatureUp);
-            menu_action(ui, gui, "Move Feature Down", GuiAction::MoveFeatureDown);
+            menu_action(ui, gui, "Shape Binder", GuiAction::PartDesign(Pd::ShapeBinder));
+            menu_action(ui, gui, "Suppress Feature", GuiAction::PartDesign(Pd::SuppressFeature));
+            menu_action(ui, gui, "Set Tip", GuiAction::PartDesign(Pd::SetTip));
+            menu_action(ui, gui, "Move Feature Up", GuiAction::PartDesign(Pd::MoveFeatureUp));
+            menu_action(ui, gui, "Move Feature Down", GuiAction::PartDesign(Pd::MoveFeatureDown));
         });
     });
 }

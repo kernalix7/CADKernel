@@ -3,8 +3,8 @@
 
 use crate::gui::{
     self, AssemblyAction, FemAction, GizmoMode, GuiAction, GuiState, MeshAction, MirrorPlane,
-    PartAction, ReportLevel, SelectedEntity, SelectionMode, SketchEntityRef, SketchMode,
-    SketchTool, SketcherAction, SurfaceAction, ViewportInfo,
+    PartAction, PartDesignAction, ReportLevel, SelectedEntity, SelectionMode, SketchEntityRef,
+    SketchMode, SketchTool, SketcherAction, SurfaceAction, ViewportInfo,
 };
 use crate::scripting::ScriptEngine;
 use crate::nav::{NavAction, NavConfig};
@@ -2360,66 +2360,8 @@ impl CadApp {
                 // -- Part workbench --
                 GuiAction::Part(action) => self.process_part_action(action),
 
-                // -- PartDesign features --
-                GuiAction::PadSketch { depth, symmetric } => {
-                    self.log_info(format!("PartDesign: Pad depth={depth:.1} symmetric={symmetric}"));
-                }
-                GuiAction::PocketSketch { depth, through_all } => {
-                    self.log_info(format!("PartDesign: Pocket depth={depth:.1} through_all={through_all}"));
-                }
-                GuiAction::GrooveSketch { angle } => {
-                    self.log_info(format!("PartDesign: Groove angle={angle:.1}"));
-                }
-                GuiAction::HoleSketch { radius, depth } => {
-                    self.log_info(format!("PartDesign: Hole r={radius:.1} d={depth:.1}"));
-                }
-                GuiAction::CountersunkHoleSketch { radius, depth, countersink_angle } => {
-                    self.log_info(format!("PartDesign: Countersunk hole r={radius:.1} d={depth:.1} angle={countersink_angle:.0}"));
-                }
-                GuiAction::AdditiveLoft => self.log_info("PartDesign: Additive loft"),
-                GuiAction::AdditivePipe => self.log_info("PartDesign: Additive pipe"),
-                GuiAction::SubtractiveLoft => self.log_info("PartDesign: Subtractive loft"),
-                GuiAction::SubtractivePipe => self.log_info("PartDesign: Subtractive pipe"),
-                GuiAction::CreateSprocket { teeth, roller_diameter, pitch, bore } => {
-                    self.log_info(format!("PartDesign: Sprocket {teeth}T Dp={roller_diameter:.2} P={pitch:.2} bore={bore:.2}"));
-                }
-                GuiAction::CreateShaftDesign { segments } => {
-                    self.log_info(format!("PartDesign: Shaft design ({} segments)", segments.len()));
-                }
-                GuiAction::CreateInvoluteGear { teeth, module_val, pressure_angle } => {
-                    self.log_info(format!("PartDesign: Involute gear {teeth}T m={module_val:.2} PA={pressure_angle:.1}"));
-                }
-                GuiAction::ShapeBinder => self.log_info("PartDesign: Shape binder"),
-                GuiAction::SuppressFeature => {
-                    if let Some(id) = self.scene.selected_id() {
-                        if let Some(obj) = self.scene.get_mut(id) {
-                            obj.suppressed = !obj.suppressed;
-                            let state = if obj.suppressed { "suppressed" } else { "active" };
-                            let name = obj.name.clone();
-                            self.log_info(format!("{name}: {state}"));
-                        }
-                    }
-                }
-                GuiAction::SetTip => {
-                    if let Some(id) = self.scene.selected_id() {
-                        for obj in &mut self.scene.objects {
-                            obj.is_tip = obj.id == id;
-                        }
-                        self.log_info("Tip set");
-                    }
-                }
-                GuiAction::MoveFeatureUp => {
-                    if let Some(id) = self.scene.selected_id() {
-                        self.scene.move_up(id);
-                        self.log_info("Feature moved up");
-                    }
-                }
-                GuiAction::MoveFeatureDown => {
-                    if let Some(id) = self.scene.selected_id() {
-                        self.scene.move_down(id);
-                        self.log_info("Feature moved down");
-                    }
-                }
+                // -- PartDesign workbench --
+                GuiAction::PartDesign(action) => self.process_part_design_action(action),
 
                 // -- Assembly workbench --
                 GuiAction::Assembly(action) => self.process_assembly_action(action),
@@ -4041,6 +3983,77 @@ impl CadApp {
             }
             P::ProjectCurvesOnSurface => self.log_info("Part: project curves on surface"),
             P::CoonsPatch => self.log_info("Part: Coons patch"),
+        }
+    }
+
+    fn process_part_design_action(&mut self, action: PartDesignAction) {
+        use PartDesignAction as Pd;
+        match action {
+            Pd::PadSketch { depth, symmetric } => {
+                self.log_info(format!("PartDesign: Pad depth={depth:.1} symmetric={symmetric}"));
+            }
+            Pd::PocketSketch { depth, through_all } => {
+                self.log_info(format!("PartDesign: Pocket depth={depth:.1} through_all={through_all}"));
+            }
+            Pd::GrooveSketch { angle } => {
+                self.log_info(format!("PartDesign: Groove angle={angle:.1}"));
+            }
+            Pd::HoleSketch { radius, depth } => {
+                self.log_info(format!("PartDesign: Hole r={radius:.1} d={depth:.1}"));
+            }
+            Pd::CountersunkHoleSketch { radius, depth, countersink_angle } => {
+                self.log_info(format!(
+                    "PartDesign: Countersunk hole r={radius:.1} d={depth:.1} angle={countersink_angle:.0}"
+                ));
+            }
+            Pd::AdditiveLoft => self.log_info("PartDesign: Additive loft"),
+            Pd::AdditivePipe => self.log_info("PartDesign: Additive pipe"),
+            Pd::SubtractiveLoft => self.log_info("PartDesign: Subtractive loft"),
+            Pd::SubtractivePipe => self.log_info("PartDesign: Subtractive pipe"),
+            Pd::CreateSprocket { teeth, roller_diameter, pitch, bore } => {
+                self.log_info(format!(
+                    "PartDesign: Sprocket {teeth}T Dp={roller_diameter:.2} P={pitch:.2} bore={bore:.2}"
+                ));
+            }
+            Pd::CreateShaftDesign { segments } => {
+                self.log_info(format!("PartDesign: Shaft design ({} segments)", segments.len()));
+            }
+            Pd::CreateInvoluteGear { teeth, module_val, pressure_angle } => {
+                self.log_info(format!(
+                    "PartDesign: Involute gear {teeth}T m={module_val:.2} PA={pressure_angle:.1}"
+                ));
+            }
+            Pd::ShapeBinder => self.log_info("PartDesign: Shape binder"),
+            Pd::SuppressFeature => {
+                if let Some(id) = self.scene.selected_id() {
+                    if let Some(obj) = self.scene.get_mut(id) {
+                        obj.suppressed = !obj.suppressed;
+                        let state = if obj.suppressed { "suppressed" } else { "active" };
+                        let name = obj.name.clone();
+                        self.log_info(format!("{name}: {state}"));
+                    }
+                }
+            }
+            Pd::SetTip => {
+                if let Some(id) = self.scene.selected_id() {
+                    for obj in &mut self.scene.objects {
+                        obj.is_tip = obj.id == id;
+                    }
+                    self.log_info("Tip set");
+                }
+            }
+            Pd::MoveFeatureUp => {
+                if let Some(id) = self.scene.selected_id() {
+                    self.scene.move_up(id);
+                    self.log_info("Feature moved up");
+                }
+            }
+            Pd::MoveFeatureDown => {
+                if let Some(id) = self.scene.selected_id() {
+                    self.scene.move_down(id);
+                    self.log_info("Feature moved down");
+                }
+            }
         }
     }
 

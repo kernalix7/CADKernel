@@ -8,6 +8,7 @@ pub(crate) mod mesh;
 mod menu;
 mod overlays;
 pub(crate) mod part;
+pub(crate) mod part_design;
 mod properties;
 pub(crate) mod surface;
 mod report;
@@ -29,6 +30,7 @@ pub(crate) use self::fem::{
 };
 pub(crate) use self::mesh::MeshAction;
 pub(crate) use self::part::PartAction;
+pub(crate) use self::part_design::PartDesignAction;
 pub(crate) use self::surface::SurfaceAction;
 pub(crate) use self::sketch_state::{
     DimensionKind, DimensionPopup, SketchEntityRef, SketcherAction, SketchMode, SketchTool,
@@ -325,24 +327,8 @@ pub(crate) enum GuiAction {
     // -- Part workbench --
     Part(PartAction),
 
-    // -- PartDesign: Feature operations --
-    PadSketch { depth: f64, symmetric: bool },
-    PocketSketch { depth: f64, through_all: bool },
-    GrooveSketch { angle: f64 },
-    HoleSketch { radius: f64, depth: f64 },
-    CountersunkHoleSketch { radius: f64, depth: f64, countersink_angle: f64 },
-    AdditiveLoft,
-    AdditivePipe,
-    SubtractiveLoft,
-    SubtractivePipe,
-    CreateSprocket { teeth: u32, roller_diameter: f64, pitch: f64, bore: f64 },
-    CreateShaftDesign { segments: Vec<(f64, f64)> },
-    CreateInvoluteGear { teeth: u32, module_val: f64, pressure_angle: f64 },
-    ShapeBinder,
-    SuppressFeature,
-    SetTip,
-    MoveFeatureUp,
-    MoveFeatureDown,
+    // -- PartDesign workbench --
+    PartDesign(PartDesignAction),
 
     // -- Assembly workbench --
     Assembly(AssemblyAction),

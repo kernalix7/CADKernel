@@ -722,7 +722,7 @@ pub(crate) fn draw_create_dialogs(ctx: &egui::Context, gui: &mut GuiState) {
                 ui.label(egui::RichText::new("Requires active sketch with closed profile").size(10.0).color(theme::COLOR_DIM).italics());
                 let (ok, cancel, reset) = button_bar(ui, "Apply");
                 if ok {
-                    gui.actions.push(GuiAction::PadSketch { depth: gui.pad_depth, symmetric: gui.pad_symmetric });
+                    gui.actions.push(GuiAction::PartDesign(super::PartDesignAction::PadSketch { depth: gui.pad_depth, symmetric: gui.pad_symmetric }));
                     gui.show_pad = false;
                 }
                 if cancel { gui.show_pad = false; }
@@ -745,7 +745,7 @@ pub(crate) fn draw_create_dialogs(ctx: &egui::Context, gui: &mut GuiState) {
                 ui.label(egui::RichText::new("Requires active sketch with closed profile").size(10.0).color(theme::COLOR_DIM).italics());
                 let (ok, cancel, reset) = button_bar(ui, "Apply");
                 if ok {
-                    gui.actions.push(GuiAction::PocketSketch { depth: gui.pocket_depth, through_all: gui.pocket_through_all });
+                    gui.actions.push(GuiAction::PartDesign(super::PartDesignAction::PocketSketch { depth: gui.pocket_depth, through_all: gui.pocket_through_all }));
                     gui.show_pocket = false;
                 }
                 if cancel { gui.show_pocket = false; }
@@ -769,7 +769,7 @@ pub(crate) fn draw_create_dialogs(ctx: &egui::Context, gui: &mut GuiState) {
                 ui.label(egui::RichText::new("Requires active sketch with profile").size(10.0).color(theme::COLOR_DIM).italics());
                 let (ok, cancel, reset) = button_bar(ui, "Apply");
                 if ok {
-                    gui.actions.push(GuiAction::GrooveSketch { angle: gui.groove_angle });
+                    gui.actions.push(GuiAction::PartDesign(super::PartDesignAction::GrooveSketch { angle: gui.groove_angle }));
                     gui.show_groove = false;
                 }
                 if cancel { gui.show_groove = false; }
@@ -800,12 +800,12 @@ pub(crate) fn draw_create_dialogs(ctx: &egui::Context, gui: &mut GuiState) {
                 let (ok, cancel, reset) = button_bar(ui, "Apply");
                 if ok {
                     if gui.hole_countersink {
-                        gui.actions.push(GuiAction::CountersunkHoleSketch {
+                        gui.actions.push(GuiAction::PartDesign(super::PartDesignAction::CountersunkHoleSketch {
                             radius: gui.hole_radius, depth: gui.hole_depth,
                             countersink_angle: gui.hole_countersink_angle,
-                        });
+                        }));
                     } else {
-                        gui.actions.push(GuiAction::HoleSketch { radius: gui.hole_radius, depth: gui.hole_depth });
+                        gui.actions.push(GuiAction::PartDesign(super::PartDesignAction::HoleSketch { radius: gui.hole_radius, depth: gui.hole_depth }));
                     }
                     gui.show_hole = false;
                 }
@@ -834,10 +834,10 @@ pub(crate) fn draw_create_dialogs(ctx: &egui::Context, gui: &mut GuiState) {
                 });
                 let (ok, cancel, reset) = button_bar(ui, "Create");
                 if ok {
-                    gui.actions.push(GuiAction::CreateSprocket {
+                    gui.actions.push(GuiAction::PartDesign(super::PartDesignAction::CreateSprocket {
                         teeth: gui.sprocket_teeth, roller_diameter: gui.sprocket_roller_diameter,
                         pitch: gui.sprocket_pitch, bore: gui.sprocket_bore,
-                    });
+                    }));
                     gui.show_sprocket = false;
                 }
                 if cancel { gui.show_sprocket = false; }
@@ -870,7 +870,7 @@ pub(crate) fn draw_create_dialogs(ctx: &egui::Context, gui: &mut GuiState) {
                 if ui.button("+ Add Segment").clicked() { gui.shaft_segments.push((20.0, 10.0)); }
                 let (ok, cancel, reset) = button_bar(ui, "Create");
                 if ok {
-                    gui.actions.push(GuiAction::CreateShaftDesign { segments: gui.shaft_segments.clone() });
+                    gui.actions.push(GuiAction::PartDesign(super::PartDesignAction::CreateShaftDesign { segments: gui.shaft_segments.clone() }));
                     gui.show_shaft = false;
                 }
                 if cancel { gui.show_shaft = false; }
@@ -899,9 +899,9 @@ pub(crate) fn draw_create_dialogs(ctx: &egui::Context, gui: &mut GuiState) {
                 });
                 let (ok, cancel, reset) = button_bar(ui, "Create");
                 if ok {
-                    gui.actions.push(GuiAction::CreateInvoluteGear {
+                    gui.actions.push(GuiAction::PartDesign(super::PartDesignAction::CreateInvoluteGear {
                         teeth: gui.gear_teeth, module_val: gui.gear_module, pressure_angle: gui.gear_pressure_angle,
-                    });
+                    }));
                     gui.show_gear = false;
                 }
                 if cancel { gui.show_gear = false; }
