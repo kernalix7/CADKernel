@@ -8,6 +8,7 @@ pub(crate) mod mesh;
 mod menu;
 mod overlays;
 mod properties;
+pub(crate) mod surface;
 mod report;
 pub(crate) mod sketch_state;
 mod sketch_ui;
@@ -26,6 +27,7 @@ pub(crate) use self::fem::{
     BcEditorState, BcKind, FemAction, MaterialPickerState, MaterialPreset, material_from_preset,
 };
 pub(crate) use self::mesh::MeshAction;
+pub(crate) use self::surface::SurfaceAction;
 pub(crate) use self::sketch_state::{
     DimensionKind, DimensionPopup, SketchEntityRef, SketcherAction, SketchMode, SketchTool,
 };
@@ -394,13 +396,7 @@ pub(crate) enum GuiAction {
     ToggleDraftSnap(String),
 
     // -- Surface workbench --
-    SurfaceFilling,
-    SurfaceBoundary,
-    SurfaceSections,
-    SurfaceExtend,
-    SurfaceBlend,
-    SurfacePipe,
-    SurfaceCoons,
+    Surface(SurfaceAction),
 
     // -- FEM workbench --
     Fem(FemAction),

@@ -1117,13 +1117,14 @@ fn draw_draft_menu(ui: &mut egui::Ui, gui: &mut GuiState) {
 
 fn draw_surface_menu(ui: &mut egui::Ui, gui: &mut GuiState) {
     ui.menu_button("Surface", |ui| {
-        menu_action(ui, gui, "Filling", GuiAction::SurfaceFilling);
-        menu_action(ui, gui, "Boundary", GuiAction::SurfaceBoundary);
-        menu_action(ui, gui, "Sections", GuiAction::SurfaceSections);
-        menu_action(ui, gui, "Extend", GuiAction::SurfaceExtend);
-        menu_action(ui, gui, "Blend", GuiAction::SurfaceBlend);
-        menu_action(ui, gui, "Pipe", GuiAction::SurfacePipe);
-        menu_action(ui, gui, "Coons Patch", GuiAction::SurfaceCoons);
+        use super::SurfaceAction as S;
+        menu_action(ui, gui, "Filling", GuiAction::Surface(S::Filling));
+        menu_action(ui, gui, "Boundary", GuiAction::Surface(S::Boundary));
+        menu_action(ui, gui, "Sections", GuiAction::Surface(S::Sections));
+        menu_action(ui, gui, "Extend", GuiAction::Surface(S::Extend));
+        menu_action(ui, gui, "Blend", GuiAction::Surface(S::Blend));
+        menu_action(ui, gui, "Pipe", GuiAction::Surface(S::Pipe));
+        menu_action(ui, gui, "Coons Patch", GuiAction::Surface(S::Coons));
     });
 }
 

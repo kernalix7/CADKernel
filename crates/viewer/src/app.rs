@@ -4,7 +4,7 @@
 use crate::gui::{
     self, AssemblyAction, FemAction, GizmoMode, GuiAction, GuiState, MeshAction, MirrorPlane,
     ReportLevel, SelectedEntity, SelectionMode, SketchEntityRef, SketchMode, SketchTool,
-    SketcherAction, ViewportInfo,
+    SketcherAction, SurfaceAction, ViewportInfo,
 };
 use crate::scripting::ScriptEngine;
 use crate::nav::{NavAction, NavConfig};
@@ -2522,64 +2522,7 @@ impl CadApp {
                 }
 
                 // -- Surface workbench --
-                GuiAction::SurfaceFilling => {
-                    self.snapshot_before("Surface Filling");
-                    let mut model = BRepModel::new();
-                    let boundary = [
-                        Point3::new(0.0, 0.0, 0.0),
-                        Point3::new(2.0, 0.0, 0.0),
-                        Point3::new(2.0, 2.0, 0.0),
-                        Point3::new(0.0, 2.0, 0.0),
-                    ];
-                    match filling(&mut model, &boundary, 1) {
-                        Ok(r) => {
-                            self.add_to_scene("Surface Filling", model, r.solid, None);
-                            self.log_info("Surface: filling");
-                        }
-                        Err(e) => self.log_error(format!("SurfaceFilling error: {e}")),
-                    }
-                }
-                GuiAction::SurfaceBoundary => {
-                    self.snapshot_before("Surface Boundary");
-                    let mut model = BRepModel::new();
-                    // Hexagonal boundary — make_polygon_wire returns closed polyline,
-                    // but filling() expects distinct points.
-                    match make_polygon_wire(Point3::ORIGIN, Vec3::Z, 1.0, 6) {
-                        Ok(pts) => {
-                            match filling(&mut model, &pts, 1) {
-                                Ok(r) => {
-                                    self.add_to_scene("Surface Boundary", model, r.solid, None);
-                                    self.log_info("Surface: boundary");
-                                }
-                                Err(e) => self.log_error(format!("SurfaceBoundary fill error: {e}")),
-                            }
-                        }
-                        Err(e) => self.log_error(format!("SurfaceBoundary error: {e}")),
-                    }
-                }
-                GuiAction::SurfaceSections => self.log_info("Surface: sections"),
-                GuiAction::SurfaceExtend => self.log_info("Surface: extend"),
-                GuiAction::SurfaceBlend => self.log_info("Surface: blend"),
-                GuiAction::SurfacePipe => {
-                    self.snapshot_before("Surface Pipe");
-                    let mut model = BRepModel::new();
-                    let path = [
-                        Point3::new(0.0, 0.0, 0.0),
-                        Point3::new(0.0, 0.0, 2.0),
-                    ];
-                    match pipe_surface(&mut model, &path, 0.25, 16) {
-                        Ok(r) => {
-                            self.add_to_scene(
-                                "Surface Pipe",
-                                model, r.solid,
-                                Some(crate::scene::CreationParams::SurfacePipe { radius: 0.25, length: 2.0 }),
-                            );
-                            self.log_info("Surface: pipe");
-                        }
-                        Err(e) => self.log_error(format!("SurfacePipe error: {e}")),
-                    }
-                }
-                GuiAction::SurfaceCoons => self.log_info("Surface: Coons"),
+                GuiAction::Surface(action) => self.process_surface_action(action),
 
                 // -- FEM workbench --
                 GuiAction::Fem(action) => self.process_fem_action(action),
@@ -4027,6 +3970,70 @@ impl CadApp {
                     self.gui.status_message = "No mesh to repair".into();
                 }
             }
+        }
+    }
+
+    fn process_surface_action(&mut self, action: SurfaceAction) {
+        use SurfaceAction as S;
+        match action {
+            S::Filling => {
+                self.snapshot_before("Surface Filling");
+                let mut model = BRepModel::new();
+                let boundary = [
+                    Point3::new(0.0, 0.0, 0.0),
+                    Point3::new(2.0, 0.0, 0.0),
+                    Point3::new(2.0, 2.0, 0.0),
+                    Point3::new(0.0, 2.0, 0.0),
+                ];
+                match filling(&mut model, &boundary, 1) {
+                    Ok(r) => {
+                        self.add_to_scene("Surface Filling", model, r.solid, None);
+                        self.log_info("Surface: filling");
+                    }
+                    Err(e) => self.log_error(format!("SurfaceFilling error: {e}")),
+                }
+            }
+            S::Boundary => {
+                self.snapshot_before("Surface Boundary");
+                let mut model = BRepModel::new();
+                match make_polygon_wire(Point3::ORIGIN, Vec3::Z, 1.0, 6) {
+                    Ok(pts) => match filling(&mut model, &pts, 1) {
+                        Ok(r) => {
+                            self.add_to_scene("Surface Boundary", model, r.solid, None);
+                            self.log_info("Surface: boundary");
+                        }
+                        Err(e) => self.log_error(format!("SurfaceBoundary fill error: {e}")),
+                    },
+                    Err(e) => self.log_error(format!("SurfaceBoundary error: {e}")),
+                }
+            }
+            S::Sections => self.log_info("Surface: sections"),
+            S::Extend => self.log_info("Surface: extend"),
+            S::Blend => self.log_info("Surface: blend"),
+            S::Pipe => {
+                self.snapshot_before("Surface Pipe");
+                let mut model = BRepModel::new();
+                let path = [
+                    Point3::new(0.0, 0.0, 0.0),
+                    Point3::new(0.0, 0.0, 2.0),
+                ];
+                match pipe_surface(&mut model, &path, 0.25, 16) {
+                    Ok(r) => {
+                        self.add_to_scene(
+                            "Surface Pipe",
+                            model,
+                            r.solid,
+                            Some(crate::scene::CreationParams::SurfacePipe {
+                                radius: 0.25,
+                                length: 2.0,
+                            }),
+                        );
+                        self.log_info("Surface: pipe");
+                    }
+                    Err(e) => self.log_error(format!("SurfacePipe error: {e}")),
+                }
+            }
+            S::Coons => self.log_info("Surface: Coons"),
         }
     }
 

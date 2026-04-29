@@ -3310,13 +3310,14 @@ fn draw_draft_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
 }
 
 fn draw_surface_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
+    use super::SurfaceAction as S;
     use super::task_panel::ActiveTask;
     section_label(ui, "Surface");
     if icon_button(ui, ToolIcon::SurfFilling, "Filling", "Fill a boundary with a surface", "") {
-        gui.actions.push(GuiAction::SurfaceFilling);
+        gui.actions.push(GuiAction::Surface(S::Filling));
     }
     if icon_button(ui, ToolIcon::SurfBoundary, "Boundary", "Boundary surface from edges", "") {
-        gui.actions.push(GuiAction::SurfaceBoundary);
+        gui.actions.push(GuiAction::Surface(S::Boundary));
     }
     if icon_button(ui, ToolIcon::SurfSections, "Ruled", "Ruled surface from cross-sections", "") {
         gui.active_task = Some(ActiveTask::SurfaceRuled {
@@ -3324,10 +3325,10 @@ fn draw_surface_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
         });
     }
     if icon_button(ui, ToolIcon::SurfExtend, "Extend", "Extend surface", "") {
-        gui.actions.push(GuiAction::SurfaceExtend);
+        gui.actions.push(GuiAction::Surface(S::Extend));
     }
     if icon_button(ui, ToolIcon::SurfBlend, "Blend", "Blend between surfaces", "") {
-        gui.actions.push(GuiAction::SurfaceBlend);
+        gui.actions.push(GuiAction::Surface(S::Blend));
     }
     if icon_button(ui, ToolIcon::SurfPipe, "Pipe", "Pipe surface along path", "") {
         gui.active_task = Some(ActiveTask::SurfacePipe {
@@ -3335,7 +3336,7 @@ fn draw_surface_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
         });
     }
     if icon_button(ui, ToolIcon::SurfCoons, "Coons", "Coons patch from 4 edges", "") {
-        gui.actions.push(GuiAction::SurfaceCoons);
+        gui.actions.push(GuiAction::Surface(S::Coons));
     }
 }
 

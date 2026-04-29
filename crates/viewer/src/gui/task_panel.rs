@@ -739,7 +739,7 @@ fn emit_create_action(gui: &mut GuiState, task: &ActiveTask) {
             gui.actions.push(GuiAction::DraftEllipse);
         }
         ActiveTask::SurfacePipe { .. } => {
-            gui.actions.push(GuiAction::SurfacePipe);
+            gui.actions.push(GuiAction::Surface(super::SurfaceAction::Pipe));
         }
         ActiveTask::SurfaceRuled { .. } => {
             gui.actions.push(GuiAction::StatusMessage("Ruled surface created".into()));
