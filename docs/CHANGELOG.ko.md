@@ -9,6 +9,42 @@
 
 ## [Unreleased]
 
+### 리팩터링됨
+
+#### Viewer 아키텍처 대대적 개편 — 모듈 분할 + ActiveDialog enum + GuiAction sub-enum 분리 (2026-04-29)
+
+**배경.** Phase N full / Phase O-a / 후속 작업이 누적되며 `crates/viewer/src/gui/mod.rs`가 약 2,400 LOC, `GuiAction` enum이 평탄한 약 210개 top-level variant까지 부풀어 오름. 모든 워크벤치(Sketcher / Assembly / FEM / Mesh / Surface / Part / PartDesign / Draft / TechDraw)의 variant가 같은 enum에 나란히 있고, 13개 `Option<...>` / `bool show_...` 필드가 다이얼로그 상태를 분산해서 들고 있었음. `app.rs`의 거대 `match`는 7,000 LOC를 넘김. 이번 작업은 동작 변경 없이 이 두 파일을 재구조화함.
+
+**Refactor #2 — ActiveDialog enum (commit `16192ad`).** 13개 흩어진 `Option<DialogState>` / `bool show_dialog` 필드를 `GuiState`의 `ActiveDialog` enum + `pub active_dialog: Option<ActiveDialog>` 단일 필드로 통합. 각 variant가 해당 다이얼로그의 고유 상태를 담음(예: `MaterialPicker(MaterialPickerState)`, `BcEditor(BcEditorState)`, `JointEditor(JointEditorState)`). 상태 있는 다이얼로그의 상호 배타성이 assertion이 아니라 type-level invariant가 됨. +1 test (2,660 / 0 / 0).
+
+**Refactor #1 — Viewer 모듈 분할.** 워크벤치별 타입과 헬퍼를 `gui/mod.rs`에서 형제 모듈로 분리해 각 워크벤치가 자기 파일을 소유하도록 함:
+
+- `gui/sketch_state.rs` — `SketchTool`, `DimensionKind`, `DimensionPopup`, `SketchEntityRef`, `SketchSnapshot`, `SketchMode` + impl (commit `9e2afa1`).
+- `gui/assembly.rs` — `AssemblyJointType`, `JointEditorState`, BOM 헬퍼 + `impl GuiState` 블록 (commit `9bd65b9`).
+- `gui/fem.rs` — `MaterialPreset`, `MaterialPickerState`, `material_from_preset`, `BcKind`, `BcInputs`, `BcEditorState`, `fem_picker_tests` (commit `9bd65b9`).
+
+`gui/mod.rs`는 이 분할만으로 2,381 → 1,304 LOC로 줄었고, 모든 호출 사이트는 표적화된 `pub(crate) use` 재내보내기로 보존됨.
+
+**Refactor #3 — GuiAction sub-enum 분할.** 9개 워크벤치 분량의 평탄한 top-level variant를 `GuiAction::Workbench(WorkbenchAction)` 래퍼 variant로 치환. 각 워크벤치당 새 모듈 1개, `app.rs`에 sub-enum별 `process_workbench_action()` 디스패처 헬퍼 1개씩. 워크벤치별 마이그레이션:
+
+- `AssemblyAction` — 9 variants (commit `9e42ece`)
+- `FemAction` — 19 variants (commit `3600df3`)
+- `SketcherAction` — 43 variants (commit `623e4bf`)
+- `MeshAction` — 9 variants (commit `b1c21a4`)
+- `SurfaceAction` — 7 variants (commit `eb9a15d`)
+- `PartAction` — 14 variants (commit `8685bdf`)
+- `PartDesignAction` — 17 variants (commit `ebf91e1`)
+- `DraftAction` — 32 variants (commit `5fedab5`); 분할 과정에서 죽은 코드로 드러난 `SetDraftLayer(String)` variant도 같이 제거
+- `TechDrawAction` — 30 variants, 원래 4 + "TechDraw expanded" 26 모두 (commit `d2966b6`)
+
+총 **180개 variant**가 top-level enum에서 9개의 워크벤치별 sub-enum으로 이동. `GuiAction` 외곽 enum은 이제 약 50개 횡단 관심사 variant(파일 I/O, 뷰포트, 씬, 변환)와 9개 래퍼 variant만 보유.
+
+**모든 sub-enum 추출에 적용된 패턴.** 각 커밋이 동일한 형태를 따름: sub-enum만 담은 새 모듈 파일 → `gui/mod.rs`에서 재내보내기 → `GuiAction`에 `Workbench(WorkbenchAction)` variant 1개 추가 → `app.rs`에 `process_workbench_action(&mut self, action: WorkbenchAction)` 헬퍼 추가 → `menu.rs` / `toolbar.rs` / `dialogs.rs` / `task_panel.rs` / `context_menu.rs`의 호출 사이트 마이그레이션(각 함수 안에서 `use super::WorkbenchAction as W;` 단축형 사용). Derive 선택은 sub-enum별 페이로드 형태에 따라 결정 — 모든 variant가 `f64`/`u32` 등만 들고 있으면 `Copy`, 적어도 하나가 `String`이나 `Vec<_>`를 들면 `Clone+Debug+PartialEq`, derive를 갖지 않는 외부 타입을 든 variant가 있으면 `PartialEq` 생략(`SketcherAction::Enter(WorkPlane)`, `TechDrawAction::AddView(ProjectionDir)`).
+
+**검증.** 모든 커밋이 개별적으로 `cargo build --workspace`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`, `cargo test --workspace --no-fail-fast`를 통과(**2,660 passed, 0 failed, 0 ignored** — V37 Phase O-a 후속 + ActiveDialog 리팩터 베이스라인과 동일; sub-enum 추출 커밋에서 추가/삭제된 테스트 없음).
+
+**리팩터 후 파일 구성.** `crates/viewer/src/gui/`에 9개의 새 형제 모듈이 추가됨: `assembly.rs`, `fem.rs`, `sketch_state.rs`, `mesh.rs`, `surface.rs`, `part.rs`, `part_design.rs`, `draft.rs`, `techdraw.rs`. `gui/mod.rs`는 이제 횡단 타입(`GuiState`, `ViewportInfo`, `GuiAction` 외곽 enum, `ActiveDialog`, `MirrorPlane`, scene/selection enum, theme/density 토글)만 담음.
+
 ### 추가됨
 
 #### V37: Phase O-a 후속 — BcKind 12개 variant + Ground Component 메뉴 (2026-04-26)

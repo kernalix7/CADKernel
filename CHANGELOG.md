@@ -9,6 +9,42 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Refactored
+
+#### Viewer architecture overhaul — module split + ActiveDialog enum + GuiAction sub-enums (2026-04-29)
+
+**Context.** Phase N full and Phase O-a/follow-up grew `crates/viewer/src/gui/mod.rs` to ~2,400 LOC and the `GuiAction` enum to ~210 flat top-level variants — every workbench (Sketcher / Assembly / FEM / Mesh / Surface / Part / PartDesign / Draft / TechDraw) sat next to every other workbench's variants in the same enum, and a long list of `Option<...>` / `bool show_...` fields tracked which dialog was open. The mega-enum `match` in `app.rs` ran past 7,000 LOC. This pass restructures both files without changing any behaviour.
+
+**Refactor #2 — ActiveDialog enum (commit `16192ad`).** Collapsed 13 scattered `Option<DialogState>` / `bool show_dialog` fields on `GuiState` into a single `ActiveDialog` enum + `pub active_dialog: Option<ActiveDialog>` field. Each variant carries the dialog's specific state (e.g. `MaterialPicker(MaterialPickerState)`, `BcEditor(BcEditorState)`, `JointEditor(JointEditorState)`). Mutual exclusion of stateful dialogs becomes a type-level invariant instead of an assertion. +1 test (2,660 / 0 / 0).
+
+**Refactor #1 — Viewer module split.** Pulled workbench-specific types and helpers out of `gui/mod.rs` into sibling modules so each workbench owns its own file:
+
+- `gui/sketch_state.rs` — `SketchTool`, `DimensionKind`, `DimensionPopup`, `SketchEntityRef`, `SketchSnapshot`, `SketchMode` + impl (commit `9e2afa1`).
+- `gui/assembly.rs` — `AssemblyJointType`, `JointEditorState`, BOM helpers + `impl GuiState` block (commit `9bd65b9`).
+- `gui/fem.rs` — `MaterialPreset`, `MaterialPickerState`, `material_from_preset`, `BcKind`, `BcInputs`, `BcEditorState`, `fem_picker_tests` (commit `9bd65b9`).
+
+`gui/mod.rs` shrank from 2,381 → 1,304 LOC across these splits while preserving every call site through targeted `pub(crate) use` re-exports.
+
+**Refactor #3 — GuiAction sub-enum partition.** Replaced 9 workbench's worth of flat top-level variants with `GuiAction::Workbench(WorkbenchAction)` wrapper variants, one new module per workbench, and one `process_workbench_action()` dispatcher helper in `app.rs` per sub-enum. Variants migrated by workbench:
+
+- `AssemblyAction` — 9 variants (commit `9e42ece`)
+- `FemAction` — 19 variants (commit `3600df3`)
+- `SketcherAction` — 43 variants (commit `623e4bf`)
+- `MeshAction` — 9 variants (commit `b1c21a4`)
+- `SurfaceAction` — 7 variants (commit `eb9a15d`)
+- `PartAction` — 14 variants (commit `8685bdf`)
+- `PartDesignAction` — 17 variants (commit `ebf91e1`)
+- `DraftAction` — 32 variants (commit `5fedab5`); also dropped a dead `SetDraftLayer(String)` variant that flattening surfaced
+- `TechDrawAction` — 30 variants, both the original 4 + the "TechDraw expanded" 26 (commit `d2966b6`)
+
+Total **180 variants** moved out of the top-level enum into 9 workbench sub-enums; the `GuiAction` outer enum is now ~50 cross-cutting variants (file I/O, viewport, scene, transforms) plus 9 wrapper variants.
+
+**Pattern across all sub-enum extractions.** Each commit follows the same shape: new module file holding only the sub-enum, re-export through `gui/mod.rs`, single `Workbench(WorkbenchAction)` variant added to `GuiAction`, a new `process_workbench_action(&mut self, action: WorkbenchAction)` helper in `app.rs`, and call-site migration in `menu.rs` / `toolbar.rs` / `dialogs.rs` / `task_panel.rs` / `context_menu.rs` (with `use super::WorkbenchAction as W;` shorthand inside each touched function). Derive choices were made per-sub-enum based on payload shapes — `Copy` where all variants carry only `f64`/`u32`/etc., `Clone+Debug+PartialEq` when at least one carries `String` or `Vec<_>`, no `PartialEq` when at least one carries a foreign type that lacks the derive (`SketcherAction::Enter(WorkPlane)`, `TechDrawAction::AddView(ProjectionDir)`).
+
+**Verification.** Every commit individually passes `cargo build --workspace`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`, and `cargo test --workspace --no-fail-fast` (**2,660 passed, 0 failed, 0 ignored** — same baseline as the V37 Phase O-a follow-up + ActiveDialog refactor; no test was added or removed in any sub-enum extraction commit).
+
+**File inventory after refactor.** `crates/viewer/src/gui/` gains 9 new sibling modules: `assembly.rs`, `fem.rs`, `sketch_state.rs`, `mesh.rs`, `surface.rs`, `part.rs`, `part_design.rs`, `draft.rs`, `techdraw.rs`. `gui/mod.rs` now houses cross-cutting types only (`GuiState`, `ViewportInfo`, `GuiAction` outer enum, `ActiveDialog`, `MirrorPlane`, scene/selection enums, theme/density toggles).
+
 ### Added
 
 #### V37: Phase O-a follow-up — BcKind extended to 12 variants + Ground Component menu (2026-04-26)
