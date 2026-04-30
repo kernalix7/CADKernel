@@ -24,10 +24,11 @@ use cadkernel_io::{
 use cadkernel_math::{Point3, Vec3};
 use cadkernel_modeling::{
     BooleanOp, boolean_op, chamfer_edge, check_geometry, compute_mass_properties,
-    extrude, filling, fillet_edge, linear_pattern, make_box, make_cone, make_cylinder,
-    make_ellipsoid, make_helix, make_polygon_wire, make_prism, make_rectangle_wire,
-    make_sphere, make_torus, make_tube, make_wedge, mirror_solid, pipe_surface, scale_solid,
-    shell_solid,
+    countersunk_hole, extrude, filling, fillet_edge, groove, hole, linear_pattern, make_arc_wire,
+    make_box, make_circle_wire, make_cone, make_cylinder, make_ellipse_wire, make_ellipsoid,
+    make_helix, make_line_draft, make_point, make_polygon_wire, make_prism, make_rectangle_wire,
+    make_sphere, make_torus, make_tube, make_wedge, mirror_solid, pad, pipe_surface, pocket,
+    scale_solid, shell_solid,
 };
 use cadkernel_sketch::{
     Constraint, WorkPlane, carbon_copy, decrease_bspline_degree, drag_solve,
@@ -3831,21 +3832,19 @@ impl CadApp {
         use PartDesignAction as Pd;
         match action {
             Pd::PadSketch { depth, symmetric } => {
-                self.log_info(format!("PartDesign: Pad depth={depth:.1} symmetric={symmetric}"));
+                self.run_pad_sketch(depth, symmetric);
             }
             Pd::PocketSketch { depth, through_all } => {
-                self.log_info(format!("PartDesign: Pocket depth={depth:.1} through_all={through_all}"));
+                self.run_pocket_sketch(depth, through_all);
             }
             Pd::GrooveSketch { angle } => {
-                self.log_info(format!("PartDesign: Groove angle={angle:.1}"));
+                self.run_groove_sketch(angle);
             }
             Pd::HoleSketch { radius, depth } => {
-                self.log_info(format!("PartDesign: Hole r={radius:.1} d={depth:.1}"));
+                self.run_hole_sketch(radius, depth);
             }
             Pd::CountersunkHoleSketch { radius, depth, countersink_angle } => {
-                self.log_info(format!(
-                    "PartDesign: Countersunk hole r={radius:.1} d={depth:.1} angle={countersink_angle:.0}"
-                ));
+                self.run_countersunk_hole_sketch(radius, depth, countersink_angle);
             }
             Pd::AdditiveLoft => self.log_info("PartDesign: Additive loft"),
             Pd::AdditivePipe => self.log_info("PartDesign: Additive pipe"),
@@ -3901,11 +3900,11 @@ impl CadApp {
     fn process_draft_action(&mut self, action: DraftAction) {
         use DraftAction as D;
         match action {
-            D::Line => self.log_info("Draft: line"),
+            D::Line => self.run_draft_line(),
             D::Wire => self.log_info("Draft: wire"),
-            D::Circle => self.log_info("Draft: circle"),
-            D::Arc => self.log_info("Draft: arc"),
-            D::Ellipse => self.log_info("Draft: ellipse"),
+            D::Circle => self.run_draft_circle(),
+            D::Arc => self.run_draft_arc(),
+            D::Ellipse => self.run_draft_ellipse(),
             D::Rectangle => {
                 self.snapshot_before("Draft Rectangle");
                 let mut model = BRepModel::new();
@@ -3955,7 +3954,7 @@ impl CadApp {
             }
             D::BSpline => self.log_info("Draft: B-spline"),
             D::Bezier => self.log_info("Draft: Bezier"),
-            D::Point => self.log_info("Draft: point"),
+            D::Point => self.run_draft_point(),
             D::Facebinder => self.log_info("Draft: facebinder"),
             D::Hatch => self.log_info("Draft: hatch"),
             D::Move => self.log_info("Draft: move"),
@@ -3979,6 +3978,383 @@ impl CadApp {
             D::ToSketch => self.log_info("Draft: convert to sketch"),
             D::ToggleSnap(mode) => self.log_info(format!("Draft: toggle snap '{mode}'")),
         }
+    }
+
+    // -- Phase A — sketch-driven PartDesign features ------------------------
+    //
+    // Each helper resolves the active sketch (preferring the open SketchMode,
+    // falling back to the saved last_sketch), builds a 3D profile via
+    // extract_profile, then dispatches to the matching kernel API. When no
+    // base solid is present, Pad falls back to a fresh extrusion so the very
+    // first sketch-driven feature still produces visible geometry.
+
+    fn take_active_sketch_profile(&mut self) -> Option<(Vec<Point3>, Vec3)> {
+        if let Some(mut sm) = self.gui.sketch_mode.take() {
+            if !sm.sketch.constraints.is_empty() {
+                let _ = solve(&mut sm.sketch, 200, 1e-10);
+            }
+            self.gui.last_sketch = Some((sm.sketch.clone(), sm.plane));
+            let profile = extract_profile(&sm.sketch, &sm.plane);
+            let dir = Vec3::new(sm.plane.normal.x, sm.plane.normal.y, sm.plane.normal.z);
+            Some((profile, dir))
+        } else if let Some((sketch, plane)) = self.gui.last_sketch.clone() {
+            let profile = extract_profile(&sketch, &plane);
+            let dir = Vec3::new(plane.normal.x, plane.normal.y, plane.normal.z);
+            Some((profile, dir))
+        } else {
+            None
+        }
+    }
+
+    fn run_pad_sketch(&mut self, depth: f64, symmetric: bool) {
+        let Some((profile, normal)) = self.take_active_sketch_profile() else {
+            self.log_warning("Pad: no active sketch (draw a sketch first)");
+            return;
+        };
+        if profile.len() < 3 {
+            self.log_warning(format!("Pad: sketch profile has {} points (need >= 3)", profile.len()));
+            return;
+        }
+        if depth <= 0.0 {
+            self.log_warning(format!("Pad: depth must be positive (got {depth:.3})"));
+            return;
+        }
+        self.snapshot_before("Pad");
+
+        let (effective_profile, distance) = if symmetric {
+            let half = depth * 0.5;
+            let shifted: Vec<Point3> = profile
+                .iter()
+                .map(|p| Point3::new(p.x - normal.x * half, p.y - normal.y * half, p.z - normal.z * half))
+                .collect();
+            (shifted, depth)
+        } else {
+            (profile, depth)
+        };
+
+        if let Some(base_solid) = self.current_solid {
+            match pad(&self.model, base_solid, &effective_profile, normal, distance) {
+                Ok(r) => {
+                    self.add_to_scene(
+                        &format!("Pad (depth={depth:.2})"),
+                        r.model,
+                        r.solid,
+                        Some(crate::scene::CreationParams::Extruded),
+                    );
+                    self.log_info(format!("Pad: added material (depth={depth:.2}, symmetric={symmetric})"));
+                }
+                Err(e) => self.log_error(format!("Pad error: {e}")),
+            }
+        } else {
+            // No base solid yet — first sketch-driven feature creates a fresh solid.
+            let mut model = BRepModel::new();
+            match extrude(&mut model, &effective_profile, normal, distance) {
+                Ok(r) => {
+                    self.add_to_scene(
+                        &format!("Pad (depth={depth:.2})"),
+                        model,
+                        r.solid,
+                        Some(crate::scene::CreationParams::Extruded),
+                    );
+                    self.log_info(format!("Pad: extruded sketch (depth={depth:.2})"));
+                }
+                Err(e) => self.log_error(format!("Pad error: {e}")),
+            }
+        }
+    }
+
+    fn run_pocket_sketch(&mut self, depth: f64, through_all: bool) {
+        let Some((profile, normal)) = self.take_active_sketch_profile() else {
+            self.log_warning("Pocket: no active sketch (draw a sketch first)");
+            return;
+        };
+        if profile.len() < 3 {
+            self.log_warning(format!("Pocket: sketch profile has {} points (need >= 3)", profile.len()));
+            return;
+        }
+        let Some(base_solid) = self.current_solid else {
+            self.log_warning("Pocket: no base solid (create a solid first)");
+            return;
+        };
+        let actual_depth = if through_all { depth.max(1.0e6) } else { depth };
+        if actual_depth <= 0.0 {
+            self.log_warning(format!("Pocket: depth must be positive (got {actual_depth:.3})"));
+            return;
+        }
+        self.snapshot_before("Pocket");
+        // Pocket subtracts along the inverse normal so material is removed
+        // INTO the base solid rather than out of it.
+        let dir = Vec3::new(-normal.x, -normal.y, -normal.z);
+        match pocket(&self.model, base_solid, &profile, dir, actual_depth) {
+            Ok(r) => {
+                self.add_to_scene(
+                    &format!("Pocket (depth={depth:.2})"),
+                    r.model,
+                    r.solid,
+                    Some(crate::scene::CreationParams::Extruded),
+                );
+                self.log_info(format!("Pocket: removed material (depth={depth:.2}, through_all={through_all})"));
+            }
+            Err(e) => self.log_error(format!("Pocket error: {e}")),
+        }
+    }
+
+    fn run_groove_sketch(&mut self, angle_deg: f64) {
+        let Some((profile, _normal)) = self.take_active_sketch_profile() else {
+            self.log_warning("Groove: no active sketch");
+            return;
+        };
+        if profile.len() < 2 {
+            self.log_warning(format!("Groove: sketch profile has {} points (need >= 2)", profile.len()));
+            return;
+        }
+        let Some(base_solid) = self.current_solid else {
+            self.log_warning("Groove: no base solid");
+            return;
+        };
+        let angle_rad = angle_deg.to_radians();
+        if angle_rad <= 0.0 {
+            self.log_warning(format!("Groove: angle must be positive (got {angle_deg:.1}°)"));
+            return;
+        }
+        self.snapshot_before("Groove");
+        // Default revolve axis: world Z through origin. A future iteration
+        // will accept axis selection from the sketch's first construction line.
+        match groove(
+            &self.model,
+            base_solid,
+            &profile,
+            Point3::ORIGIN,
+            Vec3::Z,
+            angle_rad,
+            32,
+        ) {
+            Ok(r) => {
+                self.add_to_scene(
+                    &format!("Groove ({angle_deg:.0}°)"),
+                    r.model,
+                    r.solid,
+                    Some(crate::scene::CreationParams::Groove { angle: angle_deg }),
+                );
+                self.log_info(format!("Groove: revolved profile by {angle_deg:.0}°"));
+            }
+            Err(e) => self.log_error(format!("Groove error: {e}")),
+        }
+    }
+
+    fn run_hole_sketch(&mut self, radius: f64, depth: f64) {
+        let Some(base_solid) = self.current_solid else {
+            self.log_warning("Hole: no base solid (create a solid first)");
+            return;
+        };
+        // Hole position derived from sketch centroid when available, else origin.
+        let center = self
+            .gui
+            .last_sketch
+            .as_ref()
+            .map(|(s, p)| {
+                let pts = extract_profile(s, p);
+                if pts.is_empty() {
+                    Point3::ORIGIN
+                } else {
+                    let n = pts.len() as f64;
+                    let sx: f64 = pts.iter().map(|q| q.x).sum::<f64>() / n;
+                    let sy: f64 = pts.iter().map(|q| q.y).sum::<f64>() / n;
+                    let sz: f64 = pts.iter().map(|q| q.z).sum::<f64>() / n;
+                    Point3::new(sx, sy, sz)
+                }
+            })
+            .unwrap_or(Point3::ORIGIN);
+        if radius <= 0.0 || depth <= 0.0 {
+            self.log_warning(format!("Hole: radius and depth must be positive (got r={radius:.3}, d={depth:.3})"));
+            return;
+        }
+        self.snapshot_before("Hole");
+        match hole(&self.model, base_solid, center, -Vec3::Z, radius, depth, 32) {
+            Ok(r) => {
+                self.add_to_scene(
+                    &format!("Hole (r={radius:.2}, d={depth:.2})"),
+                    r.model,
+                    r.solid,
+                    Some(crate::scene::CreationParams::Extruded),
+                );
+                self.log_info(format!("Hole: drilled r={radius:.2} d={depth:.2}"));
+            }
+            Err(e) => self.log_error(format!("Hole error: {e}")),
+        }
+    }
+
+    fn run_countersunk_hole_sketch(&mut self, radius: f64, depth: f64, angle_deg: f64) {
+        let Some(base_solid) = self.current_solid else {
+            self.log_warning("Countersunk hole: no base solid");
+            return;
+        };
+        if radius <= 0.0 || depth <= 0.0 || angle_deg <= 0.0 || angle_deg >= 180.0 {
+            self.log_warning(format!(
+                "Countersunk hole: invalid params (r={radius:.3}, d={depth:.3}, angle={angle_deg:.1}°)"
+            ));
+            return;
+        }
+        // Countersink geometry: cone half-angle from the input apex angle.
+        let cs_radius = radius * 2.0;
+        let cs_depth = (cs_radius - radius) / (angle_deg * 0.5).to_radians().tan();
+        self.snapshot_before("Countersunk hole");
+        match countersunk_hole(
+            &self.model,
+            base_solid,
+            Point3::ORIGIN,
+            -Vec3::Z,
+            radius,
+            depth,
+            cs_radius,
+            cs_depth.max(0.1),
+            32,
+        ) {
+            Ok(r) => {
+                self.add_to_scene(
+                    &format!("Countersunk hole (r={radius:.2}, d={depth:.2}, a={angle_deg:.0}°)"),
+                    r.model,
+                    r.solid,
+                    Some(crate::scene::CreationParams::Extruded),
+                );
+                self.log_info(format!(
+                    "Countersunk hole: r={radius:.2} d={depth:.2} angle={angle_deg:.0}°"
+                ));
+            }
+            Err(e) => self.log_error(format!("Countersunk hole error: {e}")),
+        }
+    }
+
+    // -- Phase A — Draft 2D primitives --------------------------------------
+    //
+    // Each helper builds a wire/point in a fresh BRepModel via the
+    // draft_ops kernel API and adds it to the scene with the matching
+    // CreationParams variant. The wire flavours fill the wire boundary into
+    // a planar face so the result has visible geometry — same approach as the
+    // existing D::Rectangle / D::Polygon arms.
+
+    fn run_draft_line(&mut self) {
+        self.snapshot_before("Draft Line");
+        // Draft Line is an open wire — filling() can't turn it into a face
+        // and the renderer has no native polyline pipeline yet. We still
+        // build the wire in a B-Rep model so half-edge data exists for
+        // downstream features, and register a tree entry so the click is
+        // user-visible; renderable polyline geometry is tracked as a
+        // separate Phase B+ item.
+        let mut model = BRepModel::new();
+        let p1 = Point3::ORIGIN;
+        let p2 = Point3::new(2.0, 0.0, 0.0);
+        match make_line_draft(&mut model, p1, p2) {
+            Ok(_wire) => {
+                self.scene.add_mesh_object(
+                    "Draft Line",
+                    cadkernel_io::Mesh::new(),
+                    Some(crate::scene::CreationParams::DraftLine { length: 2.0, angle: 0.0 }),
+                );
+                self.log_info("Draft: line (2-point wire — tree only, no GPU geometry)");
+            }
+            Err(e) => self.log_error(format!("Draft Line error: {e}")),
+        }
+    }
+
+    fn run_draft_circle(&mut self) {
+        self.snapshot_before("Draft Circle");
+        let radius = 1.0;
+        let segments = 32;
+        match make_circle_wire(Point3::ORIGIN, Vec3::Z, radius, segments) {
+            Ok(mut pts) => {
+                pts.pop(); // filling rejects the closing duplicate point
+                let mut model = BRepModel::new();
+                match filling(&mut model, &pts, 1) {
+                    Ok(r) => {
+                        self.add_to_scene(
+                            "Draft Circle",
+                            model,
+                            r.solid,
+                            Some(crate::scene::CreationParams::DraftCircle { radius }),
+                        );
+                        self.log_info(format!("Draft: circle (r={radius:.2})"));
+                    }
+                    Err(e) => self.log_error(format!("Draft Circle fill error: {e}")),
+                }
+            }
+            Err(e) => self.log_error(format!("Draft Circle error: {e}")),
+        }
+    }
+
+    fn run_draft_arc(&mut self) {
+        self.snapshot_before("Draft Arc");
+        let center = Point3::ORIGIN;
+        let start = Point3::new(1.0, 0.0, 0.0);
+        let end = Point3::new(0.0, 1.0, 0.0);
+        let segments = 16;
+        match make_arc_wire(center, start, end, segments) {
+            Ok(pts) => {
+                // Close the arc to a sector with the center so filling has a
+                // valid closed boundary.
+                let mut closed = pts.clone();
+                closed.push(center);
+                let mut model = BRepModel::new();
+                match filling(&mut model, &closed, 1) {
+                    Ok(r) => {
+                        self.add_to_scene(
+                            "Draft Arc",
+                            model,
+                            r.solid,
+                            Some(crate::scene::CreationParams::DraftArc {
+                                radius: 1.0,
+                                start_angle: 0.0,
+                                end_angle: std::f64::consts::FRAC_PI_2,
+                            }),
+                        );
+                        self.log_info("Draft: arc (90°)");
+                    }
+                    Err(e) => self.log_error(format!("Draft Arc fill error: {e}")),
+                }
+            }
+            Err(e) => self.log_error(format!("Draft Arc error: {e}")),
+        }
+    }
+
+    fn run_draft_ellipse(&mut self) {
+        self.snapshot_before("Draft Ellipse");
+        let rx = 2.0;
+        let ry = 1.0;
+        let segments = 48;
+        match make_ellipse_wire(Point3::ORIGIN, Vec3::Z, rx, ry, segments) {
+            Ok(mut pts) => {
+                pts.pop();
+                let mut model = BRepModel::new();
+                match filling(&mut model, &pts, 1) {
+                    Ok(r) => {
+                        self.add_to_scene(
+                            "Draft Ellipse",
+                            model,
+                            r.solid,
+                            Some(crate::scene::CreationParams::DraftEllipse { rx, ry }),
+                        );
+                        self.log_info(format!("Draft: ellipse (rx={rx:.2}, ry={ry:.2})"));
+                    }
+                    Err(e) => self.log_error(format!("Draft Ellipse fill error: {e}")),
+                }
+            }
+            Err(e) => self.log_error(format!("Draft Ellipse error: {e}")),
+        }
+    }
+
+    fn run_draft_point(&mut self) {
+        self.snapshot_before("Draft Point");
+        let mut model = BRepModel::new();
+        let _vh = make_point(&mut model, Point3::ORIGIN);
+        // A bare vertex has no faces or solid for the renderer to draw, so
+        // we register it as a mesh-only scene object (an empty mesh marks
+        // its presence in the tree without producing GPU geometry).
+        let _id = self.scene.add_mesh_object(
+            "Draft Point",
+            cadkernel_io::Mesh::new(),
+            None,
+        );
+        self.log_info("Draft: point at origin");
     }
 
     fn process_techdraw_action(&mut self, action: TechDrawAction) {
@@ -7126,5 +7502,90 @@ impl CadApp {
     #[doc(hidden)]
     pub fn dispatch_toggle_projection(&mut self) {
         self.dispatch(GuiAction::ToggleProjection);
+    }
+
+    /// Seed `last_sketch` with a square profile centered at the origin on the
+    /// XY plane, so PartDesign sketch-driven actions have a profile to consume
+    /// without the full Sketcher state machine.
+    #[doc(hidden)]
+    pub fn seed_test_sketch_square(&mut self, side: f64) {
+        let half = side * 0.5;
+        let mut sketch = cadkernel_sketch::Sketch::new();
+        let p0 = sketch.add_point(-half, -half);
+        let p1 = sketch.add_point(half, -half);
+        let p2 = sketch.add_point(half, half);
+        let p3 = sketch.add_point(-half, half);
+        sketch.add_line(p0, p1);
+        sketch.add_line(p1, p2);
+        sketch.add_line(p2, p3);
+        sketch.add_line(p3, p0);
+        self.gui.last_sketch = Some((sketch, cadkernel_sketch::WorkPlane::xy()));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_pad_sketch(&mut self, depth: f64, symmetric: bool) {
+        self.dispatch(GuiAction::PartDesign(crate::gui::PartDesignAction::PadSketch {
+            depth,
+            symmetric,
+        }));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_pocket_sketch(&mut self, depth: f64, through_all: bool) {
+        self.dispatch(GuiAction::PartDesign(crate::gui::PartDesignAction::PocketSketch {
+            depth,
+            through_all,
+        }));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_groove_sketch(&mut self, angle_deg: f64) {
+        self.dispatch(GuiAction::PartDesign(crate::gui::PartDesignAction::GrooveSketch {
+            angle: angle_deg,
+        }));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_hole_sketch(&mut self, radius: f64, depth: f64) {
+        self.dispatch(GuiAction::PartDesign(crate::gui::PartDesignAction::HoleSketch {
+            radius,
+            depth,
+        }));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_countersunk_hole_sketch(&mut self, radius: f64, depth: f64, angle_deg: f64) {
+        self.dispatch(GuiAction::PartDesign(
+            crate::gui::PartDesignAction::CountersunkHoleSketch {
+                radius,
+                depth,
+                countersink_angle: angle_deg,
+            },
+        ));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_draft_line(&mut self) {
+        self.dispatch(GuiAction::Draft(crate::gui::DraftAction::Line));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_draft_circle(&mut self) {
+        self.dispatch(GuiAction::Draft(crate::gui::DraftAction::Circle));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_draft_arc(&mut self) {
+        self.dispatch(GuiAction::Draft(crate::gui::DraftAction::Arc));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_draft_ellipse(&mut self) {
+        self.dispatch(GuiAction::Draft(crate::gui::DraftAction::Ellipse));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_draft_point(&mut self) {
+        self.dispatch(GuiAction::Draft(crate::gui::DraftAction::Point));
     }
 }

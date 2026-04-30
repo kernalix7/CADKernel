@@ -263,7 +263,7 @@ Updated as phases land.
 
 | Phase | Status | Commit range | Date |
 |---|---|---|---|
-| A — Critical CAD | Not started | — | — |
+| A — Critical CAD | Staged — pending tech-lead commit (Pd::PadSketch / PocketSketch / GrooveSketch / HoleSketch / CountersunkHoleSketch + D::Line / Circle / Arc / Ellipse / Point) | — | 2026-04-29 |
 | B — EASY wiring | Not started | — | — |
 | C — MEDIUM UX | Not started | — | — |
 | D — Annotation | Not started | — | — |
