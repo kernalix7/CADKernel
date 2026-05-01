@@ -1955,3 +1955,167 @@ fn draft_point_dispatch_adds_tree_entry() {
     app.dispatch_draft_point();
     assert_eq!(app.scene_ref().len(), 1);
 }
+
+// ---------------------------------------------------------------------------
+// Phase B — Draft EASY tier (Wire / BSpline / Bezier / Hatch / Text /
+// Upgrade / Downgrade / WireToBSpline / ToSketch + arrays + clone), all
+// driven through the production dispatcher via the test_support harness.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn draft_wire_dispatch_adds_tree_entry_without_geometry() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_draft_wire();
+    assert_eq!(app.scene_ref().len(), 1);
+}
+
+#[test]
+fn draft_bspline_dispatch_adds_tree_entry() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_draft_bspline();
+    assert_eq!(app.scene_ref().len(), 1);
+}
+
+#[test]
+fn draft_bezier_dispatch_adds_tree_entry() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_draft_bezier();
+    assert_eq!(app.scene_ref().len(), 1);
+}
+
+#[test]
+fn draft_hatch_dispatch_adds_tree_entry() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_draft_hatch();
+    assert_eq!(app.scene_ref().len(), 1);
+}
+
+#[test]
+fn draft_text_dispatch_adds_tree_entry() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_draft_text();
+    assert_eq!(app.scene_ref().len(), 1);
+}
+
+#[test]
+fn draft_upgrade_dispatch_closes_wire_into_filled_solid() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_draft_upgrade();
+    let scene = app.scene_ref();
+    assert_eq!(scene.len(), 1, "Upgrade must add one solid");
+    assert!(
+        !scene.objects.first().unwrap().vertices.is_empty(),
+        "Upgrade result must have geometry"
+    );
+}
+
+#[test]
+fn draft_downgrade_dispatch_splits_selected_solid_into_face_solids() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(2.0, 2.0, 2.0);
+    let before = app.scene_ref().len();
+    app.dispatch_draft_downgrade();
+    let after = app.scene_ref().len();
+    assert!(
+        after > before,
+        "Downgrade should add per-face solids (a cube has 6 faces); before={before} after={after}"
+    );
+}
+
+#[test]
+fn draft_downgrade_without_selection_logs_warning() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_draft_downgrade();
+    assert!(
+        app.scene_ref().is_empty(),
+        "Downgrade with no selection must not add any object"
+    );
+}
+
+#[test]
+fn draft_wire_to_bspline_dispatch_adds_tree_entry() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_draft_wire_to_bspline();
+    assert_eq!(app.scene_ref().len(), 1);
+}
+
+#[test]
+fn draft_to_sketch_dispatch_populates_last_sketch() {
+    let mut app = CadApp::new_headless();
+    assert!(!app.last_sketch_is_set());
+    app.dispatch_draft_to_sketch();
+    assert!(
+        app.last_sketch_is_set(),
+        "ToSketch must save a sketch into gui.last_sketch"
+    );
+    assert!(app.scene_ref().is_empty());
+}
+
+#[test]
+fn draft_clone_dispatch_duplicates_selected_solid() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(1.0, 1.0, 1.0);
+    let before = app.scene_ref().len();
+    app.dispatch_draft_clone();
+    assert_eq!(
+        app.scene_ref().len(),
+        before + 1,
+        "Clone should add exactly one duplicate"
+    );
+}
+
+#[test]
+fn draft_clone_without_selection_logs_warning() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_draft_clone();
+    assert!(app.scene_ref().is_empty());
+}
+
+#[test]
+fn draft_array_rect_dispatch_creates_grid_of_copies() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(1.0, 1.0, 1.0);
+    let before = app.scene_ref().len();
+    app.dispatch_draft_array_rect();
+    let added = app.scene_ref().len() - before;
+    // Default 3×2 grid has 6 instances; original is the selected solid, so
+    // the dispatcher adds 5 new copies as scene objects.
+    assert_eq!(added, 5, "rect array (3×2) should add 5 copies, got {added}");
+}
+
+#[test]
+fn draft_array_polar_dispatch_creates_rotational_copies() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(1.0, 1.0, 1.0);
+    let before = app.scene_ref().len();
+    app.dispatch_draft_array_polar();
+    let added = app.scene_ref().len() - before;
+    assert_eq!(added, 5, "polar array (6-fold) should add 5 copies, got {added}");
+}
+
+#[test]
+fn draft_array_path_dispatch_creates_copies_along_path() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(1.0, 1.0, 1.0);
+    let before = app.scene_ref().len();
+    app.dispatch_draft_array_path();
+    let added = app.scene_ref().len() - before;
+    assert_eq!(added, 3, "path array (4-point path) should add 3 copies, got {added}");
+}
+
+#[test]
+fn draft_array_point_dispatch_creates_copies_at_each_position() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(1.0, 1.0, 1.0);
+    let before = app.scene_ref().len();
+    app.dispatch_draft_array_point();
+    let added = app.scene_ref().len() - before;
+    assert_eq!(added, 3, "point array (4 positions) should add 3 copies, got {added}");
+}
+
+#[test]
+fn draft_array_rect_without_selection_logs_warning() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_draft_array_rect();
+    assert!(app.scene_ref().is_empty());
+}

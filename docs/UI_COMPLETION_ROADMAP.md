@@ -263,8 +263,8 @@ Updated as phases land.
 
 | Phase | Status | Commit range | Date |
 |---|---|---|---|
-| A — Critical CAD | Staged — pending tech-lead commit (Pd::PadSketch / PocketSketch / GrooveSketch / HoleSketch / CountersunkHoleSketch + D::Line / Circle / Arc / Ellipse / Point) | — | 2026-04-29 |
-| B — EASY wiring | Not started | — | — |
+| A — Critical CAD | Landed | abbfbda | 2026-04-29 |
+| B — EASY wiring | Staged — pending tech-lead commit (D::Wire / BSpline / Bezier / Hatch / Text / Upgrade / Downgrade / WireToBSpline / ToSketch + D::Clone / ArrayRect / ArrayPolar / ArrayPath / ArrayPoint) | — | 2026-04-29 |
 | C — MEDIUM UX | Not started | — | — |
 | D — Annotation | Not started | — | — |
 | E — FEM | Not started | — | — |

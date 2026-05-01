@@ -23,12 +23,15 @@ use cadkernel_io::{
 };
 use cadkernel_math::{Point3, Vec3};
 use cadkernel_modeling::{
-    BooleanOp, boolean_op, chamfer_edge, check_geometry, compute_mass_properties,
-    countersunk_hole, extrude, filling, fillet_edge, groove, hole, linear_pattern, make_arc_wire,
-    make_box, make_circle_wire, make_cone, make_cylinder, make_ellipse_wire, make_ellipsoid,
-    make_helix, make_line_draft, make_point, make_polygon_wire, make_prism, make_rectangle_wire,
-    make_sphere, make_torus, make_tube, make_wedge, mirror_solid, pad, pipe_surface, pocket,
-    scale_solid, shell_solid,
+    BooleanOp, HatchPattern, boolean_op, chamfer_edge, check_geometry, clone_solid,
+    compute_mass_properties, countersunk_hole, downgrade_solid_faces, draft_hatch,
+    draft_to_sketch, extrude, filling, fillet_edge, groove, hole, linear_pattern, make_arc_wire,
+    make_bezier_wire, make_box, make_bspline_wire, make_circle_wire, make_cone, make_cylinder,
+    make_ellipse_wire, make_ellipsoid, make_helix, make_line_draft, make_point,
+    make_polygon_wire, make_prism, make_rectangle_wire, make_sphere, make_torus, make_tube,
+    make_wedge, make_wire, mirror_solid, pad, path_array, pipe_surface, pocket, point_array,
+    polar_array, rectangular_array, scale_solid, shape_from_text, shell_solid,
+    upgrade_wire_model, wire_to_bspline_convert,
 };
 use cadkernel_sketch::{
     Constraint, WorkPlane, carbon_copy, decrease_bspline_degree, drag_solve,
@@ -3901,7 +3904,7 @@ impl CadApp {
         use DraftAction as D;
         match action {
             D::Line => self.run_draft_line(),
-            D::Wire => self.log_info("Draft: wire"),
+            D::Wire => self.run_draft_wire(),
             D::Circle => self.run_draft_circle(),
             D::Arc => self.run_draft_arc(),
             D::Ellipse => self.run_draft_ellipse(),
@@ -3952,11 +3955,11 @@ impl CadApp {
                     Err(e) => self.log_error(format!("DraftPolygon error: {e}")),
                 }
             }
-            D::BSpline => self.log_info("Draft: B-spline"),
-            D::Bezier => self.log_info("Draft: Bezier"),
+            D::BSpline => self.run_draft_bspline(),
+            D::Bezier => self.run_draft_bezier(),
             D::Point => self.run_draft_point(),
             D::Facebinder => self.log_info("Draft: facebinder"),
-            D::Hatch => self.log_info("Draft: hatch"),
+            D::Hatch => self.run_draft_hatch(),
             D::Move => self.log_info("Draft: move"),
             D::Rotate => self.log_info("Draft: rotate"),
             D::Scale => self.log_info("Draft: scale"),
@@ -3964,18 +3967,18 @@ impl CadApp {
             D::Offset => self.log_info("Draft: offset"),
             D::Trim => self.log_info("Draft: trim"),
             D::Stretch => self.log_info("Draft: stretch"),
-            D::Clone => self.log_info("Draft: clone"),
-            D::ArrayRect => self.log_info("Draft: rectangular array"),
-            D::ArrayPolar => self.log_info("Draft: polar array"),
-            D::ArrayPath => self.log_info("Draft: path array"),
-            D::ArrayPoint => self.log_info("Draft: point array"),
+            D::Clone => self.run_draft_clone(),
+            D::ArrayRect => self.run_draft_array_rect(),
+            D::ArrayPolar => self.run_draft_array_polar(),
+            D::ArrayPath => self.run_draft_array_path(),
+            D::ArrayPoint => self.run_draft_array_point(),
             D::Dimension => self.log_info("Draft: dimension"),
             D::Label => self.log_info("Draft: label"),
-            D::Text => self.log_info("Draft: text"),
-            D::Upgrade => self.log_info("Draft: upgrade"),
-            D::Downgrade => self.log_info("Draft: downgrade"),
-            D::WireToBSpline => self.log_info("Draft: wire to B-spline"),
-            D::ToSketch => self.log_info("Draft: convert to sketch"),
+            D::Text => self.run_draft_text(),
+            D::Upgrade => self.run_draft_upgrade(),
+            D::Downgrade => self.run_draft_downgrade(),
+            D::WireToBSpline => self.run_draft_wire_to_bspline(),
+            D::ToSketch => self.run_draft_to_sketch(),
             D::ToggleSnap(mode) => self.log_info(format!("Draft: toggle snap '{mode}'")),
         }
     }
@@ -4355,6 +4358,349 @@ impl CadApp {
             None,
         );
         self.log_info("Draft: point at origin");
+    }
+
+    // -- Phase B — Draft EASY tier wiring -----------------------------------
+    //
+    // Same shape as Phase A: each helper either calls a kernel API and adds
+    // a SceneObject via `add_to_scene` (when the result is a solid), fills a
+    // closed wire into a face for filled output, or registers a tree-only
+    // entry when the kernel result is a wire/curve and the renderer has no
+    // polyline pipeline yet (same caveat as `D::Line` / `D::Point`).
+
+    fn run_draft_wire(&mut self) {
+        self.snapshot_before("Draft Wire");
+        let mut model = BRepModel::new();
+        let pts = [
+            Point3::ORIGIN,
+            Point3::new(1.0, 0.0, 0.0),
+            Point3::new(1.0, 1.0, 0.0),
+            Point3::new(0.0, 1.0, 0.0),
+        ];
+        match make_wire(&mut model, &pts) {
+            Ok(_) => {
+                self.scene.add_mesh_object(
+                    "Draft Wire",
+                    cadkernel_io::Mesh::new(),
+                    None,
+                );
+                self.log_info("Draft: wire (4-point polyline — tree only, no GPU geometry)");
+            }
+            Err(e) => self.log_error(format!("Draft Wire error: {e}")),
+        }
+    }
+
+    fn run_draft_bspline(&mut self) {
+        self.snapshot_before("Draft B-spline");
+        let mut model = BRepModel::new();
+        let cps = vec![
+            Point3::ORIGIN,
+            Point3::new(1.0, 2.0, 0.0),
+            Point3::new(3.0, 2.0, 0.0),
+            Point3::new(4.0, 0.0, 0.0),
+        ];
+        match make_bspline_wire(&mut model, cps, 3, 32) {
+            Ok(_) => {
+                self.scene.add_mesh_object(
+                    "Draft B-spline",
+                    cadkernel_io::Mesh::new(),
+                    None,
+                );
+                self.log_info("Draft: B-spline (degree 3 — tree only, no GPU geometry)");
+            }
+            Err(e) => self.log_error(format!("Draft B-spline error: {e}")),
+        }
+    }
+
+    fn run_draft_bezier(&mut self) {
+        self.snapshot_before("Draft Bezier");
+        match make_bezier_wire(
+            Point3::ORIGIN,
+            Point3::new(1.0, 2.0, 0.0),
+            Point3::new(3.0, 2.0, 0.0),
+            Point3::new(4.0, 0.0, 0.0),
+            32,
+        ) {
+            Ok(_pts) => {
+                self.scene.add_mesh_object(
+                    "Draft Bezier",
+                    cadkernel_io::Mesh::new(),
+                    None,
+                );
+                self.log_info("Draft: cubic Bezier (tree only, no GPU geometry)");
+            }
+            Err(e) => self.log_error(format!("Draft Bezier error: {e}")),
+        }
+    }
+
+    fn run_draft_hatch(&mut self) {
+        self.snapshot_before("Draft Hatch");
+        // Build a default 2x2 square boundary at the origin and run the
+        // kernel hatch generator. The hatch result is a list of fill lines
+        // (no faces), so the scene gains a tree-only entry — same renderer
+        // gap as Wire / BSpline.
+        let boundary = [
+            Point3::ORIGIN,
+            Point3::new(2.0, 0.0, 0.0),
+            Point3::new(2.0, 2.0, 0.0),
+            Point3::new(0.0, 2.0, 0.0),
+        ];
+        let pattern = HatchPattern::Lines { angle: std::f64::consts::FRAC_PI_4, spacing: 0.25 };
+        match draft_hatch(&boundary, pattern, 1.0) {
+            Ok(result) => {
+                self.scene.add_mesh_object(
+                    "Draft Hatch",
+                    cadkernel_io::Mesh::new(),
+                    None,
+                );
+                self.log_info(format!(
+                    "Draft: hatch ({} fill lines — tree only, no GPU geometry)",
+                    result.lines.len()
+                ));
+            }
+            Err(e) => self.log_error(format!("Draft Hatch error: {e}")),
+        }
+    }
+
+    fn run_draft_text(&mut self) {
+        self.snapshot_before("Draft Text");
+        // Default placeholder text. A future iteration will accept the text
+        // body / size from a modal; Phase B just demonstrates the kernel API
+        // is reachable.
+        match shape_from_text("CAD", Point3::ORIGIN, 1.0, Vec3::Z) {
+            Ok(strokes) => {
+                self.scene.add_mesh_object(
+                    "Draft Text",
+                    cadkernel_io::Mesh::new(),
+                    None,
+                );
+                self.log_info(format!(
+                    "Draft: text 'CAD' ({} strokes — tree only, no GPU geometry)",
+                    strokes.len()
+                ));
+            }
+            Err(e) => self.log_error(format!("Draft Text error: {e}")),
+        }
+    }
+
+    fn run_draft_upgrade(&mut self) {
+        self.snapshot_before("Draft Upgrade");
+        // Default open polyline → closed face via upgrade_wire_model.
+        let pts = [
+            Point3::ORIGIN,
+            Point3::new(2.0, 0.0, 0.0),
+            Point3::new(2.0, 1.0, 0.0),
+            Point3::new(0.0, 1.0, 0.0),
+        ];
+        let mut model = BRepModel::new();
+        match upgrade_wire_model(&mut model, &pts) {
+            Ok(solid) => {
+                self.add_to_scene("Draft Upgrade", model, solid, None);
+                self.log_info("Draft: upgrade — wire closed into face");
+            }
+            Err(e) => self.log_error(format!("Draft Upgrade error: {e}")),
+        }
+    }
+
+    fn run_draft_downgrade(&mut self) {
+        let Some(obj) = self.scene.selected_object().cloned() else {
+            self.log_warning("Downgrade: no selected solid (select an object first)");
+            return;
+        };
+        self.snapshot_before("Draft Downgrade");
+        let mut model = obj.model.clone();
+        match downgrade_solid_faces(&mut model, obj.solid) {
+            Ok(face_solids) => {
+                let n = face_solids.len();
+                for (i, face_solid) in face_solids.into_iter().enumerate() {
+                    self.scene.add_object(
+                        format!("{} face {}", obj.name, i + 1),
+                        model.clone(),
+                        face_solid,
+                        None,
+                    );
+                }
+                self.rebuild_scene_gpu();
+                self.log_info(format!("Draft: downgrade — split into {n} face solids"));
+            }
+            Err(e) => self.log_error(format!("Draft Downgrade error: {e}")),
+        }
+    }
+
+    fn run_draft_wire_to_bspline(&mut self) {
+        self.snapshot_before("Draft Wire→BSpline");
+        let pts = [
+            Point3::ORIGIN,
+            Point3::new(1.0, 2.0, 0.0),
+            Point3::new(3.0, 2.0, 0.0),
+            Point3::new(4.0, 0.0, 0.0),
+        ];
+        let mut model = BRepModel::new();
+        match wire_to_bspline_convert(&mut model, &pts, 3) {
+            Ok(_curve) => {
+                self.scene.add_mesh_object(
+                    "Draft Wire→BSpline",
+                    cadkernel_io::Mesh::new(),
+                    None,
+                );
+                self.log_info("Draft: wire converted to B-spline (curve only — tree entry)");
+            }
+            Err(e) => self.log_error(format!("Draft Wire→BSpline error: {e}")),
+        }
+    }
+
+    fn run_draft_to_sketch(&mut self) {
+        let pts = [
+            Point3::ORIGIN,
+            Point3::new(2.0, 0.0, 0.0),
+            Point3::new(2.0, 1.0, 0.0),
+            Point3::new(0.0, 1.0, 0.0),
+        ];
+        match draft_to_sketch(&pts) {
+            Ok(sketch) => {
+                self.gui.last_sketch = Some((sketch, cadkernel_sketch::WorkPlane::xy()));
+                self.log_info(format!(
+                    "Draft: converted {} points to a sketch (saved as last_sketch)",
+                    pts.len()
+                ));
+            }
+            Err(e) => self.log_error(format!("Draft ToSketch error: {e}")),
+        }
+    }
+
+    fn run_draft_clone(&mut self) {
+        let Some(obj) = self.scene.selected_object().cloned() else {
+            self.log_warning("Clone: no selected solid (select an object first)");
+            return;
+        };
+        self.snapshot_before("Draft Clone");
+        let mut model = obj.model.clone();
+        match clone_solid(&mut model, obj.solid) {
+            Ok(r) => {
+                self.add_to_scene(
+                    &format!("{} (clone)", obj.name),
+                    model,
+                    r.solid,
+                    obj.params.clone(),
+                );
+                self.log_info(format!("Draft: cloned '{}'", obj.name));
+            }
+            Err(e) => self.log_error(format!("Draft Clone error: {e}")),
+        }
+    }
+
+    fn run_draft_array_rect(&mut self) {
+        let Some(obj) = self.scene.selected_object().cloned() else {
+            self.log_warning("Array Rect: no selected solid");
+            return;
+        };
+        self.snapshot_before("Draft Array Rect");
+        let mut model = obj.model.clone();
+        match rectangular_array(&mut model, obj.solid, Vec3::X, 3.0, 3, Vec3::Y, 3.0, 2) {
+            Ok(r) => {
+                let n_added = r.solids.len().saturating_sub(1);
+                for (i, s) in r.solids.iter().enumerate().skip(1) {
+                    self.scene.add_object(
+                        format!("{} array[{}]", obj.name, i),
+                        model.clone(),
+                        *s,
+                        None,
+                    );
+                }
+                self.rebuild_scene_gpu();
+                self.log_info(format!(
+                    "Draft: rectangular array — {n_added} new copies (3×2 grid)"
+                ));
+            }
+            Err(e) => self.log_error(format!("Draft Array Rect error: {e}")),
+        }
+    }
+
+    fn run_draft_array_polar(&mut self) {
+        let Some(obj) = self.scene.selected_object().cloned() else {
+            self.log_warning("Array Polar: no selected solid");
+            return;
+        };
+        self.snapshot_before("Draft Array Polar");
+        let mut model = obj.model.clone();
+        match polar_array(&mut model, obj.solid, Point3::ORIGIN, Vec3::Z, 6) {
+            Ok(solids) => {
+                let n_added = solids.len().saturating_sub(1);
+                for (i, s) in solids.iter().enumerate().skip(1) {
+                    self.scene.add_object(
+                        format!("{} polar[{}]", obj.name, i),
+                        model.clone(),
+                        *s,
+                        None,
+                    );
+                }
+                self.rebuild_scene_gpu();
+                self.log_info(format!("Draft: polar array — {n_added} new copies (6-fold)"));
+            }
+            Err(e) => self.log_error(format!("Draft Array Polar error: {e}")),
+        }
+    }
+
+    fn run_draft_array_path(&mut self) {
+        let Some(obj) = self.scene.selected_object().cloned() else {
+            self.log_warning("Array Path: no selected solid");
+            return;
+        };
+        self.snapshot_before("Draft Array Path");
+        let mut model = obj.model.clone();
+        let path = [
+            Point3::ORIGIN,
+            Point3::new(3.0, 0.0, 0.0),
+            Point3::new(3.0, 3.0, 0.0),
+            Point3::new(0.0, 3.0, 0.0),
+        ];
+        match path_array(&mut model, obj.solid, &path) {
+            Ok(r) => {
+                let n_added = r.solids.len().saturating_sub(1);
+                for (i, s) in r.solids.iter().enumerate().skip(1) {
+                    self.scene.add_object(
+                        format!("{} path[{}]", obj.name, i),
+                        model.clone(),
+                        *s,
+                        None,
+                    );
+                }
+                self.rebuild_scene_gpu();
+                self.log_info(format!("Draft: path array — {n_added} new copies"));
+            }
+            Err(e) => self.log_error(format!("Draft Array Path error: {e}")),
+        }
+    }
+
+    fn run_draft_array_point(&mut self) {
+        let Some(obj) = self.scene.selected_object().cloned() else {
+            self.log_warning("Array Point: no selected solid");
+            return;
+        };
+        self.snapshot_before("Draft Array Point");
+        let mut model = obj.model.clone();
+        let positions = [
+            Point3::ORIGIN,
+            Point3::new(2.0, 0.0, 0.0),
+            Point3::new(0.0, 2.0, 0.0),
+            Point3::new(2.0, 2.0, 0.0),
+        ];
+        match point_array(&mut model, obj.solid, &positions) {
+            Ok(solids) => {
+                let n_added = solids.len().saturating_sub(1);
+                for (i, s) in solids.iter().enumerate().skip(1) {
+                    self.scene.add_object(
+                        format!("{} pt[{}]", obj.name, i),
+                        model.clone(),
+                        *s,
+                        None,
+                    );
+                }
+                self.rebuild_scene_gpu();
+                self.log_info(format!("Draft: point array — {n_added} new copies"));
+            }
+            Err(e) => self.log_error(format!("Draft Array Point error: {e}")),
+        }
     }
 
     fn process_techdraw_action(&mut self, action: TechDrawAction) {
@@ -7587,5 +7933,82 @@ impl CadApp {
     #[doc(hidden)]
     pub fn dispatch_draft_point(&mut self) {
         self.dispatch(GuiAction::Draft(crate::gui::DraftAction::Point));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_draft_wire(&mut self) {
+        self.dispatch(GuiAction::Draft(crate::gui::DraftAction::Wire));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_draft_bspline(&mut self) {
+        self.dispatch(GuiAction::Draft(crate::gui::DraftAction::BSpline));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_draft_bezier(&mut self) {
+        self.dispatch(GuiAction::Draft(crate::gui::DraftAction::Bezier));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_draft_hatch(&mut self) {
+        self.dispatch(GuiAction::Draft(crate::gui::DraftAction::Hatch));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_draft_text(&mut self) {
+        self.dispatch(GuiAction::Draft(crate::gui::DraftAction::Text));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_draft_upgrade(&mut self) {
+        self.dispatch(GuiAction::Draft(crate::gui::DraftAction::Upgrade));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_draft_downgrade(&mut self) {
+        self.dispatch(GuiAction::Draft(crate::gui::DraftAction::Downgrade));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_draft_wire_to_bspline(&mut self) {
+        self.dispatch(GuiAction::Draft(crate::gui::DraftAction::WireToBSpline));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_draft_to_sketch(&mut self) {
+        self.dispatch(GuiAction::Draft(crate::gui::DraftAction::ToSketch));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_draft_clone(&mut self) {
+        self.dispatch(GuiAction::Draft(crate::gui::DraftAction::Clone));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_draft_array_rect(&mut self) {
+        self.dispatch(GuiAction::Draft(crate::gui::DraftAction::ArrayRect));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_draft_array_polar(&mut self) {
+        self.dispatch(GuiAction::Draft(crate::gui::DraftAction::ArrayPolar));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_draft_array_path(&mut self) {
+        self.dispatch(GuiAction::Draft(crate::gui::DraftAction::ArrayPath));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_draft_array_point(&mut self) {
+        self.dispatch(GuiAction::Draft(crate::gui::DraftAction::ArrayPoint));
+    }
+
+    /// Read whether `gui.last_sketch` was populated by a dispatch (used by
+    /// the `D::ToSketch` test).
+    #[doc(hidden)]
+    pub fn last_sketch_is_set(&self) -> bool {
+        self.gui.last_sketch.is_some()
     }
 }
