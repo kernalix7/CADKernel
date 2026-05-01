@@ -24,18 +24,19 @@ use cadkernel_io::{
 use cadkernel_math::{Point3, Vec3};
 use cadkernel_modeling::{
     BooleanOp, Compound, HatchPattern, Transform as MultiTransformStep, auto_defeaturing,
-    boolean_fragments, boolean_op, chamfer_edge, check_geometry, clone_solid, compound_filter,
-    compute_mass_properties, connect_shapes, coons_patch, countersunk_hole, cutout_shapes,
-    downgrade_solid_faces, draft_hatch, draft_to_sketch, embed_shapes, explode_compound,
-    extrude, face_from_wires, filling, fillet_edge, groove, hole, linear_pattern, make_arc_wire,
-    make_bezier_wire, make_box, make_bspline_wire, make_circle_wire, make_cone, make_cylinder,
-    make_ellipse_wire, make_ellipsoid, make_facebinder, make_helix, make_line_draft, make_point,
-    make_polygon_wire, make_prism, make_rectangle_wire, make_sphere, make_torus, make_tube,
-    make_wedge, make_wire, mirror_solid, mirror_solid_draft, move_solid, multi_transform,
-    offset_wire, pad, path_array, pipe_surface, pocket, point_array, points_from_shape,
-    polar_array, project_curve_on_solid, rectangular_array, rotate_solid, scale_solid,
-    scale_solid_draft, shape_from_mesh, shape_from_text, shell_solid, slice_to_compound,
-    stretch_wire, trimex_draft, upgrade_wire_model, wire_to_bspline_convert,
+    boolean_fragments, boolean_op, boolean_op_exact, chamfer_edge, check_geometry, clone_solid,
+    compound_filter, compute_mass_properties, connect_shapes, coons_patch, countersunk_hole,
+    cutout_shapes, downgrade_solid_faces, draft_hatch, draft_to_sketch, embed_shapes,
+    explode_compound, extend_surface, extrude, face_from_wires, filling, fillet_edge, groove,
+    hole, linear_pattern, loft, make_arc_wire, make_bezier_wire, make_box, make_bspline_wire,
+    make_circle_wire, make_cone, make_cylinder, make_ellipse_wire, make_ellipsoid,
+    make_facebinder, make_helix, make_line_draft, make_point, make_polygon_wire, make_prism,
+    make_rectangle_wire, make_sphere, make_torus, make_tube, make_wedge, make_wire, mirror_solid,
+    mirror_solid_draft, move_solid, multi_transform, offset_wire, pad, path_array, pipe_surface,
+    pocket, point_array, points_from_shape, polar_array, project_curve_on_solid,
+    rectangular_array, rotate_solid, scale_solid, scale_solid_draft, sections, shape_from_mesh,
+    shape_from_text, shell_solid, slice_to_compound, stretch_wire, surface_from_curves, sweep,
+    trimex_draft, upgrade_wire_model, wire_to_bspline, wire_to_bspline_convert,
 };
 use cadkernel_geometry::LineSegment;
 use cadkernel_sketch::{
@@ -3782,9 +3783,9 @@ impl CadApp {
                     Err(e) => self.log_error(format!("SurfaceBoundary error: {e}")),
                 }
             }
-            S::Sections => self.log_info("Surface: sections"),
-            S::Extend => self.log_info("Surface: extend"),
-            S::Blend => self.log_info("Surface: blend"),
+            S::Sections => self.run_surface_sections(),
+            S::Extend => self.run_surface_extend(),
+            S::Blend => self.run_surface_blend(),
             S::Pipe => {
                 self.snapshot_before("Surface Pipe");
                 let mut model = BRepModel::new();
@@ -3850,10 +3851,10 @@ impl CadApp {
             Pd::CountersunkHoleSketch { radius, depth, countersink_angle } => {
                 self.run_countersunk_hole_sketch(radius, depth, countersink_angle);
             }
-            Pd::AdditiveLoft => self.log_info("PartDesign: Additive loft"),
-            Pd::AdditivePipe => self.log_info("PartDesign: Additive pipe"),
-            Pd::SubtractiveLoft => self.log_info("PartDesign: Subtractive loft"),
-            Pd::SubtractivePipe => self.log_info("PartDesign: Subtractive pipe"),
+            Pd::AdditiveLoft => self.run_partdesign_additive_loft(),
+            Pd::AdditivePipe => self.run_partdesign_additive_pipe(),
+            Pd::SubtractiveLoft => self.run_partdesign_subtractive_loft(),
+            Pd::SubtractivePipe => self.run_partdesign_subtractive_pipe(),
             Pd::CreateSprocket { teeth, roller_diameter, pitch, bore } => {
                 self.log_info(format!(
                     "PartDesign: Sprocket {teeth}T Dp={roller_diameter:.2} P={pitch:.2} bore={bore:.2}"
@@ -5425,6 +5426,279 @@ impl CadApp {
             projected.len(),
             obj.name
         ));
+    }
+
+    // -- Phase C3 — Surface ops + PartDesign Loft/Pipe (final MEDIUM batch) --
+    //
+    // Sections / SurfaceFromCurves both produce REAL B-Rep solids (skinned
+    // surfaces with manifold shells), so they go through `add_to_scene`
+    // normally — no renderer-gap caveat for those. Extend operates on a
+    // selected solid and returns a thickened solid.
+    //
+    // Loft / Sweep produce closed solids; Subtractive variants pipe the
+    // result through `boolean_op_exact(Difference)` against the selected
+    // base. Default profiles are 4-point squares stacked on Z (loft) or a
+    // 2-point Z path (pipe).
+
+    fn run_surface_sections(&mut self) {
+        self.snapshot_before("Surface Sections");
+        // Two parallel square profiles at different Z, each as a degree-1
+        // NurbsCurve (closed polyline approximation). The kernel side
+        // skins between them.
+        let ring_a = vec![
+            Point3::new(-1.0, -1.0, 0.0),
+            Point3::new(1.0, -1.0, 0.0),
+            Point3::new(1.0, 1.0, 0.0),
+            Point3::new(-1.0, 1.0, 0.0),
+        ];
+        let ring_b = vec![
+            Point3::new(-1.0, -1.0, 2.0),
+            Point3::new(1.0, -1.0, 2.0),
+            Point3::new(1.0, 1.0, 2.0),
+            Point3::new(-1.0, 1.0, 2.0),
+        ];
+        let curve_a = match wire_to_bspline(&ring_a, 1) {
+            Ok(c) => c,
+            Err(e) => {
+                self.log_error(format!("Surface Sections curve A error: {e}"));
+                return;
+            }
+        };
+        let curve_b = match wire_to_bspline(&ring_b, 1) {
+            Ok(c) => c,
+            Err(e) => {
+                self.log_error(format!("Surface Sections curve B error: {e}"));
+                return;
+            }
+        };
+        let mut model = BRepModel::new();
+        match sections(&mut model, &[&curve_a, &curve_b], 16) {
+            Ok(r) => {
+                self.add_to_scene("Surface Sections", model, r.solid, None);
+                self.log_info(format!(
+                    "Surface: sections — skinned {} faces between 2 profiles",
+                    r.faces.len()
+                ));
+            }
+            Err(e) => self.log_error(format!("Surface Sections error: {e}")),
+        }
+    }
+
+    fn run_surface_extend(&mut self) {
+        let Some(obj) = self.scene.selected_object().cloned() else {
+            self.log_warning("Surface Extend: select a solid first");
+            return;
+        };
+        self.snapshot_before("Surface Extend");
+        let mut model = obj.model.clone();
+        let distance = 0.5;
+        match extend_surface(&mut model, obj.solid, distance) {
+            Ok(r) => {
+                self.add_to_scene(
+                    &format!("{} (extended {distance:.2})", obj.name),
+                    model,
+                    r.solid,
+                    None,
+                );
+                self.log_info(format!(
+                    "Surface: extended '{}' by {distance:.2}",
+                    obj.name
+                ));
+            }
+            Err(e) => self.log_error(format!("Surface Extend error: {e}")),
+        }
+    }
+
+    fn run_surface_blend(&mut self) {
+        // Blend uses `surface_from_curves` as the closest available kernel
+        // API. The dedicated surface-blend (G2/G3 continuity matching) is
+        // only partially implemented kernel-side, so this Phase C3 wiring
+        // produces a Gordon-like quad surface between two profiles instead
+        // of a true tangent-continuous blend. Tracked as a Phase F+ kernel
+        // task for true blend support.
+        self.snapshot_before("Surface Blend");
+        let curve_a_pts = self.default_polyline_or_last_sketch();
+        // Companion polyline offset by Z=1 so the blend has surface area.
+        let curve_b_pts: Vec<Point3> = curve_a_pts
+            .iter()
+            .map(|p| Point3::new(p.x, p.y, p.z + 1.0))
+            .collect();
+        let curve_a = match wire_to_bspline(&curve_a_pts, 1) {
+            Ok(c) => c,
+            Err(e) => {
+                self.log_error(format!("Surface Blend curve A error: {e}"));
+                return;
+            }
+        };
+        let curve_b = match wire_to_bspline(&curve_b_pts, 1) {
+            Ok(c) => c,
+            Err(e) => {
+                self.log_error(format!("Surface Blend curve B error: {e}"));
+                return;
+            }
+        };
+        let mut model = BRepModel::new();
+        match surface_from_curves(&mut model, &[&curve_a, &curve_b], 16) {
+            Ok(r) => {
+                self.add_to_scene("Surface Blend", model, r.solid, None);
+                self.log_info(format!(
+                    "Surface: blend (Gordon-like quad sheet, {} faces — true G2 blend pending kernel work)",
+                    r.faces.len()
+                ));
+            }
+            Err(e) => self.log_error(format!("Surface Blend error: {e}")),
+        }
+    }
+
+    fn run_partdesign_additive_loft(&mut self) {
+        self.snapshot_before("PartDesign Loft");
+        let bottom = vec![
+            Point3::new(-1.0, -1.0, 0.0),
+            Point3::new(1.0, -1.0, 0.0),
+            Point3::new(1.0, 1.0, 0.0),
+            Point3::new(-1.0, 1.0, 0.0),
+        ];
+        let top = vec![
+            Point3::new(-0.5, -0.5, 2.0),
+            Point3::new(0.5, -0.5, 2.0),
+            Point3::new(0.5, 0.5, 2.0),
+            Point3::new(-0.5, 0.5, 2.0),
+        ];
+        let mut model = BRepModel::new();
+        match loft(&mut model, &[&bottom, &top]) {
+            Ok(r) => {
+                self.add_to_scene("Loft", model, r.solid, None);
+                self.log_info(format!(
+                    "PartDesign: additive loft ({} faces between 2 profiles)",
+                    r.faces.len()
+                ));
+            }
+            Err(e) => self.log_error(format!("PartDesign Loft error: {e}")),
+        }
+    }
+
+    fn run_partdesign_additive_pipe(&mut self) {
+        self.snapshot_before("PartDesign Pipe");
+        // Default profile (square cross-section) and 2-point Z path. The
+        // sweep places the profile perpendicular to the path tangent.
+        let profile = vec![
+            Point3::new(-0.25, -0.25, 0.0),
+            Point3::new(0.25, -0.25, 0.0),
+            Point3::new(0.25, 0.25, 0.0),
+            Point3::new(-0.25, 0.25, 0.0),
+        ];
+        let path = vec![Point3::ORIGIN, Point3::new(0.0, 0.0, 2.0)];
+        let mut model = BRepModel::new();
+        match sweep(&mut model, &profile, &path) {
+            Ok(r) => {
+                self.add_to_scene("Pipe", model, r.solid, None);
+                self.log_info(format!(
+                    "PartDesign: additive pipe ({} faces, 2-point path)",
+                    r.faces.len()
+                ));
+            }
+            Err(e) => self.log_error(format!("PartDesign Pipe error: {e}")),
+        }
+    }
+
+    fn run_partdesign_subtractive_loft(&mut self) {
+        let Some(obj) = self.scene.selected_object().cloned() else {
+            self.log_warning("Subtractive Loft: select a base solid first");
+            return;
+        };
+        self.snapshot_before("PartDesign Subtractive Loft");
+        // Build the loft tool solid in its own model first.
+        let bottom = vec![
+            Point3::new(-0.5, -0.5, 0.0),
+            Point3::new(0.5, -0.5, 0.0),
+            Point3::new(0.5, 0.5, 0.0),
+            Point3::new(-0.5, 0.5, 0.0),
+        ];
+        let top = vec![
+            Point3::new(-0.5, -0.5, 2.0),
+            Point3::new(0.5, -0.5, 2.0),
+            Point3::new(0.5, 0.5, 2.0),
+            Point3::new(-0.5, 0.5, 2.0),
+        ];
+        let mut tool_model = BRepModel::new();
+        let tool = match loft(&mut tool_model, &[&bottom, &top]) {
+            Ok(r) => r,
+            Err(e) => {
+                self.log_error(format!("Subtractive Loft tool error: {e}"));
+                return;
+            }
+        };
+        match boolean_op_exact(
+            &obj.model,
+            obj.solid,
+            &tool_model,
+            tool.solid,
+            BooleanOp::Difference,
+            1e-6,
+        ) {
+            Ok(result_model) => {
+                let first = result_model.solids.iter().next().map(|(h, _)| h);
+                if let Some(solid) = first {
+                    self.add_to_scene(
+                        &format!("{} \\ Loft", obj.name),
+                        result_model,
+                        solid,
+                        Some(crate::scene::CreationParams::Boolean { op: "subtractive_loft".into() }),
+                    );
+                    self.log_info("PartDesign: subtractive loft (Difference)");
+                } else {
+                    self.log_error("Subtractive Loft: result has no solid");
+                }
+            }
+            Err(e) => self.log_error(format!("Subtractive Loft boolean error: {e}")),
+        }
+    }
+
+    fn run_partdesign_subtractive_pipe(&mut self) {
+        let Some(obj) = self.scene.selected_object().cloned() else {
+            self.log_warning("Subtractive Pipe: select a base solid first");
+            return;
+        };
+        self.snapshot_before("PartDesign Subtractive Pipe");
+        let profile = vec![
+            Point3::new(-0.25, -0.25, 0.0),
+            Point3::new(0.25, -0.25, 0.0),
+            Point3::new(0.25, 0.25, 0.0),
+            Point3::new(-0.25, 0.25, 0.0),
+        ];
+        let path = vec![Point3::ORIGIN, Point3::new(0.0, 0.0, 2.0)];
+        let mut tool_model = BRepModel::new();
+        let tool = match sweep(&mut tool_model, &profile, &path) {
+            Ok(r) => r,
+            Err(e) => {
+                self.log_error(format!("Subtractive Pipe tool error: {e}"));
+                return;
+            }
+        };
+        match boolean_op_exact(
+            &obj.model,
+            obj.solid,
+            &tool_model,
+            tool.solid,
+            BooleanOp::Difference,
+            1e-6,
+        ) {
+            Ok(result_model) => {
+                let first = result_model.solids.iter().next().map(|(h, _)| h);
+                if let Some(solid) = first {
+                    self.add_to_scene(
+                        &format!("{} \\ Pipe", obj.name),
+                        result_model,
+                        solid,
+                        Some(crate::scene::CreationParams::Boolean { op: "subtractive_pipe".into() }),
+                    );
+                    self.log_info("PartDesign: subtractive pipe (Difference)");
+                } else {
+                    self.log_error("Subtractive Pipe: result has no solid");
+                }
+            }
+            Err(e) => self.log_error(format!("Subtractive Pipe boolean error: {e}")),
+        }
     }
 
     fn process_techdraw_action(&mut self, action: TechDrawAction) {
@@ -8923,6 +9197,51 @@ impl CadApp {
     #[doc(hidden)]
     pub fn dispatch_part_project_curves_on_surface(&mut self) {
         self.dispatch(GuiAction::Part(crate::gui::PartAction::ProjectCurvesOnSurface));
+    }
+
+    // -- Phase C3 — Surface ops + PartDesign Loft/Pipe ----------------------
+
+    #[doc(hidden)]
+    pub fn dispatch_surface_sections(&mut self) {
+        self.dispatch(GuiAction::Surface(crate::gui::SurfaceAction::Sections));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_surface_extend(&mut self) {
+        self.dispatch(GuiAction::Surface(crate::gui::SurfaceAction::Extend));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_surface_blend(&mut self) {
+        self.dispatch(GuiAction::Surface(crate::gui::SurfaceAction::Blend));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_partdesign_additive_loft(&mut self) {
+        self.dispatch(GuiAction::PartDesign(
+            crate::gui::PartDesignAction::AdditiveLoft,
+        ));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_partdesign_additive_pipe(&mut self) {
+        self.dispatch(GuiAction::PartDesign(
+            crate::gui::PartDesignAction::AdditivePipe,
+        ));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_partdesign_subtractive_loft(&mut self) {
+        self.dispatch(GuiAction::PartDesign(
+            crate::gui::PartDesignAction::SubtractiveLoft,
+        ));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_partdesign_subtractive_pipe(&mut self) {
+        self.dispatch(GuiAction::PartDesign(
+            crate::gui::PartDesignAction::SubtractivePipe,
+        ));
     }
 
     /// Inject a synthetic FEM analysis container so Summary / Report tests

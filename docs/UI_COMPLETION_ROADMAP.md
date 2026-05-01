@@ -267,12 +267,14 @@ Updated as phases land.
 | B — EASY wiring (Draft) | Landed | 75d7705 | 2026-05-01 |
 | B-cont — EASY wiring (Part) | Landed | 4e16eba | 2026-05-01 |
 | C1 — Draft transforms + EASY stragglers | Landed | c2d3006 | 2026-05-01 |
-| C2 — Draft modify + ProjectCurvesOnSurface | Staged — pending tech-lead commit (D::Offset / Trim / Stretch / Facebinder + P::ProjectCurvesOnSurface) | — | 2026-05-01 |
-| C3 — Surface ops + PartDesign Loft/Pipe | Not started | — | — |
+| C2 — Draft modify + ProjectCurvesOnSurface | Landed | 0808d9a | 2026-05-01 |
+| C3 — Surface ops + PartDesign Loft/Pipe | Staged — pending tech-lead commit (S::Sections / Extend / Blend + Pd::AdditiveLoft / AdditivePipe / SubtractiveLoft / SubtractivePipe) | — | 2026-05-01 |
 | D — Annotation | Not started | — | — |
 | E — FEM | Not started | — | — |
 | F — TechDraw | Not started | — | — |
 | G — ShapeBinder | Not started | — | — |
+
+**Milestone (when C3 lands):** EASY + MEDIUM tiers complete (58/86 features wired); HARD tier (28 features across D/E/F/G) remains in backlog.
 
 ## 8. Reference
 

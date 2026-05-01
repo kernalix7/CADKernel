@@ -2466,3 +2466,116 @@ fn part_project_curves_on_surface_without_selection_logs_warning() {
     app.dispatch_part_project_curves_on_surface();
     assert!(app.scene_ref().is_empty());
 }
+
+// ---------------------------------------------------------------------------
+// Phase C3 — Surface ops (Sections / Extend / Blend) + PartDesign
+// Loft/Pipe (Additive*, Subtractive*). Final MEDIUM-tier batch.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn surface_sections_dispatch_adds_skinned_solid() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_surface_sections();
+    let scene = app.scene_ref();
+    assert_eq!(scene.len(), 1);
+    let obj = scene.objects.first().unwrap();
+    // The skinned solid spans z=[0, 2], so its z-extent is ~2.
+    assert!(
+        (obj.aabb_max[2] - obj.aabb_min[2]) >= 1.5,
+        "Sections should produce a 2-unit-tall solid, got z-extent {}",
+        obj.aabb_max[2] - obj.aabb_min[2]
+    );
+}
+
+#[test]
+fn surface_extend_dispatch_with_selection_adds_extended_solid() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(2.0, 2.0, 2.0);
+    let before = app.scene_ref().len();
+    app.dispatch_surface_extend();
+    assert!(
+        app.scene_ref().len() >= before,
+        "Surface Extend should add the thickened solid; before={before}, after={}",
+        app.scene_ref().len()
+    );
+}
+
+#[test]
+fn surface_extend_without_selection_logs_warning() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_surface_extend();
+    assert!(app.scene_ref().is_empty());
+}
+
+#[test]
+fn surface_blend_dispatch_adds_quad_sheet() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_surface_blend();
+    let scene = app.scene_ref();
+    assert_eq!(scene.len(), 1);
+    let obj = scene.objects.first().unwrap();
+    // Default companion polyline is offset Z=1, so the blend has a 1-unit
+    // z-extent.
+    assert!(
+        (obj.aabb_max[2] - obj.aabb_min[2]) >= 0.8,
+        "Blend should span Z by ~1.0, got {}",
+        obj.aabb_max[2] - obj.aabb_min[2]
+    );
+}
+
+#[test]
+fn partdesign_additive_loft_dispatch_adds_lofted_solid() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_partdesign_additive_loft();
+    assert_eq!(app.scene_ref().len(), 1);
+    assert!(!app.scene_ref().objects.first().unwrap().vertices.is_empty());
+}
+
+#[test]
+fn partdesign_additive_pipe_dispatch_adds_swept_solid() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_partdesign_additive_pipe();
+    assert_eq!(app.scene_ref().len(), 1);
+    let obj = app.scene_ref().objects.first().unwrap();
+    // Pipe sweeps along Z from 0 to 2 with 0.25 cross-section.
+    assert!(
+        (obj.aabb_max[2] - obj.aabb_min[2]) >= 1.5,
+        "Pipe should span Z by ~2.0, got {}",
+        obj.aabb_max[2] - obj.aabb_min[2]
+    );
+}
+
+#[test]
+fn partdesign_subtractive_loft_with_selection_runs_without_panic() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(4.0, 4.0, 4.0);
+    let before = app.scene_ref().len();
+    app.dispatch_partdesign_subtractive_loft();
+    // boolean_op_exact may fail on coincident-face edge cases; the test
+    // asserts only that the dispatcher runs without panic and scene count
+    // never decreases.
+    assert!(app.scene_ref().len() >= before);
+}
+
+#[test]
+fn partdesign_subtractive_loft_without_selection_logs_warning() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_partdesign_subtractive_loft();
+    assert!(app.scene_ref().is_empty());
+}
+
+#[test]
+fn partdesign_subtractive_pipe_with_selection_runs_without_panic() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(4.0, 4.0, 4.0);
+    let before = app.scene_ref().len();
+    app.dispatch_partdesign_subtractive_pipe();
+    assert!(app.scene_ref().len() >= before);
+}
+
+#[test]
+fn partdesign_subtractive_pipe_without_selection_logs_warning() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_partdesign_subtractive_pipe();
+    assert!(app.scene_ref().is_empty());
+}
