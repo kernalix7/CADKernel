@@ -264,7 +264,8 @@ Updated as phases land.
 | Phase | Status | Commit range | Date |
 |---|---|---|---|
 | A — Critical CAD | Landed | abbfbda | 2026-04-29 |
-| B — EASY wiring | Staged — pending tech-lead commit (D::Wire / BSpline / Bezier / Hatch / Text / Upgrade / Downgrade / WireToBSpline / ToSketch + D::Clone / ArrayRect / ArrayPolar / ArrayPath / ArrayPoint) | — | 2026-04-29 |
+| B — EASY wiring (Draft) | Landed | 75d7705 | 2026-05-01 |
+| B-cont — EASY wiring (Part) | Staged — pending tech-lead commit (P::FaceFromWires / ConnectShapes / EmbedShapes / CutoutShapes / ExplodeCompound / CompoundFilter / BooleanFragments / SliceToCompound / PointsFromShape / ConvertToSolid / AutoDefeaturing / TransformedCopy / CoonsPatch) | — | 2026-05-01 |
 | C — MEDIUM UX | Not started | — | — |
 | D — Annotation | Not started | — | — |
 | E — FEM | Not started | — | — |

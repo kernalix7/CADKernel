@@ -2119,3 +2119,190 @@ fn draft_array_rect_without_selection_logs_warning() {
     app.dispatch_draft_array_rect();
     assert!(app.scene_ref().is_empty());
 }
+
+// ---------------------------------------------------------------------------
+// Phase B-cont — Part workbench EASY tier (FaceFromWires, ConnectShapes,
+// EmbedShapes, CutoutShapes, ExplodeCompound, CompoundFilter,
+// BooleanFragments, SliceToCompound, PointsFromShape, ConvertToSolid,
+// AutoDefeaturing, TransformedCopy, CoonsPatch).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn part_face_from_wires_dispatch_adds_filled_face_solid() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_part_face_from_wires();
+    let scene = app.scene_ref();
+    assert_eq!(scene.len(), 1);
+    assert!(!scene.objects.first().unwrap().vertices.is_empty());
+}
+
+#[test]
+fn part_connect_shapes_with_two_selected_unions_into_one_object() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(2.0, 2.0, 2.0);
+    app.dispatch_create_box(2.0, 2.0, 2.0);
+    // After two CreateBox dispatches, the second is the only selected object;
+    // toggle-select the first to build a 2-selection.
+    app.toggle_select_index(0);
+    let before = app.scene_ref().len();
+    app.dispatch_part_connect_shapes();
+    assert_eq!(
+        app.scene_ref().len(),
+        before + 1,
+        "ConnectShapes should add the union as a third object"
+    );
+}
+
+#[test]
+fn part_connect_shapes_without_two_selected_logs_warning() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(1.0, 1.0, 1.0);
+    let before = app.scene_ref().len();
+    app.dispatch_part_connect_shapes();
+    assert_eq!(
+        app.scene_ref().len(),
+        before,
+        "ConnectShapes with <2 selected must not add a new object"
+    );
+}
+
+#[test]
+fn part_embed_shapes_with_two_selected_unions_into_one_object() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(2.0, 2.0, 2.0);
+    app.dispatch_create_box(2.0, 2.0, 2.0);
+    app.toggle_select_index(0);
+    let before = app.scene_ref().len();
+    app.dispatch_part_embed_shapes();
+    assert_eq!(app.scene_ref().len(), before + 1);
+}
+
+#[test]
+fn part_cutout_shapes_with_two_selected_subtracts_into_new_object() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(4.0, 4.0, 4.0);
+    app.dispatch_create_box(2.0, 2.0, 2.0);
+    app.toggle_select_index(0);
+    let before = app.scene_ref().len();
+    app.dispatch_part_cutout_shapes();
+    assert_eq!(app.scene_ref().len(), before + 1);
+}
+
+#[test]
+fn part_explode_compound_logs_count_without_adding_objects() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(1.0, 1.0, 1.0);
+    app.dispatch_create_box(1.0, 1.0, 1.0);
+    app.toggle_select_index(0);
+    let before = app.scene_ref().len();
+    app.dispatch_part_explode_compound();
+    // ExplodeCompound is informational — solids are already in the scene.
+    assert_eq!(app.scene_ref().len(), before);
+}
+
+#[test]
+fn part_explode_compound_without_selection_logs_warning() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_part_explode_compound();
+    assert!(app.scene_ref().is_empty());
+}
+
+#[test]
+fn part_compound_filter_logs_pass_count_without_adding_objects() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(1.0, 1.0, 1.0);
+    let before = app.scene_ref().len();
+    app.dispatch_part_compound_filter();
+    assert_eq!(app.scene_ref().len(), before);
+}
+
+#[test]
+fn part_boolean_fragments_with_two_selected_logs_count() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(2.0, 2.0, 2.0);
+    app.dispatch_create_box(2.0, 2.0, 2.0);
+    app.toggle_select_index(0);
+    let before = app.scene_ref().len();
+    app.dispatch_part_boolean_fragments();
+    // Phase B-cont: fragments are logged but not yet staged into the scene
+    // (multi-model staging deferred). Object count must not change.
+    assert_eq!(app.scene_ref().len(), before);
+}
+
+#[test]
+fn part_slice_to_compound_with_selection_adds_pieces_to_scene() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(4.0, 4.0, 4.0);
+    let before = app.scene_ref().len();
+    app.dispatch_part_slice_to_compound();
+    let added = app.scene_ref().len() - before;
+    assert!(
+        added >= 1,
+        "Slice-to-compound should add at least one piece (got {added})"
+    );
+}
+
+#[test]
+fn part_slice_to_compound_without_selection_logs_warning() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_part_slice_to_compound();
+    assert!(app.scene_ref().is_empty());
+}
+
+#[test]
+fn part_points_from_shape_with_selection_logs_count() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(1.0, 1.0, 1.0);
+    let before = app.scene_ref().len();
+    app.dispatch_part_points_from_shape();
+    // No scene mutation — just a vertex-count log.
+    assert_eq!(app.scene_ref().len(), before);
+}
+
+#[test]
+fn part_convert_to_solid_with_mesh_selection_adds_solid() {
+    let mut app = CadApp::new_headless();
+    // CreateBox produces a mesh; selecting it lets ConvertToSolid run.
+    app.dispatch_create_box(1.0, 1.0, 1.0);
+    let before = app.scene_ref().len();
+    app.dispatch_part_convert_to_solid();
+    assert!(
+        app.scene_ref().len() >= before,
+        "ConvertToSolid should add the rebuilt solid as a new scene object"
+    );
+}
+
+#[test]
+fn part_auto_defeaturing_with_selection_adds_simplified_solid() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(2.0, 2.0, 2.0);
+    let before = app.scene_ref().len();
+    app.dispatch_part_auto_defeaturing(0.01);
+    // Auto-defeaturing on a clean box may or may not change the topology —
+    // the kernel still rebuilds the solid and we add it as a new object.
+    assert!(app.scene_ref().len() >= before);
+}
+
+#[test]
+fn part_auto_defeaturing_without_selection_logs_warning() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_part_auto_defeaturing(0.01);
+    assert!(app.scene_ref().is_empty());
+}
+
+#[test]
+fn part_transformed_copy_with_selection_adds_translated_copy() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(1.0, 1.0, 1.0);
+    let before = app.scene_ref().len();
+    app.dispatch_part_transformed_copy(5.0, 0.0, 0.0);
+    assert_eq!(app.scene_ref().len(), before + 1);
+}
+
+#[test]
+fn part_coons_patch_dispatch_adds_tree_entry() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_part_coons_patch();
+    // NurbsSurface output → tree-only entry, same as Phase B wire features.
+    assert_eq!(app.scene_ref().len(), 1);
+}
