@@ -29,13 +29,13 @@ use cadkernel_modeling::{
     downgrade_solid_faces, draft_hatch, draft_to_sketch, embed_shapes, explode_compound,
     extrude, face_from_wires, filling, fillet_edge, groove, hole, linear_pattern, make_arc_wire,
     make_bezier_wire, make_box, make_bspline_wire, make_circle_wire, make_cone, make_cylinder,
-    make_ellipse_wire, make_ellipsoid, make_helix, make_line_draft, make_point,
+    make_ellipse_wire, make_ellipsoid, make_facebinder, make_helix, make_line_draft, make_point,
     make_polygon_wire, make_prism, make_rectangle_wire, make_sphere, make_torus, make_tube,
-    make_wedge, make_wire, mirror_solid, mirror_solid_draft, move_solid, multi_transform, pad,
-    path_array, pipe_surface, pocket, point_array, points_from_shape, polar_array,
-    rectangular_array, rotate_solid, scale_solid, scale_solid_draft, shape_from_mesh,
-    shape_from_text, shell_solid, slice_to_compound, upgrade_wire_model,
-    wire_to_bspline_convert,
+    make_wedge, make_wire, mirror_solid, mirror_solid_draft, move_solid, multi_transform,
+    offset_wire, pad, path_array, pipe_surface, pocket, point_array, points_from_shape,
+    polar_array, project_curve_on_solid, rectangular_array, rotate_solid, scale_solid,
+    scale_solid_draft, shape_from_mesh, shape_from_text, shell_solid, slice_to_compound,
+    stretch_wire, trimex_draft, upgrade_wire_model, wire_to_bspline_convert,
 };
 use cadkernel_geometry::LineSegment;
 use cadkernel_sketch::{
@@ -3827,7 +3827,7 @@ impl CadApp {
             P::ConvertToSolid => self.run_part_convert_to_solid(),
             P::AutoDefeaturing { threshold } => self.run_part_auto_defeaturing(threshold),
             P::TransformedCopy { dx, dy, dz } => self.run_part_transformed_copy(dx, dy, dz),
-            P::ProjectCurvesOnSurface => self.log_info("Part: project curves on surface"),
+            P::ProjectCurvesOnSurface => self.run_part_project_curves_on_surface(),
             P::CoonsPatch => self.run_part_coons_patch(),
         }
     }
@@ -3959,15 +3959,15 @@ impl CadApp {
             D::BSpline => self.run_draft_bspline(),
             D::Bezier => self.run_draft_bezier(),
             D::Point => self.run_draft_point(),
-            D::Facebinder => self.log_info("Draft: facebinder"),
+            D::Facebinder => self.run_draft_facebinder(),
             D::Hatch => self.run_draft_hatch(),
             D::Move => self.run_draft_move(),
             D::Rotate => self.run_draft_rotate(),
             D::Scale => self.run_draft_scale(),
             D::Mirror => self.run_draft_mirror(),
-            D::Offset => self.log_info("Draft: offset"),
-            D::Trim => self.log_info("Draft: trim"),
-            D::Stretch => self.log_info("Draft: stretch"),
+            D::Offset => self.run_draft_offset(),
+            D::Trim => self.run_draft_trim(),
+            D::Stretch => self.run_draft_stretch(),
             D::Clone => self.run_draft_clone(),
             D::ArrayRect => self.run_draft_array_rect(),
             D::ArrayPolar => self.run_draft_array_polar(),
@@ -5274,6 +5274,157 @@ impl CadApp {
             report.push_str("\n  static result: not solved");
         }
         self.log_info(report);
+    }
+
+    // -- Phase C2 — Draft modify (Offset / Trim / Stretch / Facebinder) +
+    //    P::ProjectCurvesOnSurface ----------------------------------------
+    //
+    // Wire-output arms (Offset / Trim / Stretch) follow the renderer-gap
+    // pattern from Phase A's `D::Line`: the kernel API runs and produces a
+    // valid polyline, but the viewer's wgpu pipeline has no native polyline
+    // path — we register a tree-only `add_mesh_object` entry so the click
+    // is user-visible and the operation logs report the result.
+    //
+    // Selection-required arms (Facebinder, ProjectCurvesOnSurface) bail
+    // with `log_warning` when no solid is selected.
+
+    /// Pull a polyline source: prefer `gui.last_sketch` if set, otherwise a
+    /// default 4-point square. Used by Offset / Trim / Stretch /
+    /// ProjectCurvesOnSurface as the input curve.
+    fn default_polyline_or_last_sketch(&self) -> Vec<Point3> {
+        if let Some((sketch, plane)) = self.gui.last_sketch.as_ref() {
+            let pts = extract_profile(sketch, plane);
+            if pts.len() >= 2 {
+                return pts;
+            }
+        }
+        vec![
+            Point3::ORIGIN,
+            Point3::new(2.0, 0.0, 0.0),
+            Point3::new(2.0, 2.0, 0.0),
+            Point3::new(0.0, 2.0, 0.0),
+        ]
+    }
+
+    fn run_draft_offset(&mut self) {
+        self.snapshot_before("Draft Offset");
+        let pts = self.default_polyline_or_last_sketch();
+        match offset_wire(&pts, 0.5, Vec3::Z) {
+            Ok(offset) => {
+                self.scene.add_mesh_object(
+                    "Draft Offset",
+                    cadkernel_io::Mesh::new(),
+                    None,
+                );
+                self.log_info(format!(
+                    "Draft: offset wire ({} points, distance=0.5 — tree only, no GPU geometry)",
+                    offset.len()
+                ));
+            }
+            Err(e) => self.log_error(format!("Draft Offset error: {e}")),
+        }
+    }
+
+    fn run_draft_trim(&mut self) {
+        self.snapshot_before("Draft Trim");
+        let pts = self.default_polyline_or_last_sketch();
+        // Default trim target: midpoint of the wire.
+        let target = if pts.is_empty() {
+            Point3::ORIGIN
+        } else {
+            let mid = pts.len() / 2;
+            pts[mid]
+        };
+        match trimex_draft(&pts, target) {
+            Ok(trimmed) => {
+                self.scene.add_mesh_object(
+                    "Draft Trim",
+                    cadkernel_io::Mesh::new(),
+                    None,
+                );
+                self.log_info(format!(
+                    "Draft: trim wire (in {} pts → out {} pts — tree only, no GPU geometry)",
+                    pts.len(),
+                    trimmed.len()
+                ));
+            }
+            Err(e) => self.log_error(format!("Draft Trim error: {e}")),
+        }
+    }
+
+    fn run_draft_stretch(&mut self) {
+        self.snapshot_before("Draft Stretch");
+        let pts = self.default_polyline_or_last_sketch();
+        // Default stretch: pull all points within radius 5 by (0, 0, 1).
+        let stretched = stretch_wire(&pts, Point3::ORIGIN, 5.0, Vec3::new(0.0, 0.0, 1.0));
+        self.scene.add_mesh_object(
+            "Draft Stretch",
+            cadkernel_io::Mesh::new(),
+            None,
+        );
+        self.log_info(format!(
+            "Draft: stretch wire ({} points displaced — tree only, no GPU geometry)",
+            stretched.len()
+        ));
+    }
+
+    fn run_draft_facebinder(&mut self) {
+        let Some(obj) = self.scene.selected_object().cloned() else {
+            self.log_warning("Facebinder: select a solid first");
+            return;
+        };
+        self.snapshot_before("Draft Facebinder");
+        // Pick the first face of the selected solid's first shell.
+        let first_face = obj
+            .model
+            .solids
+            .get(obj.solid)
+            .and_then(|sd| sd.shells.first().copied())
+            .and_then(|shell_h| obj.model.shells.get(shell_h))
+            .and_then(|sh| sh.faces.first().copied());
+        let Some(face_h) = first_face else {
+            self.log_warning("Facebinder: selected solid has no faces");
+            return;
+        };
+        let mut model = obj.model.clone();
+        match make_facebinder(&mut model, &[face_h]) {
+            Ok(new_solid) => {
+                self.add_to_scene(
+                    &format!("{} (face binder)", obj.name),
+                    model,
+                    new_solid,
+                    None,
+                );
+                self.log_info(format!(
+                    "Draft: face binder from first face of '{}'",
+                    obj.name
+                ));
+            }
+            Err(e) => self.log_error(format!("Draft Facebinder error: {e}")),
+        }
+    }
+
+    fn run_part_project_curves_on_surface(&mut self) {
+        let Some(obj) = self.scene.selected_object().cloned() else {
+            self.log_warning("Project Curves on Surface: select a solid first");
+            return;
+        };
+        let curve = self.default_polyline_or_last_sketch();
+        // Project the curve onto the selected solid's tessellated surface.
+        let projected = project_curve_on_solid(&obj.model, obj.solid, &curve);
+        // Output is a Vec<Point3> with no kernel-side topology; register a
+        // tree-only entry so the dispatcher visibly fired, and report the
+        // point count for the user.
+        self.scene.add_mesh_object(
+            "Projected Curve",
+            cadkernel_io::Mesh::new(),
+            None,
+        );
+        self.log_info(format!(
+            "Part: projected {} curve points onto '{}' (tree only, no GPU geometry)",
+            projected.len(),
+            obj.name
+        ));
     }
 
     fn process_techdraw_action(&mut self, action: TechDrawAction) {
@@ -8745,6 +8896,33 @@ impl CadApp {
     #[doc(hidden)]
     pub fn dispatch_fem_report(&mut self) {
         self.dispatch(GuiAction::Fem(crate::gui::FemAction::Report));
+    }
+
+    // -- Phase C2 — Draft modify + ProjectCurvesOnSurface ----------------
+
+    #[doc(hidden)]
+    pub fn dispatch_draft_offset(&mut self) {
+        self.dispatch(GuiAction::Draft(crate::gui::DraftAction::Offset));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_draft_trim(&mut self) {
+        self.dispatch(GuiAction::Draft(crate::gui::DraftAction::Trim));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_draft_stretch(&mut self) {
+        self.dispatch(GuiAction::Draft(crate::gui::DraftAction::Stretch));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_draft_facebinder(&mut self) {
+        self.dispatch(GuiAction::Draft(crate::gui::DraftAction::Facebinder));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_part_project_curves_on_surface(&mut self) {
+        self.dispatch(GuiAction::Part(crate::gui::PartAction::ProjectCurvesOnSurface));
     }
 
     /// Inject a synthetic FEM analysis container so Summary / Report tests

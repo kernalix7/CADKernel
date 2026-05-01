@@ -266,8 +266,8 @@ Updated as phases land.
 | A — Critical CAD | Landed | abbfbda | 2026-04-29 |
 | B — EASY wiring (Draft) | Landed | 75d7705 | 2026-05-01 |
 | B-cont — EASY wiring (Part) | Landed | 4e16eba | 2026-05-01 |
-| C1 — Draft transforms + EASY stragglers | Staged — pending tech-lead commit (D::Move / Rotate / Scale / Mirror + S::Coons + FemAction::Summary / Report) | — | 2026-05-01 |
-| C2 — Draft modify + ProjectCurvesOnSurface | Not started | — | — |
+| C1 — Draft transforms + EASY stragglers | Landed | c2d3006 | 2026-05-01 |
+| C2 — Draft modify + ProjectCurvesOnSurface | Staged — pending tech-lead commit (D::Offset / Trim / Stretch / Facebinder + P::ProjectCurvesOnSurface) | — | 2026-05-01 |
 | C3 — Surface ops + PartDesign Loft/Pipe | Not started | — | — |
 | D — Annotation | Not started | — | — |
 | E — FEM | Not started | — | — |

@@ -2400,3 +2400,69 @@ fn fem_report_without_analysis_logs_warning() {
     app.dispatch_fem_report();
     assert!(app.scene_ref().is_empty());
 }
+
+// ---------------------------------------------------------------------------
+// Phase C2 — Draft modify (Offset / Trim / Stretch / Facebinder) +
+// P::ProjectCurvesOnSurface.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn draft_offset_dispatch_adds_tree_entry() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_draft_offset();
+    assert_eq!(app.scene_ref().len(), 1);
+}
+
+#[test]
+fn draft_trim_dispatch_adds_tree_entry() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_draft_trim();
+    assert_eq!(app.scene_ref().len(), 1);
+}
+
+#[test]
+fn draft_stretch_dispatch_adds_tree_entry() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_draft_stretch();
+    assert_eq!(app.scene_ref().len(), 1);
+}
+
+#[test]
+fn draft_facebinder_dispatch_with_selection_adds_face_solid() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(2.0, 2.0, 2.0);
+    let before = app.scene_ref().len();
+    app.dispatch_draft_facebinder();
+    assert_eq!(
+        app.scene_ref().len(),
+        before + 1,
+        "Facebinder should add a face-solid as a new scene object"
+    );
+}
+
+#[test]
+fn draft_facebinder_without_selection_logs_warning() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_draft_facebinder();
+    assert!(app.scene_ref().is_empty());
+}
+
+#[test]
+fn part_project_curves_on_surface_with_selection_adds_tree_entry() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(2.0, 2.0, 2.0);
+    let before = app.scene_ref().len();
+    app.dispatch_part_project_curves_on_surface();
+    assert_eq!(
+        app.scene_ref().len(),
+        before + 1,
+        "ProjectCurvesOnSurface should add a projected-curve tree entry"
+    );
+}
+
+#[test]
+fn part_project_curves_on_surface_without_selection_logs_warning() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_part_project_curves_on_surface();
+    assert!(app.scene_ref().is_empty());
+}
