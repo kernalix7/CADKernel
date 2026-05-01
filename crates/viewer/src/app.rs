@@ -31,9 +31,10 @@ use cadkernel_modeling::{
     make_bezier_wire, make_box, make_bspline_wire, make_circle_wire, make_cone, make_cylinder,
     make_ellipse_wire, make_ellipsoid, make_helix, make_line_draft, make_point,
     make_polygon_wire, make_prism, make_rectangle_wire, make_sphere, make_torus, make_tube,
-    make_wedge, make_wire, mirror_solid, multi_transform, pad, path_array, pipe_surface, pocket,
-    point_array, points_from_shape, polar_array, rectangular_array, scale_solid,
-    shape_from_mesh, shape_from_text, shell_solid, slice_to_compound, upgrade_wire_model,
+    make_wedge, make_wire, mirror_solid, mirror_solid_draft, move_solid, multi_transform, pad,
+    path_array, pipe_surface, pocket, point_array, points_from_shape, polar_array,
+    rectangular_array, rotate_solid, scale_solid, scale_solid_draft, shape_from_mesh,
+    shape_from_text, shell_solid, slice_to_compound, upgrade_wire_model,
     wire_to_bspline_convert,
 };
 use cadkernel_geometry::LineSegment;
@@ -2839,8 +2840,8 @@ impl CadApp {
             FemAction::ShowStress => self.log_info("FEM: show stress"),
             FemAction::ShowDisplacement => self.log_info("FEM: show displacement"),
             FemAction::ShowVonMises => self.log_info("FEM: show von Mises"),
-            FemAction::Summary => self.log_info("FEM: summary"),
-            FemAction::Report => self.log_info("FEM: report"),
+            FemAction::Summary => self.run_fem_summary(),
+            FemAction::Report => self.run_fem_report(),
         }
     }
 
@@ -3807,7 +3808,7 @@ impl CadApp {
                     Err(e) => self.log_error(format!("SurfacePipe error: {e}")),
                 }
             }
-            S::Coons => self.log_info("Surface: Coons"),
+            S::Coons => self.run_part_coons_patch(),
         }
     }
 
@@ -3960,10 +3961,10 @@ impl CadApp {
             D::Point => self.run_draft_point(),
             D::Facebinder => self.log_info("Draft: facebinder"),
             D::Hatch => self.run_draft_hatch(),
-            D::Move => self.log_info("Draft: move"),
-            D::Rotate => self.log_info("Draft: rotate"),
-            D::Scale => self.log_info("Draft: scale"),
-            D::Mirror => self.log_info("Draft: mirror"),
+            D::Move => self.run_draft_move(),
+            D::Rotate => self.run_draft_rotate(),
+            D::Scale => self.run_draft_scale(),
+            D::Mirror => self.run_draft_mirror(),
             D::Offset => self.log_info("Draft: offset"),
             D::Trim => self.log_info("Draft: trim"),
             D::Stretch => self.log_info("Draft: stretch"),
@@ -5086,6 +5087,193 @@ impl CadApp {
             }
             Err(e) => self.log_error(format!("Part CoonsPatch error: {e}")),
         }
+    }
+
+    // -- Phase C1 — Draft transforms (Move / Rotate / Scale / Mirror) --------
+    //
+    // Selection-required arms — `log_warning` and bail when nothing is
+    // selected. The transformed result is added as a NEW scene object
+    // alongside the source (`copy_solid_transformed` builds a fresh solid in
+    // the same model). A future Phase D pass can switch to in-place mutation
+    // when the user drags a gizmo, but this matches FreeCAD's "Modify ›
+    // {Move,Rotate,Scale,Mirror}" semantics where the original is preserved.
+
+    fn run_draft_move(&mut self) {
+        let Some(obj) = self.scene.selected_object().cloned() else {
+            self.log_warning("Draft Move: select a solid first");
+            return;
+        };
+        self.snapshot_before("Draft Move");
+        let mut model = obj.model.clone();
+        // Phase C1 default offset; a Phase D modal will accept user input.
+        let displacement = Vec3::new(1.0, 0.0, 0.0);
+        match move_solid(&mut model, obj.solid, displacement) {
+            Ok(new_solid) => {
+                self.add_to_scene(
+                    &format!("{} (moved)", obj.name),
+                    model,
+                    new_solid,
+                    obj.params.clone(),
+                );
+                self.log_info(format!(
+                    "Draft: moved '{}' by ({:.1}, {:.1}, {:.1})",
+                    obj.name, displacement.x, displacement.y, displacement.z
+                ));
+            }
+            Err(e) => self.log_error(format!("Draft Move error: {e}")),
+        }
+    }
+
+    fn run_draft_rotate(&mut self) {
+        let Some(obj) = self.scene.selected_object().cloned() else {
+            self.log_warning("Draft Rotate: select a solid first");
+            return;
+        };
+        self.snapshot_before("Draft Rotate");
+        let mut model = obj.model.clone();
+        let angle_deg: f64 = 30.0;
+        let angle_rad = angle_deg.to_radians();
+        match rotate_solid(&mut model, obj.solid, Point3::ORIGIN, Vec3::Z, angle_rad) {
+            Ok(new_solid) => {
+                self.add_to_scene(
+                    &format!("{} (rotated {angle_deg:.0}°)", obj.name),
+                    model,
+                    new_solid,
+                    obj.params.clone(),
+                );
+                self.log_info(format!(
+                    "Draft: rotated '{}' by {angle_deg:.0}° around world Z",
+                    obj.name
+                ));
+            }
+            Err(e) => self.log_error(format!("Draft Rotate error: {e}")),
+        }
+    }
+
+    fn run_draft_scale(&mut self) {
+        let Some(obj) = self.scene.selected_object().cloned() else {
+            self.log_warning("Draft Scale: select a solid first");
+            return;
+        };
+        self.snapshot_before("Draft Scale");
+        let mut model = obj.model.clone();
+        let factor = 2.0;
+        match scale_solid_draft(&mut model, obj.solid, Point3::ORIGIN, factor) {
+            Ok(new_solid) => {
+                self.add_to_scene(
+                    &format!("{} (×{factor:.1})", obj.name),
+                    model,
+                    new_solid,
+                    obj.params.clone(),
+                );
+                self.log_info(format!("Draft: scaled '{}' by {factor:.1}×", obj.name));
+            }
+            Err(e) => self.log_error(format!("Draft Scale error: {e}")),
+        }
+    }
+
+    fn run_draft_mirror(&mut self) {
+        let Some(obj) = self.scene.selected_object().cloned() else {
+            self.log_warning("Draft Mirror: select a solid first");
+            return;
+        };
+        self.snapshot_before("Draft Mirror");
+        let mut model = obj.model.clone();
+        // Reuse `gui.mirror_plane` (set by the existing `MirrorSolid` action
+        // and the toolbar / context menu) instead of forcing a default —
+        // matches the established pattern where mirror state is sticky.
+        let (plane_point, plane_normal) = match self.gui.mirror_plane {
+            crate::gui::MirrorPlane::XY => (Point3::ORIGIN, Vec3::new(0.0, 0.0, 1.0)),
+            crate::gui::MirrorPlane::XZ => (Point3::ORIGIN, Vec3::new(0.0, 1.0, 0.0)),
+            crate::gui::MirrorPlane::YZ => (Point3::ORIGIN, Vec3::new(1.0, 0.0, 0.0)),
+        };
+        let plane_label = match self.gui.mirror_plane {
+            crate::gui::MirrorPlane::XY => "XY",
+            crate::gui::MirrorPlane::XZ => "XZ",
+            crate::gui::MirrorPlane::YZ => "YZ",
+        };
+        match mirror_solid_draft(&mut model, obj.solid, plane_point, plane_normal) {
+            Ok(new_solid) => {
+                self.add_to_scene(
+                    &format!("{} (mirrored {plane_label})", obj.name),
+                    model,
+                    new_solid,
+                    obj.params.clone(),
+                );
+                self.log_info(format!(
+                    "Draft: mirrored '{}' across {plane_label} plane",
+                    obj.name
+                ));
+            }
+            Err(e) => self.log_error(format!("Draft Mirror error: {e}")),
+        }
+    }
+
+    // -- Phase C1 — FEM Summary / Report (text-only) -------------------------
+    //
+    // No kernel work — just format the contents of `gui.fem_analysis` into
+    // a status-bar / report-panel string. Guarded with `log_warning` when no
+    // analysis exists.
+
+    fn run_fem_summary(&mut self) {
+        let Some(analysis) = self.gui.fem_analysis.as_ref() else {
+            self.log_warning("FEM Summary: no analysis (run CreateFemAnalysis first)");
+            return;
+        };
+        let n_nodes = analysis.mesh.nodes.len();
+        let n_elems = analysis.mesh.elements.len();
+        let n_bcs = analysis.boundary_conditions.len();
+        let solved = if analysis.result.is_some() { "yes" } else { "no" };
+        let material = fem_material_label(&analysis.material);
+        self.log_info(format!(
+            "FEM Summary — material: {material}, nodes: {n_nodes}, elements: {n_elems}, BCs: {n_bcs}, solved: {solved}"
+        ));
+    }
+
+    fn run_fem_report(&mut self) {
+        let Some(analysis) = self.gui.fem_analysis.as_ref() else {
+            self.log_warning("FEM Report: no analysis (run CreateFemAnalysis first)");
+            return;
+        };
+        let material = fem_material_label(&analysis.material);
+        let mut report = format!(
+            "FEM Report\n  material: {material} (E={:.3e} Pa, ν={:.3}, ρ={:.1} kg/m³)\n  mesh: {} nodes, {} tetrahedra\n  BCs: {}",
+            analysis.material.youngs_modulus,
+            analysis.material.poisson_ratio,
+            analysis.material.density,
+            analysis.mesh.nodes.len(),
+            analysis.mesh.elements.len(),
+            analysis.boundary_conditions.len(),
+        );
+        if !analysis.boundary_conditions.is_empty() {
+            let mut counts: std::collections::BTreeMap<&'static str, usize> =
+                std::collections::BTreeMap::new();
+            for bc in &analysis.boundary_conditions {
+                *counts.entry(fem_bc_kind_label(bc)).or_insert(0) += 1;
+            }
+            for (kind, n) in &counts {
+                report.push_str(&format!("\n    {kind}: {n}"));
+            }
+        }
+        if let Some(result) = analysis.result.as_ref() {
+            let n = result.displacements.len();
+            let max_disp = result
+                .displacements
+                .iter()
+                .map(|v| (v.x * v.x + v.y * v.y + v.z * v.z).sqrt())
+                .fold(0.0_f64, f64::max);
+            let max_stress = result
+                .stresses
+                .iter()
+                .copied()
+                .fold(0.0_f64, f64::max);
+            report.push_str(&format!(
+                "\n  static result: {n} nodal displacements, max |u|={max_disp:.3e}, max σ={max_stress:.3e}"
+            ));
+        } else {
+            report.push_str("\n  static result: not solved");
+        }
+        self.log_info(report);
     }
 
     fn process_techdraw_action(&mut self, action: TechDrawAction) {
@@ -8125,6 +8313,54 @@ pub fn run_gui() {
     event_loop.run_app(&mut app).unwrap();
 }
 
+/// Map an `FemMaterial` to a preset label by Young's modulus signature.
+///
+/// `FemMaterial` does not store the preset name, so we round-trip through
+/// the canonical preset values from `MaterialPreset::to_material()` to keep
+/// the Summary / Report output user-friendly. Falls back to "Custom" for
+/// anything that doesn't match.
+fn fem_material_label(material: &cadkernel_modeling::FemMaterial) -> &'static str {
+    let e = material.youngs_modulus;
+    let rho = material.density;
+    if (e - 210.0e9).abs() < 1.0 && (rho - 7850.0).abs() < 1e-6 {
+        "Steel"
+    } else if (e - 70.0e9).abs() < 1.0 && (rho - 2700.0).abs() < 1e-6 {
+        "Aluminum"
+    } else if (e - 114.0e9).abs() < 1.0 && (rho - 4430.0).abs() < 1e-6 {
+        "Titanium"
+    } else if (e - 117.0e9).abs() < 1.0 && (rho - 8960.0).abs() < 1e-6 {
+        "Copper"
+    } else if (e - 30.0e9).abs() < 1.0 && (rho - 2400.0).abs() < 1e-6 {
+        "Concrete"
+    } else if (e - 170.0e9).abs() < 1.0 && (rho - 7200.0).abs() < 1e-6 {
+        "CastIron"
+    } else {
+        "Custom"
+    }
+}
+
+fn fem_bc_kind_label(bc: &cadkernel_modeling::BoundaryCondition) -> &'static str {
+    use cadkernel_modeling::BoundaryCondition as BC;
+    match bc {
+        BC::FixedNode(_) => "FixedNode",
+        BC::Force { .. } => "Force",
+        BC::Pressure { .. } => "Pressure",
+        BC::Displacement { .. } => "Displacement",
+        BC::Gravity { .. } => "Gravity",
+        BC::DistributedLoad { .. } => "DistributedLoad",
+        BC::Spring { .. } => "Spring",
+        BC::CentrifugalLoad { .. } => "CentrifugalLoad",
+        BC::SelfWeight { .. } => "SelfWeight",
+        BC::SpringConstraint { .. } => "SpringConstraint",
+        BC::BodyLoad { .. } => "BodyLoad",
+        BC::InitialTemperature { .. } => "InitialTemperature",
+        BC::SectionPrint { .. } => "SectionPrint",
+        BC::TieConstraint { .. } => "TieConstraint",
+        BC::RigidBody { .. } => "RigidBody",
+        BC::ContactConstraint { .. } => "ContactConstraint",
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Headless test surface
 // ---------------------------------------------------------------------------
@@ -8472,5 +8708,67 @@ impl CadApp {
             let id = obj.id;
             self.scene.toggle_select(id);
         }
+    }
+
+    // -- Phase C1 — Draft transforms + EASY stragglers ---------------------
+
+    #[doc(hidden)]
+    pub fn dispatch_draft_move(&mut self) {
+        self.dispatch(GuiAction::Draft(crate::gui::DraftAction::Move));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_draft_rotate(&mut self) {
+        self.dispatch(GuiAction::Draft(crate::gui::DraftAction::Rotate));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_draft_scale(&mut self) {
+        self.dispatch(GuiAction::Draft(crate::gui::DraftAction::Scale));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_draft_mirror(&mut self) {
+        self.dispatch(GuiAction::Draft(crate::gui::DraftAction::Mirror));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_surface_coons(&mut self) {
+        self.dispatch(GuiAction::Surface(crate::gui::SurfaceAction::Coons));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_fem_summary(&mut self) {
+        self.dispatch(GuiAction::Fem(crate::gui::FemAction::Summary));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_fem_report(&mut self) {
+        self.dispatch(GuiAction::Fem(crate::gui::FemAction::Report));
+    }
+
+    /// Inject a synthetic FEM analysis container so Summary / Report tests
+    /// don't have to spin up the full Sketcher → tet-mesher state machine.
+    #[doc(hidden)]
+    pub fn seed_test_fem_analysis(&mut self) {
+        let mesh = cadkernel_modeling::TetMesh {
+            nodes: vec![
+                cadkernel_math::Point3 { x: 0.0, y: 0.0, z: 0.0 },
+                cadkernel_math::Point3 { x: 1.0, y: 0.0, z: 0.0 },
+                cadkernel_math::Point3 { x: 0.0, y: 1.0, z: 0.0 },
+                cadkernel_math::Point3 { x: 0.0, y: 0.0, z: 1.0 },
+            ],
+            elements: vec![[0, 1, 2, 3]],
+        };
+        let mut container = cadkernel_modeling::AnalysisContainer::new(
+            mesh,
+            cadkernel_modeling::FemMaterial::steel(),
+        );
+        container.add_bc(cadkernel_modeling::BoundaryCondition::FixedNode(0));
+        container.add_bc(cadkernel_modeling::BoundaryCondition::Force {
+            node: 3,
+            force: cadkernel_math::Vec3 { x: 0.0, y: 0.0, z: -1000.0 },
+        });
+        self.gui.fem_analysis = Some(container);
     }
 }

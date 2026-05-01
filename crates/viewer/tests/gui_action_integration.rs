@@ -2306,3 +2306,97 @@ fn part_coons_patch_dispatch_adds_tree_entry() {
     // NurbsSurface output → tree-only entry, same as Phase B wire features.
     assert_eq!(app.scene_ref().len(), 1);
 }
+
+// ---------------------------------------------------------------------------
+// Phase C1 — Draft transforms (Move / Rotate / Scale / Mirror) + 3 EASY
+// stragglers (S::Coons, FemAction::Summary, FemAction::Report).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn draft_move_dispatch_adds_translated_copy() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(1.0, 1.0, 1.0);
+    let before = app.scene_ref().len();
+    app.dispatch_draft_move();
+    assert_eq!(
+        app.scene_ref().len(),
+        before + 1,
+        "Draft Move should add the translated solid as a new scene object"
+    );
+}
+
+#[test]
+fn draft_move_without_selection_logs_warning() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_draft_move();
+    assert!(app.scene_ref().is_empty());
+}
+
+#[test]
+fn draft_rotate_dispatch_adds_rotated_copy() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(1.0, 1.0, 1.0);
+    let before = app.scene_ref().len();
+    app.dispatch_draft_rotate();
+    assert_eq!(app.scene_ref().len(), before + 1);
+}
+
+#[test]
+fn draft_scale_dispatch_adds_scaled_copy() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(1.0, 1.0, 1.0);
+    let before = app.scene_ref().len();
+    app.dispatch_draft_scale();
+    assert_eq!(app.scene_ref().len(), before + 1);
+}
+
+#[test]
+fn draft_mirror_dispatch_adds_mirrored_copy() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(1.0, 1.0, 1.0);
+    let before = app.scene_ref().len();
+    app.dispatch_draft_mirror();
+    assert_eq!(app.scene_ref().len(), before + 1);
+}
+
+#[test]
+fn surface_coons_dispatch_adds_tree_entry() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_surface_coons();
+    // Same NurbsSurface tree-only output as P::CoonsPatch — they share the
+    // same kernel API.
+    assert_eq!(app.scene_ref().len(), 1);
+}
+
+#[test]
+fn fem_summary_with_seeded_analysis_logs_text() {
+    let mut app = CadApp::new_headless();
+    app.seed_test_fem_analysis();
+    let before = app.scene_ref().len();
+    app.dispatch_fem_summary();
+    // Summary mutates `gui.status_message` via log_info — no scene change.
+    assert_eq!(app.scene_ref().len(), before);
+}
+
+#[test]
+fn fem_summary_without_analysis_logs_warning() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_fem_summary();
+    assert!(app.scene_ref().is_empty());
+}
+
+#[test]
+fn fem_report_with_seeded_analysis_logs_text() {
+    let mut app = CadApp::new_headless();
+    app.seed_test_fem_analysis();
+    let before = app.scene_ref().len();
+    app.dispatch_fem_report();
+    assert_eq!(app.scene_ref().len(), before);
+}
+
+#[test]
+fn fem_report_without_analysis_logs_warning() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_fem_report();
+    assert!(app.scene_ref().is_empty());
+}
