@@ -232,6 +232,14 @@ impl Session {
         crate::cadk::encode(self.log())
     }
 
+    /// Same as [`Self::save_cadk`] but additionally embeds an arbitrary
+    /// thumbnail payload (typically PNG bytes) into a
+    /// `BlobKind::Thumbnail` record. Recoverable via
+    /// [`crate::cadk::decode_thumbnail`].
+    pub fn save_cadk_with_thumbnail(&self, thumbnail: &[u8]) -> ApiResult<Vec<u8>> {
+        crate::cadk::encode_with_thumbnail(self.log(), Some(thumbnail))
+    }
+
     /// Restore a session from a `.cadk` byte buffer produced by
     /// [`Self::save_cadk`]. The redo stack is **not** preserved by this
     /// codec — only the applied prefix round-trips. Use

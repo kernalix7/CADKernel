@@ -11,6 +11,13 @@
 
 ### 추가됨
 
+#### A3 — `.cadk` 썸네일 blob 지원 (2026-05-07)
+- 신규 공개 API: `cadk::encode_with_thumbnail(commands, thumbnail)`, `cadk::decode_thumbnail(bytes) -> Option<Vec<u8>>`. 썸네일 바이트는 포맷 비종속 (보통 PNG); 코덱은 CRC32만 검증하고 내용은 파싱하지 않음.
+- 썸네일이 있으면 manifest에 `BlobKind::Thumbnail` 레코드 추가 + 헤더에 `CadkFlags::HAS_THUMBNAIL` 비트 설정. 기존 `cadk::decode` 호출자는 플래그를 무시하고 그대로 동작 → 완전한 하위 호환.
+- `Session::save_cadk_with_thumbnail` 추가.
+- 코덱 단위 테스트 3개 + 세션 통합 테스트 1개 추가 (썸네일 없을 때 플래그 0 / `None` 반환, 썸네일 round-trip + 플래그 설정, 썸네일 blob CRC 손상 거부).
+- A3 deliverable §5 (썸네일 blob) — 완료. 후속: bincode 스왑, zstd, Ed25519 서명, 자동저장, `cadk-inspect` CLI.
+
 #### A3 — `.cadk` v0 코덱: CRC 무결성 포함 인코드/디코드 (2026-05-07)
 - `crates/api/src/cadk/codec.rs` (~270 LOC)에 v0 컨테이너 레이아웃 end-to-end 구현:
   - `crc32_ieee` — IEEE 802.3 CRC-32, `OnceLock` 기반 lazy 테이블, polynomial `0xEDB88320`. 외부 크레이트 0개.

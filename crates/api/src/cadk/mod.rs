@@ -19,6 +19,6 @@ pub mod codec;
 pub mod header;
 pub mod manifest;
 
-pub use codec::{decode, encode};
+pub use codec::{decode, decode_thumbnail, encode, encode_with_thumbnail};
 pub use header::{CadkFlags, CadkHeader, MAGIC};
 pub use manifest::{BlobKind, BlobRecord, Manifest};

@@ -11,6 +11,13 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### A3 — `.cadk` thumbnail blob support (2026-05-07)
+- New public codec entry points: `cadk::encode_with_thumbnail(commands, thumbnail)` and `cadk::decode_thumbnail(bytes) -> Option<Vec<u8>>`. Thumbnail bytes are content-agnostic (typically PNG); the codec validates CRC32 but does not parse the payload.
+- When a thumbnail is present, the encoder appends a second `BlobKind::Thumbnail` record to the manifest and sets `CadkFlags::HAS_THUMBNAIL` in the header. Decoders that only call `cadk::decode` ignore the flag and return commands as before — full backward compatibility.
+- `Session::save_cadk_with_thumbnail(&self, thumbnail: &[u8]) -> ApiResult<Vec<u8>>` companion to `save_cadk`.
+- 3 new codec unit tests (encode-without-thumbnail clears flag and returns `None`; encode-with-thumbnail sets flag and round-trips a 2 KB pseudo-PNG payload while document still decodes; corrupted thumbnail blob is rejected by CRC while document blob remains intact) + 1 new session integration test (`session_save_cadk_with_thumbnail_round_trips_payload`).
+- A3 deliverable §5 (thumbnail blob) — landed. Pending: bincode swap, zstd, Ed25519 signing, autosave, `cadk-inspect` CLI.
+
 #### A3 — `.cadk` v0 codec: encode / decode with CRC integrity (2026-05-07)
 - `crates/api/src/cadk/codec.rs` (~270 lines) implements the v0 container layout end-to-end:
   - `crc32_ieee(&[u8]) -> u32` — IEEE 802.3 CRC-32, lazy table via `std::sync::OnceLock`, polynomial `0xEDB88320`. Verified against canonical reference `crc32(b"123456789") == 0xCBF43926`. Zero new dependencies.

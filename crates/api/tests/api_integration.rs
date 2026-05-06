@@ -698,3 +698,26 @@ fn session_save_cadk_round_trip_preserves_solid_count() {
     assert_eq!(restored.document().solid_count(), 3);
     assert_eq!(restored.log().len(), 3);
 }
+
+#[test]
+fn session_save_cadk_with_thumbnail_round_trips_payload() {
+    use cadkernel_api::{cadk, Command, Session};
+
+    let mut session = Session::new();
+    session
+        .execute(Command::CreateBox {
+            dx: 4.0,
+            dy: 3.0,
+            dz: 2.0,
+        })
+        .unwrap();
+
+    let thumbnail: Vec<u8> = (0u8..200).collect();
+    let bytes = session.save_cadk_with_thumbnail(&thumbnail).unwrap();
+
+    let restored = Session::load_cadk(&bytes).unwrap();
+    assert_eq!(restored.document().solid_count(), 1);
+
+    let recovered_thumb = cadk::decode_thumbnail(&bytes).unwrap().unwrap();
+    assert_eq!(recovered_thumb, thumbnail);
+}
