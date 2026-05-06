@@ -4,11 +4,13 @@
 //! counts across STEP, IGES, STL, OBJ, PLY, BREP, JSON, and native formats
 //! to verify data integrity through the full export → import cycle.
 
+use cadkernel_io::tessellate::{
+    tessellate_solid, tessellate_solid_parallel, tessellate_solid_with_face_map,
+};
 use cadkernel_io::*;
-use cadkernel_io::tessellate::{tessellate_solid, tessellate_solid_parallel, tessellate_solid_with_face_map};
 use cadkernel_math::{Point3, Vec3};
-use cadkernel_modeling::primitives::BoxResult;
 use cadkernel_modeling::make_box;
+use cadkernel_modeling::primitives::BoxResult;
 use cadkernel_topology::BRepModel;
 
 // ---------------------------------------------------------------------------
@@ -21,7 +23,10 @@ fn make_test_box(origin: Point3, w: f64, h: f64, d: f64) -> (BRepModel, BoxResul
     (model, r)
 }
 
-fn tessellate_box_mesh(model: &BRepModel, solid: cadkernel_topology::Handle<cadkernel_topology::SolidData>) -> Mesh {
+fn tessellate_box_mesh(
+    model: &BRepModel,
+    solid: cadkernel_topology::Handle<cadkernel_topology::SolidData>,
+) -> Mesh {
     tessellate_solid(model, solid)
 }
 
@@ -55,7 +60,12 @@ fn step_roundtrip_multi_solid() {
 
     let orig_verts: usize = model.vertices.iter().count();
     let imported_verts: usize = imported.vertices.iter().count();
-    assert!(imported_verts >= orig_verts, "vertex count: {} < {}", imported_verts, orig_verts);
+    assert!(
+        imported_verts >= orig_verts,
+        "vertex count: {} < {}",
+        imported_verts,
+        orig_verts
+    );
 }
 
 #[test]
@@ -142,8 +152,14 @@ fn iges_roundtrip_wireframe() {
     let iges_str = export_iges(&model).unwrap();
     let entities = parse_iges(&iges_str).unwrap();
 
-    let point_count = entities.iter().filter(|e| e.entity_type == IgesEntityType::Point).count();
-    let line_count = entities.iter().filter(|e| e.entity_type == IgesEntityType::Line).count();
+    let point_count = entities
+        .iter()
+        .filter(|e| e.entity_type == IgesEntityType::Point)
+        .count();
+    let line_count = entities
+        .iter()
+        .filter(|e| e.entity_type == IgesEntityType::Line)
+        .count();
     assert_eq!(point_count, 4);
     assert_eq!(line_count, 4);
 
@@ -183,7 +199,10 @@ fn iges_mesh_export_triangle_edges() {
     let output = export_iges_mesh(&mesh).unwrap();
     let entities = parse_iges(&output).unwrap();
 
-    let point_count = entities.iter().filter(|e| e.entity_type == IgesEntityType::Point).count();
+    let point_count = entities
+        .iter()
+        .filter(|e| e.entity_type == IgesEntityType::Point)
+        .count();
     assert_eq!(point_count, 4);
 }
 
@@ -306,11 +325,19 @@ fn mesh_vertex_count_consistent_across_formats() {
 
     let stl_ascii = write_stl_ascii(&mesh, "test");
     let stl_mesh = read_stl_ascii(&stl_ascii).unwrap();
-    assert_eq!(stl_mesh.indices.len(), tri_count, "STL triangle count mismatch");
+    assert_eq!(
+        stl_mesh.indices.len(),
+        tri_count,
+        "STL triangle count mismatch"
+    );
 
     let obj_str = write_obj(&mesh);
     let obj_mesh = read_obj(&obj_str).unwrap();
-    assert_eq!(obj_mesh.vertices.len(), mesh.vertices.len(), "OBJ vertex count mismatch");
+    assert_eq!(
+        obj_mesh.vertices.len(),
+        mesh.vertices.len(),
+        "OBJ vertex count mismatch"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -364,8 +391,13 @@ fn face_map_tessellation() {
     assert!(!mesh.indices.is_empty());
 
     let mapped_total: usize = face_map.iter().map(|(_, _, count)| count).sum();
-    assert_eq!(mapped_total, mesh.indices.len(),
-        "face_map total {} != mesh triangles {}", mapped_total, mesh.indices.len());
+    assert_eq!(
+        mapped_total,
+        mesh.indices.len(),
+        "face_map total {} != mesh triangles {}",
+        mapped_total,
+        mesh.indices.len()
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -379,8 +411,12 @@ fn mesh_decimation_reduces_triangles() {
     let original_count = mesh.indices.len();
 
     let decimated = cadkernel_io::mesh_ops::decimate_mesh(&mesh, 0.5).unwrap();
-    assert!(decimated.indices.len() <= original_count,
-        "decimated ({}) should have <= original ({})", decimated.indices.len(), original_count);
+    assert!(
+        decimated.indices.len() <= original_count,
+        "decimated ({}) should have <= original ({})",
+        decimated.indices.len(),
+        original_count
+    );
 }
 
 #[test]
@@ -390,8 +426,12 @@ fn mesh_subdivision_increases_triangles() {
     let original_count = mesh.indices.len();
 
     let subdivided = cadkernel_io::mesh_ops::subdivide_mesh(&mesh).unwrap();
-    assert!(subdivided.indices.len() >= original_count,
-        "subdivided ({}) should have >= original ({})", subdivided.indices.len(), original_count);
+    assert!(
+        subdivided.indices.len() >= original_count,
+        "subdivided ({}) should have >= original ({})",
+        subdivided.indices.len(),
+        original_count
+    );
 }
 
 #[test]
@@ -400,10 +440,16 @@ fn mesh_smooth_preserves_vertex_count() {
     let mesh = tessellate_box_mesh(&model, r.solid);
 
     let smoothed = cadkernel_io::mesh_ops::smooth_mesh(&mesh, 3, 0.5);
-    assert_eq!(smoothed.vertices.len(), mesh.vertices.len(),
-        "smoothing should preserve vertex count");
-    assert_eq!(smoothed.indices.len(), mesh.indices.len(),
-        "smoothing should preserve triangle count");
+    assert_eq!(
+        smoothed.vertices.len(),
+        mesh.vertices.len(),
+        "smoothing should preserve vertex count"
+    );
+    assert_eq!(
+        smoothed.indices.len(),
+        mesh.indices.len(),
+        "smoothing should preserve triangle count"
+    );
 }
 
 // ===========================================================================
@@ -512,7 +558,11 @@ fn step_double_roundtrip_consistency() {
 
     let verts_1: usize = imported_1.vertices.iter().count();
     let verts_2: usize = imported_2.vertices.iter().count();
-    assert_eq!(verts_1, verts_2, "vertex count diverged: {} vs {}", verts_1, verts_2);
+    assert_eq!(
+        verts_1, verts_2,
+        "vertex count diverged: {} vs {}",
+        verts_1, verts_2
+    );
 }
 
 #[test]
@@ -732,9 +782,18 @@ fn oca_roundtrip() {
     let mesh = tessellate_box_mesh(&model, r.solid);
     let oca_str = export_oca(&mesh).unwrap();
 
-    assert!(oca_str.contains("OCA"), "OCA output should contain format marker");
-    assert!(oca_str.contains("POINT"), "OCA output should contain POINT entries");
-    assert!(oca_str.contains("FACE"), "OCA output should contain FACE entries");
+    assert!(
+        oca_str.contains("OCA"),
+        "OCA output should contain format marker"
+    );
+    assert!(
+        oca_str.contains("POINT"),
+        "OCA output should contain POINT entries"
+    );
+    assert!(
+        oca_str.contains("FACE"),
+        "OCA output should contain FACE entries"
+    );
 
     let reimported = import_oca(&oca_str).unwrap();
     assert_eq!(
@@ -784,8 +843,14 @@ fn dwg_export_produces_valid_dxf_content() {
 
     // export_dwg delegates to DXF internally, so the output is DXF text
     let text = String::from_utf8(binary).unwrap();
-    assert!(text.contains("SECTION"), "DWG output should contain DXF SECTION");
-    assert!(text.contains("3DFACE"), "DWG output should contain 3DFACE entities");
+    assert!(
+        text.contains("SECTION"),
+        "DWG output should contain DXF SECTION"
+    );
+    assert!(
+        text.contains("3DFACE"),
+        "DWG output should contain 3DFACE entities"
+    );
 
     // Verify the DXF content can be reimported via the DXF importer
     let reimported = import_dxf(&text).unwrap();
@@ -811,7 +876,10 @@ fn svg_export_and_import() {
     ];
     let svg_doc = cadkernel_io::svg::profile_to_svg(&profile, 200.0, 200.0);
     let svg_str = svg_doc.render();
-    assert!(svg_str.contains("<svg"), "SVG output should contain <svg> tag");
+    assert!(
+        svg_str.contains("<svg"),
+        "SVG output should contain <svg> tag"
+    );
 
     // Test SVG import with closed shapes (rect, polygon)
     let svg_with_shapes = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200">
@@ -868,11 +936,17 @@ fn native_cadk_roundtrip() {
 
     let orig_verts: usize = model.vertices.iter().count();
     let loaded_verts: usize = loaded.vertices.iter().count();
-    assert_eq!(loaded_verts, orig_verts, "native format vertex count mismatch");
+    assert_eq!(
+        loaded_verts, orig_verts,
+        "native format vertex count mismatch"
+    );
 
     let orig_solids: usize = model.solids.iter().count();
     let loaded_solids: usize = loaded.solids.iter().count();
-    assert_eq!(loaded_solids, orig_solids, "native format solid count mismatch");
+    assert_eq!(
+        loaded_solids, orig_solids,
+        "native format solid count mismatch"
+    );
 
     // Clean up
     let _ = std::fs::remove_file(&tmp_path);
@@ -892,7 +966,10 @@ fn native_cadk_roundtrip_multi_solid() {
 
     let orig_solids: usize = model.solids.iter().count();
     let loaded_solids: usize = loaded.solids.iter().count();
-    assert_eq!(loaded_solids, orig_solids, "multi-solid native format mismatch");
+    assert_eq!(
+        loaded_solids, orig_solids,
+        "multi-solid native format mismatch"
+    );
 
     let _ = std::fs::remove_file(&tmp_path);
 }
@@ -906,12 +983,7 @@ fn stl_large_mesh_roundtrip() {
     // Build a large mesh from multiple tessellated boxes
     let mut all_meshes = Vec::new();
     for i in 0..10 {
-        let (model, r) = make_test_box(
-            Point3::new(i as f64 * 5.0, 0.0, 0.0),
-            3.0,
-            3.0,
-            3.0,
-        );
+        let (model, r) = make_test_box(Point3::new(i as f64 * 5.0, 0.0, 0.0), 3.0, 3.0, 3.0);
         all_meshes.push(tessellate_box_mesh(&model, r.solid));
     }
     let mesh = cadkernel_io::tessellate::merge_meshes(&all_meshes);
@@ -991,48 +1063,104 @@ fn mesh_triangle_count_consistent_across_all_text_formats() {
     // OBJ
     let obj_str = write_obj(&mesh);
     let obj_mesh = read_obj(&obj_str).unwrap();
-    assert_eq!(obj_mesh.vertices.len(), expected_vert, "OBJ vertex mismatch");
+    assert_eq!(
+        obj_mesh.vertices.len(),
+        expected_vert,
+        "OBJ vertex mismatch"
+    );
 
     // PLY
     let ply_str = export_ply(&mesh).unwrap();
     let ply_mesh = import_ply(&ply_str).unwrap();
-    assert_eq!(ply_mesh.vertices.len(), expected_vert, "PLY vertex mismatch");
+    assert_eq!(
+        ply_mesh.vertices.len(),
+        expected_vert,
+        "PLY vertex mismatch"
+    );
 
     // glTF
     let gltf_str = cadkernel_io::gltf::write_gltf(&mesh).unwrap();
     let gltf_mesh = import_gltf(&gltf_str).unwrap();
-    assert_eq!(gltf_mesh.vertices.len(), expected_vert, "glTF vertex mismatch");
-    assert_eq!(gltf_mesh.indices.len(), expected_tri, "glTF triangle mismatch");
+    assert_eq!(
+        gltf_mesh.vertices.len(),
+        expected_vert,
+        "glTF vertex mismatch"
+    );
+    assert_eq!(
+        gltf_mesh.indices.len(),
+        expected_tri,
+        "glTF triangle mismatch"
+    );
 
     // 3MF
     let threemf_str = export_3mf(&mesh).unwrap();
     let threemf_mesh = import_3mf(&threemf_str).unwrap();
-    assert_eq!(threemf_mesh.vertices.len(), expected_vert, "3MF vertex mismatch");
-    assert_eq!(threemf_mesh.indices.len(), expected_tri, "3MF triangle mismatch");
+    assert_eq!(
+        threemf_mesh.vertices.len(),
+        expected_vert,
+        "3MF vertex mismatch"
+    );
+    assert_eq!(
+        threemf_mesh.indices.len(),
+        expected_tri,
+        "3MF triangle mismatch"
+    );
 
     // DAE
     let dae_str = export_dae(&mesh).unwrap();
     let dae_mesh = import_dae(&dae_str).unwrap();
-    assert_eq!(dae_mesh.vertices.len(), expected_vert, "DAE vertex mismatch");
-    assert_eq!(dae_mesh.indices.len(), expected_tri, "DAE triangle mismatch");
+    assert_eq!(
+        dae_mesh.vertices.len(),
+        expected_vert,
+        "DAE vertex mismatch"
+    );
+    assert_eq!(
+        dae_mesh.indices.len(),
+        expected_tri,
+        "DAE triangle mismatch"
+    );
 
     // AMF
     let amf_str = export_amf(&mesh).unwrap();
     let amf_mesh = import_amf(&amf_str).unwrap();
-    assert_eq!(amf_mesh.vertices.len(), expected_vert, "AMF vertex mismatch");
-    assert_eq!(amf_mesh.indices.len(), expected_tri, "AMF triangle mismatch");
+    assert_eq!(
+        amf_mesh.vertices.len(),
+        expected_vert,
+        "AMF vertex mismatch"
+    );
+    assert_eq!(
+        amf_mesh.indices.len(),
+        expected_tri,
+        "AMF triangle mismatch"
+    );
 
     // VRML
     let vrml_str = export_vrml(&mesh).unwrap();
     let vrml_mesh = import_vrml(&vrml_str).unwrap();
-    assert_eq!(vrml_mesh.vertices.len(), expected_vert, "VRML vertex mismatch");
-    assert_eq!(vrml_mesh.indices.len(), expected_tri, "VRML triangle mismatch");
+    assert_eq!(
+        vrml_mesh.vertices.len(),
+        expected_vert,
+        "VRML vertex mismatch"
+    );
+    assert_eq!(
+        vrml_mesh.indices.len(),
+        expected_tri,
+        "VRML triangle mismatch"
+    );
 
     // OCA
     let oca_str = export_oca(&mesh).unwrap();
     let oca_mesh = import_oca(&oca_str).unwrap();
-    assert_eq!(oca_mesh.vertices.len(), expected_vert, "OCA vertex mismatch");
-    assert_eq!(oca_mesh.indices.len(), expected_tri, "OCA triangle mismatch");
+    assert_eq!(
+        oca_mesh.vertices.len(),
+        expected_vert,
+        "OCA vertex mismatch"
+    );
+    assert_eq!(
+        oca_mesh.indices.len(),
+        expected_tri,
+        "OCA triangle mismatch"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1204,7 +1332,13 @@ fn regular_solid_generates_valid_meshes() {
         let max_idx = mesh.vertices.len() as u32;
         for tri in &mesh.indices {
             for &idx in tri {
-                assert!(idx < max_idx, "{:?}: invalid index {} >= {}", solid_type, idx, max_idx);
+                assert!(
+                    idx < max_idx,
+                    "{:?}: invalid index {} >= {}",
+                    solid_type,
+                    idx,
+                    max_idx
+                );
             }
         }
     }
@@ -1349,8 +1483,14 @@ fn tessellation_serial_and_parallel_both_valid() {
         }
 
         // Both should produce non-trivial output
-        assert!(serial.vertices.len() >= 4, "serial should have >= 4 vertices");
-        assert!(parallel.vertices.len() >= 4, "parallel should have >= 4 vertices");
+        assert!(
+            serial.vertices.len() >= 4,
+            "serial should have >= 4 vertices"
+        );
+        assert!(
+            parallel.vertices.len() >= 4,
+            "parallel should have >= 4 vertices"
+        );
     }
 }
 
@@ -1373,7 +1513,10 @@ fn threemf_handles_special_float_values() {
     let xml_str = export_3mf(&mesh).unwrap();
     // The XML should be valid (no NaN, no Inf)
     assert!(!xml_str.contains("NaN"), "3MF should not contain NaN");
-    assert!(!xml_str.contains("Infinity"), "3MF should not contain Infinity");
+    assert!(
+        !xml_str.contains("Infinity"),
+        "3MF should not contain Infinity"
+    );
 
     let reimported = import_3mf(&xml_str).unwrap();
     assert_eq!(reimported.vertices.len(), 3);
@@ -1392,7 +1535,10 @@ fn amf_handles_special_float_values() {
     };
     let amf_str = export_amf(&mesh).unwrap();
     assert!(!amf_str.contains("NaN"), "AMF should not contain NaN");
-    assert!(!amf_str.contains("Infinity"), "AMF should not contain Infinity");
+    assert!(
+        !amf_str.contains("Infinity"),
+        "AMF should not contain Infinity"
+    );
 
     let reimported = import_amf(&amf_str).unwrap();
     assert_eq!(reimported.vertices.len(), 3);
@@ -1448,11 +1594,7 @@ fn brep_preserves_vertex_coordinates() {
         .iter()
         .filter_map(|h| model.vertices.get(*h).map(|v| v.point))
         .collect();
-    let imported_pts: Vec<Point3> = reimported
-        .vertices
-        .iter()
-        .map(|(_, v)| v.point)
-        .collect();
+    let imported_pts: Vec<Point3> = reimported.vertices.iter().map(|(_, v)| v.point).collect();
 
     assert_eq!(imported_pts.len(), orig_pts.len(), "vertex count mismatch");
     for (orig, imp) in orig_pts.iter().zip(imported_pts.iter()) {

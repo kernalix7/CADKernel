@@ -54,7 +54,9 @@ impl NurbsCurve {
         if n < degree + 1 {
             return Err(KernelError::InvalidArgument(format!(
                 "need at least {} control points for degree {}, got {}",
-                degree + 1, degree, n
+                degree + 1,
+                degree,
+                n
             )));
         }
         if weights.len() != n {
@@ -385,7 +387,11 @@ impl NurbsCurve {
         let p = self.degree;
 
         // Count current multiplicity of t
-        let current_mult = self.knots.iter().filter(|&&k| (k - t).abs() < 1e-14).count();
+        let current_mult = self
+            .knots
+            .iter()
+            .filter(|&&k| (k - t).abs() < 1e-14)
+            .count();
         let insertions_needed = (p + 1).saturating_sub(current_mult);
 
         // Insert knot until multiplicity = p+1
@@ -490,8 +496,7 @@ impl NurbsCurve {
 
             // Find the span in the TARGET knot vector for the removed knot
             let target_n = n - 1;
-            let target_span =
-                bspline_basis::find_span(&target_knots, target_n, p, knot_val);
+            let target_span = bspline_basis::find_span(&target_knots, target_n, p, knot_val);
 
             // Work in homogeneous coordinates
             let hw: Vec<[f64; 4]> = curve
@@ -528,7 +533,11 @@ impl NurbsCurve {
                 };
                 // hw[i] in the inserted curve = (1-alpha)*target[i-1] + alpha*target[i]
                 // So: target[i] = (hw[i] - (1-alpha)*known_prev) / alpha
-                let prev = if j == 0 { new_hw[affected_lo - 1] } else { fwd[j - 1] };
+                let prev = if j == 0 {
+                    new_hw[affected_lo - 1]
+                } else {
+                    fwd[j - 1]
+                };
                 if alpha.abs() < 1e-14 {
                     fwd[j] = hw[i];
                 } else {
@@ -562,11 +571,19 @@ impl NurbsCurve {
                 // target[i] = (inserted[i+1] - a_{i+1}*target[i+1]) / (1-a_{i+1})
                 let next_alpha = if i < affected_hi {
                     let denom_next = target_knots[i + 1 + p] - target_knots[i + 1];
-                    if denom_next.abs() < 1e-14 { 0.5 } else { (knot_val - target_knots[i + 1]) / denom_next }
+                    if denom_next.abs() < 1e-14 {
+                        0.5
+                    } else {
+                        (knot_val - target_knots[i + 1]) / denom_next
+                    }
                 } else {
                     alpha // won't be used
                 };
-                let next = if j_rev == 0 { new_hw[(affected_hi + 1).min(target_n - 1)] } else { bwd[j + 1] };
+                let next = if j_rev == 0 {
+                    new_hw[(affected_hi + 1).min(target_n - 1)]
+                } else {
+                    bwd[j + 1]
+                };
                 if i < affected_hi && (1.0 - next_alpha).abs() > 1e-14 {
                     let mut q = [0.0; 4];
                     for c in 0..4 {
@@ -976,8 +993,12 @@ impl Curve for NurbsCurve {
                 let d2 = ders[2]; // C''(t)
 
                 let f = diff.x * d1.x + diff.y * d1.y + diff.z * d1.z;
-                let df = d1.x * d1.x + d1.y * d1.y + d1.z * d1.z
-                    + diff.x * d2.x + diff.y * d2.y + diff.z * d2.z;
+                let df = d1.x * d1.x
+                    + d1.y * d1.y
+                    + d1.z * d1.z
+                    + diff.x * d2.x
+                    + diff.y * d2.y
+                    + diff.z * d2.z;
 
                 if df.abs() < 1e-20 {
                     break;
@@ -1276,11 +1297,9 @@ mod tests {
 
     #[test]
     fn test_reversed_trait() {
-        let curve = NurbsCurve::bezier(vec![
-            Point3::new(0.0, 0.0, 0.0),
-            Point3::new(1.0, 0.0, 0.0),
-        ])
-        .unwrap();
+        let curve =
+            NurbsCurve::bezier(vec![Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 0.0, 0.0)])
+                .unwrap();
         let rev = curve.reversed();
         assert!(rev.is_some());
         let rev = rev.unwrap();
@@ -1373,11 +1392,9 @@ mod tests {
 
     #[test]
     fn test_split_boundary_error() {
-        let curve = NurbsCurve::bezier(vec![
-            Point3::new(0.0, 0.0, 0.0),
-            Point3::new(1.0, 0.0, 0.0),
-        ])
-        .unwrap();
+        let curve =
+            NurbsCurve::bezier(vec![Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 0.0, 0.0)])
+                .unwrap();
         assert!(curve.split_at(0.0).is_err());
         assert!(curve.split_at(1.0).is_err());
     }
@@ -1465,7 +1482,11 @@ mod tests {
         .unwrap();
 
         let segments = curve.decompose_to_bezier();
-        assert_eq!(segments.len(), 2, "two-span curve should decompose into 2 Bezier segments");
+        assert_eq!(
+            segments.len(),
+            2,
+            "two-span curve should decompose into 2 Bezier segments"
+        );
 
         // Each segment should match the original curve in its domain
         let (lo, hi) = curve.domain();
@@ -1486,11 +1507,8 @@ mod tests {
 
     #[test]
     fn test_join_degree_mismatch() {
-        let c1 = NurbsCurve::bezier(vec![
-            Point3::new(0.0, 0.0, 0.0),
-            Point3::new(1.0, 0.0, 0.0),
-        ])
-        .unwrap();
+        let c1 = NurbsCurve::bezier(vec![Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 0.0, 0.0)])
+            .unwrap();
         let c2 = NurbsCurve::bezier(vec![
             Point3::new(1.0, 0.0, 0.0),
             Point3::new(1.5, 1.0, 0.0),

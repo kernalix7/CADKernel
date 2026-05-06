@@ -34,9 +34,7 @@ pub fn import_amf(content: &str) -> KernelResult<Mesh> {
     }
 
     if vertices.is_empty() {
-        return Err(KernelError::IoError(
-            "no vertices found in AMF file".into(),
-        ));
+        return Err(KernelError::IoError("no vertices found in AMF file".into()));
     }
 
     // Parse triangles: <triangle><v1>...<v2>...<v3>...</triangle>

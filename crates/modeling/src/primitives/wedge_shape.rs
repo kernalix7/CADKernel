@@ -5,7 +5,9 @@ use std::sync::Arc;
 use cadkernel_core::{KernelError, KernelResult};
 use cadkernel_geometry::Plane;
 use cadkernel_math::{Point3, Vec3};
-use cadkernel_topology::{BRepModel, EntityKind, FaceData, Handle, Orientation, SolidData, Tag, VertexData};
+use cadkernel_topology::{
+    BRepModel, EntityKind, FaceData, Handle, Orientation, SolidData, Tag, VertexData,
+};
 
 use super::{EdgeCache, bind_edge_line_segments, next_edge_tag};
 
@@ -214,7 +216,18 @@ mod tests {
     #[test]
     fn test_wedge_box_equivalent() {
         let mut model = BRepModel::new();
-        let r = make_wedge(&mut model, Point3::ORIGIN, 2.0, 3.0, 4.0, 2.0, 3.0, 0.0, 0.0).unwrap();
+        let r = make_wedge(
+            &mut model,
+            Point3::ORIGIN,
+            2.0,
+            3.0,
+            4.0,
+            2.0,
+            3.0,
+            0.0,
+            0.0,
+        )
+        .unwrap();
         assert_eq!(r.vertices.len(), 8);
         assert_eq!(r.faces.len(), 6);
         assert!(model.solids.is_alive(r.solid));
@@ -223,7 +236,18 @@ mod tests {
     #[test]
     fn test_wedge_pyramid() {
         let mut model = BRepModel::new();
-        let r = make_wedge(&mut model, Point3::ORIGIN, 2.0, 2.0, 3.0, 0.0, 0.0, 0.0, 0.0).unwrap();
+        let r = make_wedge(
+            &mut model,
+            Point3::ORIGIN,
+            2.0,
+            2.0,
+            3.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+        )
+        .unwrap();
         assert_eq!(r.vertices.len(), 5); // 4 base + 1 apex
         assert_eq!(r.faces.len(), 5); // 1 base + 4 triangles
     }
@@ -231,7 +255,18 @@ mod tests {
     #[test]
     fn test_wedge_tapered() {
         let mut model = BRepModel::new();
-        let r = make_wedge(&mut model, Point3::ORIGIN, 4.0, 4.0, 3.0, 2.0, 2.0, 1.0, 1.0).unwrap();
+        let r = make_wedge(
+            &mut model,
+            Point3::ORIGIN,
+            4.0,
+            4.0,
+            3.0,
+            2.0,
+            2.0,
+            1.0,
+            1.0,
+        )
+        .unwrap();
         assert_eq!(r.vertices.len(), 8);
         assert_eq!(r.faces.len(), 6);
     }
@@ -239,7 +274,33 @@ mod tests {
     #[test]
     fn test_wedge_validation() {
         let mut model = BRepModel::new();
-        assert!(make_wedge(&mut model, Point3::ORIGIN, -1.0, 2.0, 3.0, 1.0, 1.0, 0.0, 0.0).is_err());
-        assert!(make_wedge(&mut model, Point3::ORIGIN, 2.0, 2.0, 3.0, -1.0, 1.0, 0.0, 0.0).is_err());
+        assert!(
+            make_wedge(
+                &mut model,
+                Point3::ORIGIN,
+                -1.0,
+                2.0,
+                3.0,
+                1.0,
+                1.0,
+                0.0,
+                0.0
+            )
+            .is_err()
+        );
+        assert!(
+            make_wedge(
+                &mut model,
+                Point3::ORIGIN,
+                2.0,
+                2.0,
+                3.0,
+                -1.0,
+                1.0,
+                0.0,
+                0.0
+            )
+            .is_err()
+        );
     }
 }

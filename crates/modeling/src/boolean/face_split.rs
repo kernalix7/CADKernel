@@ -11,11 +11,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use cadkernel_core::{KernelError, KernelResult};
+use cadkernel_geometry::NurbsCurve;
 use cadkernel_geometry::curve::curve2d::{Curve2D, Line2D, NurbsCurve2D};
 use cadkernel_geometry::curve::nurbs_fitting;
 use cadkernel_geometry::intersect::surface_surface::{SsiCurve, intersect_surfaces};
 use cadkernel_geometry::surface::Surface;
-use cadkernel_geometry::NurbsCurve;
 use cadkernel_math::{Point2, Point3, Vec3};
 use cadkernel_topology::{
     BRepModel, EntityKind, FaceData, HalfEdgeData, Handle, OperationId, SolidData, Tag, VertexData,
@@ -64,11 +64,7 @@ impl SplitBuilder {
         // so sharing a half-edge across two loops would overwrite the
         // previous loop's next/prev pointers and corrupt topology.
         if let Some(&he) = self.edge_map.get(&key_fwd) {
-            if dst
-                .half_edges
-                .get(he)
-                .is_some_and(|h| h.loop_ref.is_none())
-            {
+            if dst.half_edges.get(he).is_some_and(|h| h.loop_ref.is_none()) {
                 return he;
             }
         }
@@ -285,7 +281,10 @@ pub fn fit_ssi_to_pcurve(params: &[(f64, f64)]) -> KernelResult<Arc<dyn Curve2D>
 }
 
 /// Gets the bound surface from a face, if any.
-fn get_face_surface(model: &BRepModel, face: Handle<FaceData>) -> Option<Arc<dyn Surface + Send + Sync>> {
+fn get_face_surface(
+    model: &BRepModel,
+    face: Handle<FaceData>,
+) -> Option<Arc<dyn Surface + Send + Sync>> {
     let face_data = model.faces.get(face)?;
     face_data.surface.clone()
 }
@@ -295,11 +294,7 @@ fn get_face_surface(model: &BRepModel, face: Handle<FaceData>) -> Option<Arc<dyn
 /// that lie on B's boundary and inside A. These segments, fed into the
 /// standard split pipeline, let A's face be carved by B's boundary
 /// (e.g. `top(A)` minus `top(B)` for a box-subtract-box L-shape).
-fn coplanar_split_curves(
-    poly_a: &[Point3],
-    poly_b: &[Point3],
-    tolerance: f64,
-) -> Vec<SsiCurve> {
+fn coplanar_split_curves(poly_a: &[Point3], poly_b: &[Point3], tolerance: f64) -> Vec<SsiCurve> {
     if poly_a.len() < 3 || poly_b.len() < 3 {
         return Vec::new();
     }
@@ -332,8 +327,9 @@ fn coplanar_split_curves(
             }
 
             let n = seg.len();
-            let params: Vec<(f64, f64)> =
-                (0..n).map(|i| (i as f64 / (n - 1).max(1) as f64, 0.0)).collect();
+            let params: Vec<(f64, f64)> = (0..n)
+                .map(|i| (i as f64 / (n - 1).max(1) as f64, 0.0))
+                .collect();
             curves.push(SsiCurve {
                 points: seg,
                 params_s1: params.clone(),
@@ -674,10 +670,8 @@ fn split_polygon_with_curves(
         let mut next_polygons = Vec::new();
 
         for poly in &current_polygons {
-            let entry_on_boundary =
-                find_edge_for_point(poly, &entry, tolerance).is_some();
-            let exit_on_boundary =
-                find_edge_for_point(poly, &exit, tolerance).is_some();
+            let entry_on_boundary = find_edge_for_point(poly, &entry, tolerance).is_some();
+            let exit_on_boundary = find_edge_for_point(poly, &exit, tolerance).is_some();
 
             let split = if closed && !entry_on_boundary {
                 split_polygon_with_closed_loop(poly, curve, tolerance)
@@ -853,7 +847,9 @@ fn split_polygon_with_open_curve(
         }
     } else if first_on && !last_on {
         let n = curve.len();
-        let tangent = (curve[n - 1] - curve[n - 2]).normalized().unwrap_or(Vec3::X);
+        let tangent = (curve[n - 1] - curve[n - 2])
+            .normalized()
+            .unwrap_or(Vec3::X);
         let hit = ray_polygon_boundary(poly, curve[n - 1], tangent, tolerance);
         if let Some(hit_pt) = hit {
             let mut new_curve = curve.to_vec();
@@ -973,7 +969,8 @@ fn merge_chords_into_polylines_with_boundary(
     // cylinder cap plus 32 cylinder walls each producing a 2-point segment
     // on the same circle) emit duplicate chords with the same endpoints;
     // the polyline stitcher otherwise walks the graph inconsistently.
-    let mut seen_pairs: std::collections::HashSet<(usize, usize)> = std::collections::HashSet::new();
+    let mut seen_pairs: std::collections::HashSet<(usize, usize)> =
+        std::collections::HashSet::new();
     for chord in chords {
         if chord.len() < 2 {
             continue;
@@ -1302,11 +1299,7 @@ fn clip_curve_to_polygon(
 }
 
 /// Returns true if point lies within `tol` of any polygon edge (2D projected).
-fn point_on_polygon_boundary_2d(
-    pt: &(f64, f64),
-    polygon: &[(f64, f64)],
-    tol: f64,
-) -> bool {
+fn point_on_polygon_boundary_2d(pt: &(f64, f64), polygon: &[(f64, f64)], tol: f64) -> bool {
     let n = polygon.len();
     let (px, py) = *pt;
     for i in 0..n {
@@ -1405,11 +1398,7 @@ fn create_face_from_polygon(
     let face = model.make_face_tagged(new_loop, tag);
 
     if let Some(surf) = surface {
-        model.bind_face_surface(
-            face,
-            surf.clone(),
-            cadkernel_topology::Orientation::Forward,
-        );
+        model.bind_face_surface(face, surf.clone(), cadkernel_topology::Orientation::Forward);
     }
 
     Ok(Some(face))
@@ -1519,10 +1508,22 @@ fn no_split_result(
     let faces_b = collect_solid_faces(model_b, solid_b)?;
 
     let empty_splits = HashMap::new();
-    let (result_a, new_solid_a) =
-        build_split_model(model_a, solid_a, &faces_a, &empty_splits, SPLIT_TOL, "copy_a")?;
-    let (result_b, new_solid_b) =
-        build_split_model(model_b, solid_b, &faces_b, &empty_splits, SPLIT_TOL, "copy_b")?;
+    let (result_a, new_solid_a) = build_split_model(
+        model_a,
+        solid_a,
+        &faces_a,
+        &empty_splits,
+        SPLIT_TOL,
+        "copy_a",
+    )?;
+    let (result_b, new_solid_b) = build_split_model(
+        model_b,
+        solid_b,
+        &faces_b,
+        &empty_splits,
+        SPLIT_TOL,
+        "copy_b",
+    )?;
 
     Ok(BooleanSplitResult {
         model_a: result_a,
@@ -1645,8 +1646,7 @@ fn decompose_to_convex_recursive(
     }
 
     let n = polygon.len();
-    let poly2d: Vec<(f64, f64)> =
-        polygon.iter().map(|p| project_drop(p, drop_axis)).collect();
+    let poly2d: Vec<(f64, f64)> = polygon.iter().map(|p| project_drop(p, drop_axis)).collect();
 
     // Find first reflex vertex. A vertex v_i is reflex when the signed
     // area of (v_{i-1}, v_i, v_{i+1}) has sign opposite to the polygon's
@@ -1655,8 +1655,7 @@ fn decompose_to_convex_recursive(
         let prev = poly2d[(i + n - 1) % n];
         let cur = poly2d[i];
         let next = poly2d[(i + 1) % n];
-        let cross = (cur.0 - prev.0) * (next.1 - cur.1)
-            - (cur.1 - prev.1) * (next.0 - cur.0);
+        let cross = (cur.0 - prev.0) * (next.1 - cur.1) - (cur.1 - prev.1) * (next.0 - cur.0);
         cross * ccw_sign < -tolerance
     });
 
@@ -1688,8 +1687,8 @@ fn decompose_to_convex_recursive(
         let prev_v = poly2d[r_prev];
         let cur_v = poly2d[r];
         let j_v = poly2d[j];
-        let cross = (cur_v.0 - prev_v.0) * (j_v.1 - cur_v.1)
-            - (cur_v.1 - prev_v.1) * (j_v.0 - cur_v.0);
+        let cross =
+            (cur_v.0 - prev_v.0) * (j_v.1 - cur_v.1) - (cur_v.1 - prev_v.1) * (j_v.0 - cur_v.0);
         if cross * ccw_sign < -tolerance {
             // Diagonal keeps r reflex on this side — skip.
             continue;
@@ -1730,13 +1729,8 @@ fn decompose_to_convex_recursive(
         return vec![polygon.to_vec()];
     }
 
-    let mut result = decompose_to_convex_recursive(
-        &poly_a,
-        drop_axis,
-        ccw_sign,
-        tolerance,
-        depth + 1,
-    );
+    let mut result =
+        decompose_to_convex_recursive(&poly_a, drop_axis, ccw_sign, tolerance, depth + 1);
     result.extend(decompose_to_convex_recursive(
         &poly_b,
         drop_axis,
@@ -1767,12 +1761,7 @@ fn polygon_signed_area_2d_sign(polygon: &[Point3], drop_axis: usize) -> f64 {
 /// Returns true when the segment (poly[i], poly[j]) is a valid interior
 /// diagonal of the simple polygon: midpoint is strictly inside, and the
 /// segment does not cross any non-adjacent polygon edge.
-fn diagonal_inside_polygon_2d(
-    poly2d: &[(f64, f64)],
-    i: usize,
-    j: usize,
-    tolerance: f64,
-) -> bool {
+fn diagonal_inside_polygon_2d(poly2d: &[(f64, f64)], i: usize, j: usize, tolerance: f64) -> bool {
     let n = poly2d.len();
     let a = poly2d[i];
     let b = poly2d[j];
@@ -1921,8 +1910,8 @@ fn subsample(points: &[Point3], max: usize) -> Vec<Point3> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cadkernel_geometry::Curve;
     use crate::primitives::make_box;
+    use cadkernel_geometry::Curve;
 
     #[test]
     fn test_fit_ssi_line() {
@@ -1969,12 +1958,21 @@ mod tests {
         let mut b = BRepModel::new();
         let rb = make_box(&mut b, Point3::new(5.0, 5.0, 5.0), 1.0, 1.0, 1.0).unwrap();
 
-        let result =
-            split_solids_at_intersection(&a, ra.solid, &b, rb.solid, 0.001).unwrap();
+        let result = split_solids_at_intersection(&a, ra.solid, &b, rb.solid, 0.001).unwrap();
         assert!(!result.had_splits);
         // Both models should have 6 faces
-        assert_eq!(collect_solid_faces(&result.model_a, result.solid_a).unwrap().len(), 6);
-        assert_eq!(collect_solid_faces(&result.model_b, result.solid_b).unwrap().len(), 6);
+        assert_eq!(
+            collect_solid_faces(&result.model_a, result.solid_a)
+                .unwrap()
+                .len(),
+            6
+        );
+        assert_eq!(
+            collect_solid_faces(&result.model_b, result.solid_b)
+                .unwrap()
+                .len(),
+            6
+        );
     }
 
     #[test]
@@ -1985,8 +1983,7 @@ mod tests {
         let mut b = BRepModel::new();
         let rb = make_box(&mut b, Point3::new(1.0, 1.0, 1.0), 2.0, 2.0, 2.0).unwrap();
 
-        let result =
-            split_solids_at_intersection(&a, ra.solid, &b, rb.solid, 0.001).unwrap();
+        let result = split_solids_at_intersection(&a, ra.solid, &b, rb.solid, 0.001).unwrap();
         // Overlapping boxes should produce split faces
         let faces_a = collect_solid_faces(&result.model_a, result.solid_a).unwrap();
         let faces_b = collect_solid_faces(&result.model_b, result.solid_b).unwrap();
@@ -2023,7 +2020,10 @@ mod tests {
             Point3::new(3.0, 1.0, 0.0),
         ];
         let clipped = clip_curve_to_polygon(&curve, &polygon, 0.01);
-        assert!(!clipped.is_empty(), "should have at least one segment inside");
+        assert!(
+            !clipped.is_empty(),
+            "should have at least one segment inside"
+        );
         // The clipped segment should be in the interior
         for seg in &clipped {
             for p in seg {
@@ -2064,7 +2064,11 @@ mod tests {
             vec![Point3::new(1.0, 2.0, 0.0), Point3::new(1.0, 1.0, 0.0)],
         ];
         let merged = merge_chords_into_polylines(&chords, 0.01);
-        assert_eq!(merged.len(), 1, "four connected chords merge into one polyline");
+        assert_eq!(
+            merged.len(),
+            1,
+            "four connected chords merge into one polyline"
+        );
         let poly = &merged[0];
         // Closed loop should have first ~= last.
         assert!(
@@ -2114,7 +2118,9 @@ mod tests {
                     for curve in &pi {
                         eprintln!(
                             "A face {} vs B face {}: {} points [{:?}..{:?}]",
-                            i, j, curve.points.len(),
+                            i,
+                            j,
+                            curve.points.len(),
                             curve.points.first(),
                             curve.points.last()
                         );
@@ -2122,11 +2128,15 @@ mod tests {
                 }
             }
         }
-        let split = split_solids_at_intersection(
-            &big, rb_big.solid, &corner, rb_corner.solid, 1e-6,
-        ).unwrap();
+        let split =
+            split_solids_at_intersection(&big, rb_big.solid, &corner, rb_corner.solid, 1e-6)
+                .unwrap();
         let faces_a = collect_solid_faces(&split.model_a, split.solid_a).unwrap();
-        eprintln!("had_splits = {}, split A faces = {}", split.had_splits, faces_a.len());
+        eprintln!(
+            "had_splits = {}, split A faces = {}",
+            split.had_splits,
+            faces_a.len()
+        );
         assert!(
             faces_a.len() > 6,
             "L-shape big-box faces should be split: got {}",
@@ -2153,6 +2163,10 @@ mod tests {
         let result = split_polygon_with_curves(&poly, &[loop_curve], 0.01);
         assert_eq!(result.len(), 1, "keyhole should yield one bridged polygon");
         // Bridged polygon has original 4 + bridge-point × 2 + loop 4 + repeat start = 11ish
-        assert!(result[0].len() > 8, "bridged polygon must contain the loop: got {}", result[0].len());
+        assert!(
+            result[0].len() > 8,
+            "bridged polygon must contain the loop: got {}",
+            result[0].len()
+        );
     }
 }

@@ -6,10 +6,7 @@ use cadkernel_math::Point3;
 /// Projects points onto a surface using the surface's `project_point` method.
 ///
 /// For each input point, the closest point on the surface is returned.
-pub fn project_points_on_surface(
-    surface: &dyn Surface,
-    points: &[Point3],
-) -> Vec<Point3> {
+pub fn project_points_on_surface(surface: &dyn Surface, points: &[Point3]) -> Vec<Point3> {
     points
         .iter()
         .map(|p| {

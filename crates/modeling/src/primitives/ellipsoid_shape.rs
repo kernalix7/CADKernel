@@ -53,18 +53,14 @@ pub fn make_ellipsoid(
     // South pole
     let sp_tag = Tag::generated(EntityKind::Vertex, op, vert_idx);
     vert_idx += 1;
-    let south_pole = model.add_vertex_tagged(
-        Point3::new(center.x, center.y, center.z - rz),
-        sp_tag,
-    );
+    let south_pole =
+        model.add_vertex_tagged(Point3::new(center.x, center.y, center.z - rz), sp_tag);
 
     // North pole
     let np_tag = Tag::generated(EntityKind::Vertex, op, vert_idx);
     vert_idx += 1;
-    let north_pole = model.add_vertex_tagged(
-        Point3::new(center.x, center.y, center.z + rz),
-        np_tag,
-    );
+    let north_pole =
+        model.add_vertex_tagged(Point3::new(center.x, center.y, center.z + rz), np_tag);
 
     // Ring vertices (rings-1 rings)
     let mut ring_verts: Vec<Vec<Handle<VertexData>>> = Vec::with_capacity(rings - 1);
@@ -95,9 +91,24 @@ pub fn make_ellipsoid(
     for s in 0..segments {
         let s_next = (s + 1) % segments;
         let hes = [
-            ec.get_or_create(model, ring_verts[0][s_next], ring_verts[0][s], next_edge_tag(op, &mut edge_idx)),
-            ec.get_or_create(model, ring_verts[0][s], south_pole, next_edge_tag(op, &mut edge_idx)),
-            ec.get_or_create(model, south_pole, ring_verts[0][s_next], next_edge_tag(op, &mut edge_idx)),
+            ec.get_or_create(
+                model,
+                ring_verts[0][s_next],
+                ring_verts[0][s],
+                next_edge_tag(op, &mut edge_idx),
+            ),
+            ec.get_or_create(
+                model,
+                ring_verts[0][s],
+                south_pole,
+                next_edge_tag(op, &mut edge_idx),
+            ),
+            ec.get_or_create(
+                model,
+                south_pole,
+                ring_verts[0][s_next],
+                next_edge_tag(op, &mut edge_idx),
+            ),
         ];
         let loop_h = model.make_loop(&hes)?;
         let tag = Tag::generated(EntityKind::Face, op, face_idx);
@@ -110,10 +121,30 @@ pub fn make_ellipsoid(
         for s in 0..segments {
             let s_next = (s + 1) % segments;
             let hes = [
-                ec.get_or_create(model, ring_verts[r][s], ring_verts[r][s_next], next_edge_tag(op, &mut edge_idx)),
-                ec.get_or_create(model, ring_verts[r][s_next], ring_verts[r + 1][s_next], next_edge_tag(op, &mut edge_idx)),
-                ec.get_or_create(model, ring_verts[r + 1][s_next], ring_verts[r + 1][s], next_edge_tag(op, &mut edge_idx)),
-                ec.get_or_create(model, ring_verts[r + 1][s], ring_verts[r][s], next_edge_tag(op, &mut edge_idx)),
+                ec.get_or_create(
+                    model,
+                    ring_verts[r][s],
+                    ring_verts[r][s_next],
+                    next_edge_tag(op, &mut edge_idx),
+                ),
+                ec.get_or_create(
+                    model,
+                    ring_verts[r][s_next],
+                    ring_verts[r + 1][s_next],
+                    next_edge_tag(op, &mut edge_idx),
+                ),
+                ec.get_or_create(
+                    model,
+                    ring_verts[r + 1][s_next],
+                    ring_verts[r + 1][s],
+                    next_edge_tag(op, &mut edge_idx),
+                ),
+                ec.get_or_create(
+                    model,
+                    ring_verts[r + 1][s],
+                    ring_verts[r][s],
+                    next_edge_tag(op, &mut edge_idx),
+                ),
             ];
             let loop_h = model.make_loop(&hes)?;
             let tag = Tag::generated(EntityKind::Face, op, face_idx);
@@ -127,9 +158,24 @@ pub fn make_ellipsoid(
     for s in 0..segments {
         let s_next = (s + 1) % segments;
         let hes = [
-            ec.get_or_create(model, ring_verts[last_ring][s], ring_verts[last_ring][s_next], next_edge_tag(op, &mut edge_idx)),
-            ec.get_or_create(model, ring_verts[last_ring][s_next], north_pole, next_edge_tag(op, &mut edge_idx)),
-            ec.get_or_create(model, north_pole, ring_verts[last_ring][s], next_edge_tag(op, &mut edge_idx)),
+            ec.get_or_create(
+                model,
+                ring_verts[last_ring][s],
+                ring_verts[last_ring][s_next],
+                next_edge_tag(op, &mut edge_idx),
+            ),
+            ec.get_or_create(
+                model,
+                ring_verts[last_ring][s_next],
+                north_pole,
+                next_edge_tag(op, &mut edge_idx),
+            ),
+            ec.get_or_create(
+                model,
+                north_pole,
+                ring_verts[last_ring][s],
+                next_edge_tag(op, &mut edge_idx),
+            ),
         ];
         let loop_h = model.make_loop(&hes)?;
         let tag = Tag::generated(EntityKind::Face, op, face_idx);

@@ -85,7 +85,13 @@ pub fn export_brep(model: &BRepModel) -> KernelResult<String> {
                     Some(ei.to_string())
                 })
                 .collect();
-            let _ = writeln!(out, "{} {} {}", i, edge_indices.len(), edge_indices.join(" "));
+            let _ = writeln!(
+                out,
+                "{} {} {}",
+                i,
+                edge_indices.len(),
+                edge_indices.join(" ")
+            );
         } else {
             let _ = writeln!(out, "{} 0", i);
         }
@@ -174,14 +180,14 @@ pub fn import_brep(content: &str) -> KernelResult<BRepModel> {
             .ok_or_else(|| KernelError::IoError("truncated edge data".into()))?;
         let parts: Vec<&str> = line.split_whitespace().collect();
         if parts.len() < 3 {
-            return Err(KernelError::IoError(format!(
-                "malformed edge line: {line}"
-            )));
+            return Err(KernelError::IoError(format!("malformed edge line: {line}")));
         }
         let si: usize = parse_usize(parts[1])?;
         let ei: usize = parse_usize(parts[2])?;
         if si >= vert_handles.len() || ei >= vert_handles.len() {
-            return Err(KernelError::IoError("edge vertex index out of range".into()));
+            return Err(KernelError::IoError(
+                "edge vertex index out of range".into(),
+            ));
         }
         let (edge_h, he_h, _) = model.add_edge(vert_handles[si], vert_handles[ei]);
         edge_he_handles.push((edge_h, he_h));
@@ -199,9 +205,7 @@ pub fn import_brep(content: &str) -> KernelResult<BRepModel> {
             .ok_or_else(|| KernelError::IoError("truncated face data".into()))?;
         let parts: Vec<&str> = line.split_whitespace().collect();
         if parts.len() < 2 {
-            return Err(KernelError::IoError(format!(
-                "malformed face line: {line}"
-            )));
+            return Err(KernelError::IoError(format!("malformed face line: {line}")));
         }
         let edge_cnt: usize = parse_usize(parts[1])?;
         let mut hes = Vec::with_capacity(edge_cnt);
@@ -218,9 +222,9 @@ pub fn import_brep(content: &str) -> KernelResult<BRepModel> {
         if hes.is_empty() {
             return Err(KernelError::IoError("face with no edges".into()));
         }
-        let loop_h = model.make_loop(&hes).map_err(|e| {
-            KernelError::IoError(format!("failed to create loop: {e}"))
-        })?;
+        let loop_h = model
+            .make_loop(&hes)
+            .map_err(|e| KernelError::IoError(format!("failed to create loop: {e}")))?;
         face_handles.push(model.make_face(loop_h));
     }
 
@@ -278,7 +282,9 @@ pub fn import_brep(content: &str) -> KernelResult<BRepModel> {
             }
             let si: usize = parse_usize(parts[k + 2])?;
             if si >= shell_handles.len() {
-                return Err(KernelError::IoError("solid shell index out of range".into()));
+                return Err(KernelError::IoError(
+                    "solid shell index out of range".into(),
+                ));
             }
             shells.push(shell_handles[si]);
         }

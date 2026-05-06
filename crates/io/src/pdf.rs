@@ -11,7 +11,11 @@ use cadkernel_math::Point2;
 ///
 /// Generates a PDF/A-compatible document that embeds the SVG content
 /// as a rendered page. The SVG is stored as a stream in the content object.
-pub fn export_pdf(svg_content: &str, page_width_mm: f64, page_height_mm: f64) -> KernelResult<Vec<u8>> {
+pub fn export_pdf(
+    svg_content: &str,
+    page_width_mm: f64,
+    page_height_mm: f64,
+) -> KernelResult<Vec<u8>> {
     if svg_content.is_empty() {
         return Err(KernelError::InvalidArgument("empty SVG content".into()));
     }
@@ -47,17 +51,16 @@ pub fn export_pdf(svg_content: &str, page_width_mm: f64, page_height_mm: f64) ->
 
     // Object 4: Content stream
     offsets.push(pdf.len());
-    let content_obj = format!(
-        "4 0 obj\n<< /Length {} >>\nstream\n",
-        stream_bytes.len()
-    );
+    let content_obj = format!("4 0 obj\n<< /Length {} >>\nstream\n", stream_bytes.len());
     pdf.extend_from_slice(content_obj.as_bytes());
     pdf.extend_from_slice(stream_bytes);
     pdf.extend_from_slice(b"\nendstream\nendobj\n");
 
     // Object 5: Font
     offsets.push(pdf.len());
-    pdf.extend_from_slice(b"5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n");
+    pdf.extend_from_slice(
+        b"5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
+    );
 
     // Cross-reference table
     let xref_offset = pdf.len();
@@ -69,9 +72,8 @@ pub fn export_pdf(svg_content: &str, page_width_mm: f64, page_height_mm: f64) ->
     pdf.extend_from_slice(xref.as_bytes());
 
     // Trailer
-    let trailer = format!(
-        "trailer\n<< /Size {obj_count} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n"
-    );
+    let trailer =
+        format!("trailer\n<< /Size {obj_count} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n");
     pdf.extend_from_slice(trailer.as_bytes());
 
     Ok(pdf)
@@ -125,9 +127,14 @@ fn parse_svg_text(line: &str) -> Option<(f64, f64, String)> {
     let x = extract_svg_attr(line, "x")?;
     let y = extract_svg_attr(line, "y")?;
     let start = line.find('>')? + 1;
-    let end = line[start..].find('<').map(|i| start + i).unwrap_or(line.len());
+    let end = line[start..]
+        .find('<')
+        .map(|i| start + i)
+        .unwrap_or(line.len());
     let text = line[start..end].to_string();
-    if text.is_empty() { return None; }
+    if text.is_empty() {
+        return None;
+    }
     Some((x, y, text))
 }
 
@@ -187,10 +194,14 @@ pub struct PdfImportResult {
 /// text operators (Tj/TJ). Encrypted or compressed PDFs return an error.
 pub fn import_pdf(content: &[u8]) -> KernelResult<PdfImportResult> {
     if content.len() < 8 {
-        return Err(KernelError::InvalidArgument("content too short for PDF".into()));
+        return Err(KernelError::InvalidArgument(
+            "content too short for PDF".into(),
+        ));
     }
     if !content.starts_with(b"%PDF-") {
-        return Err(KernelError::IoError("not a PDF file (missing %PDF- header)".into()));
+        return Err(KernelError::IoError(
+            "not a PDF file (missing %PDF- header)".into(),
+        ));
     }
 
     let text = String::from_utf8_lossy(content);
@@ -227,9 +238,7 @@ pub fn import_pdf(content: &[u8]) -> KernelResult<PdfImportResult> {
         vector_content,
     };
 
-    Ok(PdfImportResult {
-        pages: vec![page],
-    })
+    Ok(PdfImportResult { pages: vec![page] })
 }
 
 fn extract_media_box(text: &str) -> Option<(f64, f64)> {

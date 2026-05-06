@@ -51,16 +51,14 @@ impl ParametricWire2D {
                 if pa.y <= v {
                     if pb.y > v {
                         // Upward crossing — check if point is to the left of edge
-                        let cross =
-                            (pb.x - pa.x) * (v - pa.y) - (u - pa.x) * (pb.y - pa.y);
+                        let cross = (pb.x - pa.x) * (v - pa.y) - (u - pa.x) * (pb.y - pa.y);
                         if cross > 0.0 {
                             winding += 1;
                         }
                     }
                 } else if pb.y <= v {
                     // Downward crossing — check if point is to the right of edge
-                    let cross =
-                        (pb.x - pa.x) * (v - pa.y) - (u - pa.x) * (pb.y - pa.y);
+                    let cross = (pb.x - pa.x) * (v - pa.y) - (u - pa.x) * (pb.y - pa.y);
                     if cross < 0.0 {
                         winding -= 1;
                     }
@@ -188,9 +186,8 @@ mod tests {
 
     #[test]
     fn test_circle_contains() {
-        let segs: Vec<Arc<dyn Curve2D>> = vec![
-            Arc::new(Circle2D::full(Point2::new(0.5, 0.5), 0.4)),
-        ];
+        let segs: Vec<Arc<dyn Curve2D>> =
+            vec![Arc::new(Circle2D::full(Point2::new(0.5, 0.5), 0.4))];
         let wire = ParametricWire2D::closed(segs);
 
         assert!(wire.contains_point(0.5, 0.5));

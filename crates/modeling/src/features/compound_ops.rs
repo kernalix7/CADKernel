@@ -139,13 +139,8 @@ mod tests {
         let mut model = BRepModel::new();
         let b = make_box(&mut model, Point3::ORIGIN, 4.0, 4.0, 4.0).unwrap();
 
-        let result = slice_to_compound(
-            &mut model,
-            b.solid,
-            Point3::new(0.0, 0.0, 2.0),
-            Vec3::Z,
-        )
-        .unwrap();
+        let result =
+            slice_to_compound(&mut model, b.solid, Point3::new(0.0, 0.0, 2.0), Vec3::Z).unwrap();
 
         assert_eq!(result.compound.solids.len(), 2);
     }
@@ -200,13 +195,8 @@ mod tests {
     fn test_slice_to_compound_xy_plane() {
         let mut model = BRepModel::new();
         let b = make_box(&mut model, Point3::ORIGIN, 6.0, 6.0, 6.0).unwrap();
-        let result = slice_to_compound(
-            &mut model,
-            b.solid,
-            Point3::new(0.0, 0.0, 3.0),
-            Vec3::Z,
-        )
-        .unwrap();
+        let result =
+            slice_to_compound(&mut model, b.solid, Point3::new(0.0, 0.0, 3.0), Vec3::Z).unwrap();
         assert_eq!(result.compound.solids.len(), 2);
     }
 
@@ -224,13 +214,8 @@ mod tests {
     fn test_slice_compound_name() {
         let mut model = BRepModel::new();
         let b = make_box(&mut model, Point3::ORIGIN, 4.0, 4.0, 4.0).unwrap();
-        let result = slice_to_compound(
-            &mut model,
-            b.solid,
-            Point3::new(0.0, 0.0, 2.0),
-            Vec3::Z,
-        )
-        .unwrap();
+        let result =
+            slice_to_compound(&mut model, b.solid, Point3::new(0.0, 0.0, 2.0), Vec3::Z).unwrap();
         assert_eq!(result.compound.name, "slice_to_compound");
     }
 

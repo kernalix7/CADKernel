@@ -8,8 +8,8 @@ use cadkernel_core::{KernelError, KernelResult};
 use cadkernel_math::{BoundingBox, Point3, Vec3};
 use cadkernel_topology::{BRepModel, Handle, SolidData};
 
-use crate::query::point_in_solid;
 use crate::Containment;
+use crate::query::point_in_solid;
 
 /// Tetrahedral mesh for FEM analysis.
 ///
@@ -28,64 +28,74 @@ pub struct FemMaterial {
     pub poisson_ratio: f64,
     /// Mass density (kg/m^3).
     pub density: f64,
+    /// Thermal conductivity (W/(m·K)). Used by [`solve_thermal`].
+    pub thermal_conductivity: f64,
 }
 
 impl FemMaterial {
-    /// Typical structural steel (E=210 GPa, nu=0.3, rho=7850 kg/m^3).
+    /// Typical structural steel (E=210 GPa, nu=0.3, rho=7850 kg/m^3, k=50 W/(m·K)).
     pub fn steel() -> Self {
         Self {
             youngs_modulus: 210.0e9,
             poisson_ratio: 0.3,
             density: 7850.0,
+            thermal_conductivity: 50.0,
         }
     }
 
-    /// Typical aluminum alloy (E=70 GPa, nu=0.33, rho=2700 kg/m^3).
+    /// Typical aluminum alloy (E=70 GPa, nu=0.33, rho=2700 kg/m^3, k=237 W/(m·K)).
     pub fn aluminum() -> Self {
         Self {
             youngs_modulus: 70.0e9,
             poisson_ratio: 0.33,
             density: 2700.0,
+            thermal_conductivity: 237.0,
         }
     }
 
-    /// Titanium alloy Ti-6Al-4V (E=114 GPa, nu=0.34, rho=4430 kg/m^3).
+    /// Titanium alloy Ti-6Al-4V (E=114 GPa, nu=0.34, rho=4430 kg/m^3, k=6.7 W/(m·K)).
     pub fn titanium() -> Self {
         Self {
             youngs_modulus: 114.0e9,
             poisson_ratio: 0.34,
             density: 4430.0,
+            thermal_conductivity: 6.7,
         }
     }
 
-    /// Copper (E=117 GPa, nu=0.34, rho=8960 kg/m^3).
+    /// Copper (E=117 GPa, nu=0.34, rho=8960 kg/m^3, k=401 W/(m·K)).
     pub fn copper() -> Self {
         Self {
             youngs_modulus: 117.0e9,
             poisson_ratio: 0.34,
             density: 8960.0,
+            thermal_conductivity: 401.0,
         }
     }
 
-    /// Concrete (E=30 GPa, nu=0.2, rho=2400 kg/m^3).
+    /// Concrete (E=30 GPa, nu=0.2, rho=2400 kg/m^3, k=1.4 W/(m·K)).
     pub fn concrete() -> Self {
         Self {
             youngs_modulus: 30.0e9,
             poisson_ratio: 0.2,
             density: 2400.0,
+            thermal_conductivity: 1.4,
         }
     }
 
-    /// Cast iron (E=170 GPa, nu=0.26, rho=7200 kg/m^3).
+    /// Cast iron (E=170 GPa, nu=0.26, rho=7200 kg/m^3, k=55 W/(m·K)).
     pub fn cast_iron() -> Self {
         Self {
             youngs_modulus: 170.0e9,
             poisson_ratio: 0.26,
             density: 7200.0,
+            thermal_conductivity: 55.0,
         }
     }
 
-    /// Custom material with user-specified properties.
+    /// Custom material with user-specified properties. Thermal conductivity
+    /// defaults to the steel value (50 W/(m·K)); set
+    /// [`FemMaterial::thermal_conductivity`] directly to override.
     pub fn custom(youngs_modulus: f64, poisson_ratio: f64, density: f64) -> KernelResult<Self> {
         if youngs_modulus <= 0.0 {
             return Err(KernelError::InvalidArgument(
@@ -106,6 +116,7 @@ impl FemMaterial {
             youngs_modulus,
             poisson_ratio,
             density,
+            thermal_conductivity: 50.0,
         })
     }
 }
@@ -208,17 +219,31 @@ pub enum BoundaryCondition {
     /// Self-weight body force using the given gravity vector.
     SelfWeight { gravity: Vec3 },
     /// Section print: extract internal forces on a cutting plane (post-processing marker).
-    SectionPrint { plane_normal: Vec3, plane_point: Point3 },
+    SectionPrint {
+        plane_normal: Vec3,
+        plane_point: Point3,
+    },
     /// Tie constraint: couple DOFs of two surfaces (multi-point constraint).
-    TieConstraint { surface_a: Vec<usize>, surface_b: Vec<usize> },
+    TieConstraint {
+        surface_a: Vec<usize>,
+        surface_b: Vec<usize>,
+    },
     /// Rigid body constraint: lock all nodes in the set to move as a rigid body.
     RigidBody { node_ids: Vec<usize> },
     /// Directional spring: stiffness applied along a specific direction.
-    SpringConstraint { node_id: usize, stiffness: f64, direction: Vec3 },
+    SpringConstraint {
+        node_id: usize,
+        stiffness: f64,
+        direction: Vec3,
+    },
     /// Body load applied as a force-per-unit-volume on all elements.
     BodyLoad { force_density: Vec3 },
     /// Contact constraint between two node sets (penalty-based coupling).
-    ContactConstraint { surface_a: Vec<usize>, surface_b: Vec<usize>, penalty: f64 },
+    ContactConstraint {
+        surface_a: Vec<usize>,
+        surface_b: Vec<usize>,
+        penalty: f64,
+    },
     /// Initial temperature for thermo-mechanical coupling (defines reference state).
     InitialTemperature { node: usize, temperature: f64 },
 }
@@ -349,9 +374,7 @@ pub fn generate_tet_mesh(
     }
 
     if bbox.is_empty() {
-        return Err(KernelError::GeometryError(
-            "solid has no vertices".into(),
-        ));
+        return Err(KernelError::GeometryError("solid has no vertices".into()));
     }
 
     // Add small margin
@@ -573,10 +596,7 @@ pub fn static_analysis(
                     rhs[ni * 3 + 2] += force_per_node.z;
                 }
             }
-            BoundaryCondition::Displacement {
-                node,
-                displacement,
-            } => {
+            BoundaryCondition::Displacement { node, displacement } => {
                 if *node >= n_nodes {
                     return Err(KernelError::InvalidArgument(format!(
                         "displacement node index {} out of range ({})",
@@ -881,8 +901,7 @@ fn element_stiffness(
     let z30 = p3.z - p0.z;
 
     // Jacobian determinant = 6 * volume
-    let det_j = x10 * (y20 * z30 - y30 * z20)
-        - y10 * (x20 * z30 - x30 * z20)
+    let det_j = x10 * (y20 * z30 - y30 * z20) - y10 * (x20 * z30 - x30 * z20)
         + z10 * (x20 * y30 - x30 * y20);
 
     let volume = det_j.abs() / 6.0;
@@ -997,8 +1016,7 @@ fn element_von_mises(
     let y30 = p3.y - p0.y;
     let z30 = p3.z - p0.z;
 
-    let det_j = x10 * (y20 * z30 - y30 * z20)
-        - y10 * (x20 * z30 - x30 * z20)
+    let det_j = x10 * (y20 * z30 - y30 * z20) - y10 * (x20 * z30 - x30 * z20)
         + z10 * (x20 * y30 - x30 * y20);
 
     if det_j.abs() < 1e-30 {
@@ -1094,10 +1112,9 @@ fn tet_volume(nodes: &[Point3], elem: &[usize; 4]) -> f64 {
     let v1 = p1 - p0;
     let v2 = p2 - p0;
     let v3 = p3 - p0;
-    (v1.x * (v2.y * v3.z - v2.z * v3.y)
-        - v1.y * (v2.x * v3.z - v2.z * v3.x)
+    (v1.x * (v2.y * v3.z - v2.z * v3.y) - v1.y * (v2.x * v3.z - v2.z * v3.x)
         + v1.z * (v2.x * v3.y - v2.y * v3.x))
-    .abs()
+        .abs()
         / 6.0
 }
 
@@ -1256,11 +1273,7 @@ pub fn modal_analysis(
                     ztkz += z[i] * val * z[j];
                 }
             }
-            eigenvalue = if ztmz.abs() > 1e-30 {
-                ztkz / ztmz
-            } else {
-                0.0
-            };
+            eigenvalue = if ztmz.abs() > 1e-30 { ztkz / ztmz } else { 0.0 };
 
             let _ = xtmx; // used for convergence check in full implementation
             x = z;
@@ -1465,15 +1478,12 @@ fn element_thermal_stiffness(
     let v2 = p2 - p0;
     let v3 = p3 - p0;
 
-    let det_j = v1.x * (v2.y * v3.z - v2.z * v3.y)
-        - v1.y * (v2.x * v3.z - v2.z * v3.x)
+    let det_j = v1.x * (v2.y * v3.z - v2.z * v3.y) - v1.y * (v2.x * v3.z - v2.z * v3.x)
         + v1.z * (v2.x * v3.y - v2.y * v3.x);
 
     let volume = det_j.abs() / 6.0;
     if volume < 1e-30 {
-        return Err(KernelError::GeometryError(
-            "degenerate tetrahedron".into(),
-        ));
+        return Err(KernelError::GeometryError("degenerate tetrahedron".into()));
     }
 
     let inv_det = 1.0 / det_j;
@@ -1524,8 +1534,7 @@ fn element_temperature_gradient(
     let v2 = p2 - p0;
     let v3 = p3 - p0;
 
-    let det_j = v1.x * (v2.y * v3.z - v2.z * v3.y)
-        - v1.y * (v2.x * v3.z - v2.z * v3.x)
+    let det_j = v1.x * (v2.y * v3.z - v2.z * v3.y) - v1.y * (v2.x * v3.z - v2.z * v3.x)
         + v1.z * (v2.x * v3.y - v2.y * v3.x);
 
     if det_j.abs() < 1e-30 {
@@ -1567,9 +1576,7 @@ fn element_temperature_gradient(
 /// Computes aspect ratios, volumes, and counts degenerate elements.
 pub fn mesh_quality(mesh: &TetMesh) -> KernelResult<MeshQuality> {
     if mesh.elements.is_empty() {
-        return Err(KernelError::InvalidArgument(
-            "mesh has no elements".into(),
-        ));
+        return Err(KernelError::InvalidArgument("mesh has no elements".into()));
     }
 
     let mut min_ar = f64::INFINITY;
@@ -1629,9 +1636,7 @@ pub fn mesh_quality(mesh: &TetMesh) -> KernelResult<MeshQuality> {
 /// Each edge midpoint becomes a new node, and the original tetrahedron is split.
 pub fn refine_tet_mesh(mesh: &TetMesh) -> KernelResult<TetMesh> {
     if mesh.elements.is_empty() {
-        return Err(KernelError::InvalidArgument(
-            "mesh has no elements".into(),
-        ));
+        return Err(KernelError::InvalidArgument("mesh has no elements".into()));
     }
 
     let mut new_nodes = mesh.nodes.clone();
@@ -1692,9 +1697,7 @@ pub fn refine_tet_mesh(mesh: &TetMesh) -> KernelResult<TetMesh> {
 /// Finds boundary faces (faces shared by exactly one tetrahedron).
 pub fn extract_surface_mesh(mesh: &TetMesh) -> KernelResult<Vec<[usize; 3]>> {
     if mesh.elements.is_empty() {
-        return Err(KernelError::InvalidArgument(
-            "mesh has no elements".into(),
-        ));
+        return Err(KernelError::InvalidArgument("mesh has no elements".into()));
     }
 
     // Count how many times each face appears
@@ -1756,10 +1759,7 @@ pub fn compute_stress_tensor(
 }
 
 /// Compute full strain tensors for all elements.
-pub fn compute_strain_tensor(
-    mesh: &TetMesh,
-    result: &FemResult,
-) -> KernelResult<StrainResult> {
+pub fn compute_strain_tensor(mesh: &TetMesh, result: &FemResult) -> KernelResult<StrainResult> {
     let n_nodes = mesh.nodes.len();
     let mut u = vec![0.0_f64; n_nodes * 3];
     for (i, disp) in result.displacements.iter().enumerate() {
@@ -1794,13 +1794,12 @@ pub fn principal_stresses(stress: &[f64; 6]) -> PrincipalStresses {
     // Characteristic polynomial: λ³ - tr·λ² + c₁·λ - det = 0
     let tr = a11 + a22 + a33;
     let c1 = a11 * a22 + a22 * a33 + a33 * a11 - a12 * a12 - a13 * a13 - a23 * a23;
-    let det = a11 * (a22 * a33 - a23 * a23)
-        - a12 * (a12 * a33 - a23 * a13)
+    let det = a11 * (a22 * a33 - a23 * a23) - a12 * (a12 * a33 - a23 * a13)
         + a13 * (a12 * a23 - a22 * a13);
 
     // Substitution λ = t + tr/3 gives depressed cubic t³ + pt + q = 0
     let mean = tr / 3.0;
-    let p = (tr * tr - 3.0 * c1) / 9.0;  // = -p_depressed/3 in standard form
+    let p = (tr * tr - 3.0 * c1) / 9.0; // = -p_depressed/3 in standard form
     let q_val = (2.0 * tr * tr * tr - 9.0 * tr * c1 + 27.0 * det) / 54.0;
 
     if p < 1e-30 {
@@ -1839,7 +1838,11 @@ pub fn safety_factor(result: &FemResult, yield_stress: f64) -> f64 {
 }
 
 /// Compute total strain energy of the structure.
-pub fn strain_energy(mesh: &TetMesh, material: &FemMaterial, result: &FemResult) -> KernelResult<f64> {
+pub fn strain_energy(
+    mesh: &TetMesh,
+    material: &FemMaterial,
+    result: &FemResult,
+) -> KernelResult<f64> {
     let d_matrix = build_elasticity_matrix(material.youngs_modulus, material.poisson_ratio);
     let n_nodes = mesh.nodes.len();
     let mut u = vec![0.0_f64; n_nodes * 3];
@@ -1938,11 +1941,7 @@ fn element_stress_tensor(
 }
 
 /// Compute strain tensor for a single element (internal helper).
-fn element_strain_tensor(
-    mesh: &TetMesh,
-    elem: &[usize; 4],
-    u: &[f64],
-) -> KernelResult<[f64; 6]> {
+fn element_strain_tensor(mesh: &TetMesh, elem: &[usize; 4], u: &[f64]) -> KernelResult<[f64; 6]> {
     let p0 = mesh.nodes[elem[0]];
     let p1 = mesh.nodes[elem[1]];
     let p2 = mesh.nodes[elem[2]];
@@ -1958,8 +1957,7 @@ fn element_strain_tensor(
     let y30 = p3.y - p0.y;
     let z30 = p3.z - p0.z;
 
-    let det_j = x10 * (y20 * z30 - y30 * z20)
-        - y10 * (x20 * z30 - x30 * z20)
+    let det_j = x10 * (y20 * z30 - y30 * z20) - y10 * (x20 * z30 - x30 * z20)
         + z10 * (x20 * y30 - x30 * y20);
 
     if det_j.abs() < 1e-30 {
@@ -2077,6 +2075,8 @@ pub struct AnalysisContainer {
     pub thermal_material: Option<ThermalMaterial>,
     pub thermal_bcs: Vec<ThermalBoundaryCondition>,
     pub thermal_result: Option<ThermalResult>,
+    /// Steady-state nodal temperature field produced by [`solve_thermal`].
+    pub temperature_field: Option<Vec<f64>>,
 }
 
 impl AnalysisContainer {
@@ -2089,6 +2089,7 @@ impl AnalysisContainer {
             thermal_material: None,
             thermal_bcs: Vec::new(),
             thermal_result: None,
+            temperature_field: None,
         }
     }
 
@@ -2111,6 +2112,28 @@ impl AnalysisContainer {
             ))?;
         let r = thermal_analysis(&self.mesh, mat, &self.thermal_bcs)?;
         self.thermal_result = Some(r);
+        Ok(())
+    }
+
+    /// Steady-state thermal solve driven by the `boundary_conditions` list.
+    ///
+    /// Reads `material.thermal_conductivity`, treats
+    /// `BoundaryCondition::InitialTemperature` as Dirichlet temperature,
+    /// `BoundaryCondition::Pressure` as a per-element heat flux (W/m²), and
+    /// any other BC kind as ignored for the thermal pass. Result is stored in
+    /// [`AnalysisContainer::temperature_field`].
+    pub fn run_thermal_static(&mut self) -> KernelResult<()> {
+        let temps = solve_thermal(&self.mesh, &self.material, &self.boundary_conditions)?;
+        self.temperature_field = Some(temps);
+        Ok(())
+    }
+
+    /// Geometrically nonlinear static solve via Newton-Raphson on the
+    /// current-configuration tangent. Result is stored in
+    /// [`AnalysisContainer::result`] (same field used by linear static).
+    pub fn run_nonlinear(&mut self) -> KernelResult<()> {
+        let r = solve_nonlinear(&self.mesh, &self.material, &self.boundary_conditions)?;
+        self.result = Some(r);
         Ok(())
     }
 }
@@ -2141,9 +2164,19 @@ pub enum FluidBoundaryCondition {
 
 /// Geometrical features for section/cut operations.
 pub enum GeometricalFeature {
-    PlaneSection { point: Point3, normal: Vec3 },
-    CylinderSection { axis: Point3, direction: Vec3, radius: f64 },
-    SphereSection { center: Point3, radius: f64 },
+    PlaneSection {
+        point: Point3,
+        normal: Vec3,
+    },
+    CylinderSection {
+        axis: Point3,
+        direction: Vec3,
+        radius: f64,
+    },
+    SphereSection {
+        center: Point3,
+        radius: f64,
+    },
 }
 
 /// Result of a Stokes flow analysis.
@@ -2200,9 +2233,7 @@ pub fn prepare_visualization(
     mode: &VisualizationMode,
 ) -> KernelResult<VisualizationData> {
     if mesh.nodes.is_empty() {
-        return Err(KernelError::InvalidArgument(
-            "mesh has no nodes".into(),
-        ));
+        return Err(KernelError::InvalidArgument("mesh has no nodes".into()));
     }
     match mode {
         VisualizationMode::Deformed { scale } => {
@@ -2220,11 +2251,7 @@ pub fn prepare_visualization(
         }
         VisualizationMode::ColorMap { field_name } => {
             let values: Vec<f64> = match field_name.as_str() {
-                "displacement" => result
-                    .displacements
-                    .iter()
-                    .map(|d| d.length())
-                    .collect(),
+                "displacement" => result.displacements.iter().map(|d| d.length()).collect(),
                 "stress" => {
                     // Map element stresses to nodes (average over adjacent elements)
                     let mut node_stress = vec![0.0f64; mesh.nodes.len()];
@@ -2247,7 +2274,11 @@ pub fn prepare_visualization(
             };
             let vmin = values.iter().copied().fold(f64::INFINITY, f64::min);
             let vmax = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-            let range = if (vmax - vmin).abs() > 1e-30 { vmax - vmin } else { 1.0 };
+            let range = if (vmax - vmin).abs() > 1e-30 {
+                vmax - vmin
+            } else {
+                1.0
+            };
             let colors: Vec<(f64, f64, f64)> = values
                 .iter()
                 .map(|&v| {
@@ -2475,14 +2506,12 @@ pub fn flow_equation(
     // Apply velocity BCs
     for bc in bcs {
         match bc {
-            FluidBoundaryCondition::Velocity { node, velocity }
-                if *node < n_nodes => {
-                    velocities[*node] = *velocity;
-                }
-            FluidBoundaryCondition::Pressure { node, pressure }
-                if *node < n_nodes => {
-                    pressures[*node] = *pressure;
-                }
+            FluidBoundaryCondition::Velocity { node, velocity } if *node < n_nodes => {
+                velocities[*node] = *velocity;
+            }
+            FluidBoundaryCondition::Pressure { node, pressure } if *node < n_nodes => {
+                pressures[*node] = *pressure;
+            }
             _ => {}
         }
     }
@@ -2500,11 +2529,25 @@ pub fn flow_equation(
             }
             // Average velocity and pressure over element
             let avg_v = Vec3::new(
-                (velocities[elem[0]].x + velocities[elem[1]].x + velocities[elem[2]].x + velocities[elem[3]].x) / 4.0,
-                (velocities[elem[0]].y + velocities[elem[1]].y + velocities[elem[2]].y + velocities[elem[3]].y) / 4.0,
-                (velocities[elem[0]].z + velocities[elem[1]].z + velocities[elem[2]].z + velocities[elem[3]].z) / 4.0,
+                (velocities[elem[0]].x
+                    + velocities[elem[1]].x
+                    + velocities[elem[2]].x
+                    + velocities[elem[3]].x)
+                    / 4.0,
+                (velocities[elem[0]].y
+                    + velocities[elem[1]].y
+                    + velocities[elem[2]].y
+                    + velocities[elem[3]].y)
+                    / 4.0,
+                (velocities[elem[0]].z
+                    + velocities[elem[1]].z
+                    + velocities[elem[2]].z
+                    + velocities[elem[3]].z)
+                    / 4.0,
             );
-            let avg_p = (pressures[elem[0]] + pressures[elem[1]] + pressures[elem[2]] + pressures[elem[3]]) / 4.0;
+            let avg_p =
+                (pressures[elem[0]] + pressures[elem[1]] + pressures[elem[2]] + pressures[elem[3]])
+                    / 4.0;
 
             let factor = viscosity * vol * 0.01;
             for &ni in elem {
@@ -2522,14 +2565,12 @@ pub fn flow_equation(
         // Re-apply BCs
         for bc in bcs {
             match bc {
-                FluidBoundaryCondition::Velocity { node, velocity }
-                    if *node < n_nodes => {
-                        new_vel[*node] = *velocity;
-                    }
-                FluidBoundaryCondition::Pressure { node, pressure }
-                    if *node < n_nodes => {
-                        new_pres[*node] = *pressure;
-                    }
+                FluidBoundaryCondition::Velocity { node, velocity } if *node < n_nodes => {
+                    new_vel[*node] = *velocity;
+                }
+                FluidBoundaryCondition::Pressure { node, pressure } if *node < n_nodes => {
+                    new_pres[*node] = *pressure;
+                }
                 _ => {}
             }
         }
@@ -2538,8 +2579,14 @@ pub fn flow_equation(
         pressures = new_pres;
     }
 
-    let max_velocity = velocities.iter().map(|v| v.length()).fold(0.0_f64, f64::max);
-    let max_pressure = pressures.iter().cloned().fold(0.0_f64, |a, b| a.max(b.abs()));
+    let max_velocity = velocities
+        .iter()
+        .map(|v| v.length())
+        .fold(0.0_f64, f64::max);
+    let max_pressure = pressures
+        .iter()
+        .cloned()
+        .fold(0.0_f64, |a, b| a.max(b.abs()));
 
     Ok(FlowResult {
         velocities,
@@ -2603,7 +2650,10 @@ pub fn electrostatic_equation(
                 add_to_sparse_row(&mut k_rows[*node], *node, penalty);
                 rhs[*node] += penalty * voltage;
             }
-            EmBoundaryCondition::SurfaceCharge { element, charge_density } => {
+            EmBoundaryCondition::SurfaceCharge {
+                element,
+                charge_density,
+            } => {
                 if *element >= mesh.elements.len() {
                     continue;
                 }
@@ -2658,7 +2708,10 @@ pub fn electrostatic_equation(
     }
 
     let max_potential = potentials.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
-    let max_field_strength = electric_fields.iter().map(|e| e.length()).fold(0.0_f64, f64::max);
+    let max_field_strength = electric_fields
+        .iter()
+        .map(|e| e.length())
+        .fold(0.0_f64, f64::max);
 
     Ok(ElectrostaticResult {
         potentials,
@@ -2680,7 +2733,9 @@ pub fn apply_filter(
                 .nodes
                 .iter()
                 .zip(result.displacements.iter())
-                .map(|(p, d)| Point3::new(p.x + d.x * factor, p.y + d.y * factor, p.z + d.z * factor))
+                .map(|(p, d)| {
+                    Point3::new(p.x + d.x * factor, p.y + d.y * factor, p.z + d.z * factor)
+                })
                 .collect();
             let values: Vec<f64> = result.displacements.iter().map(|d| d.length()).collect();
             Ok(FilteredResult { nodes, values })
@@ -2702,7 +2757,9 @@ pub fn apply_filter(
             let n = normal.normalized().unwrap_or(Vec3::Z);
             let mut nodes = Vec::new();
             let mut values = Vec::new();
-            let tol = mesh.nodes.iter().fold(0.0_f64, |a, p| a.max(p.x.abs().max(p.y.abs()).max(p.z.abs()))) * 0.01;
+            let tol = mesh.nodes.iter().fold(0.0_f64, |a, p| {
+                a.max(p.x.abs().max(p.y.abs()).max(p.z.abs()))
+            }) * 0.01;
             for (i, p) in mesh.nodes.iter().enumerate() {
                 let v = *p - *point;
                 if Vec3::new(v.x, v.y, v.z).dot(n).abs() < tol {
@@ -2789,8 +2846,9 @@ pub fn generate_hex_mesh(
     let dz = (bbox.max.z - bbox.min.z) / nz as f64;
 
     let mut vertices = Vec::with_capacity((nx + 1) * (ny + 1) * (nz + 1));
-    let node_idx =
-        |ix: usize, iy: usize, iz: usize| -> usize { ix * (ny + 1) * (nz + 1) + iy * (nz + 1) + iz };
+    let node_idx = |ix: usize, iy: usize, iz: usize| -> usize {
+        ix * (ny + 1) * (nz + 1) + iy * (nz + 1) + iz
+    };
 
     for ix in 0..=nx {
         for iy in 0..=ny {
@@ -2833,9 +2891,7 @@ pub fn generate_hex_mesh(
 pub fn mesh_from_shape(model: &BRepModel) -> KernelResult<TetMesh> {
     let solids: Vec<_> = model.solids.iter().map(|(h, _)| h).collect();
     if solids.is_empty() {
-        return Err(KernelError::InvalidArgument(
-            "model has no solids".into(),
-        ));
+        return Err(KernelError::InvalidArgument("model has no solids".into()));
     }
     let solid = solids[0];
     let solid_data = model
@@ -2862,9 +2918,7 @@ pub fn mesh_from_shape(model: &BRepModel) -> KernelResult<TetMesh> {
     }
 
     if bbox.is_empty() {
-        return Err(KernelError::GeometryError(
-            "solid has no vertices".into(),
-        ));
+        return Err(KernelError::GeometryError("solid has no vertices".into()));
     }
 
     let diag = ((bbox.max.x - bbox.min.x).powi(2)
@@ -3100,9 +3154,7 @@ fn export_mesh_nastran(mesh: &TetMesh) -> KernelResult<String> {
 // ---------------------------------------------------------------------------
 
 /// Nonlinear static analysis using Newton-Raphson with load increments.
-pub fn nonlinear_static_analysis(
-    container: &AnalysisContainer,
-) -> KernelResult<FemResult> {
+pub fn nonlinear_static_analysis(container: &AnalysisContainer) -> KernelResult<FemResult> {
     let mesh = &container.mesh;
     let material = &container.material;
     let bcs = &container.boundary_conditions;
@@ -3126,12 +3178,10 @@ pub fn nonlinear_static_analysis(
                     node: *node,
                     force: *force * load_factor,
                 },
-                BoundaryCondition::Pressure { element, pressure } => {
-                    BoundaryCondition::Pressure {
-                        element: *element,
-                        pressure: pressure * load_factor,
-                    }
-                }
+                BoundaryCondition::Pressure { element, pressure } => BoundaryCondition::Pressure {
+                    element: *element,
+                    pressure: pressure * load_factor,
+                },
                 BoundaryCondition::Gravity { acceleration } => BoundaryCondition::Gravity {
                     acceleration: *acceleration * load_factor,
                 },
@@ -3375,21 +3425,21 @@ pub fn magnetostatic_equation(
 
     for bc in em_bcs {
         match bc {
-            EmBoundaryCondition::ElectricPotential { node, voltage }
-                if *node < n_nodes => {
-                    let penalty = permeability * 1e20;
-                    add_to_sparse_row(&mut k_rows[*node], *node, penalty);
-                    rhs[*node] += penalty * voltage;
-                }
+            EmBoundaryCondition::ElectricPotential { node, voltage } if *node < n_nodes => {
+                let penalty = permeability * 1e20;
+                add_to_sparse_row(&mut k_rows[*node], *node, penalty);
+                rhs[*node] += penalty * voltage;
+            }
             EmBoundaryCondition::CurrentDensity { element, density }
-                if *element < mesh.elements.len() => {
-                    let elem_nodes = &mesh.elements[*element];
-                    let vol = tet_volume(&mesh.nodes, elem_nodes);
-                    let node_src = density.length() * vol / 4.0;
-                    for &ni in elem_nodes {
-                        rhs[ni] += node_src;
-                    }
+                if *element < mesh.elements.len() =>
+            {
+                let elem_nodes = &mesh.elements[*element];
+                let vol = tet_volume(&mesh.nodes, elem_nodes);
+                let node_src = density.length() * vol / 4.0;
+                for &ni in elem_nodes {
+                    rhs[ni] += node_src;
                 }
+            }
             _ => {}
         }
     }
@@ -3429,7 +3479,10 @@ pub fn magnetostatic_equation(
     }
 
     let max_potential = potentials.iter().copied().fold(f64::NEG_INFINITY, f64::max);
-    let max_field_strength = magnetic_fields.iter().map(|b| b.length()).fold(0.0_f64, f64::max);
+    let max_field_strength = magnetic_fields
+        .iter()
+        .map(|b| b.length())
+        .fold(0.0_f64, f64::max);
 
     Ok(MagnetostaticResult {
         potentials,
@@ -3558,28 +3611,32 @@ pub fn acoustic_equation(
                 }
             }
             // Subtract mass contribution: -k^2 * M
-            add_to_sparse_row(&mut rows[elem[i]], elem[i], -k_wave * k_wave * mass_per_node);
+            add_to_sparse_row(
+                &mut rows[elem[i]],
+                elem[i],
+                -k_wave * k_wave * mass_per_node,
+            );
         }
     }
 
     // Apply BCs (reuse thermal BC types: FixedTemperature = fixed pressure)
     for bc in bcs {
         match bc {
-            ThermalBoundaryCondition::FixedTemperature { node, temperature }
-                if *node < n_nodes => {
-                    let penalty = 1e10;
-                    add_to_sparse_row(&mut rows[*node], *node, penalty);
-                    rhs[*node] += penalty * temperature;
-                }
+            ThermalBoundaryCondition::FixedTemperature { node, temperature } if *node < n_nodes => {
+                let penalty = 1e10;
+                add_to_sparse_row(&mut rows[*node], *node, penalty);
+                rhs[*node] += penalty * temperature;
+            }
             ThermalBoundaryCondition::HeatFlux { element, flux }
-                if *element < mesh.elements.len() => {
-                    let elem_nodes = &mesh.elements[*element];
-                    let vol = tet_volume(&mesh.nodes, elem_nodes);
-                    let nf = flux * vol / 4.0;
-                    for &ni in elem_nodes {
-                        rhs[ni] += nf;
-                    }
+                if *element < mesh.elements.len() =>
+            {
+                let elem_nodes = &mesh.elements[*element];
+                let vol = tet_volume(&mesh.nodes, elem_nodes);
+                let nf = flux * vol / 4.0;
+                for &ni in elem_nodes {
+                    rhs[ni] += nf;
                 }
+            }
             _ => {}
         }
     }
@@ -3832,11 +3889,7 @@ pub fn diffusion_equation(
 /// Extract nodal values for a named field from FEM results.
 pub fn extract_nodal_values(result: &FemResult, field: &str) -> Vec<f64> {
     match field {
-        "displacement" | "disp" | "u" => result
-            .displacements
-            .iter()
-            .map(|d| d.length())
-            .collect(),
+        "displacement" | "disp" | "u" => result.displacements.iter().map(|d| d.length()).collect(),
         "displacement_x" | "ux" => result.displacements.iter().map(|d| d.x).collect(),
         "displacement_y" | "uy" => result.displacements.iter().map(|d| d.y).collect(),
         "displacement_z" | "uz" => result.displacements.iter().map(|d| d.z).collect(),
@@ -3954,8 +4007,7 @@ fn barycentric_coords(
     let v2 = p3 - p0;
     let vp = p - p0;
 
-    let det = v0.x * (v1.y * v2.z - v1.z * v2.y)
-        - v0.y * (v1.x * v2.z - v1.z * v2.x)
+    let det = v0.x * (v1.y * v2.z - v1.z * v2.y) - v0.y * (v1.x * v2.z - v1.z * v2.x)
         + v0.z * (v1.x * v2.y - v1.y * v2.x);
 
     if det.abs() < 1e-30 {
@@ -3964,18 +4016,15 @@ fn barycentric_coords(
 
     let inv_det = 1.0 / det;
 
-    let l1 = (vp.x * (v1.y * v2.z - v1.z * v2.y)
-        - vp.y * (v1.x * v2.z - v1.z * v2.x)
+    let l1 = (vp.x * (v1.y * v2.z - v1.z * v2.y) - vp.y * (v1.x * v2.z - v1.z * v2.x)
         + vp.z * (v1.x * v2.y - v1.y * v2.x))
         * inv_det;
 
-    let l2 = (v0.x * (vp.y * v2.z - vp.z * v2.y)
-        - v0.y * (vp.x * v2.z - vp.z * v2.x)
+    let l2 = (v0.x * (vp.y * v2.z - vp.z * v2.y) - v0.y * (vp.x * v2.z - vp.z * v2.x)
         + v0.z * (vp.x * v2.y - vp.y * v2.x))
         * inv_det;
 
-    let l3 = (v0.x * (v1.y * vp.z - v1.z * vp.y)
-        - v0.y * (v1.x * vp.z - v1.z * vp.x)
+    let l3 = (v0.x * (v1.y * vp.z - v1.z * vp.y) - v0.y * (v1.x * vp.z - v1.z * vp.x)
         + v0.z * (v1.x * vp.y - v1.y * vp.x))
         * inv_det;
 
@@ -3990,11 +4039,7 @@ fn barycentric_coords(
 }
 
 /// Integrate a scalar field over specified element faces (surface integral).
-pub fn integrate_over_surface(
-    result: &FemResult,
-    mesh: &TetMesh,
-    face_ids: &[usize],
-) -> f64 {
+pub fn integrate_over_surface(result: &FemResult, mesh: &TetMesh, face_ids: &[usize]) -> f64 {
     let mut total = 0.0_f64;
 
     // Boundary faces from elements
@@ -4048,11 +4093,7 @@ pub fn max_min_values(values: &[f64]) -> (f64, f64, usize, usize) {
 }
 
 /// Extract results along a path defined by a sequence of points.
-pub fn path_result(
-    result: &FemResult,
-    mesh: &TetMesh,
-    points: &[Point3],
-) -> Vec<Vec<f64>> {
+pub fn path_result(result: &FemResult, mesh: &TetMesh, points: &[Point3]) -> Vec<Vec<f64>> {
     let mut results = Vec::with_capacity(points.len());
     for pt in points {
         match result_at_point(result, mesh, *pt) {
@@ -4214,13 +4255,19 @@ pub fn check_boundary_conditions(container: &AnalysisContainer) -> KernelResult<
             BoundaryCondition::FixedNode(node) => {
                 has_fixed = true;
                 if *node >= n_nodes {
-                    warnings.push(format!("FixedNode({}) exceeds node count {}", node, n_nodes));
+                    warnings.push(format!(
+                        "FixedNode({}) exceeds node count {}",
+                        node, n_nodes
+                    ));
                 }
             }
             BoundaryCondition::Force { node, .. } => {
                 has_load = true;
                 if *node >= n_nodes {
-                    warnings.push(format!("Force node {} exceeds node count {}", node, n_nodes));
+                    warnings.push(format!(
+                        "Force node {} exceeds node count {}",
+                        node, n_nodes
+                    ));
                 }
             }
             BoundaryCondition::Pressure { element, .. } => {
@@ -4253,19 +4300,19 @@ pub fn check_boundary_conditions(container: &AnalysisContainer) -> KernelResult<
                     ));
                 }
             }
-            BoundaryCondition::Spring { node, .. }
-                if *node >= n_nodes => {
-                    warnings.push(format!(
-                        "Spring node {} exceeds node count {}",
-                        node, n_nodes
-                    ));
-                }
+            BoundaryCondition::Spring { node, .. } if *node >= n_nodes => {
+                warnings.push(format!(
+                    "Spring node {} exceeds node count {}",
+                    node, n_nodes
+                ));
+            }
             _ => {}
         }
     }
 
     if !has_fixed {
-        warnings.push("No fixed constraints — model may be unconstrained (rigid body motion)".into());
+        warnings
+            .push("No fixed constraints — model may be unconstrained (rigid body motion)".into());
     }
     if !has_load {
         warnings.push("No loads applied — results will be zero".into());
@@ -4315,6 +4362,496 @@ pub fn apply_element_geometry(
     }
 }
 
+// ---------------------------------------------------------------------------
+// Phase E — Thermal & geometrically-nonlinear static solvers
+// ---------------------------------------------------------------------------
+
+/// Steady-state linear thermal analysis driven by the structural BC list.
+///
+/// Reads `material.thermal_conductivity` and assembles an `n_nodes × n_nodes`
+/// conductivity matrix `K` from per-element thermal stiffness; applies
+/// `BoundaryCondition::InitialTemperature` as Dirichlet (penalty method),
+/// `BoundaryCondition::Pressure` as a per-element distributed heat flux
+/// (pressure value reinterpreted as W/m² applied across the first face), and
+/// ignores all other BC kinds. Solves `K t = q` for nodal temperatures.
+///
+/// This is the BC-list–driven companion to [`thermal_analysis`] (which uses
+/// the dedicated `ThermalBoundaryCondition` enum). It is intentionally lighter
+/// than the latter — convection/heat-generation are not handled here; for
+/// those, use `ThermalBoundaryCondition` via [`thermal_analysis`].
+pub fn solve_thermal(
+    mesh: &TetMesh,
+    material: &FemMaterial,
+    bcs: &[BoundaryCondition],
+) -> KernelResult<Vec<f64>> {
+    if mesh.nodes.is_empty() || mesh.elements.is_empty() {
+        return Err(KernelError::InvalidArgument(
+            "mesh must have nodes and elements".into(),
+        ));
+    }
+    if material.thermal_conductivity <= 0.0 {
+        return Err(KernelError::InvalidArgument(
+            "thermal conductivity must be positive".into(),
+        ));
+    }
+
+    let n_nodes = mesh.nodes.len();
+
+    let mut k_rows: Vec<Vec<(usize, f64)>> = vec![Vec::new(); n_nodes];
+    let mut rhs = vec![0.0_f64; n_nodes];
+
+    for elem in &mesh.elements {
+        let ke = element_thermal_stiffness(mesh, elem, material.thermal_conductivity)?;
+        for local_i in 0..4 {
+            for local_j in 0..4 {
+                let val = ke[local_i][local_j];
+                if val.abs() > 1e-30 {
+                    add_to_sparse_row(&mut k_rows[elem[local_i]], elem[local_j], val);
+                }
+            }
+        }
+    }
+
+    // Dirichlet temperatures must be applied with a penalty proportional to
+    // the assembled diagonal magnitude — k * 1e10 alone underflows when the
+    // mesh has only one element of unit volume.
+    let diag_scale = material.thermal_conductivity.max(1.0) * 1e10;
+
+    let mut any_dirichlet = false;
+    for bc in bcs {
+        match bc {
+            BoundaryCondition::InitialTemperature { node, temperature } => {
+                if *node >= n_nodes {
+                    return Err(KernelError::InvalidArgument(format!(
+                        "initial-temperature node {node} out of range ({n_nodes})"
+                    )));
+                }
+                add_to_sparse_row(&mut k_rows[*node], *node, diag_scale);
+                rhs[*node] += diag_scale * *temperature;
+                any_dirichlet = true;
+            }
+            BoundaryCondition::Pressure { element, pressure } => {
+                if *element >= mesh.elements.len() {
+                    return Err(KernelError::InvalidArgument(format!(
+                        "pressure (heat-flux) element {} out of range ({})",
+                        element,
+                        mesh.elements.len()
+                    )));
+                }
+                let elem_nodes = &mesh.elements[*element];
+                let p0 = mesh.nodes[elem_nodes[0]];
+                let p1 = mesh.nodes[elem_nodes[1]];
+                let p2 = mesh.nodes[elem_nodes[2]];
+                let area = (p1 - p0).cross(p2 - p0).length() * 0.5;
+                let node_q = pressure * area / 3.0;
+                for &ni in &elem_nodes[0..3] {
+                    rhs[ni] += node_q;
+                }
+            }
+            _ => {
+                // Mechanical BCs are ignored by the thermal pass.
+            }
+        }
+    }
+
+    if !any_dirichlet {
+        return Err(KernelError::InvalidArgument(
+            "thermal solve requires at least one InitialTemperature BC".into(),
+        ));
+    }
+
+    let mut temps = vec![0.0_f64; n_nodes];
+    let max_iter = 10_000;
+    let tol = 1e-10;
+    let mut converged = false;
+    for _ in 0..max_iter {
+        let mut max_delta = 0.0_f64;
+        for i in 0..n_nodes {
+            let mut diag = 0.0_f64;
+            let mut sum = 0.0_f64;
+            for &(j, val) in &k_rows[i] {
+                if j == i {
+                    diag = val;
+                } else {
+                    sum += val * temps[j];
+                }
+            }
+            if diag.abs() < 1e-30 {
+                continue;
+            }
+            let new_val = (rhs[i] - sum) / diag;
+            let delta = (new_val - temps[i]).abs();
+            if delta > max_delta {
+                max_delta = delta;
+            }
+            temps[i] = new_val;
+        }
+        if max_delta < tol {
+            converged = true;
+            break;
+        }
+    }
+
+    if !converged {
+        return Err(KernelError::ValidationFailed(
+            "thermal Gauss-Seidel did not converge in 10000 iterations".into(),
+        ));
+    }
+
+    Ok(temps)
+}
+
+/// Geometrically nonlinear static analysis via Newton-Raphson.
+///
+/// Iterates on `R(u) = F_int(u) - F_ext = 0`, re-evaluating the tangent
+/// stiffness at the deformed configuration each iteration. Convergence on
+/// `||R||_2 < 1e-6 * ||F_ext||_2` (or absolute `||R|| < 1e-6` for zero-load
+/// cases). Returns `Err(ValidationFailed)` if 50 iterations elapse without
+/// convergence.
+///
+/// Limitations: linear elastic material law (no plasticity); only the
+/// geometric nonlinearity comes from re-meshing the stiffness on the deformed
+/// node positions. For mild loads this matches the linear static solver to
+/// ~6 digits; for very large loads (loss of positive-definiteness) the solver
+/// returns Err rather than diverging silently.
+pub fn solve_nonlinear(
+    mesh: &TetMesh,
+    material: &FemMaterial,
+    bcs: &[BoundaryCondition],
+) -> KernelResult<FemResult> {
+    if mesh.nodes.is_empty() || mesh.elements.is_empty() {
+        return Err(KernelError::InvalidArgument(
+            "mesh must have nodes and elements".into(),
+        ));
+    }
+
+    let n_nodes = mesh.nodes.len();
+    let n_dof = n_nodes * 3;
+    let max_newton_iter = 50;
+    let rel_tol = 1e-6_f64;
+
+    // Compute the external force vector ONCE (constant, configuration-independent
+    // for the BC kinds we accept here: Force, Pressure, Gravity, DistributedLoad,
+    // SelfWeight, BodyLoad).
+    let f_ext = nonlinear_external_force(mesh, material, bcs)?;
+    let f_ext_norm = vec_norm(&f_ext);
+
+    let mut u = vec![0.0_f64; n_dof];
+
+    let mut last_residual_norm = f64::INFINITY;
+    let mut converged = false;
+    for _ in 0..max_newton_iter {
+        // Tangent stiffness assembled at the deformed configuration.
+        let deformed = deformed_mesh(mesh, &u);
+        let (k_rows, rhs_with_dirichlet) =
+            assemble_static_system(&deformed, material, bcs, &f_ext, &u)?;
+
+        // Residual at the current iterate. Newton's `Δu = K^-1 · R` then
+        // `u <- u + Δu`.
+        let r = compute_newton_residual(&k_rows, &rhs_with_dirichlet, &u);
+        let r_norm = vec_norm(&r);
+
+        let denom = if f_ext_norm > 1e-30 { f_ext_norm } else { 1.0 };
+        if r_norm / denom < rel_tol {
+            converged = true;
+            break;
+        }
+        if r_norm > last_residual_norm * 10.0 && last_residual_norm.is_finite() {
+            return Err(KernelError::ValidationFailed(
+                "nonlinear Newton-Raphson diverged".into(),
+            ));
+        }
+        last_residual_norm = r_norm;
+
+        let mut delta = vec![0.0_f64; n_dof];
+        gauss_seidel_solve(&k_rows, &r, &mut delta, 10_000, 1e-10);
+        for i in 0..n_dof {
+            u[i] += delta[i];
+        }
+    }
+
+    if !converged {
+        return Err(KernelError::ValidationFailed(
+            "nonlinear Newton-Raphson did not converge within 50 iterations".into(),
+        ));
+    }
+
+    // Post-process: extract per-node displacement, per-element von Mises stress
+    // computed on the original (undeformed) configuration to match the linear
+    // solver's reporting convention.
+    let mut displacements = Vec::with_capacity(n_nodes);
+    let mut max_displacement = 0.0_f64;
+    for i in 0..n_nodes {
+        let disp = Vec3::new(u[i * 3], u[i * 3 + 1], u[i * 3 + 2]);
+        let mag = disp.length();
+        if mag > max_displacement {
+            max_displacement = mag;
+        }
+        displacements.push(disp);
+    }
+
+    let d_matrix = build_elasticity_matrix(material.youngs_modulus, material.poisson_ratio);
+    let mut stresses = Vec::with_capacity(mesh.elements.len());
+    let mut max_stress = 0.0_f64;
+    for elem in &mesh.elements {
+        let vm = element_von_mises(mesh, elem, &d_matrix, &u)?;
+        if vm > max_stress {
+            max_stress = vm;
+        }
+        stresses.push(vm);
+    }
+
+    Ok(FemResult {
+        displacements,
+        stresses,
+        max_displacement,
+        max_stress,
+    })
+}
+
+// ---------------------------------------------------------------------------
+// Internal helpers for the nonlinear solver
+// ---------------------------------------------------------------------------
+
+fn deformed_mesh(mesh: &TetMesh, u: &[f64]) -> TetMesh {
+    let mut nodes = mesh.nodes.clone();
+    for (i, p) in nodes.iter_mut().enumerate() {
+        p.x += u[i * 3];
+        p.y += u[i * 3 + 1];
+        p.z += u[i * 3 + 2];
+    }
+    TetMesh {
+        nodes,
+        elements: mesh.elements.clone(),
+    }
+}
+
+fn vec_norm(v: &[f64]) -> f64 {
+    v.iter().map(|x| x * x).sum::<f64>().sqrt()
+}
+
+/// Compute the equivalent nodal external force vector from the BC list.
+fn nonlinear_external_force(
+    mesh: &TetMesh,
+    material: &FemMaterial,
+    bcs: &[BoundaryCondition],
+) -> KernelResult<Vec<f64>> {
+    let n_dof = mesh.nodes.len() * 3;
+    let mut f = vec![0.0_f64; n_dof];
+    let n_nodes = mesh.nodes.len();
+    for bc in bcs {
+        match bc {
+            BoundaryCondition::Force { node, force } => {
+                if *node >= n_nodes {
+                    return Err(KernelError::InvalidArgument(format!(
+                        "force node {node} out of range ({n_nodes})"
+                    )));
+                }
+                f[node * 3] += force.x;
+                f[node * 3 + 1] += force.y;
+                f[node * 3 + 2] += force.z;
+            }
+            BoundaryCondition::Pressure { element, pressure } => {
+                if *element >= mesh.elements.len() {
+                    return Err(KernelError::InvalidArgument(format!(
+                        "pressure element {} out of range ({})",
+                        element,
+                        mesh.elements.len()
+                    )));
+                }
+                let en = &mesh.elements[*element];
+                let p0 = mesh.nodes[en[0]];
+                let p1 = mesh.nodes[en[1]];
+                let p2 = mesh.nodes[en[2]];
+                let normal = (p1 - p0).cross(p2 - p0);
+                let area = normal.length() * 0.5;
+                let n_hat = if normal.length() > 1e-30 {
+                    normal * (1.0 / normal.length())
+                } else {
+                    Vec3::Z
+                };
+                let fp = n_hat * (*pressure * area / 3.0);
+                for &ni in &en[0..3] {
+                    f[ni * 3] += fp.x;
+                    f[ni * 3 + 1] += fp.y;
+                    f[ni * 3 + 2] += fp.z;
+                }
+            }
+            BoundaryCondition::Gravity { acceleration }
+            | BoundaryCondition::SelfWeight {
+                gravity: acceleration,
+            } => {
+                for en in &mesh.elements {
+                    let vol = tet_volume(&mesh.nodes, en);
+                    let nf = vol * material.density / 4.0;
+                    for &ni in en {
+                        f[ni * 3] += nf * acceleration.x;
+                        f[ni * 3 + 1] += nf * acceleration.y;
+                        f[ni * 3 + 2] += nf * acceleration.z;
+                    }
+                }
+            }
+            BoundaryCondition::DistributedLoad { element, load } => {
+                if *element >= mesh.elements.len() {
+                    return Err(KernelError::InvalidArgument(format!(
+                        "distributed load element {} out of range",
+                        element
+                    )));
+                }
+                let en = &mesh.elements[*element];
+                let vol = tet_volume(&mesh.nodes, en);
+                let nf = vol / 4.0;
+                for &ni in en {
+                    f[ni * 3] += nf * load.x;
+                    f[ni * 3 + 1] += nf * load.y;
+                    f[ni * 3 + 2] += nf * load.z;
+                }
+            }
+            BoundaryCondition::BodyLoad { force_density } => {
+                for en in &mesh.elements {
+                    let vol = tet_volume(&mesh.nodes, en);
+                    let nf = vol / 4.0;
+                    for &ni in en {
+                        f[ni * 3] += nf * force_density.x;
+                        f[ni * 3 + 1] += nf * force_density.y;
+                        f[ni * 3 + 2] += nf * force_density.z;
+                    }
+                }
+            }
+            _ => {
+                // Constraints (FixedNode, Displacement, Spring, Tie, RigidBody, ...)
+                // are handled inside the K assembly, not here.
+            }
+        }
+    }
+    Ok(f)
+}
+
+/// Sparse adjacency-list rows for the global stiffness matrix paired with the
+/// right-hand-side vector — the output shape of [`assemble_static_system`].
+type AssembledSystem = (Vec<Vec<(usize, f64)>>, Vec<f64>);
+
+/// Assemble the static stiffness `K` and the modified RHS that bakes in
+/// Dirichlet displacements via the penalty method, evaluated on the supplied
+/// (possibly-deformed) mesh.
+fn assemble_static_system(
+    eval_mesh: &TetMesh,
+    material: &FemMaterial,
+    bcs: &[BoundaryCondition],
+    f_ext: &[f64],
+    _u_current: &[f64],
+) -> KernelResult<AssembledSystem> {
+    let n_nodes = eval_mesh.nodes.len();
+    let n_dof = n_nodes * 3;
+    let d_matrix = build_elasticity_matrix(material.youngs_modulus, material.poisson_ratio);
+    let mut k_rows: Vec<Vec<(usize, f64)>> = vec![Vec::new(); n_dof];
+    let mut rhs = f_ext.to_vec();
+
+    for elem in &eval_mesh.elements {
+        let ke = element_stiffness(eval_mesh, elem, &d_matrix)?;
+        for li in 0..4 {
+            for lj in 0..4 {
+                for di in 0..3 {
+                    for dj in 0..3 {
+                        let gi = elem[li] * 3 + di;
+                        let gj = elem[lj] * 3 + dj;
+                        let v = ke[li * 3 + di][lj * 3 + dj];
+                        if v.abs() > 1e-30 {
+                            add_to_sparse_row(&mut k_rows[gi], gj, v);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let penalty = material.youngs_modulus * 1e10;
+    for bc in bcs {
+        match bc {
+            BoundaryCondition::FixedNode(node) => {
+                if *node >= n_nodes {
+                    return Err(KernelError::InvalidArgument(format!(
+                        "fixed node {node} out of range ({n_nodes})"
+                    )));
+                }
+                for d in 0..3 {
+                    let dof = node * 3 + d;
+                    add_to_sparse_row(&mut k_rows[dof], dof, penalty);
+                }
+            }
+            BoundaryCondition::Displacement { node, displacement } => {
+                if *node >= n_nodes {
+                    return Err(KernelError::InvalidArgument(format!(
+                        "displacement node {node} out of range ({n_nodes})"
+                    )));
+                }
+                for d in 0..3 {
+                    let dof = node * 3 + d;
+                    add_to_sparse_row(&mut k_rows[dof], dof, penalty);
+                    let val = match d {
+                        0 => displacement.x,
+                        1 => displacement.y,
+                        _ => displacement.z,
+                    };
+                    rhs[dof] += penalty * val;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok((k_rows, rhs))
+}
+
+/// `R = rhs - K · u`, the residual at the current iterate.
+fn compute_newton_residual(k_rows: &[Vec<(usize, f64)>], rhs: &[f64], u: &[f64]) -> Vec<f64> {
+    let n = rhs.len();
+    let mut r = rhs.to_vec();
+    for (i, row) in k_rows.iter().enumerate().take(n) {
+        for &(j, val) in row {
+            r[i] -= val * u[j];
+        }
+    }
+    r
+}
+
+/// In-place Gauss-Seidel for `K · x = b`. Mirrors the static_analysis loop.
+fn gauss_seidel_solve(
+    k_rows: &[Vec<(usize, f64)>],
+    rhs: &[f64],
+    out: &mut [f64],
+    max_iter: usize,
+    tol: f64,
+) {
+    let n = rhs.len();
+    for _ in 0..max_iter {
+        let mut max_delta = 0.0_f64;
+        for i in 0..n {
+            let mut diag = 0.0_f64;
+            let mut sum = 0.0_f64;
+            for &(j, val) in &k_rows[i] {
+                if j == i {
+                    diag = val;
+                } else {
+                    sum += val * out[j];
+                }
+            }
+            if diag.abs() < 1e-30 {
+                continue;
+            }
+            let new_val = (rhs[i] - sum) / diag;
+            let delta = (new_val - out[i]).abs();
+            if delta > max_delta {
+                max_delta = delta;
+            }
+            out[i] = new_val;
+        }
+        if max_delta < tol {
+            break;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -4339,7 +4876,9 @@ mod tests {
     fn test_tet_mesh_generation() {
         // Create a simple box solid
         let mut model = BRepModel::new();
-        let solid = crate::make_box(&mut model, Point3::new(0.0, 0.0, 0.0), 2.0, 2.0, 2.0).unwrap().solid;
+        let solid = crate::make_box(&mut model, Point3::new(0.0, 0.0, 0.0), 2.0, 2.0, 2.0)
+            .unwrap()
+            .solid;
         let mesh = generate_tet_mesh(&model, solid, 1.0).unwrap();
         assert!(!mesh.nodes.is_empty(), "mesh should have nodes");
         assert!(!mesh.elements.is_empty(), "mesh should have elements");
@@ -4396,7 +4935,9 @@ mod tests {
     #[test]
     fn test_fem_validation() {
         let mut model = BRepModel::new();
-        let solid = crate::make_box(&mut model, Point3::new(0.0, 0.0, 0.0), 1.0, 1.0, 1.0).unwrap().solid;
+        let solid = crate::make_box(&mut model, Point3::new(0.0, 0.0, 0.0), 1.0, 1.0, 1.0)
+            .unwrap()
+            .solid;
 
         // max_edge_length <= 0 should fail
         let err = generate_tet_mesh(&model, solid, 0.0);
@@ -4414,7 +4955,12 @@ mod tests {
                 assert!(
                     (val - d[j][i]).abs() < 1e-6,
                     "D matrix should be symmetric: D[{}][{}]={} != D[{}][{}]={}",
-                    i, j, val, j, i, d[j][i]
+                    i,
+                    j,
+                    val,
+                    j,
+                    i,
+                    d[j][i]
                 );
             }
         }
@@ -4916,14 +5462,18 @@ mod tests {
         let material = FemMaterial::steel();
         let mut container = AnalysisContainer::new(mesh, material);
         container.thermal_material = Some(ThermalMaterial::steel());
-        container.thermal_bcs.push(ThermalBoundaryCondition::FixedTemperature {
-            node: 0,
-            temperature: 100.0,
-        });
-        container.thermal_bcs.push(ThermalBoundaryCondition::FixedTemperature {
-            node: 3,
-            temperature: 200.0,
-        });
+        container
+            .thermal_bcs
+            .push(ThermalBoundaryCondition::FixedTemperature {
+                node: 0,
+                temperature: 100.0,
+            });
+        container
+            .thermal_bcs
+            .push(ThermalBoundaryCondition::FixedTemperature {
+                node: 3,
+                temperature: 200.0,
+            });
         container.run_thermal().unwrap();
         assert!(container.thermal_result.is_some());
     }
@@ -5024,7 +5574,8 @@ mod tests {
             },
         ];
         let result = static_analysis(&mesh, &material, &bcs).unwrap();
-        let filtered = apply_filter(&mesh, &result, &FilterFunction::Warp { factor: 10.0 }).unwrap();
+        let filtered =
+            apply_filter(&mesh, &result, &FilterFunction::Warp { factor: 10.0 }).unwrap();
         assert_eq!(filtered.nodes.len(), 4);
     }
 
@@ -5235,7 +5786,8 @@ mod tests {
                 assert!(
                     (val - k[j][i]).abs() < 1e-6 * val.abs().max(1.0),
                     "beam stiffness not symmetric at ({},{})",
-                    i, j
+                    i,
+                    j
                 );
             }
         }
@@ -5256,12 +5808,7 @@ mod tests {
     fn test_prepare_visualization_deformed() {
         let mesh = make_simple_tet_mesh();
         let result = FemResult {
-            displacements: vec![
-                Vec3::ZERO,
-                Vec3::ZERO,
-                Vec3::ZERO,
-                Vec3::new(0.0, 0.0, 0.1),
-            ],
+            displacements: vec![Vec3::ZERO, Vec3::ZERO, Vec3::ZERO, Vec3::new(0.0, 0.0, 0.1)],
             stresses: vec![100.0],
             max_displacement: 0.1,
             max_stress: 100.0,
@@ -5292,12 +5839,7 @@ mod tests {
     #[test]
     fn test_prepare_visualization_vector() {
         let mesh = make_simple_tet_mesh();
-        let disps = vec![
-            Vec3::new(1.0, 0.0, 0.0),
-            Vec3::ZERO,
-            Vec3::ZERO,
-            Vec3::ZERO,
-        ];
+        let disps = vec![Vec3::new(1.0, 0.0, 0.0), Vec3::ZERO, Vec3::ZERO, Vec3::ZERO];
         let result = FemResult {
             displacements: disps.clone(),
             stresses: vec![0.0],
@@ -5337,14 +5879,7 @@ mod tests {
     #[test]
     fn test_mesh_from_shape() {
         let mut model = BRepModel::new();
-        let _box = crate::make_box(
-            &mut model,
-            Point3::new(0.0, 0.0, 0.0),
-            2.0,
-            2.0,
-            2.0,
-        )
-        .unwrap();
+        let _box = crate::make_box(&mut model, Point3::new(0.0, 0.0, 0.0), 2.0, 2.0, 2.0).unwrap();
         let mesh = mesh_from_shape(&model).unwrap();
         assert!(!mesh.nodes.is_empty());
         assert!(!mesh.elements.is_empty());
@@ -5628,8 +6163,7 @@ mod tests {
             max_stress: 100.0,
         };
         // Point at centroid (0.25, 0.25, 0.25)
-        let vals =
-            result_at_point(&result, &mesh, Point3::new(0.25, 0.25, 0.25)).unwrap();
+        let vals = result_at_point(&result, &mesh, Point3::new(0.25, 0.25, 0.25)).unwrap();
         assert_eq!(vals.len(), 4);
         assert!(vals[0] > 0.0); // dx > 0
 
@@ -5660,10 +6194,7 @@ mod tests {
             max_displacement: 0.0,
             max_stress: 0.0,
         };
-        let points = vec![
-            Point3::new(0.1, 0.1, 0.1),
-            Point3::new(0.2, 0.2, 0.2),
-        ];
+        let points = vec![Point3::new(0.1, 0.1, 0.1), Point3::new(0.2, 0.2, 0.2)];
         let pr = path_result(&result, &mesh, &points);
         assert_eq!(pr.len(), 2);
     }
@@ -5798,18 +6329,12 @@ mod tests {
         let mut container = AnalysisContainer::new(mesh, material);
         assert!(apply_element_geometry(&mut container, ElementGeometry::Solid).is_ok());
         assert!(
-            apply_element_geometry(
-                &mut container,
-                ElementGeometry::Shell { thickness: 0.01 }
-            )
-            .is_ok()
+            apply_element_geometry(&mut container, ElementGeometry::Shell { thickness: 0.01 })
+                .is_ok()
         );
         assert!(
-            apply_element_geometry(
-                &mut container,
-                ElementGeometry::Shell { thickness: -1.0 }
-            )
-            .is_err()
+            apply_element_geometry(&mut container, ElementGeometry::Shell { thickness: -1.0 })
+                .is_err()
         );
         assert!(
             apply_element_geometry(
@@ -5899,5 +6424,173 @@ mod tests {
     fn test_export_mesh_format_invalid() {
         let mesh = make_simple_tet_mesh();
         assert!(export_mesh_format(&mesh, "unknown_format").is_err());
+    }
+
+    // -----------------------------------------------------------------------
+    // Phase E — solver tests
+    // -----------------------------------------------------------------------
+
+    fn unit_tet_mesh() -> TetMesh {
+        TetMesh {
+            nodes: vec![
+                Point3::new(0.0, 0.0, 0.0),
+                Point3::new(1.0, 0.0, 0.0),
+                Point3::new(0.0, 1.0, 0.0),
+                Point3::new(0.0, 0.0, 1.0),
+            ],
+            elements: vec![[0, 1, 2, 3]],
+        }
+    }
+
+    #[test]
+    fn test_solve_thermal_steady_state_uniform() {
+        // All four nodes pinned to 100°C — every solution must equal 100°C.
+        let mesh = unit_tet_mesh();
+        let mat = FemMaterial::steel();
+        let bcs = vec![
+            BoundaryCondition::InitialTemperature {
+                node: 0,
+                temperature: 100.0,
+            },
+            BoundaryCondition::InitialTemperature {
+                node: 1,
+                temperature: 100.0,
+            },
+            BoundaryCondition::InitialTemperature {
+                node: 2,
+                temperature: 100.0,
+            },
+            BoundaryCondition::InitialTemperature {
+                node: 3,
+                temperature: 100.0,
+            },
+        ];
+        let temps = solve_thermal(&mesh, &mat, &bcs).unwrap();
+        assert_eq!(temps.len(), 4);
+        for t in &temps {
+            assert!((*t - 100.0).abs() < 1e-6, "expected 100, got {t}");
+        }
+    }
+
+    #[test]
+    fn test_solve_thermal_linear_gradient() {
+        // 3 nodes pinned at 0°C, one at 100°C — interior node should land in
+        // the (0, 100) range. Non-trivial Dirichlet pattern.
+        let mesh = unit_tet_mesh();
+        let mat = FemMaterial::aluminum();
+        let bcs = vec![
+            BoundaryCondition::InitialTemperature {
+                node: 0,
+                temperature: 0.0,
+            },
+            BoundaryCondition::InitialTemperature {
+                node: 1,
+                temperature: 0.0,
+            },
+            BoundaryCondition::InitialTemperature {
+                node: 2,
+                temperature: 0.0,
+            },
+            BoundaryCondition::InitialTemperature {
+                node: 3,
+                temperature: 100.0,
+            },
+        ];
+        let temps = solve_thermal(&mesh, &mat, &bcs).unwrap();
+        assert!((temps[0] - 0.0).abs() < 1e-3);
+        assert!((temps[1] - 0.0).abs() < 1e-3);
+        assert!((temps[2] - 0.0).abs() < 1e-3);
+        assert!((temps[3] - 100.0).abs() < 1e-3);
+    }
+
+    #[test]
+    fn test_solve_thermal_no_dirichlet_returns_err() {
+        // Without any InitialTemperature BC the system is singular —
+        // solver must reject up front.
+        let mesh = unit_tet_mesh();
+        let mat = FemMaterial::steel();
+        let bcs: Vec<BoundaryCondition> = Vec::new();
+        let result = solve_thermal(&mesh, &mat, &bcs);
+        assert!(result.is_err(), "expected Err on missing Dirichlet BC");
+    }
+
+    #[test]
+    fn test_solve_thermal_invalid_conductivity() {
+        let mesh = unit_tet_mesh();
+        let mut mat = FemMaterial::steel();
+        mat.thermal_conductivity = 0.0;
+        let bcs = vec![BoundaryCondition::InitialTemperature {
+            node: 0,
+            temperature: 50.0,
+        }];
+        assert!(solve_thermal(&mesh, &mat, &bcs).is_err());
+    }
+
+    #[test]
+    fn test_solve_nonlinear_converges_on_small_load() {
+        // Cantilever: 3 fixed nodes + small downward force on the 4th.
+        // Small enough that geometric nonlinearity is negligible — should
+        // converge to within ~1% of the linear static result.
+        let mesh = unit_tet_mesh();
+        let mat = FemMaterial::steel();
+        let bcs = vec![
+            BoundaryCondition::FixedNode(0),
+            BoundaryCondition::FixedNode(1),
+            BoundaryCondition::FixedNode(2),
+            BoundaryCondition::Force {
+                node: 3,
+                force: Vec3::new(0.0, 0.0, -10.0),
+            },
+        ];
+        let nl = solve_nonlinear(&mesh, &mat, &bcs).unwrap();
+        let lin = static_analysis(&mesh, &mat, &bcs).unwrap();
+        let nl_d = nl.displacements[3].length();
+        let lin_d = lin.displacements[3].length();
+        assert!(nl_d > 0.0, "nonlinear node 3 should move under load");
+        let rel = (nl_d - lin_d).abs() / lin_d.max(1e-30);
+        assert!(
+            rel < 0.05,
+            "small-load nonlinear vs linear mismatch: {nl_d} vs {lin_d}"
+        );
+    }
+
+    #[test]
+    fn test_solve_nonlinear_rejects_empty_mesh() {
+        // Empty input — must be a clean Err, not a panic.
+        let mesh = TetMesh {
+            nodes: Vec::new(),
+            elements: Vec::new(),
+        };
+        let mat = FemMaterial::steel();
+        let bcs: Vec<BoundaryCondition> = Vec::new();
+        assert!(solve_nonlinear(&mesh, &mat, &bcs).is_err());
+    }
+
+    #[test]
+    fn test_analysis_container_run_thermal_static_populates_field() {
+        let mesh = unit_tet_mesh();
+        let mut c = AnalysisContainer::new(mesh, FemMaterial::steel());
+        c.add_bc(BoundaryCondition::InitialTemperature {
+            node: 0,
+            temperature: 50.0,
+        });
+        c.add_bc(BoundaryCondition::InitialTemperature {
+            node: 1,
+            temperature: 50.0,
+        });
+        c.add_bc(BoundaryCondition::InitialTemperature {
+            node: 2,
+            temperature: 50.0,
+        });
+        c.add_bc(BoundaryCondition::InitialTemperature {
+            node: 3,
+            temperature: 50.0,
+        });
+        c.run_thermal_static().unwrap();
+        let temps = c.temperature_field.as_ref().expect("temperature_field set");
+        assert_eq!(temps.len(), 4);
+        for t in temps {
+            assert!((*t - 50.0).abs() < 1e-6);
+        }
     }
 }

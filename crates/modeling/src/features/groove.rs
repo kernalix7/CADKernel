@@ -60,12 +60,9 @@ pub fn groove(
     let solids: Vec<Handle<SolidData>> = result_model.solids.iter().map(|(h, _)| h).collect();
     let faces: Vec<Handle<FaceData>> = result_model.faces.iter().map(|(h, _)| h).collect();
 
-    let solid = solids
-        .first()
-        .copied()
-        .ok_or(KernelError::TopologyError(
-            "groove produced no solid".into(),
-        ))?;
+    let solid = solids.first().copied().ok_or(KernelError::TopologyError(
+        "groove produced no solid".into(),
+    ))?;
 
     Ok(GrooveResult {
         model: result_model,
@@ -92,16 +89,7 @@ mod tests {
             Point3::new(4.0, 0.0, 6.0),
         ];
 
-        let result = groove(
-            &base,
-            b.solid,
-            &profile,
-            Point3::ORIGIN,
-            Vec3::Z,
-            TAU,
-            16,
-        )
-        .unwrap();
+        let result = groove(&base, b.solid, &profile, Point3::ORIGIN, Vec3::Z, TAU, 16).unwrap();
         assert!(result.model.solids.is_alive(result.solid));
     }
 

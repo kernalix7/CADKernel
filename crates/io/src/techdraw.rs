@@ -34,7 +34,11 @@ impl ProjectionDir {
     fn axes(self) -> (Vec3, Vec3, Vec3) {
         match self {
             Self::Front => (Vec3::X, Vec3::Z, Vec3::Y),
-            Self::Back => (Vec3::new(-1.0, 0.0, 0.0), Vec3::Z, Vec3::new(0.0, -1.0, 0.0)),
+            Self::Back => (
+                Vec3::new(-1.0, 0.0, 0.0),
+                Vec3::Z,
+                Vec3::new(0.0, -1.0, 0.0),
+            ),
             Self::Top => (Vec3::X, Vec3::new(0.0, -1.0, 0.0), Vec3::Z),
             Self::Bottom => (Vec3::X, Vec3::Y, Vec3::new(0.0, 0.0, -1.0)),
             Self::Right => (Vec3::new(0.0, -1.0, 0.0), Vec3::Z, Vec3::X),
@@ -99,6 +103,18 @@ pub struct DrawingView {
     pub center_x: f64,
     pub center_y: f64,
     pub scale: f64,
+    pub sheet_x: Option<f64>,
+    pub sheet_y: Option<f64>,
+    pub sheet_scale: Option<f64>,
+}
+
+impl DrawingView {
+    /// Override the automatic sheet placement used by `drawing_to_svg`.
+    pub fn set_sheet_placement(&mut self, x: f64, y: f64, scale: Option<f64>) {
+        self.sheet_x = Some(x);
+        self.sheet_y = Some(y);
+        self.sheet_scale = scale.filter(|s| *s > 0.0);
+    }
 }
 
 /// Dimension annotation on a drawing.
@@ -176,44 +192,120 @@ pub fn dimension_to_svg(dim: &DimensionType) -> String {
             let ey1 = start.y + ny * offset;
             let ex2 = end.x + nx * offset;
             let ey2 = end.y + ny * offset;
-            let _ = write!(svg, "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />", start.x, start.y, ex1, ey1, style);
-            let _ = write!(svg, "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />", end.x, end.y, ex2, ey2, style);
-            let _ = write!(svg, "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />", ex1, ey1, ex2, ey2, style);
+            let _ = write!(
+                svg,
+                "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />",
+                start.x, start.y, ex1, ey1, style
+            );
+            let _ = write!(
+                svg,
+                "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />",
+                end.x, end.y, ex2, ey2, style
+            );
+            let _ = write!(
+                svg,
+                "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />",
+                ex1, ey1, ex2, ey2, style
+            );
             let mx = (ex1 + ex2) / 2.0;
             let my = (ey1 + ey2) / 2.0 - 1.0;
-            let _ = write!(svg, "<text x=\"{}\" y=\"{}\" {}>{:.2}</text>", mx, my, text_style, value);
+            let _ = write!(
+                svg,
+                "<text x=\"{}\" y=\"{}\" {}>{:.2}</text>",
+                mx, my, text_style, value
+            );
         }
         DimensionType::HorizontalDimension { start, end, value } => {
             let offset = 10.0;
             let y_line = start.y.min(end.y) - offset;
-            let _ = write!(svg, "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />", start.x, start.y, start.x, y_line, style);
-            let _ = write!(svg, "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />", end.x, end.y, end.x, y_line, style);
-            let _ = write!(svg, "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />", start.x, y_line, end.x, y_line, style);
+            let _ = write!(
+                svg,
+                "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />",
+                start.x, start.y, start.x, y_line, style
+            );
+            let _ = write!(
+                svg,
+                "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />",
+                end.x, end.y, end.x, y_line, style
+            );
+            let _ = write!(
+                svg,
+                "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />",
+                start.x, y_line, end.x, y_line, style
+            );
             let mx = (start.x + end.x) / 2.0;
-            let _ = write!(svg, "<text x=\"{}\" y=\"{}\" {}>{:.2}</text>", mx, y_line - 1.0, text_style, value);
+            let _ = write!(
+                svg,
+                "<text x=\"{}\" y=\"{}\" {}>{:.2}</text>",
+                mx,
+                y_line - 1.0,
+                text_style,
+                value
+            );
         }
         DimensionType::VerticalDimension { start, end, value } => {
             let offset = 10.0;
             let x_line = start.x.max(end.x) + offset;
-            let _ = write!(svg, "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />", start.x, start.y, x_line, start.y, style);
-            let _ = write!(svg, "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />", end.x, end.y, x_line, end.y, style);
-            let _ = write!(svg, "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />", x_line, start.y, x_line, end.y, style);
+            let _ = write!(
+                svg,
+                "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />",
+                start.x, start.y, x_line, start.y, style
+            );
+            let _ = write!(
+                svg,
+                "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />",
+                end.x, end.y, x_line, end.y, style
+            );
+            let _ = write!(
+                svg,
+                "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />",
+                x_line, start.y, x_line, end.y, style
+            );
             let my = (start.y + end.y) / 2.0;
-            let _ = write!(svg, "<text x=\"{}\" y=\"{}\" {}>{:.2}</text>", x_line + 3.0, my, text_style, value);
+            let _ = write!(
+                svg,
+                "<text x=\"{}\" y=\"{}\" {}>{:.2}</text>",
+                x_line + 3.0,
+                my,
+                text_style,
+                value
+            );
         }
         DimensionType::RadiusDimension { center, radius } => {
             let ex = center.x + radius;
             let ey = center.y;
-            let _ = write!(svg, "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />", center.x, center.y, ex, ey, style);
+            let _ = write!(
+                svg,
+                "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />",
+                center.x, center.y, ex, ey, style
+            );
             let mx = (center.x + ex) / 2.0;
-            let _ = write!(svg, "<text x=\"{}\" y=\"{}\" {}>R{:.2}</text>", mx, center.y - 1.0, text_style, radius);
+            let _ = write!(
+                svg,
+                "<text x=\"{}\" y=\"{}\" {}>R{:.2}</text>",
+                mx,
+                center.y - 1.0,
+                text_style,
+                radius
+            );
         }
         DimensionType::DiameterDimension { center, diameter } => {
             let r = diameter / 2.0;
             let x1 = center.x - r;
             let x2 = center.x + r;
-            let _ = write!(svg, "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />", x1, center.y, x2, center.y, style);
-            let _ = write!(svg, "<text x=\"{}\" y=\"{}\" {}>\u{2300}{:.2}</text>", center.x, center.y - 1.0, text_style, diameter);
+            let _ = write!(
+                svg,
+                "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />",
+                x1, center.y, x2, center.y, style
+            );
+            let _ = write!(
+                svg,
+                "<text x=\"{}\" y=\"{}\" {}>\u{2300}{:.2}</text>",
+                center.x,
+                center.y - 1.0,
+                text_style,
+                diameter
+            );
         }
         DimensionType::AngleDimension {
             vertex,
@@ -221,11 +313,23 @@ pub fn dimension_to_svg(dim: &DimensionType) -> String {
             arm2_end,
             angle,
         } => {
-            let _ = write!(svg, "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />", vertex.x, vertex.y, arm1_end.x, arm1_end.y, style);
-            let _ = write!(svg, "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />", vertex.x, vertex.y, arm2_end.x, arm2_end.y, style);
+            let _ = write!(
+                svg,
+                "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />",
+                vertex.x, vertex.y, arm1_end.x, arm1_end.y, style
+            );
+            let _ = write!(
+                svg,
+                "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />",
+                vertex.x, vertex.y, arm2_end.x, arm2_end.y, style
+            );
             let mx = (vertex.x + arm1_end.x + arm2_end.x) / 3.0;
             let my = (vertex.y + arm1_end.y + arm2_end.y) / 3.0;
-            let _ = write!(svg, "<text x=\"{}\" y=\"{}\" {}>{:.1}\u{00B0}</text>", mx, my, text_style, angle);
+            let _ = write!(
+                svg,
+                "<text x=\"{}\" y=\"{}\" {}>{:.1}\u{00B0}</text>",
+                mx, my, text_style, angle
+            );
         }
     }
     svg
@@ -373,7 +477,10 @@ pub fn hatch_pattern_to_svg(hp: &HatchPattern) -> String {
 
 /// Clips a line segment to a convex polygon, returning the clipped segment if it intersects.
 fn clip_line_to_polygon(
-    x1: f64, y1: f64, x2: f64, y2: f64,
+    x1: f64,
+    y1: f64,
+    x2: f64,
+    y2: f64,
     polygon: &[Point2],
 ) -> Option<(f64, f64, f64, f64)> {
     // Collect all parameter t values where the line intersects polygon edges
@@ -495,6 +602,18 @@ pub struct DrawingSheet {
     pub height: f64,
     pub views: Vec<DrawingView>,
     pub dimensions: Vec<Dimension>,
+    pub extended_dimensions: Vec<DimensionType>,
+    pub arc_length_dimensions: Vec<ArcLengthDimension>,
+    pub area_annotations: Vec<AreaAnnotation>,
+    pub text_annotations: Vec<TextAnnotation>,
+    pub rich_text_annotations: Vec<RichTextAnnotation>,
+    pub balloon_annotations: Vec<BalloonAnnotation>,
+    pub leader_lines: Vec<LeaderLine>,
+    pub weld_symbols: Vec<WeldSymbolFull>,
+    pub surface_finish_symbols: Vec<SurfaceFinishSymbol>,
+    pub center_marks: Vec<CenterMark>,
+    pub centerlines: Vec<Centerline>,
+    pub bolt_circle_centerlines: Vec<BoltCircleCenterlines>,
     pub title: String,
 }
 
@@ -506,6 +625,18 @@ impl DrawingSheet {
             height: 210.0,
             views: Vec::new(),
             dimensions: Vec::new(),
+            extended_dimensions: Vec::new(),
+            arc_length_dimensions: Vec::new(),
+            area_annotations: Vec::new(),
+            text_annotations: Vec::new(),
+            rich_text_annotations: Vec::new(),
+            balloon_annotations: Vec::new(),
+            leader_lines: Vec::new(),
+            weld_symbols: Vec::new(),
+            surface_finish_symbols: Vec::new(),
+            center_marks: Vec::new(),
+            centerlines: Vec::new(),
+            bolt_circle_centerlines: Vec::new(),
             title: String::new(),
         }
     }
@@ -615,6 +746,9 @@ pub fn project_solid(
         center_x: 0.0,
         center_y: 0.0,
         scale: 1.0,
+        sheet_x: None,
+        sheet_y: None,
+        sheet_scale: None,
     };
 
     let Some(solid_data) = model.solids.get(solid) else {
@@ -716,6 +850,9 @@ pub fn project_solid(
         center_x: cx,
         center_y: cy,
         scale: 1.0,
+        sheet_x: None,
+        sheet_y: None,
+        sheet_scale: None,
     }
 }
 
@@ -755,12 +892,14 @@ pub fn section_view(
 ) -> DrawingView {
     let mesh = tessellate_solid(model, solid);
 
-    let normal = plane_normal
-        .normalized()
-        .unwrap_or(Vec3::Z);
+    let normal = plane_normal.normalized().unwrap_or(Vec3::Z);
 
     // Build local 2D coordinate system on the cutting plane
-    let up_hint = if normal.x.abs() < 0.9 { Vec3::X } else { Vec3::Y };
+    let up_hint = if normal.x.abs() < 0.9 {
+        Vec3::X
+    } else {
+        Vec3::Y
+    };
     let right = normal.cross(up_hint).normalized().unwrap_or(Vec3::X);
     let up = right.cross(normal).normalized().unwrap_or(Vec3::Y);
 
@@ -829,6 +968,9 @@ pub fn section_view(
         center_x: cx,
         center_y: cy,
         scale: 1.0,
+        sheet_x: None,
+        sheet_y: None,
+        sheet_scale: None,
     }
 }
 
@@ -873,6 +1015,9 @@ pub fn detail_view(
         center_x: 0.0,
         center_y: 0.0,
         scale: magnification,
+        sheet_x: None,
+        sheet_y: None,
+        sheet_scale: None,
     }
 }
 
@@ -913,52 +1058,105 @@ pub fn drawing_to_svg(sheet: &DrawingSheet) -> SvgDocument {
     let has_views = gmin_x < gmax_x && gmin_y < gmax_y;
 
     if has_views {
-    let model_w = gmax_x - gmin_x;
-    let model_h = gmax_y - gmin_y;
-    let n_views = sheet.views.len();
+        let model_w = gmax_x - gmin_x;
+        let model_h = gmax_y - gmin_y;
+        let n_views = sheet.views.len();
+        let has_manual_layout = sheet.views.iter().any(|view| {
+            view.sheet_x.is_some() || view.sheet_y.is_some() || view.sheet_scale.is_some()
+        });
 
-    if n_views == 1 {
-        let view = &sheet.views[0];
-        let scale = ((sheet.width - 2.0 * margin) / model_w)
-            .min((sheet.height - 2.0 * margin) / model_h)
-            * 0.8;
-        let ox = sheet.width / 2.0;
-        let oy = sheet.height / 2.0;
-        render_view_to_svg(&mut doc, view, ox, oy, scale);
-    } else if n_views >= 3 {
-        // Third-angle projection layout:
-        // Top view above front, right view beside front.
-        let cell_w = (sheet.width - 3.0 * margin) / 2.0;
-        let cell_h = (sheet.height - 3.0 * margin) / 2.0;
-        let scale = (cell_w / model_w).min(cell_h / model_h) * 0.7;
+        if has_manual_layout {
+            let cols = (n_views as f64).sqrt().ceil() as usize;
+            let rows = n_views.div_ceil(cols);
+            let cell_w = (sheet.width - margin * (cols as f64 + 1.0)) / cols as f64;
+            let cell_h = (sheet.height - margin * (rows as f64 + 1.0)) / rows as f64;
+            let scale = (cell_w / model_w).min(cell_h / model_h) * 0.7;
+            for (i, view) in sheet.views.iter().enumerate() {
+                let col = i % cols;
+                let row = i / cols;
+                let default_cx = margin + cell_w / 2.0 + (cell_w + margin) * col as f64;
+                let default_cy = margin + cell_h / 2.0 + (cell_h + margin) * row as f64;
+                let (cx, cy, view_scale) = view_sheet_layout(view, default_cx, default_cy, scale);
+                render_view_to_svg(&mut doc, view, cx, cy, view_scale);
+            }
+        } else if n_views == 1 {
+            let view = &sheet.views[0];
+            let scale = ((sheet.width - 2.0 * margin) / model_w)
+                .min((sheet.height - 2.0 * margin) / model_h)
+                * 0.8;
+            let ox = sheet.width / 2.0;
+            let oy = sheet.height / 2.0;
+            render_view_to_svg(&mut doc, view, ox, oy, scale);
+        } else if n_views >= 3 {
+            // Third-angle projection layout:
+            // Top view above front, right view beside front.
+            let cell_w = (sheet.width - 3.0 * margin) / 2.0;
+            let cell_h = (sheet.height - 3.0 * margin) / 2.0;
+            let scale = (cell_w / model_w).min(cell_h / model_h) * 0.7;
 
-        let front_cx = margin + cell_w / 2.0;
-        let front_cy = margin + cell_h + margin / 2.0 + cell_h / 2.0;
-        render_view_to_svg(&mut doc, &sheet.views[0], front_cx, front_cy, scale);
+            let front_cx = margin + cell_w / 2.0;
+            let front_cy = margin + cell_h + margin / 2.0 + cell_h / 2.0;
+            render_view_to_svg(&mut doc, &sheet.views[0], front_cx, front_cy, scale);
 
-        let top_cx = front_cx;
-        let top_cy = margin + cell_h / 2.0;
-        render_view_to_svg(&mut doc, &sheet.views[1], top_cx, top_cy, scale);
+            let top_cx = front_cx;
+            let top_cy = margin + cell_h / 2.0;
+            render_view_to_svg(&mut doc, &sheet.views[1], top_cx, top_cy, scale);
 
-        let right_cx = margin + cell_w + margin + cell_w / 2.0;
-        let right_cy = front_cy;
-        render_view_to_svg(&mut doc, &sheet.views[2], right_cx, right_cy, scale);
-    } else {
-        // 2 views: side by side.
-        let cell_w = (sheet.width - 3.0 * margin) / 2.0;
-        let cell_h = sheet.height - 2.0 * margin;
-        let scale = (cell_w / model_w).min(cell_h / model_h) * 0.7;
-        for (i, view) in sheet.views.iter().enumerate() {
-            let cx = margin + cell_w / 2.0 + (cell_w + margin) * i as f64;
-            let cy = sheet.height / 2.0;
-            render_view_to_svg(&mut doc, view, cx, cy, scale);
+            let right_cx = margin + cell_w + margin + cell_w / 2.0;
+            let right_cy = front_cy;
+            render_view_to_svg(&mut doc, &sheet.views[2], right_cx, right_cy, scale);
+        } else {
+            // 2 views: side by side.
+            let cell_w = (sheet.width - 3.0 * margin) / 2.0;
+            let cell_h = sheet.height - 2.0 * margin;
+            let scale = (cell_w / model_w).min(cell_h / model_h) * 0.7;
+            for (i, view) in sheet.views.iter().enumerate() {
+                let cx = margin + cell_w / 2.0 + (cell_w + margin) * i as f64;
+                let cy = sheet.height / 2.0;
+                render_view_to_svg(&mut doc, view, cx, cy, scale);
+            }
         }
-    }
     } // end if has_views
 
     // Render dimensions.
     for dim in &sheet.dimensions {
         render_dimension_to_svg(&mut doc, dim);
+    }
+    for dim in &sheet.extended_dimensions {
+        render_dimension_type_to_svg(&mut doc, dim);
+    }
+    for dim in &sheet.arc_length_dimensions {
+        render_arc_length_dimension_to_svg(&mut doc, dim);
+    }
+    for ann in &sheet.area_annotations {
+        render_area_annotation_to_svg(&mut doc, ann);
+    }
+    for ann in &sheet.text_annotations {
+        render_text_annotation_to_svg(&mut doc, ann);
+    }
+    for ann in &sheet.rich_text_annotations {
+        render_rich_text_annotation_to_svg(&mut doc, ann);
+    }
+    for ann in &sheet.balloon_annotations {
+        render_balloon_annotation_to_svg(&mut doc, ann);
+    }
+    for leader in &sheet.leader_lines {
+        render_leader_line_to_svg(&mut doc, leader);
+    }
+    for weld in &sheet.weld_symbols {
+        render_weld_symbol_to_svg(&mut doc, weld);
+    }
+    for symbol in &sheet.surface_finish_symbols {
+        render_surface_finish_to_svg(&mut doc, symbol);
+    }
+    for mark in &sheet.center_marks {
+        render_center_mark_to_svg(&mut doc, mark);
+    }
+    for centerline in &sheet.centerlines {
+        render_centerline_to_svg(&mut doc, centerline);
+    }
+    for bolt_circle in &sheet.bolt_circle_centerlines {
+        render_bolt_circle_centerlines_to_svg(&mut doc, bolt_circle);
     }
 
     // Title block.
@@ -999,13 +1197,20 @@ pub fn drawing_to_svg(sheet: &DrawingSheet) -> SvgDocument {
     doc
 }
 
-fn render_view_to_svg(
-    doc: &mut SvgDocument,
+fn view_sheet_layout(
     view: &DrawingView,
-    cx: f64,
-    cy: f64,
-    scale: f64,
-) {
+    default_x: f64,
+    default_y: f64,
+    default_scale: f64,
+) -> (f64, f64, f64) {
+    (
+        view.sheet_x.unwrap_or(default_x),
+        view.sheet_y.unwrap_or(default_y),
+        view.sheet_scale.unwrap_or(default_scale),
+    )
+}
+
+fn render_view_to_svg(doc: &mut SvgDocument, view: &DrawingView, cx: f64, cy: f64, scale: f64) {
     let visible_style = SvgStyle {
         stroke: "black".into(),
         stroke_width: 0.5,
@@ -1167,6 +1372,545 @@ fn render_dimension_to_svg(doc: &mut SvgDocument, dim: &Dimension) {
     }
 }
 
+fn render_dimension_type_to_svg(doc: &mut SvgDocument, dim: &DimensionType) {
+    let dim_style = SvgStyle {
+        stroke: "blue".into(),
+        stroke_width: 0.3,
+        fill: "none".into(),
+        stroke_dasharray: None,
+    };
+    let text_style = SvgStyle {
+        stroke: "none".into(),
+        stroke_width: 0.0,
+        fill: "blue".into(),
+        stroke_dasharray: None,
+    };
+
+    match dim {
+        DimensionType::Length { start, end, value } => {
+            doc.add(SvgElement::Line {
+                x1: start.x,
+                y1: start.y,
+                x2: end.x,
+                y2: end.y,
+                style: dim_style,
+            });
+            doc.add(SvgElement::Text {
+                x: (start.x + end.x) * 0.5,
+                y: (start.y + end.y) * 0.5 - 2.0,
+                text: format!("{value:.2}"),
+                font_size: 5.0,
+                anchor: "middle".into(),
+                style: text_style,
+            });
+        }
+        DimensionType::HorizontalDimension { start, end, value } => {
+            doc.add(SvgElement::Line {
+                x1: start.x,
+                y1: start.y,
+                x2: end.x,
+                y2: start.y,
+                style: dim_style,
+            });
+            doc.add(SvgElement::Text {
+                x: (start.x + end.x) * 0.5,
+                y: start.y - 2.0,
+                text: format!("{value:.2}"),
+                font_size: 5.0,
+                anchor: "middle".into(),
+                style: text_style,
+            });
+        }
+        DimensionType::VerticalDimension { start, end, value } => {
+            doc.add(SvgElement::Line {
+                x1: start.x,
+                y1: start.y,
+                x2: start.x,
+                y2: end.y,
+                style: dim_style,
+            });
+            doc.add(SvgElement::Text {
+                x: start.x + 3.0,
+                y: (start.y + end.y) * 0.5,
+                text: format!("{value:.2}"),
+                font_size: 5.0,
+                anchor: "start".into(),
+                style: text_style,
+            });
+        }
+        DimensionType::RadiusDimension { center, radius } => {
+            let visual_radius = radius.max(12.0);
+            doc.add(SvgElement::Line {
+                x1: center.x,
+                y1: center.y,
+                x2: center.x + visual_radius,
+                y2: center.y,
+                style: dim_style,
+            });
+            doc.add(SvgElement::Text {
+                x: center.x + visual_radius * 0.5,
+                y: center.y - 2.0,
+                text: format!("R{radius:.2}"),
+                font_size: 5.0,
+                anchor: "middle".into(),
+                style: text_style,
+            });
+        }
+        DimensionType::DiameterDimension { center, diameter } => {
+            let visual_radius = (diameter * 0.5).max(12.0);
+            doc.add(SvgElement::Line {
+                x1: center.x - visual_radius,
+                y1: center.y,
+                x2: center.x + visual_radius,
+                y2: center.y,
+                style: dim_style,
+            });
+            doc.add(SvgElement::Text {
+                x: center.x,
+                y: center.y - 2.0,
+                text: format!("\u{2300}{diameter:.2}"),
+                font_size: 5.0,
+                anchor: "middle".into(),
+                style: text_style,
+            });
+        }
+        DimensionType::AngleDimension {
+            vertex,
+            arm1_end,
+            arm2_end,
+            angle,
+        } => {
+            doc.add(SvgElement::Line {
+                x1: vertex.x,
+                y1: vertex.y,
+                x2: arm1_end.x,
+                y2: arm1_end.y,
+                style: dim_style.clone(),
+            });
+            doc.add(SvgElement::Line {
+                x1: vertex.x,
+                y1: vertex.y,
+                x2: arm2_end.x,
+                y2: arm2_end.y,
+                style: dim_style,
+            });
+            doc.add(SvgElement::Text {
+                x: (vertex.x + arm1_end.x + arm2_end.x) / 3.0,
+                y: (vertex.y + arm1_end.y + arm2_end.y) / 3.0,
+                text: format!("{angle:.1}\u{00B0}"),
+                font_size: 5.0,
+                anchor: "middle".into(),
+                style: text_style,
+            });
+        }
+    }
+}
+
+fn render_arc_length_dimension_to_svg(doc: &mut SvgDocument, dim: &ArcLengthDimension) {
+    let style = SvgStyle {
+        stroke: "blue".into(),
+        stroke_width: 0.3,
+        fill: "none".into(),
+        stroke_dasharray: None,
+    };
+    let text_style = SvgStyle {
+        stroke: "none".into(),
+        stroke_width: 0.0,
+        fill: "blue".into(),
+        stroke_dasharray: None,
+    };
+    let radius = dim.radius.max(12.0);
+    let start = dim.start_angle.to_radians();
+    let end = dim.end_angle.to_radians();
+    let steps = 24;
+    let points: Vec<(f64, f64)> = (0..=steps)
+        .map(|i| {
+            let t = start + (end - start) * i as f64 / steps as f64;
+            (
+                dim.center.x + radius * t.cos(),
+                dim.center.y + radius * t.sin(),
+            )
+        })
+        .collect();
+    doc.add(SvgElement::Polyline { points, style });
+    let mid = (start + end) * 0.5;
+    let arc_len = dim.radius * (end - start).abs();
+    doc.add(SvgElement::Text {
+        x: dim.center.x + (radius + 6.0) * mid.cos(),
+        y: dim.center.y + (radius + 6.0) * mid.sin(),
+        text: format!("Arc {arc_len:.2}"),
+        font_size: 5.0,
+        anchor: "middle".into(),
+        style: text_style,
+    });
+}
+
+fn render_area_annotation_to_svg(doc: &mut SvgDocument, ann: &AreaAnnotation) {
+    let area_style = SvgStyle {
+        stroke: "green".into(),
+        stroke_width: 0.3,
+        fill: "none".into(),
+        stroke_dasharray: Some("3,1".into()),
+    };
+    let text_style = SvgStyle {
+        stroke: "none".into(),
+        stroke_width: 0.0,
+        fill: "green".into(),
+        stroke_dasharray: None,
+    };
+    if ann.boundary.len() >= 3 {
+        let mut points: Vec<(f64, f64)> = ann.boundary.iter().map(|p| (p.x, p.y)).collect();
+        if let Some(first) = points.first().copied() {
+            points.push(first);
+        }
+        doc.add(SvgElement::Polyline {
+            points,
+            style: area_style,
+        });
+    }
+    doc.add(SvgElement::Text {
+        x: ann.label_position.x,
+        y: ann.label_position.y,
+        text: format!("Area: {:.2}", ann.area),
+        font_size: 5.0,
+        anchor: "middle".into(),
+        style: text_style,
+    });
+}
+
+fn annotation_text_style() -> SvgStyle {
+    SvgStyle {
+        stroke: "none".into(),
+        stroke_width: 0.0,
+        fill: "black".into(),
+        stroke_dasharray: None,
+    }
+}
+
+fn annotation_line_style() -> SvgStyle {
+    SvgStyle {
+        stroke: "black".into(),
+        stroke_width: 0.5,
+        fill: "none".into(),
+        stroke_dasharray: None,
+    }
+}
+
+fn render_text_annotation_to_svg(doc: &mut SvgDocument, ann: &TextAnnotation) {
+    doc.add(SvgElement::Text {
+        x: ann.position.x,
+        y: ann.position.y,
+        text: ann.text.clone(),
+        font_size: ann.font_size,
+        anchor: "start".into(),
+        style: annotation_text_style(),
+    });
+}
+
+fn strip_rich_text_tags(html: &str) -> String {
+    let mut plain = String::new();
+    let mut in_tag = false;
+    for ch in html.chars() {
+        match ch {
+            '<' => in_tag = true,
+            '>' => in_tag = false,
+            _ if !in_tag => plain.push(ch),
+            _ => {}
+        }
+    }
+    plain
+}
+
+fn render_rich_text_annotation_to_svg(doc: &mut SvgDocument, ann: &RichTextAnnotation) {
+    doc.add(SvgElement::Text {
+        x: ann.position.x,
+        y: ann.position.y,
+        text: strip_rich_text_tags(&ann.html_content),
+        font_size: ann.font_size,
+        anchor: "start".into(),
+        style: annotation_text_style(),
+    });
+}
+
+fn add_arrowhead(doc: &mut SvgDocument, tip: Point2, tail: Point2) {
+    let dx = tail.x - tip.x;
+    let dy = tail.y - tip.y;
+    let len = (dx * dx + dy * dy).sqrt();
+    if len <= 1e-10 {
+        return;
+    }
+    let ux = dx / len;
+    let uy = dy / len;
+    let px = -uy;
+    let py = ux;
+    let a = 3.0;
+    let p1 = (
+        tip.x + ux * a + px * a * 0.35,
+        tip.y + uy * a + py * a * 0.35,
+    );
+    let p2 = (
+        tip.x + ux * a - px * a * 0.35,
+        tip.y + uy * a - py * a * 0.35,
+    );
+    doc.add(SvgElement::Polyline {
+        points: vec![p1, (tip.x, tip.y), p2],
+        style: annotation_line_style(),
+    });
+}
+
+fn render_balloon_annotation_to_svg(doc: &mut SvgDocument, ba: &BalloonAnnotation) {
+    let dx = ba.balloon_center.x - ba.leader_start.x;
+    let dy = ba.balloon_center.y - ba.leader_start.y;
+    let len = (dx * dx + dy * dy).sqrt();
+    let end = if len > 1e-10 {
+        Point2::new(
+            ba.balloon_center.x - dx / len * ba.radius,
+            ba.balloon_center.y - dy / len * ba.radius,
+        )
+    } else {
+        Point2::new(ba.balloon_center.x - ba.radius, ba.balloon_center.y)
+    };
+    doc.add(SvgElement::Line {
+        x1: ba.leader_start.x,
+        y1: ba.leader_start.y,
+        x2: end.x,
+        y2: end.y,
+        style: annotation_line_style(),
+    });
+    add_arrowhead(doc, ba.leader_start, end);
+    doc.add(SvgElement::Circle {
+        cx: ba.balloon_center.x,
+        cy: ba.balloon_center.y,
+        r: ba.radius,
+        style: annotation_line_style(),
+    });
+    doc.add(SvgElement::Text {
+        x: ba.balloon_center.x,
+        y: ba.balloon_center.y + ba.radius * 0.35,
+        text: ba.text.clone(),
+        font_size: ba.radius,
+        anchor: "middle".into(),
+        style: annotation_text_style(),
+    });
+}
+
+fn render_leader_line_to_svg(doc: &mut SvgDocument, leader: &LeaderLine) {
+    doc.add(SvgElement::Line {
+        x1: leader.start.x,
+        y1: leader.start.y,
+        x2: leader.end.x,
+        y2: leader.end.y,
+        style: annotation_line_style(),
+    });
+    add_arrowhead(doc, leader.start, leader.end);
+    doc.add(SvgElement::Text {
+        x: leader.end.x + 3.0,
+        y: leader.end.y,
+        text: leader.text.clone(),
+        font_size: 5.0,
+        anchor: "start".into(),
+        style: annotation_text_style(),
+    });
+}
+
+fn render_weld_symbol_to_svg(doc: &mut SvgDocument, ws: &WeldSymbolFull) {
+    let x = ws.position.x;
+    let y = ws.position.y;
+    let s = ws.size;
+    let line_style = annotation_line_style();
+    doc.add(SvgElement::Line {
+        x1: x - s,
+        y1: y,
+        x2: x + s,
+        y2: y,
+        style: line_style.clone(),
+    });
+
+    match ws.weld_type {
+        WeldType::Fillet => doc.add(SvgElement::Polyline {
+            points: vec![
+                (x - s * 0.4, y),
+                (x + s * 0.4, y),
+                (x, y + s * 0.6),
+                (x - s * 0.4, y),
+            ],
+            style: line_style.clone(),
+        }),
+        WeldType::Groove => doc.add(SvgElement::Polyline {
+            points: vec![(x - s * 0.3, y), (x, y + s * 0.5), (x + s * 0.3, y)],
+            style: line_style.clone(),
+        }),
+        WeldType::Plug => doc.add(SvgElement::Polyline {
+            points: vec![
+                (x - s * 0.25, y),
+                (x + s * 0.25, y),
+                (x + s * 0.25, y + s * 0.45),
+                (x - s * 0.25, y + s * 0.45),
+                (x - s * 0.25, y),
+            ],
+            style: line_style.clone(),
+        }),
+        WeldType::Spot | WeldType::Seam => doc.add(SvgElement::Circle {
+            cx: x,
+            cy: y + s * 0.3,
+            r: s * 0.2,
+            style: if ws.weld_type == WeldType::Seam {
+                SvgStyle {
+                    stroke_dasharray: Some("1,1".into()),
+                    ..line_style.clone()
+                }
+            } else {
+                line_style.clone()
+            },
+        }),
+        WeldType::Backing => doc.add(SvgElement::Polyline {
+            points: vec![(x - s * 0.3, y), (x, y + s * 0.25), (x + s * 0.3, y)],
+            style: line_style.clone(),
+        }),
+    }
+
+    doc.add(SvgElement::Text {
+        x: x + s + 2.0,
+        y: y - 1.0,
+        text: format!("{:.1}", ws.size),
+        font_size: 4.0,
+        anchor: "start".into(),
+        style: annotation_text_style(),
+    });
+    if ws.length > 0.0 || ws.pitch > 0.0 {
+        let label = if ws.pitch > 0.0 {
+            format!("{:.0}({:.0})", ws.length, ws.pitch)
+        } else {
+            format!("{:.0}", ws.length)
+        };
+        doc.add(SvgElement::Text {
+            x: x - s,
+            y: y - 3.0,
+            text: label,
+            font_size: 3.5,
+            anchor: "start".into(),
+            style: annotation_text_style(),
+        });
+    }
+}
+
+fn render_surface_finish_to_svg(doc: &mut SvgDocument, sf: &SurfaceFinishSymbol) {
+    let s = 5.0;
+    doc.add(SvgElement::Polyline {
+        points: vec![
+            (sf.position.x - s * 0.5, sf.position.y - s),
+            (sf.position.x, sf.position.y),
+            (sf.position.x + s * 0.5, sf.position.y - s),
+        ],
+        style: annotation_line_style(),
+    });
+    doc.add(SvgElement::Text {
+        x: sf.position.x + s * 0.6,
+        y: sf.position.y - s * 0.5,
+        text: format!("Ra {:.1}", sf.roughness),
+        font_size: 4.0,
+        anchor: "start".into(),
+        style: annotation_text_style(),
+    });
+}
+
+fn centerline_style(width: f64) -> SvgStyle {
+    SvgStyle {
+        stroke: "red".into(),
+        stroke_width: width,
+        fill: "none".into(),
+        stroke_dasharray: Some("8,2,2,2".into()),
+    }
+}
+
+fn center_mark_style() -> SvgStyle {
+    SvgStyle {
+        stroke: "red".into(),
+        stroke_width: 0.3,
+        fill: "none".into(),
+        stroke_dasharray: None,
+    }
+}
+
+fn render_center_mark_to_svg(doc: &mut SvgDocument, cm: &CenterMark) {
+    let half = cm.size / 2.0;
+    let style = center_mark_style();
+    doc.add(SvgElement::Line {
+        x1: cm.center.x - half,
+        y1: cm.center.y,
+        x2: cm.center.x + half,
+        y2: cm.center.y,
+        style: style.clone(),
+    });
+    doc.add(SvgElement::Line {
+        x1: cm.center.x,
+        y1: cm.center.y - half,
+        x2: cm.center.x,
+        y2: cm.center.y + half,
+        style,
+    });
+}
+
+fn render_centerline_to_svg(doc: &mut SvgDocument, cl: &Centerline) {
+    let dx = cl.end.x - cl.start.x;
+    let dy = cl.end.y - cl.start.y;
+    let len = (dx * dx + dy * dy).sqrt();
+    if len <= 1e-10 {
+        return;
+    }
+    let ux = dx / len;
+    let uy = dy / len;
+    doc.add(SvgElement::Line {
+        x1: cl.start.x - ux * cl.extension,
+        y1: cl.start.y - uy * cl.extension,
+        x2: cl.end.x + ux * cl.extension,
+        y2: cl.end.y + uy * cl.extension,
+        style: centerline_style(0.25),
+    });
+}
+
+fn render_bolt_circle_centerlines_to_svg(doc: &mut SvgDocument, bc: &BoltCircleCenterlines) {
+    if bc.radius <= 0.0 {
+        return;
+    }
+    doc.add(SvgElement::Circle {
+        cx: bc.center.x,
+        cy: bc.center.y,
+        r: bc.radius,
+        style: centerline_style(0.25),
+    });
+    render_center_mark_to_svg(
+        doc,
+        &CenterMark {
+            center: bc.center,
+            size: bc.mark_size,
+        },
+    );
+
+    let style = center_mark_style();
+    for i in 0..bc.bolt_count {
+        let angle = bc.start_angle.to_radians()
+            + 2.0 * std::f64::consts::PI * i as f64 / bc.bolt_count as f64;
+        let bx = bc.center.x + bc.radius * angle.cos();
+        let by = bc.center.y + bc.radius * angle.sin();
+        let half = bc.mark_size * 0.15;
+        doc.add(SvgElement::Line {
+            x1: bx - half,
+            y1: by,
+            x2: bx + half,
+            y2: by,
+            style: style.clone(),
+        });
+        doc.add(SvgElement::Line {
+            x1: bx,
+            y1: by - half,
+            x2: bx,
+            y2: by + half,
+            style: style.clone(),
+        });
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Extended TechDraw annotations (Phase V4)
 // ---------------------------------------------------------------------------
@@ -1196,7 +1940,11 @@ pub fn arc_length_dimension_to_svg(dim: &ArcLengthDimension) -> String {
     let sy = dim.center.y + r * sa.sin();
     let ex = dim.center.x + r * ea.cos();
     let ey = dim.center.y + r * ea.sin();
-    let large = if (ea - sa).abs() > std::f64::consts::PI { 1 } else { 0 };
+    let large = if (ea - sa).abs() > std::f64::consts::PI {
+        1
+    } else {
+        0
+    };
     let sweep = if ea > sa { 1 } else { 0 };
 
     let _ = write!(
@@ -1208,7 +1956,11 @@ pub fn arc_length_dimension_to_svg(dim: &ArcLengthDimension) -> String {
     let mid_angle = (sa + ea) / 2.0;
     let mx = dim.center.x + (r + 5.0) * mid_angle.cos();
     let my = dim.center.y + (r + 5.0) * mid_angle.sin();
-    let _ = write!(svg, "<text x=\"{}\" y=\"{}\" {}>{:.2}</text>", mx, my, text_style, arc_len);
+    let _ = write!(
+        svg,
+        "<text x=\"{}\" y=\"{}\" {}>{:.2}</text>",
+        mx, my, text_style, arc_len
+    );
     svg
 }
 
@@ -1228,18 +1980,72 @@ pub fn extent_dimension_to_svg(dim: &ExtentDimension) -> String {
 
     match dim {
         ExtentDimension::Horizontal { min_x, max_x, y } => {
-            let _ = write!(svg, "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />", min_x, y, max_x, y, style);
-            let _ = write!(svg, "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />", min_x, y - 3.0, min_x, y + 3.0, style);
-            let _ = write!(svg, "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />", max_x, y - 3.0, max_x, y + 3.0, style);
+            let _ = write!(
+                svg,
+                "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />",
+                min_x, y, max_x, y, style
+            );
+            let _ = write!(
+                svg,
+                "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />",
+                min_x,
+                y - 3.0,
+                min_x,
+                y + 3.0,
+                style
+            );
+            let _ = write!(
+                svg,
+                "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />",
+                max_x,
+                y - 3.0,
+                max_x,
+                y + 3.0,
+                style
+            );
             let mx = (min_x + max_x) / 2.0;
-            let _ = write!(svg, "<text x=\"{}\" y=\"{}\" {}>{:.2}</text>", mx, y - 2.0, text_style, max_x - min_x);
+            let _ = write!(
+                svg,
+                "<text x=\"{}\" y=\"{}\" {}>{:.2}</text>",
+                mx,
+                y - 2.0,
+                text_style,
+                max_x - min_x
+            );
         }
         ExtentDimension::Vertical { min_y, max_y, x } => {
-            let _ = write!(svg, "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />", x, min_y, x, max_y, style);
-            let _ = write!(svg, "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />", x - 3.0, min_y, x + 3.0, min_y, style);
-            let _ = write!(svg, "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />", x - 3.0, max_y, x + 3.0, max_y, style);
+            let _ = write!(
+                svg,
+                "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />",
+                x, min_y, x, max_y, style
+            );
+            let _ = write!(
+                svg,
+                "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />",
+                x - 3.0,
+                min_y,
+                x + 3.0,
+                min_y,
+                style
+            );
+            let _ = write!(
+                svg,
+                "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />",
+                x - 3.0,
+                max_y,
+                x + 3.0,
+                max_y,
+                style
+            );
             let my = (min_y + max_y) / 2.0;
-            let _ = write!(svg, "<text x=\"{}\" y=\"{}\" {}>{:.2}</text>", x + 3.0, my, text_style, max_y - min_y);
+            let _ = write!(
+                svg,
+                "<text x=\"{}\" y=\"{}\" {}>{:.2}</text>",
+                x + 3.0,
+                my,
+                text_style,
+                max_y - min_y
+            );
         }
     }
     svg
@@ -1305,7 +2111,10 @@ pub fn weld_symbol_to_svg(ws: &WeldSymbol) -> String {
     let _ = write!(
         svg,
         "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"black\" stroke-width=\"0.5\" />",
-        x - s, y, x + s, y
+        x - s,
+        y,
+        x + s,
+        y
     );
 
     match ws.weld_type {
@@ -1314,9 +2123,12 @@ pub fn weld_symbol_to_svg(ws: &WeldSymbol) -> String {
             let _ = write!(
                 svg,
                 "<polygon points=\"{},{} {},{} {},{}\" fill=\"none\" stroke=\"black\" stroke-width=\"0.4\" />",
-                x - s * 0.4, y,
-                x + s * 0.4, y,
-                x, y + s * 0.6
+                x - s * 0.4,
+                y,
+                x + s * 0.4,
+                y,
+                x,
+                y + s * 0.6
             );
         }
         WeldType::Groove => {
@@ -1324,9 +2136,12 @@ pub fn weld_symbol_to_svg(ws: &WeldSymbol) -> String {
             let _ = write!(
                 svg,
                 "<polyline points=\"{},{} {},{} {},{}\" fill=\"none\" stroke=\"black\" stroke-width=\"0.4\" />",
-                x - s * 0.3, y,
-                x, y + s * 0.5,
-                x + s * 0.3, y
+                x - s * 0.3,
+                y,
+                x,
+                y + s * 0.5,
+                x + s * 0.3,
+                y
             );
         }
         WeldType::Plug => {
@@ -1334,7 +2149,10 @@ pub fn weld_symbol_to_svg(ws: &WeldSymbol) -> String {
             let _ = write!(
                 svg,
                 "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"black\" />",
-                x - s * 0.2, y, s * 0.4, s * 0.4
+                x - s * 0.2,
+                y,
+                s * 0.4,
+                s * 0.4
             );
         }
         WeldType::Spot => {
@@ -1342,7 +2160,9 @@ pub fn weld_symbol_to_svg(ws: &WeldSymbol) -> String {
             let _ = write!(
                 svg,
                 "<circle cx=\"{}\" cy=\"{}\" r=\"{}\" fill=\"none\" stroke=\"black\" stroke-width=\"0.4\" />",
-                x, y + s * 0.3, s * 0.2
+                x,
+                y + s * 0.3,
+                s * 0.2
             );
         }
         WeldType::Seam => {
@@ -1350,7 +2170,9 @@ pub fn weld_symbol_to_svg(ws: &WeldSymbol) -> String {
             let _ = write!(
                 svg,
                 "<circle cx=\"{}\" cy=\"{}\" r=\"{}\" fill=\"none\" stroke=\"black\" stroke-width=\"0.4\" stroke-dasharray=\"1,1\" />",
-                x, y + s * 0.3, s * 0.2
+                x,
+                y + s * 0.3,
+                s * 0.2
             );
         }
         WeldType::Backing => {
@@ -1359,7 +2181,12 @@ pub fn weld_symbol_to_svg(ws: &WeldSymbol) -> String {
             let _ = write!(
                 svg,
                 "<path d=\"M {},{} A {},{} 0 0 1 {},{}\" fill=\"none\" stroke=\"black\" stroke-width=\"0.4\" />",
-                x - r, y, r, r, x + r, y
+                x - r,
+                y,
+                r,
+                r,
+                x + r,
+                y
             );
         }
     }
@@ -1368,7 +2195,9 @@ pub fn weld_symbol_to_svg(ws: &WeldSymbol) -> String {
     let _ = write!(
         svg,
         "<text x=\"{}\" y=\"{}\" font-size=\"4\" fill=\"black\">{:.1}</text>",
-        x + s + 1.0, y - 1.0, ws.size
+        x + s + 1.0,
+        y - 1.0,
+        ws.size
     );
     svg
 }
@@ -1394,7 +2223,10 @@ pub fn balloon_annotation_to_svg(ba: &BalloonAnnotation) -> String {
     let (ex, ey) = if len > 1e-10 {
         let ux = dx / len;
         let uy = dy / len;
-        (ba.balloon_center.x - ux * ba.radius, ba.balloon_center.y - uy * ba.radius)
+        (
+            ba.balloon_center.x - ux * ba.radius,
+            ba.balloon_center.y - uy * ba.radius,
+        )
     } else {
         (ba.balloon_center.x - ba.radius, ba.balloon_center.y)
     };
@@ -1415,7 +2247,8 @@ pub fn balloon_annotation_to_svg(ba: &BalloonAnnotation) -> String {
         let _ = write!(
             svg,
             "<polygon points=\"{},{} {},{} {},{}\" fill=\"black\" />",
-            ba.leader_start.x, ba.leader_start.y,
+            ba.leader_start.x,
+            ba.leader_start.y,
             ba.leader_start.x + ux * a + px * a * 0.3,
             ba.leader_start.y + uy * a + py * a * 0.3,
             ba.leader_start.x + ux * a - px * a * 0.3,
@@ -1498,23 +2331,52 @@ pub fn bolt_circle_centerlines_to_svg(bc: &BoltCircleCenterlines) -> String {
     // Center mark
     let half = bc.mark_size / 2.0;
     let cm_style = "stroke=\"red\" stroke-width=\"0.3\"";
-    let _ = write!(svg, "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />",
-        bc.center.x - half, bc.center.y, bc.center.x + half, bc.center.y, cm_style);
-    let _ = write!(svg, "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />",
-        bc.center.x, bc.center.y - half, bc.center.x, bc.center.y + half, cm_style);
+    let _ = write!(
+        svg,
+        "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />",
+        bc.center.x - half,
+        bc.center.y,
+        bc.center.x + half,
+        bc.center.y,
+        cm_style
+    );
+    let _ = write!(
+        svg,
+        "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />",
+        bc.center.x,
+        bc.center.y - half,
+        bc.center.x,
+        bc.center.y + half,
+        cm_style
+    );
 
     // Radial lines to each bolt position
     for i in 0..bc.bolt_count {
-        let angle = bc.start_angle.to_radians() + 2.0 * std::f64::consts::PI * i as f64 / bc.bolt_count as f64;
+        let angle = bc.start_angle.to_radians()
+            + 2.0 * std::f64::consts::PI * i as f64 / bc.bolt_count as f64;
         let bx = bc.center.x + bc.radius * angle.cos();
         let by = bc.center.y + bc.radius * angle.sin();
 
         // Small cross at bolt position
         let s = bc.mark_size * 0.3;
-        let _ = write!(svg, "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />",
-            bx - s, by, bx + s, by, cm_style);
-        let _ = write!(svg, "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />",
-            bx, by - s, bx, by + s, cm_style);
+        let _ = write!(
+            svg,
+            "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />",
+            bx - s,
+            by,
+            bx + s,
+            by,
+            cm_style
+        );
+        let _ = write!(
+            svg,
+            "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" {} />",
+            bx,
+            by - s,
+            bx,
+            by + s,
+            cm_style
+        );
     }
     svg
 }
@@ -1574,7 +2436,12 @@ pub fn break_line_to_svg(bl: &BreakLine) -> String {
     let mut points = Vec::with_capacity(segments + 1);
     for i in 0..=segments {
         let x = bl.x_min + i as f64 * dx;
-        let y = bl.y_position + if i % 2 == 0 { bl.amplitude } else { -bl.amplitude };
+        let y = bl.y_position
+            + if i % 2 == 0 {
+                bl.amplitude
+            } else {
+                -bl.amplitude
+            };
         points.push(format!("{},{}", x, y));
     }
     let _ = write!(
@@ -1645,9 +2512,7 @@ pub fn broken_view(
     let mut edges = Vec::new();
     for e in &source.edges {
         // Skip edges fully inside the removed region
-        if e.x1 >= break_start && e.x1 <= break_end
-            && e.x2 >= break_start && e.x2 <= break_end
-        {
+        if e.x1 >= break_start && e.x1 <= break_end && e.x2 >= break_start && e.x2 <= break_end {
             continue;
         }
         let x1 = if e.x1 > break_end { e.x1 - shift } else { e.x1 };
@@ -1677,6 +2542,9 @@ pub fn broken_view(
         center_x: cx,
         center_y: cy,
         scale: source.scale,
+        sheet_x: source.sheet_x,
+        sheet_y: source.sheet_y,
+        sheet_scale: source.sheet_scale,
     }
 }
 
@@ -1696,7 +2564,11 @@ pub fn complex_section_view(
         .first()
         .map(|(_, n)| n.normalized().unwrap_or(Vec3::Z))
         .unwrap_or(Vec3::Z);
-    let up_hint = if first_normal.x.abs() < 0.9 { Vec3::X } else { Vec3::Y };
+    let up_hint = if first_normal.x.abs() < 0.9 {
+        Vec3::X
+    } else {
+        Vec3::Y
+    };
     let right = first_normal.cross(up_hint).normalized().unwrap_or(Vec3::X);
     let up = right.cross(first_normal).normalized().unwrap_or(Vec3::Y);
 
@@ -1758,6 +2630,9 @@ pub fn complex_section_view(
         center_x: cx,
         center_y: cy,
         scale: 1.0,
+        sheet_x: None,
+        sheet_y: None,
+        sheet_scale: None,
     }
 }
 
@@ -1774,10 +2649,14 @@ pub fn clip_group(
         let mut edges = Vec::new();
         for e in &view.edges {
             // Keep edges where at least one endpoint is inside the clip rect
-            let in1 = e.x1 >= clip_x && e.x1 <= clip_x + clip_width
-                && e.y1 >= clip_y && e.y1 <= clip_y + clip_height;
-            let in2 = e.x2 >= clip_x && e.x2 <= clip_x + clip_width
-                && e.y2 >= clip_y && e.y2 <= clip_y + clip_height;
+            let in1 = e.x1 >= clip_x
+                && e.x1 <= clip_x + clip_width
+                && e.y1 >= clip_y
+                && e.y1 <= clip_y + clip_height;
+            let in2 = e.x2 >= clip_x
+                && e.x2 <= clip_x + clip_width
+                && e.y2 >= clip_y
+                && e.y2 <= clip_y + clip_height;
             if in1 || in2 {
                 edges.push(e.clone());
             }
@@ -1788,6 +2667,9 @@ pub fn clip_group(
             center_x: view.center_x,
             center_y: view.center_y,
             scale: view.scale,
+            sheet_x: view.sheet_x,
+            sheet_y: view.sheet_y,
+            sheet_scale: view.sheet_scale,
         });
     }
     ClipGroup {
@@ -1820,6 +2702,9 @@ pub fn active_view(
         center_x: viewport_size.0 / 2.0,
         center_y: viewport_size.1 / 2.0,
         scale: 1.0,
+        sheet_x: None,
+        sheet_y: None,
+        sheet_scale: None,
     };
 
     let Some(solid_data) = model.solids.get(solid) else {
@@ -1872,8 +2757,16 @@ pub fn active_view(
         max_x = max_x.max(e.x1).max(e.x2);
         max_y = max_y.max(e.y1).max(e.y2);
     }
-    let cx = if edges.is_empty() { 0.0 } else { (min_x + max_x) / 2.0 };
-    let cy = if edges.is_empty() { 0.0 } else { (min_y + max_y) / 2.0 };
+    let cx = if edges.is_empty() {
+        0.0
+    } else {
+        (min_x + max_x) / 2.0
+    };
+    let cy = if edges.is_empty() {
+        0.0
+    } else {
+        (min_y + max_y) / 2.0
+    };
 
     DrawingView {
         direction: ProjectionDir::Front,
@@ -1881,6 +2774,9 @@ pub fn active_view(
         center_x: cx,
         center_y: cy,
         scale: 1.0,
+        sheet_x: None,
+        sheet_y: None,
+        sheet_scale: None,
     }
 }
 
@@ -1894,7 +2790,11 @@ pub fn project_shape_2d(
     _projection_type: ProjectionType,
 ) -> Vec<ProjectedEdge> {
     let toward_cam = Vec3::new(-direction.x, -direction.y, -direction.z);
-    let up_hint = if toward_cam.x.abs() < 0.9 { Vec3::new(0.0, 0.0, 1.0) } else { Vec3::new(0.0, 1.0, 0.0) };
+    let up_hint = if toward_cam.x.abs() < 0.9 {
+        Vec3::new(0.0, 0.0, 1.0)
+    } else {
+        Vec3::new(0.0, 1.0, 0.0)
+    };
     let right = toward_cam.cross(up_hint).normalized().unwrap_or(Vec3::X);
     let up = right.cross(toward_cam).normalized().unwrap_or(Vec3::Y);
 
@@ -1946,10 +2846,7 @@ pub fn project_shape_2d(
 /// If `radius > 0`, creates a radius dimension; otherwise creates a linear dimension.
 pub fn contextual_dimension(p1: Point2, p2: Point2, radius: f64) -> DimensionType {
     if radius > 0.0 {
-        DimensionType::RadiusDimension {
-            center: p1,
-            radius,
-        }
+        DimensionType::RadiusDimension { center: p1, radius }
     } else {
         let dx = p2.x - p1.x;
         let dy = p2.y - p1.y;
@@ -2003,7 +2900,11 @@ pub fn area_annotation_to_svg(ann: &AreaAnnotation) -> String {
     use std::fmt::Write;
     let mut svg = String::new();
     if ann.boundary.len() >= 3 {
-        let pts: Vec<String> = ann.boundary.iter().map(|p| format!("{},{}", p.x, p.y)).collect();
+        let pts: Vec<String> = ann
+            .boundary
+            .iter()
+            .map(|p| format!("{},{}", p.x, p.y))
+            .collect();
         let _ = write!(
             svg,
             "<polygon points=\"{}\" fill=\"none\" stroke=\"green\" stroke-width=\"0.3\" stroke-dasharray=\"3,1\" />",
@@ -2040,16 +2941,14 @@ pub fn hv_extent_dimension(points: &[Point2], horizontal: bool) -> ExtentDimensi
     if horizontal {
         let min_x = points.iter().map(|p| p.x).fold(f64::MAX, f64::min);
         let max_x = points.iter().map(|p| p.x).fold(f64::MIN, f64::max);
-        let y = points.iter().map(|p| p.y).fold(0.0, |a, b| a + b)
-            / points.len().max(1) as f64
-            - 15.0;
+        let y =
+            points.iter().map(|p| p.y).fold(0.0, |a, b| a + b) / points.len().max(1) as f64 - 15.0;
         ExtentDimension::Horizontal { min_x, max_x, y }
     } else {
         let min_y = points.iter().map(|p| p.y).fold(f64::MAX, f64::min);
         let max_y = points.iter().map(|p| p.y).fold(f64::MIN, f64::max);
-        let x = points.iter().map(|p| p.x).fold(0.0, |a, b| a + b)
-            / points.len().max(1) as f64
-            + 15.0;
+        let x =
+            points.iter().map(|p| p.x).fold(0.0, |a, b| a + b) / points.len().max(1) as f64 + 15.0;
         ExtentDimension::Vertical { min_y, max_y, x }
     }
 }
@@ -2057,11 +2956,7 @@ pub fn hv_extent_dimension(points: &[Point2], horizontal: bool) -> ExtentDimensi
 /// Updates dimension reference positions after model regeneration.
 ///
 /// Shifts all dimensions by the difference between old and new model centers.
-pub fn repair_dimension_refs(
-    dims: &mut [DimensionType],
-    old_center: Point2,
-    new_center: Point2,
-) {
+pub fn repair_dimension_refs(dims: &mut [DimensionType], old_center: Point2, new_center: Point2) {
     let dx = new_center.x - old_center.x;
     let dy = new_center.y - old_center.y;
     for dim in dims.iter_mut() {
@@ -2092,7 +2987,12 @@ pub fn repair_dimension_refs(
                 center.x += dx;
                 center.y += dy;
             }
-            DimensionType::AngleDimension { vertex, arm1_end, arm2_end, .. } => {
+            DimensionType::AngleDimension {
+                vertex,
+                arm1_end,
+                arm2_end,
+                ..
+            } => {
                 vertex.x += dx;
                 vertex.y += dy;
                 arm1_end.x += dx;
@@ -2105,7 +3005,11 @@ pub fn repair_dimension_refs(
 }
 
 /// Creates a rich text annotation with HTML-subset content.
-pub fn rich_text_annotation(position: Point2, html_content: &str, font_size: f64) -> RichTextAnnotation {
+pub fn rich_text_annotation(
+    position: Point2,
+    html_content: &str,
+    font_size: f64,
+) -> RichTextAnnotation {
     RichTextAnnotation {
         position,
         html_content: html_content.to_string(),
@@ -2157,13 +3061,13 @@ pub fn balloon_annotation(
 /// Creates an axonometric (true-length) dimension projected along a view direction.
 ///
 /// Measures the actual 3D distance and annotates it on the 2D projection.
-pub fn axonometric_length_dimension(
-    p1: Point3,
-    p2: Point3,
-    view_direction: Vec3,
-) -> DimensionType {
+pub fn axonometric_length_dimension(p1: Point3, p2: Point3, view_direction: Vec3) -> DimensionType {
     let toward_cam = Vec3::new(-view_direction.x, -view_direction.y, -view_direction.z);
-    let up_hint = if toward_cam.x.abs() < 0.9 { Vec3::new(0.0, 0.0, 1.0) } else { Vec3::new(0.0, 1.0, 0.0) };
+    let up_hint = if toward_cam.x.abs() < 0.9 {
+        Vec3::new(0.0, 0.0, 1.0)
+    } else {
+        Vec3::new(0.0, 1.0, 0.0)
+    };
     let right = toward_cam.cross(up_hint).normalized().unwrap_or(Vec3::X);
     let up = right.cross(toward_cam).normalized().unwrap_or(Vec3::Y);
 
@@ -2308,7 +3212,9 @@ pub fn weld_symbol_full_to_svg(ws: &WeldSymbolFull) -> String {
         let _ = write!(
             svg,
             "<text x=\"{}\" y=\"{}\" font-size=\"3.5\" fill=\"black\">{}</text>",
-            x - s, y - 3.0, label
+            x - s,
+            y - 3.0,
+            label
         );
     }
 
@@ -2318,7 +3224,10 @@ pub fn weld_symbol_full_to_svg(ws: &WeldSymbolFull) -> String {
             let _ = write!(
                 svg,
                 "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"black\" stroke-width=\"0.3\" />",
-                x - s * 0.3, y - s * 0.1, x + s * 0.3, y - s * 0.1
+                x - s * 0.3,
+                y - s * 0.1,
+                x + s * 0.3,
+                y - s * 0.1
             );
         }
         WeldContour::Convex => {
@@ -2326,7 +3235,12 @@ pub fn weld_symbol_full_to_svg(ws: &WeldSymbolFull) -> String {
             let _ = write!(
                 svg,
                 "<path d=\"M {},{} A {},{} 0 0 1 {},{}\" fill=\"none\" stroke=\"black\" stroke-width=\"0.3\" />",
-                x - r, y - s * 0.1, r, r * 0.5, x + r, y - s * 0.1
+                x - r,
+                y - s * 0.1,
+                r,
+                r * 0.5,
+                x + r,
+                y - s * 0.1
             );
         }
         WeldContour::Concave => {
@@ -2334,7 +3248,12 @@ pub fn weld_symbol_full_to_svg(ws: &WeldSymbolFull) -> String {
             let _ = write!(
                 svg,
                 "<path d=\"M {},{} A {},{} 0 0 0 {},{}\" fill=\"none\" stroke=\"black\" stroke-width=\"0.3\" />",
-                x - r, y - s * 0.1, r, r * 0.5, x + r, y - s * 0.1
+                x - r,
+                y - s * 0.1,
+                r,
+                r * 0.5,
+                x + r,
+                y - s * 0.1
             );
         }
         WeldContour::None => {}
@@ -2351,7 +3270,9 @@ pub fn weld_symbol_full_to_svg(ws: &WeldSymbolFull) -> String {
         let _ = write!(
             svg,
             "<text x=\"{}\" y=\"{}\" font-size=\"3\" fill=\"black\">{}</text>",
-            x + s + 2.0, y + 3.0, finish_char
+            x + s + 2.0,
+            y + 3.0,
+            finish_char
         );
     }
 
@@ -2401,7 +3322,8 @@ pub fn clip_group_to_svg(cg: &ClipGroup) -> String {
     );
     let _ = write!(svg, "<g clip-path=\"url(#{})\" >", clip_id);
     let vis_style = "stroke=\"black\" stroke-width=\"0.5\" fill=\"none\"";
-    let hid_style = "stroke=\"#888888\" stroke-width=\"0.3\" fill=\"none\" stroke-dasharray=\"2,1\"";
+    let hid_style =
+        "stroke=\"#888888\" stroke-width=\"0.3\" fill=\"none\" stroke-dasharray=\"2,1\"";
     for view in &cg.views {
         for e in &view.edges {
             let style = if e.visible { vis_style } else { hid_style };
@@ -2492,10 +3414,7 @@ pub fn centerline_between_lines(
             (l1_start.x + l2_start.x) / 2.0,
             (l1_start.y + l2_start.y) / 2.0,
         ),
-        end: Point2::new(
-            (l1_end.x + l2_end.x) / 2.0,
-            (l1_end.y + l2_end.y) / 2.0,
-        ),
+        end: Point2::new((l1_end.x + l2_end.x) / 2.0, (l1_end.y + l2_end.y) / 2.0),
         extension,
     }
 }
@@ -2526,11 +3445,7 @@ pub fn bolt_circle_centerlines(
 }
 
 /// Creates a cosmetic line.
-pub fn cosmetic_line(
-    p1: Point2,
-    p2: Point2,
-    style: CosmeticLineStyle,
-) -> CosmeticLine {
+pub fn cosmetic_line(p1: Point2, p2: Point2, style: CosmeticLineStyle) -> CosmeticLine {
     CosmeticLine {
         start: p1,
         end: p2,
@@ -2603,12 +3518,18 @@ pub fn cosmetic_thread_to_svg(ct: &CosmeticThread) -> String {
     let _ = write!(
         svg,
         "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"black\" stroke-width=\"0.3\" />",
-        x - r, y - half_len, x - r, y + half_len
+        x - r,
+        y - half_len,
+        x - r,
+        y + half_len
     );
     let _ = write!(
         svg,
         "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"black\" stroke-width=\"0.3\" />",
-        x + r, y - half_len, x + r, y + half_len
+        x + r,
+        y - half_len,
+        x + r,
+        y + half_len
     );
     svg
 }
@@ -2647,14 +3568,38 @@ pub fn cosmetic_vertex_to_svg(cv: &CosmeticVertex) -> String {
     let y = cv.position.y;
     match cv.style {
         CosmeticVertexStyle::Cross => {
-            let _ = write!(svg, "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"red\" stroke-width=\"0.3\" />", x - s, y, x + s, y);
-            let _ = write!(svg, "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"red\" stroke-width=\"0.3\" />", x, y - s, x, y + s);
+            let _ = write!(
+                svg,
+                "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"red\" stroke-width=\"0.3\" />",
+                x - s,
+                y,
+                x + s,
+                y
+            );
+            let _ = write!(
+                svg,
+                "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"red\" stroke-width=\"0.3\" />",
+                x,
+                y - s,
+                x,
+                y + s
+            );
         }
         CosmeticVertexStyle::Circle => {
-            let _ = write!(svg, "<circle cx=\"{}\" cy=\"{}\" r=\"{}\" fill=\"none\" stroke=\"red\" stroke-width=\"0.3\" />", x, y, s);
+            let _ = write!(
+                svg,
+                "<circle cx=\"{}\" cy=\"{}\" r=\"{}\" fill=\"none\" stroke=\"red\" stroke-width=\"0.3\" />",
+                x, y, s
+            );
         }
         CosmeticVertexStyle::Dot => {
-            let _ = write!(svg, "<circle cx=\"{}\" cy=\"{}\" r=\"{}\" fill=\"red\" />", x, y, s * 0.5);
+            let _ = write!(
+                svg,
+                "<circle cx=\"{}\" cy=\"{}\" r=\"{}\" fill=\"red\" />",
+                x,
+                y,
+                s * 0.5
+            );
         }
     }
     svg
@@ -2713,7 +3658,11 @@ pub fn cosmetic_arc_to_svg(ca: &CosmeticArc) -> String {
     let sy = ca.center.y + ca.radius * sa.sin();
     let ex = ca.center.x + ca.radius * ea.cos();
     let ey = ca.center.y + ca.radius * ea.sin();
-    let large = if (ea - sa).abs() > std::f64::consts::PI { 1 } else { 0 };
+    let large = if (ea - sa).abs() > std::f64::consts::PI {
+        1
+    } else {
+        0
+    };
     let sweep = if ea > sa { 1 } else { 0 };
     let _ = write!(
         svg,
@@ -2766,8 +3715,14 @@ pub fn cosmetic_perpendicular_line(
         (0.0, 1.0)
     };
     CosmeticLine {
-        start: Point2::new(through_point.x + px * half_length, through_point.y + py * half_length),
-        end: Point2::new(through_point.x - px * half_length, through_point.y - py * half_length),
+        start: Point2::new(
+            through_point.x + px * half_length,
+            through_point.y + py * half_length,
+        ),
+        end: Point2::new(
+            through_point.x - px * half_length,
+            through_point.y - py * half_length,
+        ),
         style,
         color: "gray".to_string(),
         width: 0.3,
@@ -2929,19 +3884,24 @@ pub fn formatted_dimension_to_svg(fd: &FormattedDimension) -> String {
         DimensionType::RadiusDimension { center, radius } => {
             (center.x + radius / 2.0, center.y - 3.0)
         }
-        DimensionType::DiameterDimension { center, .. } => {
-            (center.x, center.y - 5.0)
-        }
-        DimensionType::AngleDimension { vertex, arm1_end, arm2_end, .. } => {
-            ((vertex.x + arm1_end.x + arm2_end.x) / 3.0,
-             (vertex.y + arm1_end.y + arm2_end.y) / 3.0)
-        }
+        DimensionType::DiameterDimension { center, .. } => (center.x, center.y - 5.0),
+        DimensionType::AngleDimension {
+            vertex,
+            arm1_end,
+            arm2_end,
+            ..
+        } => (
+            (vertex.x + arm1_end.x + arm2_end.x) / 3.0,
+            (vertex.y + arm1_end.y + arm2_end.y) / 3.0,
+        ),
     };
     let mut svg = base_svg;
     let _ = write!(
         svg,
         "<text x=\"{}\" y=\"{}\" font-size=\"4\" fill=\"blue\" text-anchor=\"end\">{}</text>",
-        cx - 2.0, cy - 1.0, fd.prefix
+        cx - 2.0,
+        cy - 1.0,
+        fd.prefix
     );
     svg
 }
@@ -3069,6 +4029,18 @@ pub fn page_from_template(template: PaperTemplate) -> DrawingSheet {
         height: h,
         views: Vec::new(),
         dimensions: Vec::new(),
+        extended_dimensions: Vec::new(),
+        arc_length_dimensions: Vec::new(),
+        area_annotations: Vec::new(),
+        text_annotations: Vec::new(),
+        rich_text_annotations: Vec::new(),
+        balloon_annotations: Vec::new(),
+        leader_lines: Vec::new(),
+        weld_symbols: Vec::new(),
+        surface_finish_symbols: Vec::new(),
+        center_marks: Vec::new(),
+        centerlines: Vec::new(),
+        bolt_circle_centerlines: Vec::new(),
         title: String::new(),
     }
 }
@@ -3399,13 +4371,7 @@ mod tests {
     fn test_section_view() {
         let mut model = BRepModel::new();
         let solid = make_test_box(&mut model);
-        let view = section_view(
-            &model,
-            solid,
-            Point3::new(0.0, 0.0, 5.0),
-            Vec3::Z,
-            "A-A",
-        );
+        let view = section_view(&model, solid, Point3::new(0.0, 0.0, 5.0), Vec3::Z, "A-A");
         assert!(!view.edges.is_empty(), "section view should have edges");
     }
 
@@ -3532,7 +4498,11 @@ mod tests {
 
     #[test]
     fn test_extent_dimension_horizontal() {
-        let dim = ExtentDimension::Horizontal { min_x: 10.0, max_x: 50.0, y: 80.0 };
+        let dim = ExtentDimension::Horizontal {
+            min_x: 10.0,
+            max_x: 50.0,
+            y: 80.0,
+        };
         let svg = extent_dimension_to_svg(&dim);
         assert!(svg.contains("<line"));
         assert!(svg.contains("40.00"));
@@ -3540,7 +4510,11 @@ mod tests {
 
     #[test]
     fn test_extent_dimension_vertical() {
-        let dim = ExtentDimension::Vertical { min_y: 10.0, max_y: 60.0, x: 80.0 };
+        let dim = ExtentDimension::Vertical {
+            min_y: 10.0,
+            max_y: 60.0,
+            x: 80.0,
+        };
         let svg = extent_dimension_to_svg(&dim);
         assert!(svg.contains("<line"));
         assert!(svg.contains("50.00"));
@@ -3666,13 +4640,34 @@ mod tests {
         let source = DrawingView {
             direction: ProjectionDir::Front,
             edges: vec![
-                ProjectedEdge { x1: 0.0, y1: 5.0, x2: 10.0, y2: 5.0, visible: true },
-                ProjectedEdge { x1: 20.0, y1: 5.0, x2: 25.0, y2: 5.0, visible: true },
-                ProjectedEdge { x1: 50.0, y1: 5.0, x2: 60.0, y2: 5.0, visible: true },
+                ProjectedEdge {
+                    x1: 0.0,
+                    y1: 5.0,
+                    x2: 10.0,
+                    y2: 5.0,
+                    visible: true,
+                },
+                ProjectedEdge {
+                    x1: 20.0,
+                    y1: 5.0,
+                    x2: 25.0,
+                    y2: 5.0,
+                    visible: true,
+                },
+                ProjectedEdge {
+                    x1: 50.0,
+                    y1: 5.0,
+                    x2: 60.0,
+                    y2: 5.0,
+                    visible: true,
+                },
             ],
             center_x: 30.0,
             center_y: 5.0,
             scale: 1.0,
+            sheet_x: None,
+            sheet_y: None,
+            sheet_scale: None,
         };
         let bv = broken_view(&source, 15.0, 45.0, 5.0);
         // Edge in removed region (20..25 is inside 15..45) should be removed
@@ -3699,12 +4694,27 @@ mod tests {
         let view = DrawingView {
             direction: ProjectionDir::Front,
             edges: vec![
-                ProjectedEdge { x1: 5.0, y1: 5.0, x2: 15.0, y2: 5.0, visible: true },
-                ProjectedEdge { x1: 50.0, y1: 50.0, x2: 60.0, y2: 50.0, visible: true },
+                ProjectedEdge {
+                    x1: 5.0,
+                    y1: 5.0,
+                    x2: 15.0,
+                    y2: 5.0,
+                    visible: true,
+                },
+                ProjectedEdge {
+                    x1: 50.0,
+                    y1: 50.0,
+                    x2: 60.0,
+                    y2: 50.0,
+                    visible: true,
+                },
             ],
             center_x: 30.0,
             center_y: 25.0,
             scale: 1.0,
+            sheet_x: None,
+            sheet_y: None,
+            sheet_scale: None,
         };
         let cg = clip_group(&[view], 0.0, 0.0, 20.0, 20.0);
         assert_eq!(cg.views.len(), 1);
@@ -3716,12 +4726,19 @@ mod tests {
     fn test_clip_group_to_svg() {
         let view = DrawingView {
             direction: ProjectionDir::Front,
-            edges: vec![
-                ProjectedEdge { x1: 5.0, y1: 5.0, x2: 10.0, y2: 5.0, visible: true },
-            ],
+            edges: vec![ProjectedEdge {
+                x1: 5.0,
+                y1: 5.0,
+                x2: 10.0,
+                y2: 5.0,
+                visible: true,
+            }],
             center_x: 5.0,
             center_y: 5.0,
             scale: 1.0,
+            sheet_x: None,
+            sheet_y: None,
+            sheet_scale: None,
         };
         let cg = clip_group(&[view], 0.0, 0.0, 20.0, 20.0);
         let svg = clip_group_to_svg(&cg);
@@ -3756,11 +4773,7 @@ mod tests {
 
     #[test]
     fn test_contextual_dimension_linear() {
-        let dim = contextual_dimension(
-            Point2::new(0.0, 0.0),
-            Point2::new(30.0, 40.0),
-            0.0,
-        );
+        let dim = contextual_dimension(Point2::new(0.0, 0.0), Point2::new(30.0, 40.0), 0.0);
         match dim {
             DimensionType::Length { value, .. } => {
                 assert!((value - 50.0).abs() < 1e-10);
@@ -3771,11 +4784,7 @@ mod tests {
 
     #[test]
     fn test_contextual_dimension_radius() {
-        let dim = contextual_dimension(
-            Point2::new(10.0, 10.0),
-            Point2::new(0.0, 0.0),
-            5.0,
-        );
+        let dim = contextual_dimension(Point2::new(10.0, 10.0), Point2::new(0.0, 0.0), 5.0);
         match dim {
             DimensionType::RadiusDimension { radius, .. } => {
                 assert!((radius - 5.0).abs() < 1e-10);
@@ -3827,12 +4836,7 @@ mod tests {
 
     #[test]
     fn test_arc_length_dimension_constructor() {
-        let dim = arc_length_dimension(
-            Point2::new(50.0, 50.0),
-            20.0,
-            0.0,
-            90.0,
-        );
+        let dim = arc_length_dimension(Point2::new(50.0, 50.0), 20.0, 0.0, 90.0);
         assert!((dim.radius - 20.0).abs() < 1e-10);
         assert!((dim.start_angle).abs() < 1e-10);
         assert!((dim.end_angle - 90.0).abs() < 1e-10);
@@ -3857,10 +4861,7 @@ mod tests {
 
     #[test]
     fn test_hv_extent_dimension_vertical() {
-        let points = vec![
-            Point2::new(10.0, 5.0),
-            Point2::new(20.0, 50.0),
-        ];
+        let points = vec![Point2::new(10.0, 5.0), Point2::new(20.0, 50.0)];
         let dim = hv_extent_dimension(&points, false);
         match dim {
             ExtentDimension::Vertical { min_y, max_y, .. } => {
@@ -3873,18 +4874,12 @@ mod tests {
 
     #[test]
     fn test_repair_dimension_refs() {
-        let mut dims = vec![
-            DimensionType::Length {
-                start: Point2::new(10.0, 20.0),
-                end: Point2::new(30.0, 40.0),
-                value: 28.28,
-            },
-        ];
-        repair_dimension_refs(
-            &mut dims,
-            Point2::new(0.0, 0.0),
-            Point2::new(5.0, 10.0),
-        );
+        let mut dims = vec![DimensionType::Length {
+            start: Point2::new(10.0, 20.0),
+            end: Point2::new(30.0, 40.0),
+            value: 28.28,
+        }];
+        repair_dimension_refs(&mut dims, Point2::new(0.0, 0.0), Point2::new(5.0, 10.0));
         match &dims[0] {
             DimensionType::Length { start, end, .. } => {
                 assert!((start.x - 15.0).abs() < 1e-10);
@@ -3898,11 +4893,8 @@ mod tests {
 
     #[test]
     fn test_rich_text_annotation() {
-        let ann = rich_text_annotation(
-            Point2::new(10.0, 20.0),
-            "<b>Bold</b> text &amp; more",
-            12.0,
-        );
+        let ann =
+            rich_text_annotation(Point2::new(10.0, 20.0), "<b>Bold</b> text &amp; more", 12.0);
         let svg = rich_text_annotation_to_svg(&ann);
         assert!(svg.contains("Bold text &amp;amp; more"));
         assert!(svg.contains("font-size=\"12\""));
@@ -3910,12 +4902,7 @@ mod tests {
 
     #[test]
     fn test_balloon_annotation_constructor() {
-        let ba = balloon_annotation(
-            Point2::new(30.0, 30.0),
-            Point2::new(60.0, 10.0),
-            42,
-            5.0,
-        );
+        let ba = balloon_annotation(Point2::new(30.0, 30.0), Point2::new(60.0, 10.0), 42, 5.0);
         assert_eq!(ba.text, "42");
         assert!((ba.radius - 5.0).abs() < 1e-10);
         let svg = balloon_annotation_to_svg(&ba);
@@ -4048,8 +5035,10 @@ mod tests {
     #[test]
     fn test_centerline_between_lines() {
         let cl = centerline_between_lines(
-            Point2::new(0.0, 0.0), Point2::new(100.0, 0.0),
-            Point2::new(0.0, 20.0), Point2::new(100.0, 20.0),
+            Point2::new(0.0, 0.0),
+            Point2::new(100.0, 0.0),
+            Point2::new(0.0, 20.0),
+            Point2::new(100.0, 20.0),
             5.0,
         );
         assert!((cl.start.y - 10.0).abs() < 1e-10);
@@ -4058,11 +5047,7 @@ mod tests {
 
     #[test]
     fn test_centerline_between_points() {
-        let cl = centerline_between_points(
-            Point2::new(10.0, 20.0),
-            Point2::new(50.0, 60.0),
-            3.0,
-        );
+        let cl = centerline_between_points(Point2::new(10.0, 20.0), Point2::new(50.0, 60.0), 3.0);
         assert!((cl.start.x - 10.0).abs() < 1e-10);
         assert!((cl.end.x - 50.0).abs() < 1e-10);
         let svg = centerline_to_svg(&cl);
@@ -4202,10 +5187,7 @@ mod tests {
     #[test]
     fn test_coordinate_dimension() {
         let origin = Point2::new(0.0, 0.0);
-        let points = vec![
-            Point2::new(10.0, 0.0),
-            Point2::new(20.0, 0.0),
-        ];
+        let points = vec![Point2::new(10.0, 0.0), Point2::new(20.0, 0.0)];
         let cd = coordinate_dimension(origin, &points);
         assert_eq!(cd.dimensions.len(), 2);
     }
@@ -4341,16 +5323,50 @@ mod tests {
         let mut sheet = DrawingSheet::a4_landscape();
         sheet.views.push(DrawingView {
             direction: ProjectionDir::Front,
-            edges: vec![
-                ProjectedEdge { x1: 10.0, y1: 20.0, x2: 40.0, y2: 60.0, visible: true },
-            ],
+            edges: vec![ProjectedEdge {
+                x1: 10.0,
+                y1: 20.0,
+                x2: 40.0,
+                y2: 60.0,
+                visible: true,
+            }],
             center_x: 0.0,
             center_y: 0.0,
             scale: 1.0,
+            sheet_x: None,
+            sheet_y: None,
+            sheet_scale: None,
         });
         redraw_page(&mut sheet);
         assert!((sheet.views[0].center_x - 25.0).abs() < 1e-10);
         assert!((sheet.views[0].center_y - 40.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_drawing_to_svg_uses_manual_view_placement() {
+        let mut sheet = DrawingSheet::a4_landscape();
+        let mut view = DrawingView {
+            direction: ProjectionDir::Front,
+            edges: vec![ProjectedEdge {
+                x1: 0.0,
+                y1: 0.0,
+                x2: 10.0,
+                y2: 10.0,
+                visible: true,
+            }],
+            center_x: 5.0,
+            center_y: 5.0,
+            scale: 1.0,
+            sheet_x: None,
+            sheet_y: None,
+            sheet_scale: None,
+        };
+        view.set_sheet_placement(100.0, 80.0, Some(2.0));
+        sheet.views.push(view);
+        let svg = drawing_to_svg(&sheet).render();
+        assert!(svg.contains("x1=\"90\""));
+        assert!(svg.contains("x2=\"110\""));
+        assert!(svg.contains("y1=\"90\""));
     }
 
     #[test]
@@ -4424,13 +5440,7 @@ mod tests {
     fn test_bitmap_image() {
         let mut sheet = DrawingSheet::a4_landscape();
         let data = vec![0x89, 0x50, 0x4E, 0x47]; // PNG magic bytes
-        let img = bitmap_image(
-            &mut sheet,
-            &data,
-            Point2::new(10.0, 20.0),
-            100.0,
-            80.0,
-        );
+        let img = bitmap_image(&mut sheet, &data, Point2::new(10.0, 20.0), 100.0, 80.0);
         assert_eq!(img.image_data.len(), 4);
         let svg = img.to_svg();
         assert!(svg.contains("<image"));
@@ -4445,11 +5455,18 @@ mod tests {
         source.views.push(DrawingView {
             direction: ProjectionDir::Front,
             edges: vec![ProjectedEdge {
-                x1: 0.0, y1: 0.0, x2: 10.0, y2: 10.0, visible: true,
+                x1: 0.0,
+                y1: 0.0,
+                x2: 10.0,
+                y2: 10.0,
+                visible: true,
             }],
             center_x: 5.0,
             center_y: 5.0,
             scale: 1.0,
+            sheet_x: None,
+            sheet_y: None,
+            sheet_scale: None,
         });
         let mut target = DrawingSheet::a4_landscape();
         assert!(share_view(&source, &mut target, 0).is_ok());

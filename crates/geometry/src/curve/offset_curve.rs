@@ -102,20 +102,14 @@ mod tests {
 
     #[test]
     fn test_offset_preserves_domain() {
-        let line = Arc::new(LineSegment::new(
-            Point3::ORIGIN,
-            Point3::new(1.0, 0.0, 0.0),
-        ));
+        let line = Arc::new(LineSegment::new(Point3::ORIGIN, Point3::new(1.0, 0.0, 0.0)));
         let offset = OffsetCurve::new(line.clone(), 1.0, Vec3::Z);
         assert_eq!(offset.domain(), line.domain());
     }
 
     #[test]
     fn test_offset_distance_verified() {
-        let line = Arc::new(LineSegment::new(
-            Point3::ORIGIN,
-            Point3::new(5.0, 0.0, 0.0),
-        ));
+        let line = Arc::new(LineSegment::new(Point3::ORIGIN, Point3::new(5.0, 0.0, 0.0)));
         let dist = 2.5;
         let offset = OffsetCurve::new(line.clone(), dist, Vec3::Z);
         // Check distance between base and offset at several points

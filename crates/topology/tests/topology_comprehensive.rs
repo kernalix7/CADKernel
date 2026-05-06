@@ -74,10 +74,8 @@ fn tag_chained_operations() {
 
 #[test]
 fn tag_equality_by_content() {
-    let a = Tag::generated(EntityKind::Face, OperationId(1), 0)
-        .modified(OperationId(2));
-    let b = Tag::generated(EntityKind::Face, OperationId(1), 0)
-        .modified(OperationId(2));
+    let a = Tag::generated(EntityKind::Face, OperationId(1), 0).modified(OperationId(2));
+    let b = Tag::generated(EntityKind::Face, OperationId(1), 0).modified(OperationId(2));
     assert_eq!(a, b);
 }
 
@@ -248,10 +246,7 @@ fn shape_history_evolution_variants() {
 
     h.record(Evolution::Split {
         parent_tag: tag1.clone(),
-        child_tags: vec![
-            tag1.split(op, 0),
-            tag1.split(op, 1),
-        ],
+        child_tags: vec![tag1.split(op, 0), tag1.split(op, 1)],
     });
 
     h.record(Evolution::Deleted { tag: tag1 });
@@ -720,8 +715,14 @@ fn property_store_metadata() {
         store.get_metadata(1, "name"),
         Some(&PropertyValue::String("bolt".into()))
     );
-    assert_eq!(store.get_metadata(1, "count"), Some(&PropertyValue::Int(42)));
-    assert_eq!(store.get_metadata(1, "active"), Some(&PropertyValue::Bool(true)));
+    assert_eq!(
+        store.get_metadata(1, "count"),
+        Some(&PropertyValue::Int(42))
+    );
+    assert_eq!(
+        store.get_metadata(1, "active"),
+        Some(&PropertyValue::Bool(true))
+    );
     assert!(store.get_metadata(2, "name").is_none());
 }
 

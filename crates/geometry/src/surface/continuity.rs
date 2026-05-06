@@ -63,8 +63,7 @@ pub fn check_surface_continuity(
         if is_g1 {
             let c1 = crate::surface::curvature::surface_curvatures(s1, u, v1_end);
             let c2 = crate::surface::curvature::surface_curvatures(s2, u, v2_start);
-            if (c1.gaussian - c2.gaussian).abs() > curv_tol
-                || (c1.mean - c2.mean).abs() > curv_tol
+            if (c1.gaussian - c2.gaussian).abs() > curv_tol || (c1.mean - c2.mean).abs() > curv_tol
             {
                 is_g2 = false;
             }
@@ -85,9 +84,9 @@ pub fn check_surface_continuity(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::curve::line::LineSegment;
     use crate::surface::extrusion::ExtrusionSurface;
     use crate::surface::sphere::Sphere;
-    use crate::curve::line::LineSegment;
     use cadkernel_math::{Point3, Vec3};
     use std::sync::Arc;
 
@@ -96,10 +95,7 @@ mod tests {
         // s1 extrudes [0,1] in Y from y=0 to y=1
         // s2 extrudes [0,1] in Y from y=1 to y=2
         // They share a boundary at y=1 (s1 v_end=1.0, s2 v_start=0.0)
-        let line = Arc::new(LineSegment::new(
-            Point3::ORIGIN,
-            Point3::new(1.0, 0.0, 0.0),
-        ));
+        let line = Arc::new(LineSegment::new(Point3::ORIGIN, Point3::new(1.0, 0.0, 0.0)));
         // s1: point_at(u, v=1) = line(u) + Y*1
         let s1 = ExtrusionSurface::new(line.clone(), Vec3::Y, 1.0);
         // s2: starts at y=1, point_at(u, v=0) = line2(u)
@@ -115,10 +111,7 @@ mod tests {
     #[test]
     fn test_extrusion_vs_sphere_is_not_g1() {
         // An extrusion surface and a sphere will not be tangent-continuous
-        let line = Arc::new(LineSegment::new(
-            Point3::ORIGIN,
-            Point3::new(1.0, 0.0, 0.0),
-        ));
+        let line = Arc::new(LineSegment::new(Point3::ORIGIN, Point3::new(1.0, 0.0, 0.0)));
         let ext = ExtrusionSurface::new(line, Vec3::Z, 1.0);
         let sphere = Sphere::new(Point3::new(0.5, 0.0, 2.0), 1.0).unwrap();
         let level = check_surface_continuity(&ext, &sphere, 10, 2.0, 0.01, 0.01);
@@ -132,10 +125,7 @@ mod tests {
 
     #[test]
     fn test_disconnected_extrusions() {
-        let line1 = Arc::new(LineSegment::new(
-            Point3::ORIGIN,
-            Point3::new(1.0, 0.0, 0.0),
-        ));
+        let line1 = Arc::new(LineSegment::new(Point3::ORIGIN, Point3::new(1.0, 0.0, 0.0)));
         let line2 = Arc::new(LineSegment::new(
             Point3::new(0.0, 0.0, 100.0),
             Point3::new(1.0, 0.0, 100.0),

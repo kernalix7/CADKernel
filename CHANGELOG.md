@@ -9,6 +9,241 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Added
+
+#### A2 Phase 2A — SessionSnapshot metadata fields (2026-05-07)
+- `crates/api/src/session.rs` — `SessionSnapshot` extended with A2-spec metadata fields: `document_hash` (FNV-1a-64 hex digest of serialized command prefix), `log_position` (mirror of cursor), `timestamp` (unix epoch seconds at save), `label` (optional human label). All four fields use `#[serde(default)]` so legacy schema-v1 snapshots written before A2 still load cleanly.
+- `Session::save_to_json_with_label(label: Option<String>)` — new public method for tagging snapshots ("before boolean", "release-v0.5-tag", etc.). `save_to_json()` continues to work and now auto-populates the metadata fields with `label = None`.
+- 2 new tests in `crates/api/tests/api_integration.rs` (17 → 19): `snapshot_metadata_fields_populate_on_save` and `old_schema_v1_snapshot_without_metadata_still_loads` (forward-compat round-trip).
+- A2 deliverable #8 (extended SessionSnapshot) — landed. Closes one of the 9 A2 deliverables.
+
+#### Commercial CAD Roadmap v3.5 — corpus + ADR depth + first executable seed (2026-05-06)
+- `docs/adr/` extended from 10 to 15 ADRs:
+  - 0011 automerge CRDT for real-time collaboration (vs OT / Yjs / custom / RGA / LSEQ / Diamond Types / state-based; cites Kleppmann POPL 2017 with formal CRDT convergence guarantees).
+  - 0012 wasm-first plugin sandbox via wasmtime + WASI Preview 2 component model (vs native-only / Lua-only / JS / process-IPC / seccomp / wasmer; capability-token security model with declarative manifest).
+  - 0013 CBOR (RFC 8949) for embedded metadata (vs JSON / msgpack / BSON / protobuf / FlatBuffers / Cap'n Proto / YAML / TOML; chosen for self-describing tags + IETF-standardised deterministic encoding rule).
+  - 0014 zstd (RFC 8878) for `.cadk` section compression (vs gzip / xz / brotli / LZ4 / snappy / no-compression; level 3 default ~3.5×, level 19 archive ~5×, pre-trained dictionary plan).
+  - 0015 sparse Cholesky for sketch LM linear step (vs dense LU / dense Cholesky / CG / MINRES / GPU / Eigen; nalgebra-sparse default + CHOLMOD opt-in for > 1k variables).
+- `docs/perf/memory-profile.md` — per-entity heap-cost table for every topology and geometry type, R12 industrial-part 1 GB peak-RSS budget breakdown (tessellation is the single largest cost), dhat measurement code, per-OS RSS measurement (`getrusage` Linux/macOS, `GetProcessMemoryInfo` Windows), allocator-choice rationale (system default + jemalloc/mimalloc opt-in), allocation-hotspot arena policy, regression CI matching time-regression 5/15/50 % gates.
+- `tests/corpus/` — 6 more worked goldens:
+  - sketch: 003 slot (tangent + EqualRadius + symmetric), 004 hexagon (EqualLength + 120° angle), 005 triangle-in-circle (UnderDetermined with documented remaining DoF), 006 parallel-redundant-tangent (OverDetermined with explicit redundant-constraint id assertion).
+  - boolean: 003 box ∩ box (1.5³ = 3.375 volume invariant), 004 sphere ∩ box (sphere-face-kind preserved through boolean), 006 box ∪ box idempotent (algebraic property `Union(A,A) == A` asserted).
+- `tests/corpus/reference_parts/` — first 2 Lua build scripts:
+  - `r1_box.lua` (V=8 / E=12 / F=6 + Euler-Poincaré V−E+F=2 + volume + area + centroid + tag-completeness + content-hash reproducibility).
+  - `r2_extrude.lua` (extrude-with-hole, π·r²·h volume check, tag survival across sketch-imprint on cap faces).
+- `examples/build_reference_parts.rs` — **first compilable Rust example** for the corpus pipeline. `cargo run --release --example build_reference_parts -- --output tests/corpus/reference_parts/` produces a scaffold today and will call real `quick_box` / `cadk::write` once those APIs land, otherwise reports clean NotImplemented per part.
+- `docs/adr/README.md` index updated with rows 0011-0015.
+- The 5-pillar contract (roadmap / algorithms / adr / perf / corpus) is now backed by **15 ADRs + 4 perf specs + 13 algorithm specs + 11 worked TOML goldens + 2 Lua reference-part scripts + 1 compilable Rust example**. Documentation + corpus = 9,299 lines (roadmap EN 3,169 + KO 287 + algorithms 2,717 + ADR 1,005 + perf 709 + corpus 1,309 + Rust example seed 103).
+
+#### Commercial CAD Roadmap v3.4 — ADR + perf methodology + corpus seed (2026-05-06)
+- `docs/adr/` — 10 architecture decision records in Michael Nygard format with Status / Context / Decision / Alternatives / Consequences / References:
+  - 0001 half-edge B-Rep (vs winged-edge / quad-edge / IFS / vertex-vertex / GMap).
+  - 0002 BLAKE3 cache key (vs SHA-256 / SHA-3 / xxHash3 / FNV / MD5 / Blake2b; collision-probability $1.5 \times 10^{-21}$ at $10^9$ entries).
+  - 0003 nalgebra (kernel f64) + glam (viewer f32) split.
+  - 0004 egui + wgpu + winit GUI stack (vs Qt6 / GTK4 / Slint / iced / Bevy UI / native / Tauri / ImGui).
+  - 0005 mlua Lua 5.4 vendored (vs Rhai / Python in-proc / V8 / Wasm / custom DSL).
+  - 0006 PyO3 bindings as separate crate excluded from default workspace build.
+  - 0007 tag-based persistent naming (vs PTC Pro/E pure-geometric matching, UUID, hash-of-geometry, pointer/arena ID).
+  - 0008 Rust edition 2024 + MSRV 1.85.
+  - 0009 custom binary `.cadk` format (vs JSON / msgpack / sqlite / Arrow-Parquet / HDF5 / protobuf-flatbuffers-capnp / OCCT BinXCAFFormat / STEP-as-native).
+  - 0010 Rayon for data-parallel kernel work; no async kernel.
+- `docs/perf/` — 3 performance specifications:
+  - `methodology.md`: R1–R5 reference HW tiers + RUSTFLAGS / Criterion config + cold-vs-warm + RNG seed + CPU isolation + dhat heap profiling + 16.67 ms frame-budget breakdown + 5/15/50 % regression policy + PGO plan + perf counters + flame graphs + cross-arch parity.
+  - `dispatch-matrix.md`: SSI dispatch (18 surface-pair rows analytical→NURBS general), boolean coplanar pre-classification, fillet 5-tier auto-up-tier, sketch solver LM↔dogleg switch, tessellation refinement, BVH leaf vs split, numerical-precision escalation f64→interval→exact-rational→Yap, STEP entity export 9 surface-kind rows.
+  - `condition-numbers.md`: per-algorithm $\kappa$ thresholds (sketch LM $10^8$, NURBS SSI Newton $10^7$, sparse Cholesky $10^{10}$ damped, etc.) with cheap Hager 1-norm detection + 2 worked numerical examples + named `EPSILON_*` tolerance constants + cross-arch FMA / iteration-order determinism.
+- `tests/corpus/` — golden test corpus scaffold:
+  - Top-level README + 4-tier layout per algorithm.
+  - `sketch/golden/MANIFEST.md` listing 12 reference sketches; 3 worked TOML examples (001 rectangle WellDetermined, 002 concentric circles, 007 inconsistent square Inconsistent + minimal-conflict-set assertion).
+  - `boolean/golden/MANIFEST.md` listing 10 boolean cases; 2 worked TOML examples (001 box ∪ box, 002 box − inner box genus-0 cavity).
+  - `reference_parts/MANIFEST.md` for R1-R12 with per-part build / `.cadk` round-trip / STEP round-trip timing budgets.
+- Roadmap header + Verification Cross-Reference (§17) updated to point to the new pillars; documentation now follows a 5-pillar model: roadmap (contract) / algorithms (how) / adr (why-not-otherwise) / perf (how-fast) / corpus (proof).
+- Project documentation grew from ~5,900 lines (v3.3) to ~8,000 lines (v3.4).
+
+#### Commercial CAD Roadmap Phase 1 — `cadkernel-api` stable surface (2026-05-06)
+
+Pivot toward commercial-grade CAD: the project now has a documented long-term plan (`docs/COMMERCIAL_CAD_ROADMAP.md`, English canonical, with Korean copy) defining 8 monotonic phases from "stable API + AI/test integration" through "1.0 release readiness." Phase 1 ships the foundation for everything else: a new dedicated public API crate.
+
+- New crate `crates/api/` (`cadkernel-api`) with three primary types:
+  - `Document` — top-level model container (Phase 2 will absorb sketches, drawings, assembly, FEM into it).
+  - `Command` — serializable enum of every state-mutating action (14 starter variants: `CreateBox` / `CreateCylinder` / `CreateSphere` / `CreateCone` / `CreateTorus` / `BooleanUnion` / `BooleanSubtract` / `BooleanIntersect` / `Translate` / `Scale` / `Rename` / `DeleteSolid` / `NewDocument` / `Noop`). JSON-schema'd via `serde`.
+  - `Session` — execute/replay engine: applies `Command`s, records them to a log, returns typed `Outcome`s. `Session::replay(commands)`, `Session::log_to_json()`, `Session::replay_from_json()` for deterministic regression testing and AI-driven evaluation.
+- `command_schemas()` returns the discoverable command surface (op name + description + per-parameter doc) for AI tools that don't import Rust types.
+- `ApiError` taxonomy: `UnknownSolid` / `InvalidArgument` / `Kernel` / `Codec` — flat shape that maps cleanly onto JSON-RPC error codes.
+- Integration tests: 17 in `crates/api/tests/api_integration.rs` covering creation, deletion, booleans (consume-and-create semantics), translate (volume-preserving), scale-about-centroid (volume × factor³), rename (SolidId-stable), JSON round-trip for every variant, deterministic 5-command replay, schema-coverage parity, document validation through a realistic 4-step sequence. Plus 2 lib-level doc tests.
+- Workspace totals after integration: **2,865 / 0 / 0** (was 2,844 / 0 / 0; +21 = 17 integration + 2 doc + 2 lib-zero attribution).
+- New documentation:
+  - `docs/COMMERCIAL_CAD_ROADMAP.md` (English canonical, 8-phase plan, AI/test architecture section, supersedes `UI_COMPLETION_ROADMAP.md` in scope).
+  - `docs/COMMERCIAL_CAD_ROADMAP.ko.md` (Korean copy).
+- The MCP server, Lua scripting, Python bindings, and the GUI dispatcher are **unchanged in this commit** by design — Phase 1's contract is "the API works for non-GUI consumers without touching the rest of the system." Phase 5 routes the GUI through `Session::execute(Command)` and removes the bespoke dispatcher.
+
+#### UI Completion Phase K-sketch-refs — Sketcher external reference and reuse UX (2026-05-05)
+
+Sketcher external projection is now visible and selection-aware. `SketcherAction::ExternalProjection` projects the selected scene object when available, falls back to the current model otherwise, and converts projected vertices and edges into construction reference geometry inside the active sketch.
+
+Sketch reuse now has explicit UI feedback: `CarbonCopy` reports the copied reusable entity count, `SketchMode` tracks external reference and reused-geometry counts, and the Sketcher banner/status bar show compact `Refs: ...` / `Reuse: ...` labels. Regression coverage added for selected-object external projection, construction reference counts, and carbon-copy reuse reporting. Verification: `cargo build --workspace`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`, and `cargo test --workspace --no-fail-fast --quiet` (**2,844 passed, 0 failed, 0 ignored**).
+
+---
+
+#### UI Completion Phase K-sketch-constraints — Sketcher constraint diagnostics UX (2026-05-05)
+
+Sketcher validation now detects duplicate constraints, conflicting dimensional values on the same target, and invalid dimensional values before users run into opaque solver failures. The sketch crate exposes compact diagnostic summaries via `SketchValidation::status_label()` and actionable counts via `diagnostic_issue_count()`.
+
+The Sketcher on-view banner and status bar now surface the first actionable constraint issue, with overlay warning pills for duplicate/conflicting/invalid constraints. Regression coverage added for duplicate constraint detection, conflicting distance dimensions, invalid length values, and `SketchMode` banner-state propagation. Verification: `cargo build --workspace`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`, and `cargo test --workspace --no-fail-fast --quiet` (**2,841 passed, 0 failed, 0 ignored**).
+
+---
+
+#### UI Completion Phase K-sketch-profile — Sketcher profile validation UX (2026-05-05)
+
+Sketcher now has production-facing profile diagnostics for feature commands. The sketch crate exposes `analyze_profiles` and `extract_profile_checked`, which ignore construction lines, detect open endpoints, branch points, invalid line references, and multiple loops, and only return a world-space profile when exactly one regular closed loop is present.
+
+The Sketcher on-view banner now reports `Profile ready` or a compact open/branch/invalid profile reason, and sketch-driven PartDesign commands now reject open chains instead of extruding partial profiles. Construction geometry remains usable as a guide: a square with a construction diagonal is accepted as a single closed outer profile. Regression coverage added for profile analysis, checked extraction, Sketcher banner state, and Pad dispatcher guards. Verification: `cargo build --workspace`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`, and `cargo test --workspace --no-fail-fast --quiet` (**2,837 passed, 0 failed, 0 ignored**).
+
+---
+
+#### UI Completion Phase J-fem-bc — FEM multi-node boundary-condition UX (2026-05-05)
+
+The FEM boundary-condition editor now covers all kernel-side `BoundaryCondition` variants. `SectionPrint`, `TieConstraint`, `RigidBody`, and `ContactConstraint` are exposed through the menu and the stateful BC dialog, with explicit plane normal/point fields and inclusive node-range inputs for Set A / Set B. Contact constraints also expose penalty stiffness.
+
+The existing FEM toolbar constraint buttons now open the same BC editor instead of the legacy log-only constraint path, and BC commit logging now reports node, element, global, plane, or node-set selections instead of assuming every condition targets one node. Regression coverage added for the new BC input gates, backend conversion, and dispatcher-level section-print / multi-node commit flows. Verification: `cargo build --workspace`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`, and `cargo test --workspace --no-fail-fast --quiet` (**2,831 passed, 0 failed, 0 ignored**).
+
+---
+
+#### UI Completion Phase I-fem-results — FEM result interpretation UX (2026-05-05)
+
+FEM post-processing now has a result interpretation layer on top of the existing 7-band colormap scene objects. Stress, displacement, and Von Mises actions now persist legend metadata and render an egui legend overlay with field name, units, scalar range, color bands, and last-probe details.
+
+The FEM Results menu and toolbar now expose `Probe Node...` and `Result Table...`. The probe dialog records clamped node/element selections with node position plus displacement, stress, and thermal values when available; the result table dialog lists node coordinates/displacement/temperature and element stress rows for the active analysis. Regression coverage added for legend state, result probe records, and result table row counts. Verification: `cargo build --workspace`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`, and `cargo test --workspace --no-fail-fast --quiet` (**2,825 passed, 0 failed, 0 ignored**).
+
+---
+
+#### UI Completion Phase H-view — TechDraw view placement setup command UX (2026-05-05)
+
+TechDraw view commands now have a stateful View Setup dialog for front/top/right/isometric projections, 3-view layout, section, detail, and broken views. The dialog captures sheet X/Y placement, optional manual sheet scale, 3-view spacing, and view-specific detail/broken/section parameters. Interactive Views menu and toolbar entries open the dialog, while the existing direct view dispatcher arms remain available for headless regression coverage.
+
+`DrawingView` now carries optional `sheet_x` / `sheet_y` / `sheet_scale` metadata, and `drawing_to_svg` preserves the existing automatic layout unless a view has manual placement overrides. Regression coverage added for dialog opening, custom front-view placement, 3-view spacing placement, state-model placement application, and SVG manual-placement rendering. Verification: `cargo build --workspace`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`, and `cargo test --workspace --no-fail-fast --quiet` (**2,822 passed, 0 failed, 0 ignored**).
+
+---
+
+#### UI Completion Phase H-center — TechDraw centerline setup command UX (2026-05-05)
+
+TechDraw centerline commands now have a stateful Centerline Setup dialog for editable face centerlines, centerlines between parallel lines, center marks, and bolt-circle centerlines. The interactive Centerlines menu and toolbar buttons open the dialog, while the existing direct centerline dispatcher arms remain available for headless regression coverage. Applying the dialog appends the chosen centerline storage to the active `DrawingSheet` without requiring a projected source view.
+
+Regression coverage added for dialog opening, custom center mark placement/size, and custom bolt-circle center/radius/count, plus unit coverage for the centerline setup state model. Verification: `cargo build --workspace`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`, and `cargo test --workspace --no-fail-fast --quiet` (**2,816 passed, 0 failed, 0 ignored**).
+
+---
+
+#### UI Completion Phase H-anno — TechDraw annotation setup command UX (2026-05-05)
+
+TechDraw annotation commands now have a stateful Annotation Setup dialog for editable text, rich text, balloon, leader, weld, and surface-finish parameters. The interactive Annotations menu and toolbar buttons open the dialog, while the existing direct annotation dispatcher arms remain available for headless regression coverage. Applying the dialog appends the chosen sheet-level annotation object to the active `DrawingSheet`.
+
+Regression coverage added for dialog opening, custom text annotation content/placement, and custom balloon number/leader placement, plus unit coverage for the annotation setup state model. Verification: `cargo build --workspace`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`, and `cargo test --workspace --no-fail-fast --quiet` (**2,811 passed, 0 failed, 0 ignored**).
+
+---
+
+#### UI Completion Phase H-dim — TechDraw dimension setup command UX (2026-05-05)
+
+TechDraw dimension commands now have a stateful Dimension Setup dialog for editable linear, radius, diameter, angle, arc-length, and area parameters. The interactive Dimensions menu and toolbar buttons open the dialog, while the existing direct `Dim*` dispatcher arms remain available for headless regression coverage. Applying the dialog appends the chosen sheet-level dimension, extended dimension, arc-length dimension, or area annotation to the active `DrawingSheet`.
+
+Regression coverage added for dialog opening, custom linear dimension text/placement, and custom diameter value/placement, plus unit coverage for the dimension setup state model. Verification: `cargo build --workspace`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`, and `cargo test --workspace --no-fail-fast --quiet` (**2,806 passed, 0 failed, 0 ignored**).
+
+---
+
+#### UI Completion Phase H-page — TechDraw page setup command UX (2026-05-05)
+
+TechDraw now has a stateful Page Setup dialog for template, title, and page-size editing. The interactive `From Template...` menu and toolbar entry open the dialog, while the existing quick template cycling path remains available for headless dispatch coverage. Applying the dialog creates a `DrawingSheet` with the chosen A4/A3/custom dimensions and title-block text.
+
+Regression coverage added for dialog opening, custom sheet size/title application, and A3 preset application, plus unit coverage for the page setup state model. Verification: `cargo build --workspace`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`, and `cargo test --workspace --no-fail-fast --quiet` (**2,801 passed, 0 failed, 0 ignored**).
+
+---
+
+#### UI Completion Phase F-rest — TechDraw centerlines and bolt circles (2026-05-04)
+
+The remaining TechDraw centerline dispatcher arms now write real drawing-sheet output instead of log-only messages. `CenterFace`, `CenterLines`, and `CenterPoints` append sheet-level centerlines / center marks, while `BoltCircle` appends a bolt-circle centerline set. `drawing_to_svg` renders all three storage classes, so PDF export inherits the same centerline output.
+
+Regression coverage added for all four centerline actions and SVG output checks for red chain-dash centerlines, center marks, and bolt-circle circles. Verification: `cargo build --workspace`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`, and `cargo test --workspace --no-fail-fast --quiet` (**2,796 passed, 0 failed, 0 ignored**).
+
+---
+
+#### UI Completion Phase F-anno — TechDraw drawing annotations (2026-05-04)
+
+TechDraw annotation dispatcher arms now write real sheet annotations instead of log-only messages. `Text`, `RichText`, `Balloon`, `Leader`, `Weld`, and `SurfFinish` append sheet-level annotation objects rendered by `drawing_to_svg` and therefore by the PDF path.
+
+Regression coverage added for all six annotation actions and SVG output checks for text, rich text, balloon, leader, weld, and surface-finish labels. Verification: `cargo build --workspace`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`, and `cargo test --workspace --no-fail-fast --quiet` (**2,792 passed, 0 failed, 0 ignored**).
+
+---
+
+#### UI Completion Phase F-dim — TechDraw drawing dimensions (2026-05-04)
+
+The TechDraw dimension dispatcher arms now write real drawing-sheet output instead of log-only messages. `DimLinear` and `DimRadius` append legacy sheet dimensions, while `DimDiameter`, `DimAngle`, `DimArcLen`, and `DimArea` use new sheet-level extended dimension / arc-length / area annotation storage rendered by `drawing_to_svg` and therefore by the PDF path.
+
+Regression coverage added for all six dimension actions and SVG output checks for linear, radius, diameter, angle, arc length, and area labels. Verification: `cargo build --workspace`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`, and `cargo test --workspace --no-fail-fast --quiet` (**2,786 passed, 0 failed, 0 ignored**).
+
+---
+
+#### UI Completion Phase F-view — TechDraw section/detail/broken views (2026-05-04)
+
+The TechDraw `SectionView`, `DetailView`, and `BrokenView` dispatcher arms now modify the active drawing sheet instead of logging only. `SectionView` cuts the selected solid with a midpoint plane and appends the cut projection; `DetailView` magnifies the first sheet view; `BrokenView` compresses the first sheet view through the existing TechDraw broken-view helper.
+
+Regression coverage added for all three dispatchers, including non-empty projected edge checks. The active long-term plan now keeps work sequential: finish TechDraw dimensions/annotations next, then move through command UX, Sketcher, PartDesign history, Assembly, FEM UX, I/O interoperability, performance, and release readiness. Verification: `cargo build --workspace`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`, and `cargo test --workspace --no-fail-fast --quiet` (**2,780 passed, 0 failed, 0 ignored**).
+
+---
+
+#### UI Completion Phase E-render — FEM result colormaps (2026-05-04)
+
+`FemAction::ShowStress`, `ShowDisplacement`, and `ShowVonMises` now create real viewport visualization objects instead of log-only output. The viewer builds boundary-surface meshes from the active tetrahedral FEM mesh, buckets scalar results into a 7-band blue→green→red colormap, assigns each band a scene object color, and replaces previous FEM colormap objects when switching result fields.
+
+The displacement view maps nodal displacement magnitudes; stress and Von Mises use the existing per-element Von Mises scalar averaged to boundary nodes. Regression coverage added for displacement colormap mesh creation, stress→Von Mises replacement, and no-result guard behavior. Verification: `cargo build --workspace`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`, and `cargo test --workspace --no-fail-fast --quiet` (**2,777 passed, 0 failed, 0 ignored**).
+
+---
+
+#### UI Completion HARD-tier batch — Annotation overlay, FEM solvers, TechDraw export, ShapeBinder (2026-05-04)
+
+First HARD-tier completion batch after A-C3. Draft/Part wire-output features now have a real viewport path through `gui::scene_overlay`, which paints world-space polylines, points, and labels through an egui foreground layer. `D::Dimension` and `D::Label` now create visible overlay annotations instead of log-only output.
+
+FEM gained `FemMaterial::thermal_conductivity`, `AnalysisContainer::temperature_field`, `run_thermal_static()`, `run_nonlinear()`, `solve_thermal()`, and `solve_nonlinear()`. Viewer dispatch now runs `FemAction::SolveThermal` and `FemAction::SolveNonlinear` against the active analysis container.
+
+TechDraw gained page-management dispatch (`T::NewPage`, `T::FromTemplate`, `T::Redraw`) and new DXF/PDF export modules (`techdraw_dxf`, `techdraw_pdf`) wired to `T::ExportDxf` / `T::ExportPdf`. PartDesign `Pd::ShapeBinder` now calls `features::shape_binder` to copy selected shape faces into a new binder solid.
+
+Regression coverage added for FEM thermal/nonlinear dispatch, overlay rendering counts, TechDraw page/export dispatch, DXF/PDF exporter round-trips, and ShapeBinder. Verification: `cargo build --workspace`, `cargo clippy --workspace --all-targets --all-features -- -D warnings`, and `cargo test --workspace --no-fail-fast` (**2,774 passed, 0 failed, 0 ignored**).
+
+---
+
+#### UI Completion Phase C3 — Surface ops + PartDesign Loft/Pipe (2026-05-01) `94396bb`
+
+Closes Phase C3. Final MEDIUM-tier batch; completes the full EASY+MEDIUM tier (56/86 features wired after A-C3). Surface workbench: `S::Sections` skins two profiles via `cadkernel_modeling::sections`; `S::Extend` thickens selected solid via `extend_surface`; `S::Blend` produces a quad sheet via `surface_from_curves`. PartDesign workbench: `Pd::AdditiveLoft/AdditivePipe` add lofted/swept solids directly; `Pd::SubtractiveLoft/SubtractivePipe` boolean-subtract a loft/pipe tool from a selected base via `boolean_op_exact`. 7 features + 8 new dispatcher integration tests. Tests: 2,735 / 0 / 0.
+
+---
+
+#### UI Completion Phase C2 — Draft modify + ProjectCurvesOnSurface (2026-05-01) `0808d9a`
+
+Closes Phase C2. Draft modify tier: `D::Offset` offsets a polyline via `offset_wire`; `D::Trim` trims a wire endpoint via `trimex_draft`; `D::Stretch` deforms a wire via `stretch_wire`; `D::Facebinder` produces a face-solid from the selected object's first face. `P::ProjectCurvesOnSurface` projects a default curve onto the selected solid via `project_curve_on_solid`. Selection-guard tests for Facebinder and ProjectCurvesOnSurface. 5 features + 7 new tests.
+
+---
+
+#### UI Completion Phase C1 — Draft transforms + EASY stragglers (2026-05-01) `c2d3006`
+
+Closes Phase C1. Draft transform tier (4 MEDIUM): `D::Move`, `D::Rotate`, `D::Scale`, `D::Mirror` each dispatch to `move_solid` / `rotate_solid` / `scale_solid_draft` / `mirror_solid_draft` and add the result as a new scene object; selection-guard variants log a warning. EASY stragglers (3): `S::Coons` → `coons_patch`, `FemAction::Summary` / `FemAction::Report` → text formatting from `AnalysisContainer`. 7 features + 8 new tests.
+
+---
+
+#### UI Completion Phase B-cont — Part workbench EASY tier (2026-05-01) `4e16eba`
+
+Closes Phase B-cont. 13 Part/PartDesign EASY stubs wired: `P::FaceFromWires`, `P::ConnectShapes`, `P::EmbedShapes`, `P::CutoutShapes`, `P::ExplodeCompound`, `P::CompoundFilter`, `P::BooleanFragments`, `P::SliceToCompound`, `P::PointsFromShape`, `P::ConvertToSolid`, `P::AutoDefeaturing`, `P::TransformedCopy`, `P::CoonsPatch`. Selection-guard tests for ConnectShapes, EmbedShapes, CutoutShapes, Downgrade, ArrayRect, SliceToCompound, AutoDefeaturing, Clone. 13 features + 13 new tests.
+
+---
+
+#### UI Completion Phase B — Draft EASY tier (2026-05-01) `75d7705`
+
+Closes Phase B. 14 Draft EASY stubs wired: `D::Wire`, `D::BSpline`, `D::Bezier`, `D::Hatch`, `D::Text`, `D::Upgrade`, `D::Downgrade`, `D::WireToBSpline`, `D::ToSketch`, `D::Clone`, `D::ArrayRect`, `D::ArrayPolar`, `D::ArrayPath`, `D::ArrayPoint`. Upgrade/Downgrade/Clone/arrays produce real geometry or split solids; remaining wire primitives register tree entries pending a polyline-overlay rendering pipeline. Selection-guard tests for Downgrade (without selection), ArrayRect, Clone. 14 features + 12 new tests.
+
+---
+
+#### UI Completion Phase A — Critical CAD workflow (2026-04-29) `abbfbda`
+
+Closes Phase A. Wires the 10 most critical user-visible features that were `log_info` stubs producing no geometry. PartDesign: `Pd::PadSketch` → `features::pad` (with fallback extrude when no base solid); `Pd::PocketSketch` → `features::pocket`; `Pd::GrooveSketch` → `features::groove`; `Pd::HoleSketch` → `features::hole`; `Pd::CountersunkHoleSketch` → `features::countersunk_hole`. Draft 2D: `D::Circle` → filled face via `make_circle_wire + filling`; `D::Arc` → filled sector; `D::Ellipse` → filled elliptical face; `D::Line` and `D::Point` → tree entries (no polyline renderer yet). 12 new dispatcher integration tests including selection-guard variants. Tests: 2,662 → 2,674 / 0 / 0.
+
+---
+
 ### Docs
 
 #### Bilingual docs single-source policy — English canonical + DEVELOPER_WIKI Section 3 backport (2026-04-29)

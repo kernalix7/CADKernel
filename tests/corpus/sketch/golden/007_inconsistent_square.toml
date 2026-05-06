@@ -1,0 +1,117 @@
+# Sketch golden 007: Inconsistent square
+#
+# Four lines constrained to be a square with side 10 mm, but with one
+# explicit distance constraint that contradicts the implied side length.
+# Verifies the solver's inconsistency detection and minimal-conflict-set
+# (QuickXplain) extraction.
+
+[sketch]
+name = "Inconsistent square"
+units = "mm"
+description = "Square with side 10 mm but diagonal forced to 20 mm (should be ~14.14)."
+
+[[entity]]
+id = 1
+kind = "Point"
+x = 0.0
+y = 0.0
+anchor = true
+
+[[entity]]
+id = 2
+kind = "Point"
+x = 10.0
+y = 0.0
+
+[[entity]]
+id = 3
+kind = "Point"
+x = 10.0
+y = 10.0
+
+[[entity]]
+id = 4
+kind = "Point"
+x = 0.0
+y = 10.0
+
+[[entity]]
+id = 10
+kind = "Line"
+start = 1
+end = 2
+
+[[entity]]
+id = 11
+kind = "Line"
+start = 2
+end = 3
+
+[[entity]]
+id = 12
+kind = "Line"
+start = 3
+end = 4
+
+[[entity]]
+id = 13
+kind = "Line"
+start = 4
+end = 1
+
+[[constraint]]
+id = 100
+kind = "Horizontal"
+between = [1, 2]
+
+[[constraint]]
+id = 101
+kind = "Horizontal"
+between = [4, 3]
+
+[[constraint]]
+id = 102
+kind = "Vertical"
+between = [1, 4]
+
+[[constraint]]
+id = 103
+kind = "Vertical"
+between = [2, 3]
+
+[[constraint]]
+id = 104
+kind = "EqualLength"
+between = [10, 11]
+
+[[constraint]]
+id = 105
+kind = "EqualLength"
+between = [11, 12]
+
+[[constraint]]
+id = 106
+kind = "EqualLength"
+between = [12, 13]
+
+[[constraint]]
+id = 107
+kind = "Distance"
+between = [1, 2]
+value = 10.0
+
+# This is the impossible diagonal: a square with side 10 has diagonal sqrt(200) ≈ 14.142
+# Forcing it to 20 makes the system inconsistent.
+[[constraint]]
+id = 108
+kind = "Distance"
+between = [1, 3]
+value = 20.0
+
+[expected]
+status = "Inconsistent"
+# QuickXplain should report the *smallest* set whose removal restores consistency.
+# Removing constraint 108 (or 104+105+106 collectively) restores. The minimal
+# single-constraint conflict is 108 (the diagonal).
+expected_minimal_conflict_set = [108]
+solve_iterations_max = 50    # may take more iterations to detect inconsistency

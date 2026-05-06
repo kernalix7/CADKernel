@@ -4,9 +4,7 @@
 use cadkernel_core::{KernelError, KernelResult};
 use cadkernel_geometry::{Curve, NurbsCurve, NurbsSurface};
 use cadkernel_math::{Point3, Vec3};
-use cadkernel_topology::{
-    BRepModel, EntityKind, FaceData, Handle, SolidData, Tag, VertexData,
-};
+use cadkernel_topology::{BRepModel, EntityKind, FaceData, Handle, SolidData, Tag, VertexData};
 
 /// Result of a ruled surface operation.
 #[derive(Debug)]
@@ -216,8 +214,7 @@ pub fn extend_surface(
     }
 
     // Compute per-vertex averaged face normal.
-    let mut vertex_normals: std::collections::HashMap<u32, Vec3> =
-        std::collections::HashMap::new();
+    let mut vertex_normals: std::collections::HashMap<u32, Vec3> = std::collections::HashMap::new();
 
     for &face_h in &face_handles {
         let verts = model.vertices_of_face(face_h)?;
@@ -789,26 +786,14 @@ mod tests {
     use cadkernel_geometry::Surface;
 
     fn make_linear_curve(p0: Point3, p1: Point3) -> NurbsCurve {
-        NurbsCurve::new(
-            1,
-            vec![p0, p1],
-            vec![1.0, 1.0],
-            vec![0.0, 0.0, 1.0, 1.0],
-        )
-        .unwrap()
+        NurbsCurve::new(1, vec![p0, p1], vec![1.0, 1.0], vec![0.0, 0.0, 1.0, 1.0]).unwrap()
     }
 
     #[test]
     fn test_ruled_surface_two_lines() {
         let mut model = BRepModel::new();
-        let c1 = make_linear_curve(
-            Point3::new(0.0, 0.0, 0.0),
-            Point3::new(10.0, 0.0, 0.0),
-        );
-        let c2 = make_linear_curve(
-            Point3::new(0.0, 5.0, 0.0),
-            Point3::new(10.0, 5.0, 0.0),
-        );
+        let c1 = make_linear_curve(Point3::new(0.0, 0.0, 0.0), Point3::new(10.0, 0.0, 0.0));
+        let c2 = make_linear_curve(Point3::new(0.0, 5.0, 0.0), Point3::new(10.0, 5.0, 0.0));
 
         let r = ruled_surface(&mut model, &c1, &c2, 4, 2).unwrap();
         // 5 columns * 3 rows = 15 vertices
@@ -821,18 +806,9 @@ mod tests {
     #[test]
     fn test_surface_from_curves() {
         let mut model = BRepModel::new();
-        let c1 = make_linear_curve(
-            Point3::new(0.0, 0.0, 0.0),
-            Point3::new(10.0, 0.0, 0.0),
-        );
-        let c2 = make_linear_curve(
-            Point3::new(0.0, 5.0, 0.0),
-            Point3::new(10.0, 5.0, 0.0),
-        );
-        let c3 = make_linear_curve(
-            Point3::new(0.0, 10.0, 3.0),
-            Point3::new(10.0, 10.0, 3.0),
-        );
+        let c1 = make_linear_curve(Point3::new(0.0, 0.0, 0.0), Point3::new(10.0, 0.0, 0.0));
+        let c2 = make_linear_curve(Point3::new(0.0, 5.0, 0.0), Point3::new(10.0, 5.0, 0.0));
+        let c3 = make_linear_curve(Point3::new(0.0, 10.0, 3.0), Point3::new(10.0, 10.0, 3.0));
 
         let profiles: Vec<&NurbsCurve> = vec![&c1, &c2, &c3];
         let r = surface_from_curves(&mut model, &profiles, 5).unwrap();
@@ -865,31 +841,29 @@ mod tests {
         let mut model = BRepModel::new();
 
         // Too few path points.
-        assert!(pipe_surface(
-            &mut model,
-            &[Point3::ORIGIN],
-            1.0,
-            8
-        )
-        .is_err());
+        assert!(pipe_surface(&mut model, &[Point3::ORIGIN], 1.0, 8).is_err());
 
         // Non-positive radius.
-        assert!(pipe_surface(
-            &mut model,
-            &[Point3::ORIGIN, Point3::new(0.0, 0.0, 5.0)],
-            0.0,
-            8
-        )
-        .is_err());
+        assert!(
+            pipe_surface(
+                &mut model,
+                &[Point3::ORIGIN, Point3::new(0.0, 0.0, 5.0)],
+                0.0,
+                8
+            )
+            .is_err()
+        );
 
         // Too few segments.
-        assert!(pipe_surface(
-            &mut model,
-            &[Point3::ORIGIN, Point3::new(0.0, 0.0, 5.0)],
-            1.0,
-            2
-        )
-        .is_err());
+        assert!(
+            pipe_surface(
+                &mut model,
+                &[Point3::ORIGIN, Point3::new(0.0, 0.0, 5.0)],
+                1.0,
+                2
+            )
+            .is_err()
+        );
     }
 
     #[test]
@@ -928,18 +902,9 @@ mod tests {
     #[test]
     fn test_sections_skinning() {
         let mut model = BRepModel::new();
-        let c1 = make_linear_curve(
-            Point3::new(0.0, 0.0, 0.0),
-            Point3::new(10.0, 0.0, 0.0),
-        );
-        let c2 = make_linear_curve(
-            Point3::new(0.0, 5.0, 2.0),
-            Point3::new(10.0, 5.0, 2.0),
-        );
-        let c3 = make_linear_curve(
-            Point3::new(0.0, 10.0, 0.0),
-            Point3::new(10.0, 10.0, 0.0),
-        );
+        let c1 = make_linear_curve(Point3::new(0.0, 0.0, 0.0), Point3::new(10.0, 0.0, 0.0));
+        let c2 = make_linear_curve(Point3::new(0.0, 5.0, 2.0), Point3::new(10.0, 5.0, 2.0));
+        let c3 = make_linear_curve(Point3::new(0.0, 10.0, 0.0), Point3::new(10.0, 10.0, 0.0));
 
         let profiles: Vec<&NurbsCurve> = vec![&c1, &c2, &c3];
         let r = sections(&mut model, &profiles, 4).unwrap();
@@ -962,10 +927,7 @@ mod tests {
             indices: vec![[0, 1, 4], [0, 4, 3], [1, 2, 5], [1, 5, 4]],
         };
 
-        let curve_pts = vec![
-            Point3::new(2.5, 2.5, 0.5),
-            Point3::new(7.5, 2.5, 0.5),
-        ];
+        let curve_pts = vec![Point3::new(2.5, 2.5, 0.5), Point3::new(7.5, 2.5, 0.5)];
 
         let r = curve_on_mesh(&mesh, &curve_pts);
         assert_eq!(r.points.len(), 2);
@@ -981,22 +943,10 @@ mod tests {
     #[test]
     fn test_coons_patch_flat() {
         use cadkernel_geometry::LineSegment;
-        let u0 = LineSegment::new(
-            Point3::new(0.0, 0.0, 0.0),
-            Point3::new(10.0, 0.0, 0.0),
-        );
-        let u1 = LineSegment::new(
-            Point3::new(0.0, 10.0, 0.0),
-            Point3::new(10.0, 10.0, 0.0),
-        );
-        let v0 = LineSegment::new(
-            Point3::new(0.0, 0.0, 0.0),
-            Point3::new(0.0, 10.0, 0.0),
-        );
-        let v1 = LineSegment::new(
-            Point3::new(10.0, 0.0, 0.0),
-            Point3::new(10.0, 10.0, 0.0),
-        );
+        let u0 = LineSegment::new(Point3::new(0.0, 0.0, 0.0), Point3::new(10.0, 0.0, 0.0));
+        let u1 = LineSegment::new(Point3::new(0.0, 10.0, 0.0), Point3::new(10.0, 10.0, 0.0));
+        let v0 = LineSegment::new(Point3::new(0.0, 0.0, 0.0), Point3::new(0.0, 10.0, 0.0));
+        let v1 = LineSegment::new(Point3::new(10.0, 0.0, 0.0), Point3::new(10.0, 10.0, 0.0));
 
         let result = coons_patch(&u0, &u1, &v0, &v1).unwrap();
         let mid = result.surface.point_at(0.5, 0.5);
@@ -1066,20 +1016,14 @@ mod tests {
     #[test]
     fn test_pipe_surface_invalid_radius() {
         let mut model = BRepModel::new();
-        let path = vec![
-            Point3::new(0.0, 0.0, 0.0),
-            Point3::new(0.0, 0.0, 5.0),
-        ];
+        let path = vec![Point3::new(0.0, 0.0, 0.0), Point3::new(0.0, 0.0, 5.0)];
         assert!(pipe_surface(&mut model, &path, 0.0, 8).is_err());
     }
 
     #[test]
     fn test_pipe_surface_invalid_segments() {
         let mut model = BRepModel::new();
-        let path = vec![
-            Point3::new(0.0, 0.0, 0.0),
-            Point3::new(0.0, 0.0, 5.0),
-        ];
+        let path = vec![Point3::new(0.0, 0.0, 0.0), Point3::new(0.0, 0.0, 5.0)];
         assert!(pipe_surface(&mut model, &path, 1.0, 2).is_err());
     }
 
@@ -1112,10 +1056,7 @@ mod tests {
     #[test]
     fn test_filling_two_points_fails() {
         let mut model = BRepModel::new();
-        let boundary = vec![
-            Point3::new(0.0, 0.0, 0.0),
-            Point3::new(1.0, 0.0, 0.0),
-        ];
+        let boundary = vec![Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 0.0, 0.0)];
         assert!(filling(&mut model, &boundary, 1).is_err());
     }
 
@@ -1135,14 +1076,16 @@ mod tests {
     #[test]
     fn test_extend_surface_zero_distance_fails() {
         let mut model = BRepModel::new();
-        let b = crate::primitives::make_box(&mut model, Point3::new(0.0, 0.0, 0.0), 2.0, 2.0, 2.0).unwrap();
+        let b = crate::primitives::make_box(&mut model, Point3::new(0.0, 0.0, 0.0), 2.0, 2.0, 2.0)
+            .unwrap();
         assert!(extend_surface(&mut model, b.solid, 0.0).is_err());
     }
 
     #[test]
     fn test_extend_surface_positive() {
         let mut model = BRepModel::new();
-        let b = crate::primitives::make_box(&mut model, Point3::new(0.0, 0.0, 0.0), 2.0, 2.0, 2.0).unwrap();
+        let b = crate::primitives::make_box(&mut model, Point3::new(0.0, 0.0, 0.0), 2.0, 2.0, 2.0)
+            .unwrap();
         let result = extend_surface(&mut model, b.solid, 0.5).unwrap();
         assert_eq!(result.solid, b.solid);
     }
@@ -1150,7 +1093,8 @@ mod tests {
     #[test]
     fn test_extend_surface_negative_shrink() {
         let mut model = BRepModel::new();
-        let b = crate::primitives::make_box(&mut model, Point3::new(0.0, 0.0, 0.0), 4.0, 4.0, 4.0).unwrap();
+        let b = crate::primitives::make_box(&mut model, Point3::new(0.0, 0.0, 0.0), 4.0, 4.0, 4.0)
+            .unwrap();
         let result = extend_surface(&mut model, b.solid, -0.5).unwrap();
         assert_eq!(result.solid, b.solid);
     }

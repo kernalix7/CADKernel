@@ -4,15 +4,15 @@
 //! Ellipse, NurbsCurve), surfaces (Plane, Cylinder, Sphere, Cone, Torus,
 //! NurbsSurface), tessellation, BVH/Aabb, intersection, and 2D offset.
 
-use cadkernel_geometry::prelude::*;
-use cadkernel_geometry::{
-    Aabb, Bvh, Curve, LevelOfDetail, Surface, adaptive_tessellate_curve,
-    adaptive_tessellate_surface, intersect_curves, offset_polygon_2d,
-    offset_polygon_2d_checked, offset_polyline_2d,
-};
 use cadkernel_geometry::intersect::plane_plane::intersect_plane_plane;
 use cadkernel_geometry::intersect::plane_sphere::intersect_plane_sphere;
 use cadkernel_geometry::intersect::types::SsiResult;
+use cadkernel_geometry::prelude::*;
+use cadkernel_geometry::{
+    Aabb, Bvh, Curve, LevelOfDetail, Surface, adaptive_tessellate_curve,
+    adaptive_tessellate_surface, intersect_curves, offset_polygon_2d, offset_polygon_2d_checked,
+    offset_polyline_2d,
+};
 use cadkernel_math::{BoundingBox, Point2, Point3, Vec3};
 use std::f64::consts::{FRAC_PI_2, FRAC_PI_4, PI, TAU};
 
@@ -285,11 +285,7 @@ fn ellipse_domain_is_tau() {
 
 #[test]
 fn nurbs_bezier_line_evaluates_linearly() {
-    let c = NurbsCurve::bezier(vec![
-        Point3::ORIGIN,
-        Point3::new(1.0, 0.0, 0.0),
-    ])
-    .unwrap();
+    let c = NurbsCurve::bezier(vec![Point3::ORIGIN, Point3::new(1.0, 0.0, 0.0)]).unwrap();
     assert!(c.point_at(0.5).approx_eq(Point3::new(0.5, 0.0, 0.0)));
 }
 
@@ -317,21 +313,13 @@ fn nurbs_control_point_count() {
 
 #[test]
 fn nurbs_knots_accessor() {
-    let c = NurbsCurve::bezier(vec![
-        Point3::ORIGIN,
-        Point3::new(1.0, 0.0, 0.0),
-    ])
-    .unwrap();
+    let c = NurbsCurve::bezier(vec![Point3::ORIGIN, Point3::new(1.0, 0.0, 0.0)]).unwrap();
     assert_eq!(c.knots().len(), 4);
 }
 
 #[test]
 fn nurbs_weights_accessor() {
-    let c = NurbsCurve::bezier(vec![
-        Point3::ORIGIN,
-        Point3::new(1.0, 0.0, 0.0),
-    ])
-    .unwrap();
+    let c = NurbsCurve::bezier(vec![Point3::ORIGIN, Point3::new(1.0, 0.0, 0.0)]).unwrap();
     assert_eq!(c.weights().len(), 2);
     for &w in c.weights() {
         assert!((w - 1.0).abs() < TOL);
@@ -555,7 +543,10 @@ fn cylinder_point_at_base() {
 #[test]
 fn cylinder_point_at_top() {
     let c = Cylinder::z_axis(1.0, 5.0);
-    assert!(c.point_at(FRAC_PI_2, 5.0).approx_eq(Point3::new(0.0, 1.0, 5.0)));
+    assert!(
+        c.point_at(FRAC_PI_2, 5.0)
+            .approx_eq(Point3::new(0.0, 1.0, 5.0))
+    );
 }
 
 #[test]
@@ -600,13 +591,19 @@ fn sphere_equator_point() {
 #[test]
 fn sphere_north_pole() {
     let s = Sphere::new(Point3::ORIGIN, 1.0).unwrap();
-    assert!(s.point_at(0.0, FRAC_PI_2).approx_eq(Point3::new(0.0, 0.0, 1.0)));
+    assert!(
+        s.point_at(0.0, FRAC_PI_2)
+            .approx_eq(Point3::new(0.0, 0.0, 1.0))
+    );
 }
 
 #[test]
 fn sphere_south_pole() {
     let s = Sphere::new(Point3::ORIGIN, 1.0).unwrap();
-    assert!(s.point_at(0.0, -FRAC_PI_2).approx_eq(Point3::new(0.0, 0.0, -1.0)));
+    assert!(
+        s.point_at(0.0, -FRAC_PI_2)
+            .approx_eq(Point3::new(0.0, 0.0, -1.0))
+    );
 }
 
 #[test]
@@ -815,13 +812,7 @@ fn tess_straight_line_min_segments() {
         min_segments: 5,
         max_depth: 4,
     };
-    let pts = adaptive_tessellate_curve(
-        |t| Point3::new(t, 0.0, 0.0),
-        |_| Vec3::X,
-        0.0,
-        1.0,
-        &opts,
-    );
+    let pts = adaptive_tessellate_curve(|t| Point3::new(t, 0.0, 0.0), |_| Vec3::X, 0.0, 1.0, &opts);
     assert!(pts.len() > opts.min_segments);
     assert!(pts.first().unwrap().approx_eq(Point3::ORIGIN));
     assert!(pts.last().unwrap().approx_eq(Point3::new(1.0, 0.0, 0.0)));
@@ -986,9 +977,10 @@ fn aabb_intersects_ray_t_origin_inside_is_zero() {
 #[test]
 fn aabb_intersects_ray_t_miss_returns_none() {
     let bb = Aabb::new(Point3::ORIGIN, Point3::new(1.0, 1.0, 1.0));
-    assert!(bb
-        .intersects_ray_t(Point3::new(-2.0, 5.0, 0.5), Vec3::X)
-        .is_none());
+    assert!(
+        bb.intersects_ray_t(Point3::new(-2.0, 5.0, 0.5), Vec3::X)
+            .is_none()
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1118,7 +1110,10 @@ fn intersect_xy_xz_returns_line_along_x() {
 fn intersect_same_plane_coincident() {
     let a = Plane::xy().unwrap();
     let b = Plane::xy().unwrap();
-    assert!(matches!(intersect_plane_plane(&a, &b), SsiResult::Coincident));
+    assert!(matches!(
+        intersect_plane_plane(&a, &b),
+        SsiResult::Coincident
+    ));
 }
 
 #[test]

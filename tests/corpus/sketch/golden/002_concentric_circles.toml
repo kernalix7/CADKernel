@@ -1,0 +1,52 @@
+# Sketch golden 002: Concentric circles
+#
+# A pair of concentric circles centred at the origin, demonstrating
+# coincident centre + per-circle radius dimensioning.
+
+[sketch]
+name = "Concentric circles"
+units = "mm"
+description = "Two coaxial circles at origin: r=10 and r=20."
+
+[[entity]]
+id = 1
+kind = "Point"
+x = 0.0
+y = 0.0
+anchor = true
+
+[[entity]]
+id = 10
+kind = "Circle"
+center = 1
+radius = 10.0
+
+[[entity]]
+id = 11
+kind = "Circle"
+center = 1
+radius = 20.0
+
+[[constraint]]
+id = 100
+kind = "Concentric"
+between = [10, 11]
+
+[[constraint]]
+id = 101
+kind = "Radius"
+of = 10
+value = 10.0
+
+[[constraint]]
+id = 102
+kind = "Radius"
+of = 11
+value = 20.0
+
+[expected]
+status = "WellDetermined"
+dof = 0
+positional_residual_max = 1e-12
+dimensional_residual_max = 1e-9
+solve_iterations_max = 3

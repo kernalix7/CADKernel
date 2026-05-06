@@ -40,9 +40,7 @@ pub fn make_involute_gear(
         ));
     }
     if num_teeth < 3 {
-        return Err(KernelError::InvalidArgument(
-            "need at least 3 teeth".into(),
-        ));
+        return Err(KernelError::InvalidArgument("need at least 3 teeth".into()));
     }
     if pressure_angle <= 0.0 || pressure_angle >= std::f64::consts::FRAC_PI_2 {
         return Err(KernelError::InvalidArgument(
@@ -336,7 +334,12 @@ mod tests {
         let pa = 20.0_f64.to_radians();
         let teeth = 10;
         let r = make_involute_gear(&mut model, 2.0, teeth, pa, 5.0).unwrap();
-        assert!(r.faces.len() >= teeth, "should have at least {} faces, got {}", teeth, r.faces.len());
+        assert!(
+            r.faces.len() >= teeth,
+            "should have at least {} faces, got {}",
+            teeth,
+            r.faces.len()
+        );
     }
 
     #[test]

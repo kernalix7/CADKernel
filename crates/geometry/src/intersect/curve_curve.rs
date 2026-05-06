@@ -33,26 +33,12 @@ pub struct CurveCurveHit {
 ///
 /// A vector of [`CurveCurveHit`] values. Duplicates (within tolerance) are
 /// filtered out.
-pub fn intersect_curves(
-    c1: &dyn Curve,
-    c2: &dyn Curve,
-    tolerance: f64,
-) -> Vec<CurveCurveHit> {
+pub fn intersect_curves(c1: &dyn Curve, c2: &dyn Curve, tolerance: f64) -> Vec<CurveCurveHit> {
     let (t1_lo, t1_hi) = c1.domain();
     let (t2_lo, t2_hi) = c2.domain();
 
     let mut hits = Vec::new();
-    intersect_recursive(
-        c1,
-        c2,
-        t1_lo,
-        t1_hi,
-        t2_lo,
-        t2_hi,
-        tolerance,
-        0,
-        &mut hits,
-    );
+    intersect_recursive(c1, c2, t1_lo, t1_hi, t2_lo, t2_hi, tolerance, 0, &mut hits);
 
     // Deduplicate close hits.
     dedup_hits(&mut hits, tolerance);
@@ -101,10 +87,50 @@ fn intersect_recursive(
     let t2_mid = 0.5 * (t2_lo + t2_hi);
 
     // 4 sub-problems.
-    intersect_recursive(c1, c2, t1_lo, t1_mid, t2_lo, t2_mid, tolerance, depth + 1, hits);
-    intersect_recursive(c1, c2, t1_lo, t1_mid, t2_mid, t2_hi, tolerance, depth + 1, hits);
-    intersect_recursive(c1, c2, t1_mid, t1_hi, t2_lo, t2_mid, tolerance, depth + 1, hits);
-    intersect_recursive(c1, c2, t1_mid, t1_hi, t2_mid, t2_hi, tolerance, depth + 1, hits);
+    intersect_recursive(
+        c1,
+        c2,
+        t1_lo,
+        t1_mid,
+        t2_lo,
+        t2_mid,
+        tolerance,
+        depth + 1,
+        hits,
+    );
+    intersect_recursive(
+        c1,
+        c2,
+        t1_lo,
+        t1_mid,
+        t2_mid,
+        t2_hi,
+        tolerance,
+        depth + 1,
+        hits,
+    );
+    intersect_recursive(
+        c1,
+        c2,
+        t1_mid,
+        t1_hi,
+        t2_lo,
+        t2_mid,
+        tolerance,
+        depth + 1,
+        hits,
+    );
+    intersect_recursive(
+        c1,
+        c2,
+        t1_mid,
+        t1_hi,
+        t2_mid,
+        t2_hi,
+        tolerance,
+        depth + 1,
+        hits,
+    );
 }
 
 /// Axis-aligned bounding box: (min, max).
@@ -239,14 +265,8 @@ mod tests {
 
     #[test]
     fn test_line_line_intersection() {
-        let l1 = LineSegment::new(
-            Point3::new(0.0, 0.0, 0.0),
-            Point3::new(2.0, 2.0, 0.0),
-        );
-        let l2 = LineSegment::new(
-            Point3::new(0.0, 2.0, 0.0),
-            Point3::new(2.0, 0.0, 0.0),
-        );
+        let l1 = LineSegment::new(Point3::new(0.0, 0.0, 0.0), Point3::new(2.0, 2.0, 0.0));
+        let l2 = LineSegment::new(Point3::new(0.0, 2.0, 0.0), Point3::new(2.0, 0.0, 0.0));
         let hits = intersect_curves(&l1, &l2, 1e-8);
         assert_eq!(hits.len(), 1, "two crossing lines should intersect once");
         assert!((hits[0].point.x - 1.0).abs() < 1e-6);
@@ -255,24 +275,15 @@ mod tests {
 
     #[test]
     fn test_parallel_lines_no_intersection() {
-        let l1 = LineSegment::new(
-            Point3::new(0.0, 0.0, 0.0),
-            Point3::new(1.0, 0.0, 0.0),
-        );
-        let l2 = LineSegment::new(
-            Point3::new(0.0, 1.0, 0.0),
-            Point3::new(1.0, 1.0, 0.0),
-        );
+        let l1 = LineSegment::new(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 0.0, 0.0));
+        let l2 = LineSegment::new(Point3::new(0.0, 1.0, 0.0), Point3::new(1.0, 1.0, 0.0));
         let hits = intersect_curves(&l1, &l2, 1e-8);
         assert!(hits.is_empty());
     }
 
     #[test]
     fn test_line_circle_intersection() {
-        let line = LineSegment::new(
-            Point3::new(-2.0, 0.0, 0.0),
-            Point3::new(2.0, 0.0, 0.0),
-        );
+        let line = LineSegment::new(Point3::new(-2.0, 0.0, 0.0), Point3::new(2.0, 0.0, 0.0));
         let circle = Circle::new(Point3::ORIGIN, cadkernel_math::Vec3::Z, 1.0).unwrap();
         let hits = intersect_curves(&line, &circle, 1e-6);
         assert_eq!(hits.len(), 2, "line through circle center should hit twice");

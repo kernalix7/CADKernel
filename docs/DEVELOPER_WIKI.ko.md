@@ -1,7 +1,7 @@
 # CADKernel Developer Wiki
 
 > **버전**: 0.1.0 (pre-alpha)  
-> **최종 업데이트**: 2026-04-13
+> **최종 업데이트**: 2026-05-05
 > **대상 독자**: CADKernel 커널 개발자, 기여자
 
 ---
@@ -39,6 +39,8 @@
 - [21. 편의 API](#21-편의-api)
 - [22. 예제 스크립트](#22-예제-스크립트)
 - [23. 알려진 한계 (V36 감사)](#23-알려진-한계-v36-감사)
+- [24. UI 완성 HARD-tier 작업 트리](#24-ui-완성-hard-tier-작업-트리)
+- [25. 상용 CAD 완성 로드맵](#25-상용-cad-완성-로드맵)
 
 ---
 
@@ -93,6 +95,8 @@ cadkernel-modeling      + cadkernel-core, cadkernel-math, cadkernel-geometry
 cadkernel-sketch        + cadkernel-math, cadkernel-topology
 cadkernel-io            + cadkernel-math, cadkernel-topology
     ↑
+cadkernel-api           + cadkernel-core, cadkernel-math, cadkernel-topology, cadkernel-modeling
+    ↑                     (`docs/COMMERCIAL_CAD_ROADMAP.md` Phase 1)
 cadkernel (root)        전체 통합
 ```
 
@@ -101,6 +105,21 @@ cadkernel (root)        전체 통합
 | 크레이트 | Feature | 기본값 | 효과 |
 |----------|---------|--------|------|
 | `cadkernel-topology` | `geometry-binding` | 활성 | `EdgeData.curve`, `FaceData.surface` 필드 포함 |
+
+### `cadkernel-api` — 안정 공개 API (2026-05-06 추가)
+
+비-GUI 소비자(AI 에이전트·스크립팅·통합 테스트·외부 임베더)의 유일한 공식
+진입점. 3 주 타입:
+
+- `Document` — 최상위 모델 컨테이너. Phase 2 에서 스케치·도면·어셈블리·FEM
+  흡수 예정.
+- `Command` — 모든 상태 변경 액션의 직렬화 enum. `serde` 기반 JSON 스키마.
+  변형 추가는 기존 replay 로그에 비파괴적.
+- `Session` — 실행/재현 엔진. 하나의 `Document` 보유, `Command` 적용·로그 기록·
+  타입화된 `Outcome` 반환. 결정적 회귀 테스트·AI 평가용으로
+  `Session::replay(commands)`, `log_to_json()`, `replay_from_json()` 제공.
+
+`docs/COMMERCIAL_CAD_ROADMAP.md` 의 §2 Phase 1 참조.
 
 ---
 
@@ -1363,6 +1382,50 @@ CADKernel은 세 가지 병렬 처리 계층을 사용합니다:
 - 다시 실행: Ctrl+Shift+Z로 `redo_stack`에서 복원; Escape는 대기 중인 지오메트리 먼저 초기화 후 스케치 취소
 - 우클릭 컨텍스트 메뉴: `draw_sketch_context_menu()` 팝업에 Delete/Horizontal/Vertical/Fixed/Select All/Clear Selection; 선 선택 시에만 제약조건 항목 표시
 - DOF 표시기: `degrees_of_freedom()` (제약조건 타입별 가중치)를 배너와 상태 바에 표시; 완전 구속 시 배너 초록색; 선택 수를 배너 + 상태 바에 표시
+
+## 24. UI 완성 HARD-tier 작업 트리
+
+2026-05-04 작업 트리는 A-C3 이후 HARD-tier UI 완성의 첫 배치입니다.
+
+| 영역 | 모듈 | 상태 |
+|------|------|------|
+| Draft/Part 오버레이 렌더링 | `crates/viewer/src/gui/scene_overlay.rs`, `crates/viewer/src/app.rs` | 월드 좌표 polyline/point/label을 카메라로 투영해 egui foreground layer에 페인트. 이전 tree-only 와이어 출력 피처가 실제로 보임. |
+| Draft 주석 | `crates/viewer/src/app.rs`, `make_draft_dimension_full`, `make_label_full` | `D::Dimension`, `D::Label`이 가시 오버레이 주석을 생성. |
+| FEM solver dispatch | `crates/modeling/src/fem.rs`, `crates/viewer/src/app.rs` | `FemMaterial::thermal_conductivity`, `AnalysisContainer::temperature_field`, `run_thermal_static()`, `run_nonlinear()`, `solve_thermal()`, `solve_nonlinear()`이 `SolveThermal` / `SolveNonlinear`에 연결됨. |
+| FEM 결과 colormap | `crates/viewer/src/app.rs`, `FemResult` | `ShowStress`, `ShowDisplacement`, `ShowVonMises`가 tetrahedral boundary surface를 7단계 blue→green→red scene object로 표시. |
+| FEM 결과 해석 UX | `crates/viewer/src/gui/fem.rs`, `crates/viewer/src/gui/dialogs.rs`, `crates/viewer/src/gui/menu.rs`, `crates/viewer/src/gui/toolbar.rs`, `crates/viewer/src/app.rs` | 결과 colormap action이 legend metadata를 저장하고 overlay를 렌더링합니다. `OpenResultProbe` / `CommitResultProbe`와 `OpenResultTable`은 displacement/stress/thermal 값의 node/element probe와 table dialog를 제공합니다. |
+| FEM multi-node BC editor UX | `crates/viewer/src/gui/fem.rs`, `crates/viewer/src/gui/dialogs.rs`, `crates/viewer/src/gui/menu.rs`, `crates/viewer/src/gui/toolbar.rs`, `crates/viewer/src/app.rs` | `SectionPrint`, `TieConstraint`, `RigidBody`, `ContactConstraint`를 section plane 입력과 Set A / Set B node-range 입력으로 편집합니다. FEM toolbar constraint 버튼은 legacy log-only 경로 대신 stateful BC editor를 엽니다. |
+| Sketcher profile validation UX | `crates/sketch/src/profile.rs`, `crates/viewer/src/gui/sketch_state.rs`, `crates/viewer/src/gui/sketch_ui.rs`, `crates/viewer/src/app.rs` | `analyze_profiles` / `extract_profile_checked`가 construction line을 제외하고 open/branch/invalid/multi-loop profile을 거부합니다. Sketcher banner는 profile readiness를 표시하고 sketch-driven PartDesign command는 단일 regular closed profile만 extrusion에 사용합니다. |
+| Sketcher constraint diagnostics UX | `crates/sketch/src/validate.rs`, `crates/viewer/src/gui/sketch_state.rs`, `crates/viewer/src/gui/sketch_ui.rs`, `crates/viewer/src/gui/status_bar.rs` | duplicate constraint, 같은 대상의 conflicting dimensional value, invalid dimensional value를 감지하고 Sketcher banner/status bar에 compact actionable diagnostic을 표시합니다. |
+| Sketcher external reference/reuse UX | `crates/viewer/src/app.rs`, `crates/viewer/src/gui/sketch_state.rs`, `crates/viewer/src/gui/sketch_ui.rs`, `crates/viewer/src/gui/status_bar.rs`, `cadkernel_sketch::bspline_tools` | `ExternalProjection`이 선택 scene object를 우선 사용해 vertex/edge를 construction reference로 추가합니다. `CarbonCopy`는 reusable entity count를 보고하고, Sketcher banner/status bar는 `Refs:` / `Reuse:` count를 표시합니다. |
+| TechDraw 페이지/export/view/dimension/annotation/centerline | `crates/io/src/techdraw.rs`, `crates/io/src/techdraw_dxf.rs`, `crates/io/src/techdraw_pdf.rs`, `crates/viewer/src/app.rs` | `T::NewPage`, `T::FromTemplate`, `T::Redraw`, `T::SectionView`, `T::DetailView`, `T::BrokenView`, `T::DimLinear`, `T::DimRadius`, `T::DimDiameter`, `T::DimAngle`, `T::DimArcLen`, `T::DimArea`, `T::Text`, `T::RichText`, `T::Balloon`, `T::Leader`, `T::Weld`, `T::SurfFinish`, `T::CenterFace`, `T::CenterLines`, `T::CenterPoints`, `T::BoltCircle`, `T::ExportDxf`, `T::ExportPdf`가 실제 동작. |
+| TechDraw page setup command UX | `crates/viewer/src/gui/techdraw.rs`, `crates/viewer/src/gui/dialogs.rs`, `crates/viewer/src/app.rs` | `T::OpenPageSetup` / `T::CommitPageSetup`이 template/title/page-size dialog를 제공. `From Template...` 메뉴와 toolbar template 버튼은 이 dialog를 엽니다. |
+| TechDraw dimension setup command UX | `crates/viewer/src/gui/techdraw.rs`, `crates/viewer/src/gui/dialogs.rs`, `crates/viewer/src/gui/menu.rs`, `crates/viewer/src/gui/toolbar.rs`, `crates/viewer/src/app.rs` | `T::OpenDimensionSetup` / `T::CommitDimensionSetup`이 선형/반지름/지름/각도/호 길이/면적 parameter dialog를 제공. 메뉴와 toolbar 치수 버튼은 이 dialog를 열고, 기존 `Dim*` dispatcher는 headless 테스트용 빠른 경로로 유지됩니다. |
+| TechDraw annotation setup command UX | `crates/viewer/src/gui/techdraw.rs`, `crates/viewer/src/gui/dialogs.rs`, `crates/viewer/src/gui/menu.rs`, `crates/viewer/src/gui/toolbar.rs`, `crates/viewer/src/app.rs` | `T::OpenAnnotationSetup` / `T::CommitAnnotationSetup`이 text/rich text/balloon/leader/weld/surface finish parameter dialog를 제공. 메뉴와 toolbar 주석 버튼은 이 dialog를 열고, 기존 annotation dispatcher는 headless 테스트용 빠른 경로로 유지됩니다. |
+| TechDraw centerline setup command UX | `crates/viewer/src/gui/techdraw.rs`, `crates/viewer/src/gui/dialogs.rs`, `crates/viewer/src/gui/menu.rs`, `crates/viewer/src/gui/toolbar.rs`, `crates/viewer/src/app.rs` | `T::OpenCenterlineSetup` / `T::CommitCenterlineSetup`이 face centerline/line centerline/center mark/bolt circle parameter dialog를 제공. 메뉴와 toolbar 중심선 버튼은 이 dialog를 열고, 기존 centerline dispatcher는 headless 테스트용 빠른 경로로 유지됩니다. |
+| TechDraw view placement setup command UX | `crates/io/src/techdraw.rs`, `crates/viewer/src/gui/techdraw.rs`, `crates/viewer/src/gui/dialogs.rs`, `crates/viewer/src/gui/menu.rs`, `crates/viewer/src/gui/toolbar.rs`, `crates/viewer/src/app.rs` | `T::OpenViewSetup` / `T::CommitViewSetup`이 projection/3-view/section/detail/broken view의 sheet 위치/scale/간격 dialog를 제공. `DrawingView`는 선택적 sheet X/Y/scale metadata를 저장하고 SVG 렌더링은 수동 배치를 우선 적용합니다. |
+| ShapeBinder | `cadkernel_modeling::features::shape_binder`, `crates/viewer/src/app.rs` | `Pd::ShapeBinder`가 선택 형상의 face를 새 binder solid로 복사해 씬에 추가. |
+
+F-view는 TechDraw dispatcher 3개를 추가로 연결합니다. `SectionView`는 선택 솔리드를 중간 평면으로 절단하고, `DetailView`는 첫 sheet view를 확대 복사하며, `BrokenView`는 첫 sheet view를 기본 break gap으로 압축합니다. F-dim은 선형/반지름/지름/각도/호 길이/면적 치수 6개를 drawing sheet와 SVG/PDF 렌더링 경로에 연결합니다. F-anno는 텍스트/서식 텍스트/풍선/리더/용접/표면 거칠기 주석 6개를 sheet-level 저장소와 SVG/PDF 렌더링 경로에 연결합니다. F-rest는 중심 마크/중심선/볼트 원 중심선 저장소를 추가하고 `CenterFace`, `CenterLines`, `CenterPoints`, `BoltCircle`을 SVG/PDF 렌더링 경로에 연결합니다. H-page는 template/title/custom sheet size를 편집하는 TechDraw Page Setup dialog로 command UX를 시작했고, H-dim은 TechDraw dimension parameter dialog로 이어졌으며, H-anno는 text/rich text/balloon/leader/weld/surface finish parameter dialog를 추가했습니다. H-center는 face centerline/line centerline/center mark/bolt circle parameter dialog를 추가했습니다. H-view는 front/top/right/isometric projection, 3-view, section/detail/broken view의 명시적 sheet placement metadata를 추가했습니다. I-fem-results는 계산된 stress/displacement/Von Mises/thermal 값의 legend/probe/table 해석 UX를 추가했습니다. J-fem-bc는 남은 FEM BC variant를 section-plane/node-range dialog 입력으로 연결했습니다. K-sketch-profile은 construction-aware 단일 폐곡선 profile 검증으로 Sketcher 생산 워크플로우를 시작했습니다. K-sketch-constraints는 duplicate/conflicting/invalid constraint 진단을 Sketcher banner/status bar에 연결했습니다. K-sketch-refs는 선택 객체 기반 external projection, construction reference edge/point, carbon-copy reuse count, `Refs:` / `Reuse:` 상태 표시를 추가했습니다. 현재 작업 트리는 **2,844 / 0 / 0**으로 검증되었습니다. HARD-tier TechDraw log-only 갭은 닫혔고 page/dimension/annotation/centerline/view-placement parameter-entry UX, FEM post-processing, 전체 FEM BC editor coverage, sketch profile readiness guard, constraint diagnostics, external reference/reuse feedback이 완료되었습니다.
+
+## 25. 상용 CAD 완성 로드맵
+
+CADKernel 완성 작업은 이제 무작위 스텁 처리 대신 순차 로드맵을 따릅니다. 각 슬라이스는 회귀 테스트, 영문/국문 문서, `WORK_STATUS.md`, workspace build/clippy/test gate로 종료합니다.
+
+| 순서 | 레인 | 목표 |
+|---:|---|---|
+| 0 | 검증 작업 트리 안정화 | 현재 HARD-tier 검증 작업을 보존하고 작은 단위로 커밋. |
+| 1 | UI/TechDraw 완성 | 주석, 중심선, 볼트 원, overlay/export 일치성 완료. |
+| 2 | UI 명령 UX | placeholder 기본값을 task panel/modal/selection prompt/preview/undoable command로 교체. |
+| 3 | Sketcher 생산 워크플로우 | profile 검증, 제약 진단, construction geometry, 외부 참조, sketch 재사용 강화. |
+| 4 | PartDesign history/body 모델 | editable feature history, Body-local dependency, recompute, persistent naming repair. |
+| 5 | Assembly 워크플로우 | mate, exploded view, interference review, BOM export, 대형 어셈블리 탐색. |
+| 6 | FEM 워크플로우 | node/face set, mesh control, legend, probe, result table, post-processing. |
+| 7 | I/O 상호운용성 | STEP/IGES/DXF/SVG/PDF 실전 corpus, units/layers/metadata/healing. |
+| 8 | 성능/대형 모델 UX | async job, progress/cancel, GPU/wire pipeline, cache, 1000+ part gate. |
+| 9 | 릴리스 준비 | binary, Python wheel, 튜토리얼, crash-safe settings, CI release gate. |
+
+**현재 활성 레인:** 2번 command UX는 TechDraw Page/Dimension/Annotation/Centerline/View Placement까지 완료되었고, 6번 FEM은 결과 해석 UX와 range 기반 multi-node BC entry까지 완료되었습니다. 3번 Sketcher 생산 워크플로우는 profile-readiness, actionable constraint diagnostics, visible external reference / sketch reuse feedback까지 완료했습니다. 다음은 Sketcher reference 관리 심화 또는 FEM node/face viewport picker를 좁은 검증 슬라이스로 진행합니다.
 
 **향후 핵심 영역:**
 | 우선순위 | 초점 | 주요 항목 |

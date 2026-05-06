@@ -16,9 +16,7 @@ use std::f64::consts::TAU;
 
 use cadkernel_core::{KernelError, KernelResult};
 use cadkernel_math::{Point3, Vec3};
-use cadkernel_topology::{
-    BRepModel, EntityKind, FaceData, Handle, OperationId, SolidData, Tag,
-};
+use cadkernel_topology::{BRepModel, EntityKind, FaceData, Handle, OperationId, SolidData, Tag};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -91,9 +89,7 @@ pub struct McpServer {
 impl McpServer {
     /// Creates a new MCP server with no stored solids.
     pub fn new() -> Self {
-        Self {
-            solids: Vec::new(),
-        }
+        Self { solids: Vec::new() }
     }
 
     /// Returns the list of available MCP tools with their JSON schemas.
@@ -146,12 +142,14 @@ impl McpServer {
             },
             McpToolDef {
                 name: "query_model".into(),
-                description: "Query the current model state (solid count, face/edge/vertex totals)".into(),
+                description: "Query the current model state (solid count, face/edge/vertex totals)"
+                    .into(),
                 input_schema: serde_json::json!({"type": "object", "properties": {}}),
             },
             McpToolDef {
                 name: "measure".into(),
-                description: "Measure a solid (volume, surface area, centroid, bounding box)".into(),
+                description: "Measure a solid (volume, surface area, centroid, bounding box)"
+                    .into(),
                 input_schema: serde_json::json!({
                     "type": "object",
                     "properties": {
@@ -273,9 +271,10 @@ impl McpServer {
                 data: None,
             })?;
 
-        let arguments = params.get("arguments").cloned().unwrap_or(Value::Object(
-            serde_json::Map::new(),
-        ));
+        let arguments = params
+            .get("arguments")
+            .cloned()
+            .unwrap_or(Value::Object(serde_json::Map::new()));
 
         match tool_name {
             "create_primitive" => self.tool_create_primitive(&arguments),
@@ -298,7 +297,12 @@ impl McpServer {
     // Solid store helpers
     // -----------------------------------------------------------------------
 
-    fn store_solid(&mut self, model: BRepModel, solid: Handle<SolidData>, label: String) -> Result<usize, McpError> {
+    fn store_solid(
+        &mut self,
+        model: BRepModel,
+        solid: Handle<SolidData>,
+        label: String,
+    ) -> Result<usize, McpError> {
         const MAX_SOLIDS: usize = 1000;
         let live = self.solids.iter().filter(|s| s.is_some()).count();
         if live >= MAX_SOLIDS {
@@ -374,8 +378,8 @@ impl McpServer {
                 let height = get_f64(dims, "height").unwrap_or(2.0);
                 let segments = get_u64(dims, "segments").unwrap_or(32) as usize;
                 let mut m = BRepModel::new();
-                let s =
-                    build_cylinder(&mut m, origin, radius, height, segments).map_err(kernel_to_mcp)?;
+                let s = build_cylinder(&mut m, origin, radius, height, segments)
+                    .map_err(kernel_to_mcp)?;
                 (m, s, format!("cylinder(r={radius},h={height})"))
             }
             "sphere" => {
@@ -395,7 +399,11 @@ impl McpServer {
                 let mut m = BRepModel::new();
                 let s = build_cone(&mut m, origin, base_radius, top_radius, height, segments)
                     .map_err(kernel_to_mcp)?;
-                (m, s, format!("cone(br={base_radius},tr={top_radius},h={height})"))
+                (
+                    m,
+                    s,
+                    format!("cone(br={base_radius},tr={top_radius},h={height})"),
+                )
             }
             "torus" => {
                 let major_radius = get_f64(dims, "major_radius").unwrap_or(2.0);
@@ -403,8 +411,15 @@ impl McpServer {
                 let major_seg = get_u64(dims, "major_segments").unwrap_or(32) as usize;
                 let minor_seg = get_u64(dims, "minor_segments").unwrap_or(16) as usize;
                 let mut m = BRepModel::new();
-                let s = build_torus(&mut m, origin, major_radius, minor_radius, major_seg, minor_seg)
-                    .map_err(kernel_to_mcp)?;
+                let s = build_torus(
+                    &mut m,
+                    origin,
+                    major_radius,
+                    minor_radius,
+                    major_seg,
+                    minor_seg,
+                )
+                .map_err(kernel_to_mcp)?;
                 (m, s, format!("torus(R={major_radius},r={minor_radius})"))
             }
             other => {
@@ -455,14 +470,8 @@ impl McpServer {
             }
         };
 
-        let result = boolean_op_simple(
-            &target.model,
-            target.solid,
-            &tool.model,
-            tool.solid,
-            op,
-        )
-        .map_err(kernel_to_mcp)?;
+        let result = boolean_op_simple(&target.model, target.solid, &tool.model, tool.solid, op)
+            .map_err(kernel_to_mcp)?;
 
         let result_solid = result
             .solids
@@ -526,11 +535,7 @@ impl McpServer {
                 let sy = sc[1].as_f64().unwrap_or(1.0);
                 let sz = sc[2].as_f64().unwrap_or(1.0);
                 for (_h, vd) in entry.model.vertices.iter_mut() {
-                    vd.point = Point3::new(
-                        vd.point.x * sx,
-                        vd.point.y * sy,
-                        vd.point.z * sz,
-                    );
+                    vd.point = Point3::new(vd.point.x * sx, vd.point.y * sy, vd.point.z * sz);
                 }
             }
         }
@@ -691,13 +696,11 @@ fn kernel_to_mcp(e: KernelError) -> McpError {
 // ---------------------------------------------------------------------------
 
 fn get_str<'a>(v: &'a Value, key: &str) -> Result<&'a str, McpError> {
-    v.get(key)
-        .and_then(|v| v.as_str())
-        .ok_or_else(|| McpError {
-            code: INVALID_PARAMS,
-            message: format!("missing or invalid string param: {key}"),
-            data: None,
-        })
+    v.get(key).and_then(|v| v.as_str()).ok_or_else(|| McpError {
+        code: INVALID_PARAMS,
+        message: format!("missing or invalid string param: {key}"),
+        data: None,
+    })
 }
 
 fn get_f64(v: &Value, key: &str) -> Option<f64> {
@@ -875,7 +878,12 @@ fn boolean_op_simple(
         };
         if keep {
             let fh = copy_face_to_model(
-                model_a, face_h, &mut result, r_op, &mut vert_idx, &mut edge_idx,
+                model_a,
+                face_h,
+                &mut result,
+                r_op,
+                &mut vert_idx,
+                &mut edge_idx,
             );
             result_faces.push(fh);
         }
@@ -892,7 +900,12 @@ fn boolean_op_simple(
         };
         if keep {
             let fh = copy_face_to_model(
-                model_b, face_h, &mut result, r_op, &mut vert_idx, &mut edge_idx,
+                model_b,
+                face_h,
+                &mut result,
+                r_op,
+                &mut vert_idx,
+                &mut edge_idx,
             );
             result_faces.push(fh);
         }
@@ -938,7 +951,11 @@ fn face_centroid(model: &BRepModel, face: Handle<FaceData>) -> Point3 {
     if count == 0 {
         return Point3::ORIGIN;
     }
-    Point3::new(sum.x / count as f64, sum.y / count as f64, sum.z / count as f64)
+    Point3::new(
+        sum.x / count as f64,
+        sum.y / count as f64,
+        sum.z / count as f64,
+    )
 }
 
 fn point_in_mesh(point: &Point3, mesh: &crate::tessellate::Mesh) -> bool {
@@ -1277,8 +1294,7 @@ fn build_sphere(
     // Ring vertices
     let mut ring_verts: Vec<Vec<Handle<cadkernel_topology::VertexData>>> = Vec::new();
     for r in 1..rings {
-        let phi = -std::f64::consts::FRAC_PI_2
-            + std::f64::consts::PI * r as f64 / rings as f64;
+        let phi = -std::f64::consts::FRAC_PI_2 + std::f64::consts::PI * r as f64 / rings as f64;
         let (sin_phi, cos_phi) = phi.sin_cos();
         let mut ring = Vec::new();
         for s in 0..segments {
@@ -1340,14 +1356,12 @@ fn build_sphere(
             let t3 = Tag::generated(EntityKind::Edge, op, edge_idx);
             edge_idx += 1;
 
-            let (_, he0, _) =
-                model.add_edge_tagged(ring_verts[r][s], ring_verts[r + 1][s], t0);
+            let (_, he0, _) = model.add_edge_tagged(ring_verts[r][s], ring_verts[r + 1][s], t0);
             let (_, he1, _) =
                 model.add_edge_tagged(ring_verts[r + 1][s], ring_verts[r + 1][next], t1);
             let (_, he2, _) =
                 model.add_edge_tagged(ring_verts[r + 1][next], ring_verts[r][next], t2);
-            let (_, he3, _) =
-                model.add_edge_tagged(ring_verts[r][next], ring_verts[r][s], t3);
+            let (_, he3, _) = model.add_edge_tagged(ring_verts[r][next], ring_verts[r][s], t3);
 
             let lp = model.make_loop(&[he0, he1, he2, he3])?;
             let ft = Tag::generated(EntityKind::Face, op, face_idx);
@@ -1367,15 +1381,10 @@ fn build_sphere(
         let t2 = Tag::generated(EntityKind::Edge, op, edge_idx);
         edge_idx += 1;
 
-        let (_, he0, _) =
-            model.add_edge_tagged(ring_verts[last_ring][s], north, t0);
-        let (_, he1, _) =
-            model.add_edge_tagged(north, ring_verts[last_ring][next], t1);
-        let (_, he2, _) = model.add_edge_tagged(
-            ring_verts[last_ring][next],
-            ring_verts[last_ring][s],
-            t2,
-        );
+        let (_, he0, _) = model.add_edge_tagged(ring_verts[last_ring][s], north, t0);
+        let (_, he1, _) = model.add_edge_tagged(north, ring_verts[last_ring][next], t1);
+        let (_, he2, _) =
+            model.add_edge_tagged(ring_verts[last_ring][next], ring_verts[last_ring][s], t2);
 
         let lp = model.make_loop(&[he0, he1, he2])?;
         let ft = Tag::generated(EntityKind::Face, op, face_idx);
@@ -1620,14 +1629,10 @@ fn build_torus(
             let t3 = Tag::generated(EntityKind::Edge, op, edge_idx);
             edge_idx += 1;
 
-            let (_, he0, _) =
-                model.add_edge_tagged(ring_verts[i][j], ring_verts[ni][j], t0);
-            let (_, he1, _) =
-                model.add_edge_tagged(ring_verts[ni][j], ring_verts[ni][nj], t1);
-            let (_, he2, _) =
-                model.add_edge_tagged(ring_verts[ni][nj], ring_verts[i][nj], t2);
-            let (_, he3, _) =
-                model.add_edge_tagged(ring_verts[i][nj], ring_verts[i][j], t3);
+            let (_, he0, _) = model.add_edge_tagged(ring_verts[i][j], ring_verts[ni][j], t0);
+            let (_, he1, _) = model.add_edge_tagged(ring_verts[ni][j], ring_verts[ni][nj], t1);
+            let (_, he2, _) = model.add_edge_tagged(ring_verts[ni][nj], ring_verts[i][nj], t2);
+            let (_, he3, _) = model.add_edge_tagged(ring_verts[i][nj], ring_verts[i][j], t3);
 
             let lp = model.make_loop(&[he0, he1, he2, he3])?;
             let ft = Tag::generated(EntityKind::Face, op, face_idx);
@@ -2061,14 +2066,13 @@ mod tests {
         assert_eq!(ls["result"]["solids"].as_array().unwrap().len(), 2);
 
         // 5. Measure box
-        let m = call_tool(
-            &mut server,
-            "measure",
-            serde_json::json!({"id": box_id}),
-        );
+        let m = call_tool(&mut server, "measure", serde_json::json!({"id": box_id}));
         assert!(m["error"].is_null());
         let vol = m["result"]["volume"].as_f64().unwrap();
-        assert!((vol - 1000.0).abs() < 10.0, "box volume {vol} expected ~1000");
+        assert!(
+            (vol - 1000.0).abs() < 10.0,
+            "box volume {vol} expected ~1000"
+        );
 
         // 6. Export as STL
         let e = call_tool(
@@ -2077,7 +2081,12 @@ mod tests {
             serde_json::json!({"format": "stl", "id": box_id}),
         );
         assert!(e["error"].is_null());
-        assert!(e["result"]["data"].as_str().unwrap().contains("facet normal"));
+        assert!(
+            e["result"]["data"]
+                .as_str()
+                .unwrap()
+                .contains("facet normal")
+        );
 
         // 7. Delete cylinder
         let d = call_tool(

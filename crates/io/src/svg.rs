@@ -300,9 +300,9 @@ pub fn import_svg(content: &str) -> KernelResult<Mesh> {
         let tris = ear_clip(poly);
         for tri in tris {
             let base = vertices.len() as u32;
-            vertices.push(Point3::new(tri.0 .0, tri.0 .1, 0.0));
-            vertices.push(Point3::new(tri.1 .0, tri.1 .1, 0.0));
-            vertices.push(Point3::new(tri.2 .0, tri.2 .1, 0.0));
+            vertices.push(Point3::new(tri.0.0, tri.0.1, 0.0));
+            vertices.push(Point3::new(tri.1.0, tri.1.1, 0.0));
+            vertices.push(Point3::new(tri.2.0, tri.2.1, 0.0));
             normals.push(up);
             normals.push(up);
             normals.push(up);
@@ -726,7 +726,12 @@ fn parse_path_d(d: &str, xf: &Xf) -> Vec<Vec<(f64, f64)>> {
                     let dy3: f64 = tokens[i + 5].parse().unwrap_or(0.0);
                     flatten_cubic(
                         &mut current,
-                        [(cx, cy), (cx + dx1, cy + dy1), (cx + dx2, cy + dy2), (cx + dx3, cy + dy3)],
+                        [
+                            (cx, cy),
+                            (cx + dx1, cy + dy1),
+                            (cx + dx2, cy + dy2),
+                            (cx + dx3, cy + dy3),
+                        ],
                         xf,
                     );
                     cx += dx3;
@@ -786,7 +791,11 @@ fn tokenize_path(d: &str) -> Vec<String> {
             if !current.is_empty() {
                 tokens.push(std::mem::take(&mut current));
             }
-        } else if ch == '-' && !current.is_empty() && !current.ends_with('e') && !current.ends_with('E') {
+        } else if ch == '-'
+            && !current.is_empty()
+            && !current.ends_with('e')
+            && !current.ends_with('E')
+        {
             tokens.push(std::mem::take(&mut current));
             current.push(ch);
         } else {
@@ -803,17 +812,19 @@ fn is_number(s: &str) -> bool {
     s.starts_with(|c: char| c.is_ascii_digit() || c == '-' || c == '.')
 }
 
-fn flatten_cubic(
-    out: &mut Vec<(f64, f64)>,
-    pts: [(f64, f64); 4],
-    xf: &Xf,
-) {
+fn flatten_cubic(out: &mut Vec<(f64, f64)>, pts: [(f64, f64); 4], xf: &Xf) {
     let steps = 8;
     for i in 1..=steps {
         let t = i as f64 / steps as f64;
         let u = 1.0 - t;
-        let px = u * u * u * pts[0].0 + 3.0 * u * u * t * pts[1].0 + 3.0 * u * t * t * pts[2].0 + t * t * t * pts[3].0;
-        let py = u * u * u * pts[0].1 + 3.0 * u * u * t * pts[1].1 + 3.0 * u * t * t * pts[2].1 + t * t * t * pts[3].1;
+        let px = u * u * u * pts[0].0
+            + 3.0 * u * u * t * pts[1].0
+            + 3.0 * u * t * t * pts[2].0
+            + t * t * t * pts[3].0;
+        let py = u * u * u * pts[0].1
+            + 3.0 * u * u * t * pts[1].1
+            + 3.0 * u * t * t * pts[2].1
+            + t * t * t * pts[3].1;
         out.push(xf.apply(px, py));
     }
 }
@@ -927,7 +938,8 @@ mod tests {
 
     #[test]
     fn test_import_svg_rect() {
-        let svg = r#"<svg width="100" height="100"><rect x="10" y="10" width="80" height="60"/></svg>"#;
+        let svg =
+            r#"<svg width="100" height="100"><rect x="10" y="10" width="80" height="60"/></svg>"#;
         let mesh = import_svg(svg).unwrap();
         assert!(mesh.triangle_count() >= 2);
         for v in &mesh.vertices {
@@ -944,7 +956,8 @@ mod tests {
 
     #[test]
     fn test_import_svg_ellipse() {
-        let svg = r#"<svg width="100" height="100"><ellipse cx="50" cy="50" rx="40" ry="20"/></svg>"#;
+        let svg =
+            r#"<svg width="100" height="100"><ellipse cx="50" cy="50" rx="40" ry="20"/></svg>"#;
         let mesh = import_svg(svg).unwrap();
         assert!(mesh.triangle_count() >= 10);
     }
@@ -965,7 +978,8 @@ mod tests {
 
     #[test]
     fn test_import_svg_path_rect() {
-        let svg = r#"<svg width="100" height="100"><path d="M10 10 L90 10 L90 90 L10 90 Z"/></svg>"#;
+        let svg =
+            r#"<svg width="100" height="100"><path d="M10 10 L90 10 L90 90 L10 90 Z"/></svg>"#;
         let mesh = import_svg(svg).unwrap();
         assert!(mesh.triangle_count() >= 2);
     }
@@ -983,7 +997,11 @@ mod tests {
         let mesh = import_svg(svg).unwrap();
         assert!(mesh.triangle_count() >= 2);
         // Check that translation was applied
-        let min_x = mesh.vertices.iter().map(|v| v.x).fold(f64::INFINITY, f64::min);
+        let min_x = mesh
+            .vertices
+            .iter()
+            .map(|v| v.x)
+            .fold(f64::INFINITY, f64::min);
         assert!(min_x >= 9.0);
     }
 

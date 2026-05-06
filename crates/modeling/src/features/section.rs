@@ -122,16 +122,15 @@ mod tests {
         let mut model = BRepModel::new();
         let b = crate::make_box(&mut model, Point3::ORIGIN, 4.0, 4.0, 4.0).unwrap();
 
-        let result = section_solid(
-            &model,
-            b.solid,
-            Point3::new(0.0, 0.0, 2.0),
-            Vec3::Z,
-        )
-        .unwrap();
+        let result = section_solid(&model, b.solid, Point3::new(0.0, 0.0, 2.0), Vec3::Z).unwrap();
 
         // A box cut at z=2 should produce 4 section edges (one per lateral face)
-        assert_eq!(result.edges.len(), 4, "expected 4 section edges, got {}", result.edges.len());
+        assert_eq!(
+            result.edges.len(),
+            4,
+            "expected 4 section edges, got {}",
+            result.edges.len()
+        );
     }
 
     #[test]
@@ -139,13 +138,7 @@ mod tests {
         let mut model = BRepModel::new();
         let b = crate::make_box(&mut model, Point3::ORIGIN, 2.0, 2.0, 2.0).unwrap();
 
-        let result = section_solid(
-            &model,
-            b.solid,
-            Point3::new(0.0, 0.0, 10.0),
-            Vec3::Z,
-        )
-        .unwrap();
+        let result = section_solid(&model, b.solid, Point3::new(0.0, 0.0, 10.0), Vec3::Z).unwrap();
 
         assert!(result.edges.is_empty());
     }

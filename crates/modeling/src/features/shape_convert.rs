@@ -33,10 +33,7 @@ pub struct RefineResult {
 ///
 /// Creates a face for each triangle in the mesh, deduplicating vertices by
 /// position. All triangles are assembled into a single shell and solid.
-pub fn shape_from_mesh(
-    model: &mut BRepModel,
-    mesh: &Mesh,
-) -> KernelResult<ShapeFromMeshResult> {
+pub fn shape_from_mesh(model: &mut BRepModel, mesh: &Mesh) -> KernelResult<ShapeFromMeshResult> {
     if mesh.indices.is_empty() {
         return Err(KernelError::InvalidArgument(
             "shape_from_mesh requires at least 1 triangle".into(),
@@ -102,7 +99,7 @@ pub fn reverse_solid(
         solid,
         op,
         |pt| pt, // identity transform
-        true,     // reverse winding
+        true,    // reverse winding
     )?;
 
     Ok(ReverseResult {
@@ -116,10 +113,7 @@ pub fn reverse_solid(
 /// Two faces sharing an edge are considered to have a "redundant" edge if
 /// their face normals are approximately parallel (within a small tolerance).
 /// Reports the count of such redundant edges found.
-pub fn refine_shape(
-    model: &BRepModel,
-    solid: Handle<SolidData>,
-) -> KernelResult<RefineResult> {
+pub fn refine_shape(model: &BRepModel, solid: Handle<SolidData>) -> KernelResult<RefineResult> {
     let face_handles = collect_solid_faces(model, solid)?;
 
     // Compute a face normal for each face from its first 3 vertices
@@ -127,9 +121,21 @@ pub fn refine_shape(
     for &fh in &face_handles {
         let verts = model.vertices_of_face(fh)?;
         if verts.len() >= 3 {
-            let p0 = model.vertices.get(verts[0]).map(|v| v.point).unwrap_or(Point3::ORIGIN);
-            let p1 = model.vertices.get(verts[1]).map(|v| v.point).unwrap_or(Point3::ORIGIN);
-            let p2 = model.vertices.get(verts[2]).map(|v| v.point).unwrap_or(Point3::ORIGIN);
+            let p0 = model
+                .vertices
+                .get(verts[0])
+                .map(|v| v.point)
+                .unwrap_or(Point3::ORIGIN);
+            let p1 = model
+                .vertices
+                .get(verts[1])
+                .map(|v| v.point)
+                .unwrap_or(Point3::ORIGIN);
+            let p2 = model
+                .vertices
+                .get(verts[2])
+                .map(|v| v.point)
+                .unwrap_or(Point3::ORIGIN);
             face_normals.insert(fh.index(), (p0, p1, p2));
         }
     }

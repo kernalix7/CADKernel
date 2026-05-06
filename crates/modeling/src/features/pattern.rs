@@ -29,11 +29,9 @@ pub fn linear_pattern(
             "pattern count must be at least 2".into(),
         ));
     }
-    let dir = direction
-        .normalized()
-        .ok_or(KernelError::InvalidArgument(
-            "pattern direction must be non-zero".into(),
-        ))?;
+    let dir = direction.normalized().ok_or(KernelError::InvalidArgument(
+        "pattern direction must be non-zero".into(),
+    ))?;
 
     let mut solids = vec![solid];
     let mut faces = Vec::new();
@@ -75,11 +73,9 @@ pub fn circular_pattern(
             "pattern count must be at least 2".into(),
         ));
     }
-    let axis = axis_dir
-        .normalized()
-        .ok_or(KernelError::InvalidArgument(
-            "pattern axis must be non-zero".into(),
-        ))?;
+    let axis = axis_dir.normalized().ok_or(KernelError::InvalidArgument(
+        "pattern axis must be non-zero".into(),
+    ))?;
 
     let angle_step = std::f64::consts::TAU / count as f64;
 

@@ -58,8 +58,7 @@ pub fn chamfer_edge(
         face_vert_lists.push((fh, verts));
     }
 
-    let (edge_v1, edge_v2) =
-        resolve_edge_in_faces(model, edge_v1, edge_v2, &face_vert_lists)?;
+    let (edge_v1, edge_v2) = resolve_edge_in_faces(model, edge_v1, edge_v2, &face_vert_lists)?;
 
     let mut adj_faces: Vec<Handle<FaceData>> = Vec::new();
     for &(fh, ref verts) in &face_vert_lists {
@@ -238,12 +237,13 @@ pub fn chamfer_edges(
     for &(v1_in, v2_in) in edges {
         let p1 = vertex_point(model, v1_in)?;
         let p2 = vertex_point(model, v2_in)?;
-        let (v1, v2) = resolve_edge_by_position(&face_vert_lists, model, p1, p2).ok_or_else(|| {
-            KernelError::InvalidArgument(format!(
-                "chamfer_edges: edge ({:?},{:?}) not on any face of the solid",
-                p1, p2
-            ))
-        })?;
+        let (v1, v2) =
+            resolve_edge_by_position(&face_vert_lists, model, p1, p2).ok_or_else(|| {
+                KernelError::InvalidArgument(format!(
+                    "chamfer_edges: edge ({:?},{:?}) not on any face of the solid",
+                    p1, p2
+                ))
+            })?;
 
         let edge_len = (p2 - p1).length();
         if distance >= edge_len * 0.5 {
@@ -264,7 +264,11 @@ pub fn chamfer_edges(
                 adj.len()
             )));
         }
-        resolved.push(ResolvedEdge { v1, v2, adj_faces: [adj[0], adj[1]] });
+        resolved.push(ResolvedEdge {
+            v1,
+            v2,
+            adj_faces: [adj[0], adj[1]],
+        });
     }
 
     let op = model.history.next_operation("chamfer_edges");
@@ -285,7 +289,11 @@ pub fn chamfer_edges(
                 let n = verts.len();
                 let prev_v = verts[(pos + n - 1) % n];
                 let next_v = verts[(pos + 1) % n];
-                let other_v = if prev_v == re.v1 || prev_v == re.v2 { next_v } else { prev_v };
+                let other_v = if prev_v == re.v1 || prev_v == re.v2 {
+                    next_v
+                } else {
+                    prev_v
+                };
 
                 let p_target = vertex_point(model, target_v)?;
                 let p_other = vertex_point(model, other_v)?;
@@ -410,7 +418,13 @@ pub fn chamfer_edges(
         ];
         let mut quad_vs: Vec<Handle<VertexData>> = Vec::with_capacity(4);
         for &pt in &quad {
-            quad_vs.push(get_or_create(model, &mut new_vert_cache, &mut vert_idx, pt, op));
+            quad_vs.push(get_or_create(
+                model,
+                &mut new_vert_cache,
+                &mut vert_idx,
+                pt,
+                op,
+            ));
         }
         quad_vs.dedup();
         if quad_vs.len() < 3 {
@@ -443,15 +457,16 @@ fn resolve_edge_by_position(
     p1: Point3,
     p2: Point3,
 ) -> Option<(Handle<VertexData>, Handle<VertexData>)> {
-    let find_by_pos = |verts: &[Handle<VertexData>], target: Point3| -> Option<Handle<VertexData>> {
-        verts.iter().copied().find(|&vh| {
-            if let Some(vd) = model.vertices.get(vh) {
-                (vd.point - target).length() < 1e-9
-            } else {
-                false
-            }
-        })
-    };
+    let find_by_pos =
+        |verts: &[Handle<VertexData>], target: Point3| -> Option<Handle<VertexData>> {
+            verts.iter().copied().find(|&vh| {
+                if let Some(vd) = model.vertices.get(vh) {
+                    (vd.point - target).length() < 1e-9
+                } else {
+                    false
+                }
+            })
+        };
     for (_, verts) in face_vert_lists {
         let r1 = find_by_pos(verts, p1);
         let r2 = find_by_pos(verts, p2);
@@ -480,15 +495,16 @@ fn resolve_edge_in_faces(
     let p1 = vertex_point(model, v1)?;
     let p2 = vertex_point(model, v2)?;
 
-    let find_by_pos = |verts: &[Handle<VertexData>], target: Point3| -> Option<Handle<VertexData>> {
-        verts.iter().copied().find(|&vh| {
-            if let Some(vd) = model.vertices.get(vh) {
-                (vd.point - target).length() < 1e-9
-            } else {
-                false
-            }
-        })
-    };
+    let find_by_pos =
+        |verts: &[Handle<VertexData>], target: Point3| -> Option<Handle<VertexData>> {
+            verts.iter().copied().find(|&vh| {
+                if let Some(vd) = model.vertices.get(vh) {
+                    (vd.point - target).length() < 1e-9
+                } else {
+                    false
+                }
+            })
+        };
 
     for (_, verts) in face_vert_lists {
         let r1 = find_by_pos(verts, p1);

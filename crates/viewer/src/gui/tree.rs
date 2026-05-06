@@ -1,5 +1,5 @@
-use super::{GuiAction, GuiState};
 use super::theme;
+use super::{GuiAction, GuiState};
 use crate::scene::{CreationParams, ObjectId, Scene, SceneObject};
 
 // ---------------------------------------------------------------------------
@@ -97,11 +97,17 @@ fn draw_entity_icon(
             let arrow_tip = egui::pos2(c.x, c.y - r * 0.9);
             painter.line_segment([arrow_base, arrow_tip], stroke);
             painter.line_segment(
-                [arrow_tip, egui::pos2(arrow_tip.x - r * 0.25, arrow_tip.y + r * 0.25)],
+                [
+                    arrow_tip,
+                    egui::pos2(arrow_tip.x - r * 0.25, arrow_tip.y + r * 0.25),
+                ],
                 stroke,
             );
             painter.line_segment(
-                [arrow_tip, egui::pos2(arrow_tip.x + r * 0.25, arrow_tip.y + r * 0.25)],
+                [
+                    arrow_tip,
+                    egui::pos2(arrow_tip.x + r * 0.25, arrow_tip.y + r * 0.25),
+                ],
                 stroke,
             );
         }
@@ -206,7 +212,10 @@ fn draw_entity_icon(
                 egui::StrokeKind::Outside,
             );
             painter.line_segment(
-                [egui::pos2(c.x, c.y + d * 0.5), egui::pos2(c.x, c.y - d * 0.5)],
+                [
+                    egui::pos2(c.x, c.y + d * 0.5),
+                    egui::pos2(c.x, c.y - d * 0.5),
+                ],
                 stroke,
             );
             painter.line_segment(
@@ -235,11 +244,17 @@ fn draw_entity_icon(
             let arrow_end = egui::pos2(c.x - d * 0.1, c.y);
             painter.line_segment([arrow_start, arrow_end], stroke);
             painter.line_segment(
-                [arrow_end, egui::pos2(arrow_end.x - d * 0.3, arrow_end.y - d * 0.3)],
+                [
+                    arrow_end,
+                    egui::pos2(arrow_end.x - d * 0.3, arrow_end.y - d * 0.3),
+                ],
                 stroke,
             );
             painter.line_segment(
-                [arrow_end, egui::pos2(arrow_end.x - d * 0.3, arrow_end.y + d * 0.3)],
+                [
+                    arrow_end,
+                    egui::pos2(arrow_end.x - d * 0.3, arrow_end.y + d * 0.3),
+                ],
                 stroke,
             );
         }
@@ -277,8 +292,9 @@ fn icon_for_params(params: Option<&CreationParams>) -> EntityIcon {
         Some(CreationParams::Imported { .. }) => EntityIcon::Imported,
         Some(CreationParams::Extruded) => EntityIcon::Extrude,
         Some(CreationParams::Revolved) => EntityIcon::Revolve,
-        Some(CreationParams::Boolean { .. })
-        | Some(CreationParams::BooleanOp { .. }) => EntityIcon::Boolean,
+        Some(CreationParams::Boolean { .. }) | Some(CreationParams::BooleanOp { .. }) => {
+            EntityIcon::Boolean
+        }
         Some(CreationParams::Fillet { .. })
         | Some(CreationParams::Chamfer { .. })
         | Some(CreationParams::Shell { .. })
@@ -451,7 +467,11 @@ fn history_label_to_icon(label: &str) -> EntityIcon {
         EntityIcon::Extrude
     } else if lower.contains("revolve") || lower.contains("groove") {
         EntityIcon::Revolve
-    } else if lower.contains("boolean") || lower.contains("union") || lower.contains("subtract") || lower.contains("intersect") {
+    } else if lower.contains("boolean")
+        || lower.contains("union")
+        || lower.contains("subtract")
+        || lower.contains("intersect")
+    {
         EntityIcon::Boolean
     } else if lower.contains("fillet") {
         EntityIcon::Fillet
@@ -524,19 +544,10 @@ impl DragState {
 
 /// Standalone panel version (deprecated -- kept for compatibility).
 #[allow(dead_code)]
-pub(crate) fn draw_model_tree(
-    _ctx: &egui::Context,
-    _gui: &mut GuiState,
-    _scene: &Scene,
-) {
-}
+pub(crate) fn draw_model_tree(_ctx: &egui::Context, _gui: &mut GuiState, _scene: &Scene) {}
 
 /// Inline version -- draws tree content into an existing Ui.
-pub(crate) fn draw_model_tree_inline(
-    ui: &mut egui::Ui,
-    gui: &mut GuiState,
-    scene: &Scene,
-) {
+pub(crate) fn draw_model_tree_inline(ui: &mut egui::Ui, gui: &mut GuiState, scene: &Scene) {
     draw_search_box(ui, gui);
 
     handle_keyboard_shortcuts(ui, gui);
@@ -566,7 +577,8 @@ pub(crate) fn draw_model_tree_inline(
     {
         let avail_w = ui.available_width();
         let bar_h = 18.0;
-        let (bar_rect, _) = ui.allocate_exact_size(egui::vec2(avail_w, bar_h), egui::Sense::hover());
+        let (bar_rect, _) =
+            ui.allocate_exact_size(egui::vec2(avail_w, bar_h), egui::Sense::hover());
         let painter = ui.painter();
         let cy = bar_rect.center().y;
 
@@ -593,8 +605,16 @@ pub(crate) fn draw_model_tree_inline(
             egui::vec2(btn_w, bar_h),
         );
 
-        let expand_resp = ui.interact(expand_rect, ui.id().with("expand_all"), egui::Sense::click());
-        let collapse_resp = ui.interact(collapse_rect, ui.id().with("collapse_all"), egui::Sense::click());
+        let expand_resp = ui.interact(
+            expand_rect,
+            ui.id().with("expand_all"),
+            egui::Sense::click(),
+        );
+        let collapse_resp = ui.interact(
+            collapse_rect,
+            ui.id().with("collapse_all"),
+            egui::Sense::click(),
+        );
 
         let expand_color = if expand_resp.hovered() {
             egui::Color32::from_rgb(180, 190, 205)
@@ -663,7 +683,8 @@ pub(crate) fn draw_model_tree_inline(
     // -- Groups section (collapsible) --
     if !scene.groups.is_empty() {
         let group_expanded = theme::draw_section_header(
-            ui, "tree_groups",
+            ui,
+            "tree_groups",
             &format!("Groups ({})", scene.groups.len()),
             true,
         );
@@ -673,10 +694,8 @@ pub(crate) fn draw_model_tree_inline(
                 let gid = group.id;
                 let row_h = 20.0;
                 let avail_w = ui.available_width();
-                let (row_rect, row_resp) = ui.allocate_exact_size(
-                    egui::vec2(avail_w, row_h),
-                    egui::Sense::click(),
-                );
+                let (row_rect, row_resp) =
+                    ui.allocate_exact_size(egui::vec2(avail_w, row_h), egui::Sense::click());
                 let painter = ui.painter();
 
                 if row_resp.hovered() {
@@ -687,7 +706,11 @@ pub(crate) fn draw_model_tree_inline(
                 let mut x = row_rect.left() + 8.0;
 
                 // Eye icon
-                let eye_char = if group.visible { "\u{25C9}" } else { "\u{25CB}" };
+                let eye_char = if group.visible {
+                    "\u{25C9}"
+                } else {
+                    "\u{25CB}"
+                };
                 let eye_color = if group.visible {
                     egui::Color32::from_rgb(90, 185, 110)
                 } else {
@@ -701,7 +724,9 @@ pub(crate) fn draw_model_tree_inline(
                     eye_color,
                 );
                 let clicked_eye = row_resp.clicked()
-                    && row_resp.interact_pointer_pos().is_some_and(|p| p.x < x + 14.0);
+                    && row_resp
+                        .interact_pointer_pos()
+                        .is_some_and(|p| p.x < x + 14.0);
                 if clicked_eye {
                     gui.actions.push(GuiAction::ToggleGroupVisibility(gid));
                 }
@@ -742,7 +767,9 @@ pub(crate) fn draw_model_tree_inline(
                         egui::Color32::from_rgb(150, 60, 60),
                     );
                     if row_resp.clicked()
-                        && row_resp.interact_pointer_pos().is_some_and(|p| p.x > del_x - 8.0)
+                        && row_resp
+                            .interact_pointer_pos()
+                            .is_some_and(|p| p.x > del_x - 8.0)
                     {
                         gui.actions.push(GuiAction::DeleteGroup(gid));
                     }
@@ -778,7 +805,11 @@ pub(crate) fn draw_model_tree_inline(
             egui::FontId::new(11.5, egui::FontFamily::Proportional),
             egui::Color32::from_rgb(170, 175, 185),
         );
-        let count_text = format!("{} object{}", scene.len(), if scene.len() == 1 { "" } else { "s" });
+        let count_text = format!(
+            "{} object{}",
+            scene.len(),
+            if scene.len() == 1 { "" } else { "s" }
+        );
         painter.text(
             egui::pos2(rect.right() - 6.0, cy),
             egui::Align2::RIGHT_CENTER,
@@ -804,11 +835,7 @@ pub(crate) fn draw_model_tree_inline(
             [egui::pos2(x_start, drop_y), egui::pos2(x_end, drop_y)],
             egui::Stroke::new(2.0, theme::COLOR_ACCENT),
         );
-        painter.circle_filled(
-            egui::pos2(x_start, drop_y),
-            3.0,
-            theme::COLOR_ACCENT,
-        );
+        painter.circle_filled(egui::pos2(x_start, drop_y), 3.0, theme::COLOR_ACCENT);
     }
 }
 
@@ -821,8 +848,14 @@ fn draw_search_box(ui: &mut egui::Ui, gui: &mut GuiState) {
 
     // Search field background
     let inner = rect.shrink2(egui::vec2(2.0, 1.0));
-    ui.painter().rect_filled(inner, 3.0, egui::Color32::from_rgb(30, 32, 38));
-    ui.painter().rect_stroke(inner, 3.0, egui::Stroke::new(0.5, egui::Color32::from_rgb(55, 58, 65)), egui::StrokeKind::Outside);
+    ui.painter()
+        .rect_filled(inner, 3.0, egui::Color32::from_rgb(30, 32, 38));
+    ui.painter().rect_stroke(
+        inner,
+        3.0,
+        egui::Stroke::new(0.5, egui::Color32::from_rgb(55, 58, 65)),
+        egui::StrokeKind::Outside,
+    );
 
     // Search icon
     ui.painter().text(
@@ -837,7 +870,11 @@ fn draw_search_box(ui: &mut egui::Ui, gui: &mut GuiState) {
     let edit_rect = egui::Rect::from_min_max(
         egui::pos2(inner.left() + 22.0, inner.top()),
         egui::pos2(
-            if gui.tree_filter.is_empty() { inner.right() } else { inner.right() - 18.0 },
+            if gui.tree_filter.is_empty() {
+                inner.right()
+            } else {
+                inner.right() - 18.0
+            },
             inner.bottom(),
         ),
     );
@@ -861,7 +898,11 @@ fn draw_search_box(ui: &mut egui::Ui, gui: &mut GuiState) {
             egui::pos2(inner.right() - 10.0, inner.center().y),
             egui::vec2(14.0, 14.0),
         );
-        let clear_resp = ui.interact(clear_rect, ui.id().with("clear_filter"), egui::Sense::click());
+        let clear_resp = ui.interact(
+            clear_rect,
+            ui.id().with("clear_filter"),
+            egui::Sense::click(),
+        );
         let clear_color = if clear_resp.hovered() {
             egui::Color32::from_rgb(180, 185, 195)
         } else {
@@ -888,7 +929,11 @@ fn handle_keyboard_shortcuts(ui: &mut egui::Ui, gui: &mut GuiState) {
     }
     if ui.input(|i| i.key_pressed(egui::Key::F2)) && gui.rename_edit.is_none() {
         if let Some(sel_id) = gui.actions.iter().find_map(|a| {
-            if let GuiAction::SelectObject(id) = a { Some(*id) } else { None }
+            if let GuiAction::SelectObject(id) = a {
+                Some(*id)
+            } else {
+                None
+            }
         }) {
             gui.rename_edit = Some((sel_id, String::new()));
         }
@@ -926,7 +971,17 @@ fn draw_tree_node(
             let default_expanded = node.is_body && node.is_active_body;
             let is_expanded = ui.data_mut(|d| *d.get_temp_mut_or(expand_id, default_expanded));
 
-            draw_object_row(ui, gui, obj, node, depth, is_last, has_children, is_expanded, drag);
+            draw_object_row(
+                ui,
+                gui,
+                obj,
+                node,
+                depth,
+                is_last,
+                has_children,
+                is_expanded,
+                drag,
+            );
 
             if is_expanded && !node.children.is_empty() {
                 let child_count = node.children.len();
@@ -960,10 +1015,8 @@ fn draw_object_row(
     let expand_id = egui::Id::new(("tree_expand", id));
 
     let row_rect = ui.available_rect_before_wrap();
-    let full_row = egui::Rect::from_min_size(
-        row_rect.min,
-        egui::vec2(row_rect.width(), ROW_HEIGHT),
-    );
+    let full_row =
+        egui::Rect::from_min_size(row_rect.min, egui::vec2(row_rect.width(), ROW_HEIGHT));
 
     let row_resp = ui.allocate_rect(full_row, egui::Sense::click_and_drag());
     let hovered = row_resp.hovered();
@@ -974,14 +1027,16 @@ fn draw_object_row(
     }
     if is_selected {
         // Selection with left accent bar (FreeCAD style)
-        ui.painter().rect_filled(full_row, 0.0, egui::Color32::from_rgb(9, 71, 113));
+        ui.painter()
+            .rect_filled(full_row, 0.0, egui::Color32::from_rgb(9, 71, 113));
         ui.painter().rect_filled(
             egui::Rect::from_min_size(full_row.left_top(), egui::vec2(2.0, ROW_HEIGHT)),
             0.0,
             egui::Color32::from_rgb(0, 122, 204),
         );
     } else if hovered {
-        ui.painter().rect_filled(full_row, 0.0, egui::Color32::from_rgb(42, 45, 48));
+        ui.painter()
+            .rect_filled(full_row, 0.0, egui::Color32::from_rgb(42, 45, 48));
     }
 
     if row_resp.dragged() {
@@ -990,7 +1045,11 @@ fn draw_object_row(
     if drag.dragging_id.is_some() && drag.dragging_id != Some(id) && hovered {
         if let Some(pointer) = ui.input(|i| i.pointer.hover_pos()) {
             let mid_y = full_row.center().y;
-            let target_y = if pointer.y < mid_y { full_row.top() } else { full_row.bottom() };
+            let target_y = if pointer.y < mid_y {
+                full_row.top()
+            } else {
+                full_row.bottom()
+            };
             drag.drop_target_y = Some(target_y);
             drag.drop_target_x = full_row.left() + (depth as f32 * INDENT_PX);
             drag.drop_target_width = full_row.width() - (depth as f32 * INDENT_PX);
@@ -1014,7 +1073,11 @@ fn draw_object_row(
             egui::FontId::proportional(9.0),
             theme::COLOR_DIM,
         );
-        if row_resp.clicked() && row_resp.interact_pointer_pos().is_some_and(|p| p.x < x + 14.0) {
+        if row_resp.clicked()
+            && row_resp
+                .interact_pointer_pos()
+                .is_some_and(|p| p.x < x + 14.0)
+        {
             ui.data_mut(|d| {
                 let val: &mut bool = d.get_temp_mut_or(expand_id, false);
                 *val = !*val;
@@ -1093,7 +1156,10 @@ fn draw_object_row(
                 label_color,
             );
             painter.line_segment(
-                [egui::pos2(x, center_y), egui::pos2(x + name_width, center_y)],
+                [
+                    egui::pos2(x, center_y),
+                    egui::pos2(x + name_width, center_y),
+                ],
                 egui::Stroke::new(1.0, egui::Color32::from_rgb(100, 100, 105)),
             );
         } else {
@@ -1125,17 +1191,17 @@ fn draw_object_row(
         // Color swatch (right side)
         let swatch_x = full_row.right() - 12.0;
         let [cr, cg, cb, _] = obj.color;
-        let swatch_color = egui::Color32::from_rgb(
-            (cr * 255.0) as u8,
-            (cg * 255.0) as u8,
-            (cb * 255.0) as u8,
-        );
-        let swatch_rect = egui::Rect::from_center_size(
-            egui::pos2(swatch_x, center_y),
-            egui::vec2(8.0, 8.0),
-        );
+        let swatch_color =
+            egui::Color32::from_rgb((cr * 255.0) as u8, (cg * 255.0) as u8, (cb * 255.0) as u8);
+        let swatch_rect =
+            egui::Rect::from_center_size(egui::pos2(swatch_x, center_y), egui::vec2(8.0, 8.0));
         painter.rect_filled(swatch_rect, 2.0, swatch_color);
-        painter.rect_stroke(swatch_rect, 2.0, egui::Stroke::new(0.5, egui::Color32::from_rgb(60, 62, 68)), egui::StrokeKind::Outside);
+        painter.rect_stroke(
+            swatch_rect,
+            2.0,
+            egui::Stroke::new(0.5, egui::Color32::from_rgb(60, 62, 68)),
+            egui::StrokeKind::Outside,
+        );
 
         // Eye icon (visibility toggle) — only show on hover or hidden
         let eye_x = full_row.right() - 30.0;
@@ -1157,9 +1223,9 @@ fn draw_object_row(
         }
 
         if row_resp.clicked() {
-            let clicked_eye = row_resp.interact_pointer_pos().is_some_and(|p| {
-                p.x >= eye_x - 9.0 && p.x <= eye_x + 9.0
-            });
+            let clicked_eye = row_resp
+                .interact_pointer_pos()
+                .is_some_and(|p| p.x >= eye_x - 9.0 && p.x <= eye_x + 9.0);
             if clicked_eye {
                 gui.actions.push(GuiAction::ToggleVisibility(id));
             } else if ui.input(|i| i.modifiers.ctrl) {
@@ -1204,10 +1270,8 @@ fn draw_history_row(
 ) {
     let row_rect = ui.available_rect_before_wrap();
     let hist_row_h = 18.0;
-    let full_row = egui::Rect::from_min_size(
-        row_rect.min,
-        egui::vec2(row_rect.width(), hist_row_h),
-    );
+    let full_row =
+        egui::Rect::from_min_size(row_rect.min, egui::vec2(row_rect.width(), hist_row_h));
 
     let _resp = ui.allocate_rect(full_row, egui::Sense::hover());
     let painter = ui.painter();
@@ -1248,7 +1312,11 @@ fn draw_history_row(
 
     if node.is_tip {
         let name_width = painter
-            .layout_no_wrap(node.name.clone(), egui::FontId::proportional(11.0), text_color)
+            .layout_no_wrap(
+                node.name.clone(),
+                egui::FontId::proportional(11.0),
+                text_color,
+            )
             .rect
             .width();
         painter.text(
@@ -1356,12 +1424,10 @@ pub(crate) fn params_label_pub(p: &CreationParams) -> &'static str {
 
 /// Render the Assembly section of the tree (Components / Constraints / Joints).
 /// No-op when there is no active assembly.
-pub(crate) fn draw_assembly_section(
-    ui: &mut egui::Ui,
-    gui: &mut GuiState,
-    scene: Option<&Scene>,
-) {
-    let Some(asm) = gui.assembly.as_ref() else { return; };
+pub(crate) fn draw_assembly_section(ui: &mut egui::Ui, gui: &mut GuiState, scene: Option<&Scene>) {
+    let Some(asm) = gui.assembly.as_ref() else {
+        return;
+    };
     let title = format!(
         "\u{1F527} Assembly \u{2014} \"{}\"  ({} components, {} constraints, {} joints)",
         asm.name,
@@ -1381,55 +1447,69 @@ pub(crate) fn draw_assembly_section(
             (i, c.name.clone(), c.visible, oid)
         })
         .collect();
-    let constraint_rows: Vec<String> =
-        asm.constraints.iter().map(constraint_label).collect();
+    let constraint_rows: Vec<String> = asm.constraints.iter().map(constraint_label).collect();
     let joint_rows: Vec<String> = asm.joints.iter().map(joint_label).collect();
 
-    egui::CollapsingHeader::new(egui::RichText::new(title).size(11.5).color(theme::COLOR_ACCENT))
-        .id_salt("tree_assembly_root")
-        .default_open(true)
-        .show(ui, |ui| {
-            egui::CollapsingHeader::new(format!("Components ({})", comps.len()))
-                .id_salt("tree_assembly_comps")
-                .default_open(true)
-                .show(ui, |ui| {
-                    for (i, name, visible, oid) in &comps {
-                        ui.horizontal(|ui| {
-                            let eye = if *visible { "\u{25C9}" } else { "\u{25CB}" };
-                            if ui.small_button(eye).on_hover_text("Toggle visibility").clicked() {
-                                gui.actions.push(GuiAction::Assembly(
-                                    super::AssemblyAction::ToggleComponentVisibility(*i),
-                                ));
+    egui::CollapsingHeader::new(
+        egui::RichText::new(title)
+            .size(11.5)
+            .color(theme::COLOR_ACCENT),
+    )
+    .id_salt("tree_assembly_root")
+    .default_open(true)
+    .show(ui, |ui| {
+        egui::CollapsingHeader::new(format!("Components ({})", comps.len()))
+            .id_salt("tree_assembly_comps")
+            .default_open(true)
+            .show(ui, |ui| {
+                for (i, name, visible, oid) in &comps {
+                    ui.horizontal(|ui| {
+                        let eye = if *visible { "\u{25C9}" } else { "\u{25CB}" };
+                        if ui
+                            .small_button(eye)
+                            .on_hover_text("Toggle visibility")
+                            .clicked()
+                        {
+                            gui.actions.push(GuiAction::Assembly(
+                                super::AssemblyAction::ToggleComponentVisibility(*i),
+                            ));
+                        }
+                        let resp = ui
+                            .label(format!("\u{1F4E6} {name}"))
+                            .on_hover_text("Double-click to focus");
+                        if resp.double_clicked() {
+                            if let Some(id) = oid {
+                                gui.actions.push(GuiAction::FocusObject(*id));
                             }
-                            let resp = ui.label(format!("\u{1F4E6} {name}"))
-                                .on_hover_text("Double-click to focus");
-                            if resp.double_clicked() {
-                                if let Some(id) = oid {
-                                    gui.actions.push(GuiAction::FocusObject(*id));
-                                }
-                            }
-                        });
-                    }
-                });
-            egui::CollapsingHeader::new(format!("Constraints ({})", constraint_rows.len()))
-                .id_salt("tree_assembly_cons")
-                .default_open(false)
-                .show(ui, |ui| {
-                    for (i, label) in constraint_rows.iter().enumerate() {
-                        ui.label(egui::RichText::new(format!("  {i}. {label}"))
-                            .size(10.5).color(theme::COLOR_DIM));
-                    }
-                });
-            egui::CollapsingHeader::new(format!("Joints ({})", joint_rows.len()))
-                .id_salt("tree_assembly_joints")
-                .default_open(false)
-                .show(ui, |ui| {
-                    for (i, label) in joint_rows.iter().enumerate() {
-                        ui.label(egui::RichText::new(format!("  {i}. {label}"))
-                            .size(10.5).color(theme::COLOR_DIM));
-                    }
-                });
-        });
+                        }
+                    });
+                }
+            });
+        egui::CollapsingHeader::new(format!("Constraints ({})", constraint_rows.len()))
+            .id_salt("tree_assembly_cons")
+            .default_open(false)
+            .show(ui, |ui| {
+                for (i, label) in constraint_rows.iter().enumerate() {
+                    ui.label(
+                        egui::RichText::new(format!("  {i}. {label}"))
+                            .size(10.5)
+                            .color(theme::COLOR_DIM),
+                    );
+                }
+            });
+        egui::CollapsingHeader::new(format!("Joints ({})", joint_rows.len()))
+            .id_salt("tree_assembly_joints")
+            .default_open(false)
+            .show(ui, |ui| {
+                for (i, label) in joint_rows.iter().enumerate() {
+                    ui.label(
+                        egui::RichText::new(format!("  {i}. {label}"))
+                            .size(10.5)
+                            .color(theme::COLOR_DIM),
+                    );
+                }
+            });
+    });
     theme::draw_separator(ui);
 }
 
@@ -1460,40 +1540,87 @@ pub(crate) fn joint_label(j: &cadkernel_modeling::JointType) -> String {
     use cadkernel_modeling::JointType as J;
     match j {
         J::Grounded => "Grounded".to_string(),
-        J::FixedJoint { component_a, component_b } => {
+        J::FixedJoint {
+            component_a,
+            component_b,
+        } => {
             format!("FixedJoint({component_a}\u{2194}{component_b})")
         }
-        J::Revolute { component_a, component_b, .. } => {
+        J::Revolute {
+            component_a,
+            component_b,
+            ..
+        } => {
             format!("Revolute({component_a}\u{2194}{component_b})")
         }
-        J::Cylindrical { component_a, component_b, .. } => {
+        J::Cylindrical {
+            component_a,
+            component_b,
+            ..
+        } => {
             format!("Cylindrical({component_a}\u{2194}{component_b})")
         }
-        J::Slider { component_a, component_b, .. } => {
+        J::Slider {
+            component_a,
+            component_b,
+            ..
+        } => {
             format!("Slider({component_a}\u{2194}{component_b})")
         }
-        J::BallJoint { component_a, component_b, .. } => {
+        J::BallJoint {
+            component_a,
+            component_b,
+            ..
+        } => {
             format!("Ball({component_a}\u{2194}{component_b})")
         }
-        J::ParallelAxes { component_a, component_b, .. } => {
+        J::ParallelAxes {
+            component_a,
+            component_b,
+            ..
+        } => {
             format!("Parallel({component_a}\u{2194}{component_b})")
         }
-        J::PerpendicularAxes { component_a, component_b, .. } => {
+        J::PerpendicularAxes {
+            component_a,
+            component_b,
+            ..
+        } => {
             format!("Perpendicular({component_a}\u{2194}{component_b})")
         }
-        J::AngleJoint { component_a, component_b, .. } => {
+        J::AngleJoint {
+            component_a,
+            component_b,
+            ..
+        } => {
             format!("Angle({component_a}\u{2194}{component_b})")
         }
-        J::GearJoint { component_a, component_b, .. } => {
+        J::GearJoint {
+            component_a,
+            component_b,
+            ..
+        } => {
             format!("Gear({component_a}\u{2194}{component_b})")
         }
-        J::RackAndPinion { component_a, component_b, .. } => {
+        J::RackAndPinion {
+            component_a,
+            component_b,
+            ..
+        } => {
             format!("Rack({component_a}\u{2194}{component_b})")
         }
-        J::ScrewJoint { component_a, component_b, .. } => {
+        J::ScrewJoint {
+            component_a,
+            component_b,
+            ..
+        } => {
             format!("Screw({component_a}\u{2194}{component_b})")
         }
-        J::BeltJoint { component_a, component_b, .. } => {
+        J::BeltJoint {
+            component_a,
+            component_b,
+            ..
+        } => {
             format!("Belt({component_a}\u{2194}{component_b})")
         }
     }
@@ -1505,5 +1632,8 @@ fn find_object_for_solid(
     scene: &Scene,
     solid: cadkernel_topology::Handle<cadkernel_topology::SolidData>,
 ) -> Option<ObjectId> {
-    scene.visible_objects().find(|o| o.solid == solid).map(|o| o.id)
+    scene
+        .visible_objects()
+        .find(|o| o.solid == solid)
+        .map(|o| o.id)
 }

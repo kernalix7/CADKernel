@@ -102,11 +102,7 @@ fn apply_single(pt: Point3, transform: &Transform) -> Point3 {
             let ry = v.y * c + cross.y * s + k.y * dot * (1.0 - c);
             let rz = v.z * c + cross.z * s + k.z * dot * (1.0 - c);
 
-            Point3::new(
-                axis_origin.x + rx,
-                axis_origin.y + ry,
-                axis_origin.z + rz,
-            )
+            Point3::new(axis_origin.x + rx, axis_origin.y + ry, axis_origin.z + rz)
         }
         Transform::Scale { center, factor } => {
             let dx = pt.x - center.x;
@@ -235,8 +231,14 @@ mod tests {
             &mut model,
             r.solid,
             &[
-                Transform::Mirror { plane_point: Point3::ORIGIN, plane_normal: Vec3::X },
-                Transform::Mirror { plane_point: Point3::ORIGIN, plane_normal: Vec3::Y },
+                Transform::Mirror {
+                    plane_point: Point3::ORIGIN,
+                    plane_normal: Vec3::X,
+                },
+                Transform::Mirror {
+                    plane_point: Point3::ORIGIN,
+                    plane_normal: Vec3::Y,
+                },
             ],
         )
         .unwrap();
@@ -251,7 +253,10 @@ mod tests {
             &mut model,
             r.solid,
             &[
-                Transform::Scale { center: Point3::ORIGIN, factor: 3.0 },
+                Transform::Scale {
+                    center: Point3::ORIGIN,
+                    factor: 3.0,
+                },
                 Transform::Translation(Vec3::new(10.0, 0.0, 0.0)),
             ],
         )
@@ -284,7 +289,10 @@ mod tests {
         let result = multi_transform(
             &mut model,
             r.solid,
-            &[Transform::Scale { center: Point3::ORIGIN, factor: 0.0 }],
+            &[Transform::Scale {
+                center: Point3::ORIGIN,
+                factor: 0.0,
+            }],
         )
         .unwrap();
         assert!(model.solids.is_alive(result.solid));
@@ -297,7 +305,10 @@ mod tests {
         let result = multi_transform(
             &mut model,
             r.solid,
-            &[Transform::Mirror { plane_point: Point3::ORIGIN, plane_normal: Vec3::Y }],
+            &[Transform::Mirror {
+                plane_point: Point3::ORIGIN,
+                plane_normal: Vec3::Y,
+            }],
         )
         .unwrap();
         assert_eq!(result.faces.len(), 6);
@@ -330,7 +341,10 @@ mod tests {
                     axis_dir: Vec3::Z,
                     angle: std::f64::consts::FRAC_PI_4,
                 },
-                Transform::Scale { center: Point3::ORIGIN, factor: 2.0 },
+                Transform::Scale {
+                    center: Point3::ORIGIN,
+                    factor: 2.0,
+                },
             ],
         )
         .unwrap();

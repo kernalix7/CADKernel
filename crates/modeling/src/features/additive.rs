@@ -40,7 +40,13 @@ pub fn subtractive_box(
 ) -> KernelResult<BRepModel> {
     let mut tool = BRepModel::new();
     let r = make_box(&mut tool, origin, dx, dy, dz)?;
-    boolean_op(base_model, base_solid, &tool, r.solid, BooleanOp::Difference)
+    boolean_op(
+        base_model,
+        base_solid,
+        &tool,
+        r.solid,
+        BooleanOp::Difference,
+    )
 }
 
 /// Additive cylinder: creates a cylinder and boolean-unions it with the base solid.
@@ -68,7 +74,13 @@ pub fn subtractive_cylinder(
 ) -> KernelResult<BRepModel> {
     let mut tool = BRepModel::new();
     let r = make_cylinder(&mut tool, base_center, radius, height, segments)?;
-    boolean_op(base_model, base_solid, &tool, r.solid, BooleanOp::Difference)
+    boolean_op(
+        base_model,
+        base_solid,
+        &tool,
+        r.solid,
+        BooleanOp::Difference,
+    )
 }
 
 /// Additive sphere: creates a sphere and boolean-unions it with the base solid.
@@ -96,7 +108,13 @@ pub fn subtractive_sphere(
 ) -> KernelResult<BRepModel> {
     let mut tool = BRepModel::new();
     let r = make_sphere(&mut tool, center, radius, segments, rings)?;
-    boolean_op(base_model, base_solid, &tool, r.solid, BooleanOp::Difference)
+    boolean_op(
+        base_model,
+        base_solid,
+        &tool,
+        r.solid,
+        BooleanOp::Difference,
+    )
 }
 
 /// Additive cone: creates a cone and boolean-unions it with the base solid.
@@ -110,7 +128,14 @@ pub fn additive_cone(
     segments: usize,
 ) -> KernelResult<BRepModel> {
     let mut tool = BRepModel::new();
-    let r = make_cone(&mut tool, base_center, base_radius, top_radius, height, segments)?;
+    let r = make_cone(
+        &mut tool,
+        base_center,
+        base_radius,
+        top_radius,
+        height,
+        segments,
+    )?;
     boolean_op(base_model, base_solid, &tool, r.solid, BooleanOp::Union)
 }
 
@@ -125,8 +150,21 @@ pub fn subtractive_cone(
     segments: usize,
 ) -> KernelResult<BRepModel> {
     let mut tool = BRepModel::new();
-    let r = make_cone(&mut tool, base_center, base_radius, top_radius, height, segments)?;
-    boolean_op(base_model, base_solid, &tool, r.solid, BooleanOp::Difference)
+    let r = make_cone(
+        &mut tool,
+        base_center,
+        base_radius,
+        top_radius,
+        height,
+        segments,
+    )?;
+    boolean_op(
+        base_model,
+        base_solid,
+        &tool,
+        r.solid,
+        BooleanOp::Difference,
+    )
 }
 
 /// Additive torus: creates a torus and boolean-unions it with the base solid.
@@ -140,7 +178,14 @@ pub fn additive_torus(
     minor_segments: usize,
 ) -> KernelResult<BRepModel> {
     let mut tool = BRepModel::new();
-    let r = make_torus(&mut tool, center, major_radius, minor_radius, major_segments, minor_segments)?;
+    let r = make_torus(
+        &mut tool,
+        center,
+        major_radius,
+        minor_radius,
+        major_segments,
+        minor_segments,
+    )?;
     boolean_op(base_model, base_solid, &tool, r.solid, BooleanOp::Union)
 }
 
@@ -155,8 +200,21 @@ pub fn subtractive_torus(
     minor_segments: usize,
 ) -> KernelResult<BRepModel> {
     let mut tool = BRepModel::new();
-    let r = make_torus(&mut tool, center, major_radius, minor_radius, major_segments, minor_segments)?;
-    boolean_op(base_model, base_solid, &tool, r.solid, BooleanOp::Difference)
+    let r = make_torus(
+        &mut tool,
+        center,
+        major_radius,
+        minor_radius,
+        major_segments,
+        minor_segments,
+    )?;
+    boolean_op(
+        base_model,
+        base_solid,
+        &tool,
+        r.solid,
+        BooleanOp::Difference,
+    )
 }
 
 /// Additive helix: creates a helix and boolean-unions it with the base solid.
@@ -173,7 +231,16 @@ pub fn additive_helix(
     tube_segments: usize,
 ) -> KernelResult<BRepModel> {
     let mut tool = BRepModel::new();
-    let r = make_helix(&mut tool, center, radius, pitch, turns, tube_radius, segments, tube_segments)?;
+    let r = make_helix(
+        &mut tool,
+        center,
+        radius,
+        pitch,
+        turns,
+        tube_radius,
+        segments,
+        tube_segments,
+    )?;
     boolean_op(base_model, base_solid, &tool, r.solid, BooleanOp::Union)
 }
 
@@ -191,8 +258,23 @@ pub fn subtractive_helix(
     tube_segments: usize,
 ) -> KernelResult<BRepModel> {
     let mut tool = BRepModel::new();
-    let r = make_helix(&mut tool, center, radius, pitch, turns, tube_radius, segments, tube_segments)?;
-    boolean_op(base_model, base_solid, &tool, r.solid, BooleanOp::Difference)
+    let r = make_helix(
+        &mut tool,
+        center,
+        radius,
+        pitch,
+        turns,
+        tube_radius,
+        segments,
+        tube_segments,
+    )?;
+    boolean_op(
+        base_model,
+        base_solid,
+        &tool,
+        r.solid,
+        BooleanOp::Difference,
+    )
 }
 
 /// Additive ellipsoid: creates an ellipsoid and boolean-unions it with the base solid.
@@ -226,7 +308,13 @@ pub fn subtractive_ellipsoid(
 ) -> KernelResult<BRepModel> {
     let mut tool = BRepModel::new();
     let r = make_ellipsoid(&mut tool, center, rx, ry, rz, segments, rings)?;
-    boolean_op(base_model, base_solid, &tool, r.solid, BooleanOp::Difference)
+    boolean_op(
+        base_model,
+        base_solid,
+        &tool,
+        r.solid,
+        BooleanOp::Difference,
+    )
 }
 
 /// Additive prism: creates a regular polygon prism and boolean-unions it with the base solid.
@@ -254,7 +342,13 @@ pub fn subtractive_prism(
 ) -> KernelResult<BRepModel> {
     let mut tool = BRepModel::new();
     let r = make_prism(&mut tool, base_center, radius, height, sides)?;
-    boolean_op(base_model, base_solid, &tool, r.solid, BooleanOp::Difference)
+    boolean_op(
+        base_model,
+        base_solid,
+        &tool,
+        r.solid,
+        BooleanOp::Difference,
+    )
 }
 
 /// Additive wedge: creates a tapered box and boolean-unions it with the base solid.
@@ -292,7 +386,13 @@ pub fn subtractive_wedge(
 ) -> KernelResult<BRepModel> {
     let mut tool = BRepModel::new();
     let r = make_wedge(&mut tool, origin, dx, dy, dz, dx2, dy2, xoff, yoff)?;
-    boolean_op(base_model, base_solid, &tool, r.solid, BooleanOp::Difference)
+    boolean_op(
+        base_model,
+        base_solid,
+        &tool,
+        r.solid,
+        BooleanOp::Difference,
+    )
 }
 
 /// Additive loft: lofts between profiles and boolean-unions with the base solid.
@@ -412,14 +512,9 @@ pub fn make_sprocket(
     let mut tool = BRepModel::new();
     loft(&mut tool, &profiles)?;
 
-    let first_solid = tool
-        .solids
-        .iter()
-        .next()
-        .map(|(h, _)| h)
-        .ok_or(cadkernel_core::KernelError::InvalidArgument(
-            "loft produced no solid".into(),
-        ))?;
+    let first_solid = tool.solids.iter().next().map(|(h, _)| h).ok_or(
+        cadkernel_core::KernelError::InvalidArgument("loft produced no solid".into()),
+    )?;
 
     // Subtract bore hole
     let mut bore_model = BRepModel::new();
@@ -431,8 +526,13 @@ pub fn make_sprocket(
         32,
     )?;
 
-    let result =
-        boolean_op(&tool, first_solid, &bore_model, bore_r.solid, BooleanOp::Difference)?;
+    let result = boolean_op(
+        &tool,
+        first_solid,
+        &bore_model,
+        bore_r.solid,
+        BooleanOp::Difference,
+    )?;
     let _ = model;
     Ok(result)
 }
@@ -441,10 +541,7 @@ pub fn make_sprocket(
 ///
 /// Each segment is a cylinder centered on the Z axis, stacked end-to-end.
 /// The first segment starts at Z=0.
-pub fn shaft_design(
-    model: &mut BRepModel,
-    segments: &[(f64, f64)],
-) -> KernelResult<BRepModel> {
+pub fn shaft_design(model: &mut BRepModel, segments: &[(f64, f64)]) -> KernelResult<BRepModel> {
     if segments.is_empty() {
         return Err(cadkernel_core::KernelError::InvalidArgument(
             "shaft_design requires at least 1 segment".into(),
@@ -490,7 +587,8 @@ pub fn shaft_design(
     let _ = model;
     result_model.ok_or_else(|| {
         cadkernel_core::KernelError::ValidationFailed(
-            "shaft_design: no result produced (unreachable when segments are validated non-empty)".into(),
+            "shaft_design: no result produced (unreachable when segments are validated non-empty)"
+                .into(),
         )
     })
 }
@@ -499,10 +597,7 @@ pub fn shaft_design(
 ///
 /// Copies the specified face indices (and their underlying geometry) into a
 /// new solid. Used for PartDesign ShapeBinder.
-pub fn shape_binder(
-    source_model: &BRepModel,
-    face_indices: &[usize],
-) -> KernelResult<BRepModel> {
+pub fn shape_binder(source_model: &BRepModel, face_indices: &[usize]) -> KernelResult<BRepModel> {
     if face_indices.is_empty() {
         return Err(cadkernel_core::KernelError::InvalidArgument(
             "shape_binder requires at least 1 face index".into(),
@@ -530,9 +625,15 @@ pub fn shape_binder(
         let verts = source_model.vertices_of_face(face_h)?;
         let mut new_verts = Vec::new();
         for (vi, &vh) in verts.iter().enumerate() {
-            let pt = source_model.vertices.get(vh).map(|v| v.point).unwrap_or(Point3::ORIGIN);
+            let pt = source_model
+                .vertices
+                .get(vh)
+                .map(|v| v.point)
+                .unwrap_or(Point3::ORIGIN);
             let tag = cadkernel_topology::Tag::generated(
-                cadkernel_topology::EntityKind::Vertex, op, (fi * 100 + vi) as u32,
+                cadkernel_topology::EntityKind::Vertex,
+                op,
+                (fi * 100 + vi) as u32,
             );
             new_verts.push(result.add_vertex_tagged(pt, tag));
         }
@@ -541,7 +642,9 @@ pub fn shape_binder(
         for i in 0..new_verts.len() {
             let j = (i + 1) % new_verts.len();
             let tag = cadkernel_topology::Tag::generated(
-                cadkernel_topology::EntityKind::Edge, op, (fi * 100 + i) as u32,
+                cadkernel_topology::EntityKind::Edge,
+                op,
+                (fi * 100 + i) as u32,
             );
             let (_, fwd, _) = result.add_edge_tagged(new_verts[i], new_verts[j], tag);
             he_list.push(fwd);
@@ -550,20 +653,20 @@ pub fn shape_binder(
         if he_list.len() >= 2 {
             let loop_h = result.make_loop(&he_list)?;
             let face_tag = cadkernel_topology::Tag::generated(
-                cadkernel_topology::EntityKind::Face, op, fi as u32,
+                cadkernel_topology::EntityKind::Face,
+                op,
+                fi as u32,
             );
             new_faces.push(result.make_face_tagged(loop_h, face_tag));
         }
     }
 
     if !new_faces.is_empty() {
-        let shell_tag = cadkernel_topology::Tag::generated(
-            cadkernel_topology::EntityKind::Shell, op, 0,
-        );
+        let shell_tag =
+            cadkernel_topology::Tag::generated(cadkernel_topology::EntityKind::Shell, op, 0);
         let shell = result.make_shell_tagged(&new_faces, shell_tag);
-        let solid_tag = cadkernel_topology::Tag::generated(
-            cadkernel_topology::EntityKind::Solid, op, 0,
-        );
+        let solid_tag =
+            cadkernel_topology::Tag::generated(cadkernel_topology::EntityKind::Solid, op, 0);
         result.make_solid_tagged(&[shell], solid_tag);
     }
 
@@ -600,26 +703,34 @@ pub fn sub_shape_binder(
         }
 
         let edge_h = all_edges[idx];
-        let ed = source_model.edges.get(edge_h)
+        let ed = source_model
+            .edges
+            .get(edge_h)
             .ok_or(cadkernel_core::KernelError::InvalidHandle("edge"))?;
 
-        let p0 = ed.half_edge_a
+        let p0 = ed
+            .half_edge_a
             .and_then(|h| source_model.half_edges.get(h))
             .and_then(|he| source_model.vertices.get(he.origin))
             .map(|v| v.point)
             .unwrap_or(Point3::ORIGIN);
-        let p1 = ed.half_edge_b
+        let p1 = ed
+            .half_edge_b
             .and_then(|h| source_model.half_edges.get(h))
             .and_then(|he| source_model.vertices.get(he.origin))
             .map(|v| v.point)
             .unwrap_or(Point3::ORIGIN);
 
         let tag_s = cadkernel_topology::Tag::generated(
-            cadkernel_topology::EntityKind::Vertex, op, vert_idx,
+            cadkernel_topology::EntityKind::Vertex,
+            op,
+            vert_idx,
         );
         vert_idx += 1;
         let tag_e = cadkernel_topology::Tag::generated(
-            cadkernel_topology::EntityKind::Vertex, op, vert_idx,
+            cadkernel_topology::EntityKind::Vertex,
+            op,
+            vert_idx,
         );
         vert_idx += 1;
 
@@ -627,7 +738,9 @@ pub fn sub_shape_binder(
         let v1 = result.add_vertex_tagged(p1, tag_e);
 
         let edge_tag = cadkernel_topology::Tag::generated(
-            cadkernel_topology::EntityKind::Edge, op, edge_idx as u32,
+            cadkernel_topology::EntityKind::Edge,
+            op,
+            edge_idx as u32,
         );
         result.add_edge_tagged(v0, v1, edge_tag);
     }
@@ -643,7 +756,13 @@ pub fn subtractive_loft(
 ) -> KernelResult<BRepModel> {
     let mut tool = BRepModel::new();
     let r = loft(&mut tool, profiles)?;
-    boolean_op(base_model, base_solid, &tool, r.solid, BooleanOp::Difference)
+    boolean_op(
+        base_model,
+        base_solid,
+        &tool,
+        r.solid,
+        BooleanOp::Difference,
+    )
 }
 
 /// Subtractive pipe (sweep): sweeps a profile along a path and boolean-subtracts from the base solid.
@@ -655,7 +774,13 @@ pub fn subtractive_pipe(
 ) -> KernelResult<BRepModel> {
     let mut tool = BRepModel::new();
     let r = sweep(&mut tool, profile, path)?;
-    boolean_op(base_model, base_solid, &tool, r.solid, BooleanOp::Difference)
+    boolean_op(
+        base_model,
+        base_solid,
+        &tool,
+        r.solid,
+        BooleanOp::Difference,
+    )
 }
 
 #[cfg(test)]
@@ -859,8 +984,14 @@ mod tests {
             &base_model,
             base.solid,
             Point3::new(20.0, 20.0, 0.0),
-            3.0, 2.0, 1.0, 0.3, 8, 4,
-        ).unwrap();
+            3.0,
+            2.0,
+            1.0,
+            0.3,
+            8,
+            4,
+        )
+        .unwrap();
 
         assert_eq!(result.solids.len(), 1);
     }
@@ -874,8 +1005,14 @@ mod tests {
             &base_model,
             base.solid,
             Point3::new(20.0, 20.0, 0.0),
-            3.0, 2.0, 1.0, 0.3, 8, 4,
-        ).unwrap();
+            3.0,
+            2.0,
+            1.0,
+            0.3,
+            8,
+            4,
+        )
+        .unwrap();
 
         assert_eq!(result.faces.len(), 6);
     }
@@ -889,8 +1026,13 @@ mod tests {
             &base_model,
             base.solid,
             Point3::new(20.0, 20.0, 20.0),
-            1.0, 1.5, 2.0, 8, 4,
-        ).unwrap();
+            1.0,
+            1.5,
+            2.0,
+            8,
+            4,
+        )
+        .unwrap();
 
         assert_eq!(result.solids.len(), 1);
     }
@@ -904,8 +1046,13 @@ mod tests {
             &base_model,
             base.solid,
             Point3::new(20.0, 20.0, 20.0),
-            0.5, 0.5, 0.5, 8, 4,
-        ).unwrap();
+            0.5,
+            0.5,
+            0.5,
+            8,
+            4,
+        )
+        .unwrap();
 
         assert_eq!(result.faces.len(), 6);
     }
@@ -919,8 +1066,11 @@ mod tests {
             &base_model,
             base.solid,
             Point3::new(20.0, 20.0, 0.0),
-            1.0, 3.0, 6,
-        ).unwrap();
+            1.0,
+            3.0,
+            6,
+        )
+        .unwrap();
 
         assert_eq!(result.solids.len(), 1);
     }
@@ -934,8 +1084,11 @@ mod tests {
             &base_model,
             base.solid,
             Point3::new(20.0, 20.0, 0.0),
-            0.5, 3.0, 6,
-        ).unwrap();
+            0.5,
+            3.0,
+            6,
+        )
+        .unwrap();
 
         assert_eq!(result.faces.len(), 6);
     }
@@ -949,8 +1102,15 @@ mod tests {
             &base_model,
             base.solid,
             Point3::new(20.0, 20.0, 0.0),
-            2.0, 2.0, 3.0, 1.0, 1.0, 0.5, 0.5,
-        ).unwrap();
+            2.0,
+            2.0,
+            3.0,
+            1.0,
+            1.0,
+            0.5,
+            0.5,
+        )
+        .unwrap();
 
         assert_eq!(result.solids.len(), 1);
     }
@@ -964,8 +1124,15 @@ mod tests {
             &base_model,
             base.solid,
             Point3::new(20.0, 20.0, 0.0),
-            1.0, 1.0, 2.0, 0.5, 0.5, 0.25, 0.25,
-        ).unwrap();
+            1.0,
+            1.0,
+            2.0,
+            0.5,
+            0.5,
+            0.25,
+            0.25,
+        )
+        .unwrap();
 
         assert_eq!(result.faces.len(), 6);
     }
@@ -988,11 +1155,8 @@ mod tests {
             Point3::new(20.0, 21.0, 3.0),
         ];
 
-        let result = subtractive_loft(
-            &base_model,
-            base.solid,
-            &[p0.as_slice(), p1.as_slice()],
-        ).unwrap();
+        let result =
+            subtractive_loft(&base_model, base.solid, &[p0.as_slice(), p1.as_slice()]).unwrap();
 
         assert_eq!(result.faces.len(), 6);
     }
@@ -1014,12 +1178,7 @@ mod tests {
             Point3::new(20.0, 20.0, 6.0),
         ];
 
-        let result = subtractive_pipe(
-            &base_model,
-            base.solid,
-            &profile,
-            &path,
-        ).unwrap();
+        let result = subtractive_pipe(&base_model, base.solid, &profile, &path).unwrap();
 
         assert_eq!(result.faces.len(), 6);
     }

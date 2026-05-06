@@ -12,16 +12,17 @@ use cadkernel_io::{
 };
 use cadkernel_math::{Point3, Vec3};
 use cadkernel_modeling::{
-    BooleanOp, boolean_op, chamfer_edge, filling, fillet_edge, hole, linear_pattern,
-    make_box, make_line_draft, make_polygon_wire, make_rectangle_wire, make_sphere,
-    mirror_solid, pad, pipe_surface, pocket, quick_box, quick_intersect, quick_union,
-    quick_volume, scale_solid, shell_solid,
+    BooleanOp, boolean_op, chamfer_edge, fillet_edge, filling, hole, linear_pattern, make_box,
+    make_line_draft, make_polygon_wire, make_rectangle_wire, make_sphere, mirror_solid, pad,
+    pipe_surface, pocket, quick_box, quick_intersect, quick_union, quick_volume, scale_solid,
+    shell_solid,
 };
 use cadkernel_sketch::{Constraint, Sketch, WorkPlane};
 use cadkernel_topology::BRepModel;
 use cadkernel_viewer::{
-    Camera, DisplayMode, Projection, StandardView, Vertex, compute_bounds, mesh_to_vertices,
+    Camera, DisplayMode, Projection, StandardView, Vertex,
     command::{CommandStack, ModelSnapshot},
+    compute_bounds, mesh_to_vertices,
     nav::NavConfig,
     picking::{pick_edge, pick_triangle, pick_vertex, screen_to_ray},
     scene::{CreationParams, Scene, compute_aabb},
@@ -37,14 +38,22 @@ use cadkernel_viewer::{
 fn add_box(scene: &mut Scene, name: &str, w: f64, h: f64, d: f64) -> u32 {
     let mut model = BRepModel::new();
     let r = make_box(&mut model, Point3::ORIGIN, w, h, d).expect("make_box");
-    let params = CreationParams::Box { width: w, height: h, depth: d };
+    let params = CreationParams::Box {
+        width: w,
+        height: h,
+        depth: d,
+    };
     scene.add_object(name, model, r.solid, Some(params))
 }
 
 fn add_box_at(scene: &mut Scene, name: &str, origin: Point3, w: f64, h: f64, d: f64) -> u32 {
     let mut model = BRepModel::new();
     let r = make_box(&mut model, origin, w, h, d).expect("make_box");
-    let params = CreationParams::Box { width: w, height: h, depth: d };
+    let params = CreationParams::Box {
+        width: w,
+        height: h,
+        depth: d,
+    };
     scene.add_object(name, model, r.solid, Some(params))
 }
 
@@ -100,7 +109,10 @@ fn create_sphere_adds_one_object_with_diameter_bbox() {
     let obj = app.scene_ref().objects.first().expect("object");
     for axis in 0..3 {
         let extent = obj.aabb_max[axis] - obj.aabb_min[axis];
-        assert!(extent >= 5.8, "sphere diameter axis {axis} ~6.0 got {extent}");
+        assert!(
+            extent >= 5.8,
+            "sphere diameter axis {axis} ~6.0 got {extent}"
+        );
     }
 }
 
@@ -108,7 +120,19 @@ fn create_sphere_adds_one_object_with_diameter_bbox() {
 fn create_cone_adds_one_object() {
     let mut app = CadApp::new_headless();
     app.dispatch_create_cone(2.0, 0.5, 4.0);
-    assert!(!app.scene_ref().objects.first().unwrap().vertices.is_empty());
+    let obj = app.scene_ref().objects.first().expect("object");
+    assert!(!obj.vertices.is_empty());
+    // height=4 → z-extent must be ≥3.9; base radius=2 → xy-extent ≥3.9
+    assert!(
+        (obj.aabb_max[2] - obj.aabb_min[2]) >= 3.9,
+        "cone height extent should be ~4.0, got {}",
+        obj.aabb_max[2] - obj.aabb_min[2]
+    );
+    assert!(
+        (obj.aabb_max[0] - obj.aabb_min[0]) >= 3.9,
+        "cone base diameter extent should be ~4.0, got {}",
+        obj.aabb_max[0] - obj.aabb_min[0]
+    );
 }
 
 #[test]
@@ -123,14 +147,39 @@ fn create_torus_adds_one_object() {
 fn create_tube_adds_one_object() {
     let mut app = CadApp::new_headless();
     app.dispatch_create_tube(3.0, 1.0, 5.0);
-    assert!(!app.scene_ref().objects.first().unwrap().vertices.is_empty());
+    let obj = app.scene_ref().objects.first().expect("object");
+    assert!(!obj.vertices.is_empty());
+    // outer_radius=3 → xy-extent ≥5.9; height=5 → z-extent ≥4.9
+    assert!(
+        (obj.aabb_max[2] - obj.aabb_min[2]) >= 4.9,
+        "tube height extent should be ~5.0, got {}",
+        obj.aabb_max[2] - obj.aabb_min[2]
+    );
+    assert!(
+        (obj.aabb_max[0] - obj.aabb_min[0]) >= 5.9,
+        "tube outer-diameter extent should be ~6.0, got {}",
+        obj.aabb_max[0] - obj.aabb_min[0]
+    );
 }
 
 #[test]
 fn create_prism_adds_one_object() {
     let mut app = CadApp::new_headless();
     app.dispatch_create_prism(2.0, 4.0, 6);
-    assert!(!app.scene_ref().objects.first().unwrap().vertices.is_empty());
+    let obj = app.scene_ref().objects.first().expect("object");
+    assert!(!obj.vertices.is_empty());
+    // height=4 → z-extent ≥3.9; regular hexagon radius=2 → xy-extent ≥3.9
+    assert!(
+        (obj.aabb_max[2] - obj.aabb_min[2]) >= 3.9,
+        "prism height extent should be ~4.0, got {}",
+        obj.aabb_max[2] - obj.aabb_min[2]
+    );
+    assert!(
+        (obj.aabb_max[0] - obj.aabb_min[0]) >= 3.9 || (obj.aabb_max[1] - obj.aabb_min[1]) >= 3.9,
+        "prism cross-section extent should be ~4.0 (diameter), got x={} y={}",
+        obj.aabb_max[0] - obj.aabb_min[0],
+        obj.aabb_max[1] - obj.aabb_min[1]
+    );
 }
 
 #[test]
@@ -161,11 +210,22 @@ fn boolean_union_combines_two_boxes_into_fewer_objects() {
     let id_b = add_box_at(&mut scene, "B", Point3::new(1.0, 0.0, 0.0), 2.0, 2.0, 2.0);
     let obj_a = scene.get(id_a).unwrap().clone();
     let obj_b = scene.get(id_b).unwrap().clone();
-    let result_model = boolean_op(&obj_a.model, obj_a.solid, &obj_b.model, obj_b.solid, BooleanOp::Union)
-        .expect("boolean union");
+    let result_model = boolean_op(
+        &obj_a.model,
+        obj_a.solid,
+        &obj_b.model,
+        obj_b.solid,
+        BooleanOp::Union,
+    )
+    .expect("boolean union");
     scene.remove_object(id_a);
     scene.remove_object(id_b);
-    let first = result_model.solids.iter().next().map(|(h, _)| h).expect("union produced no solid");
+    let first = result_model
+        .solids
+        .iter()
+        .next()
+        .map(|(h, _)| h)
+        .expect("union produced no solid");
     scene.add_object("A_union_B", result_model, first, None);
     assert_eq!(scene.len(), 1, "union should leave exactly one object");
 }
@@ -181,11 +241,14 @@ fn boolean_subtract_box_minus_sphere_shrinks_volume() {
     let mut b_model = BRepModel::new();
     let r = make_sphere(&mut b_model, Point3::new(2.0, 2.0, 2.0), 1.5, 32, 16).unwrap();
     let a_solid = a.solids.iter().next().unwrap().0;
-    let result = boolean_op(&a, a_solid, &b_model, r.solid, BooleanOp::Difference)
-        .expect("subtract");
+    let result =
+        boolean_op(&a, a_solid, &b_model, r.solid, BooleanOp::Difference).expect("subtract");
     let vol_orig = quick_volume(&a).unwrap();
     let vol_sub = quick_volume(&result).unwrap();
-    assert!(vol_sub < vol_orig, "subtract must reduce volume: before={vol_orig} after={vol_sub}");
+    assert!(
+        vol_sub < vol_orig,
+        "subtract must reduce volume: before={vol_orig} after={vol_sub}"
+    );
 }
 
 #[test]
@@ -195,7 +258,10 @@ fn boolean_intersect_two_overlapping_boxes_produces_nonzero_volume() {
     make_box(&mut b_model, Point3::new(1.0, 1.0, 1.0), 2.0, 2.0, 2.0).unwrap();
     let result = quick_intersect(&a, &b_model).expect("intersect");
     let vol = quick_volume(&result).unwrap_or(0.0);
-    assert!(vol > 0.0, "intersection should have positive volume, got {vol}");
+    assert!(
+        vol > 0.0,
+        "intersection should have positive volume, got {vol}"
+    );
 }
 
 #[test]
@@ -205,7 +271,10 @@ fn boolean_union_disjoint_preserves_total_volume() {
     make_box(&mut b_model, Point3::new(10.0, 0.0, 0.0), 1.0, 1.0, 1.0).unwrap();
     let result = quick_union(&a, &b_model).expect("union disjoint");
     let vol = quick_volume(&result).unwrap();
-    assert!(vol >= 1.5, "disjoint union volume should be ~2.0, got {vol}");
+    assert!(
+        vol >= 1.5,
+        "disjoint union volume should be ~2.0, got {vol}"
+    );
 }
 
 #[test]
@@ -217,12 +286,16 @@ fn scene_boolean_union_combines_two_selected() {
     let id_b = add_box_at(&mut scene, "B", Point3::new(1.0, 0.0, 0.0), 2.0, 2.0, 2.0);
     scene.toggle_select(id_a);
     scene.toggle_select(id_b);
-    assert_eq!(scene.selected_ids().len(), 2, "must have 2 selected for scene boolean");
+    assert_eq!(
+        scene.selected_ids().len(),
+        2,
+        "must have 2 selected for scene boolean"
+    );
     // The dispatcher would then call the modeling crate:
     let a = scene.get(id_a).unwrap().clone();
     let b = scene.get(id_b).unwrap().clone();
-    let merged = boolean_op(&a.model, a.solid, &b.model, b.solid, BooleanOp::Union)
-        .expect("boolean op");
+    let merged =
+        boolean_op(&a.model, a.solid, &b.model, b.solid, BooleanOp::Union).expect("boolean op");
     assert!(merged.solids.iter().count() >= 1);
 }
 
@@ -235,17 +308,19 @@ fn mirror_solid_produces_new_solid() {
     let mut model = BRepModel::new();
     let r = make_box(&mut model, Point3::new(1.0, 1.0, 1.0), 2.0, 2.0, 2.0).unwrap();
     let normal = Vec3::new(1.0, 0.0, 0.0);
-    let mirror_result = mirror_solid(&mut model, r.solid, Point3::ORIGIN, normal)
-        .expect("mirror_solid");
-    assert_ne!(mirror_result.solid, r.solid, "mirror should create new solid handle");
+    let mirror_result =
+        mirror_solid(&mut model, r.solid, Point3::ORIGIN, normal).expect("mirror_solid");
+    assert_ne!(
+        mirror_result.solid, r.solid,
+        "mirror should create new solid handle"
+    );
 }
 
 #[test]
 fn scale_solid_with_factor_2_produces_new_solid() {
     let mut model = BRepModel::new();
     let r = make_box(&mut model, Point3::ORIGIN, 1.0, 1.0, 1.0).unwrap();
-    let result = scale_solid(&mut model, r.solid, Point3::ORIGIN, 2.0)
-        .expect("scale_solid");
+    let result = scale_solid(&mut model, r.solid, Point3::ORIGIN, 2.0).expect("scale_solid");
     assert_ne!(result.solid, r.solid, "scale should create new solid");
 }
 
@@ -272,7 +347,11 @@ fn fillet_all_edges_runs_without_panic() {
     let mut model = BRepModel::new();
     let r = make_box(&mut model, Point3::ORIGIN, 4.0, 4.0, 4.0).unwrap();
     // pick the first edge and use its two endpoint vertices.
-    let first_edge = model.edges.iter().next().map(|(h, ed)| (h, ed.start, ed.end));
+    let first_edge = model
+        .edges
+        .iter()
+        .next()
+        .map(|(h, ed)| (h, ed.start, ed.end));
     if let Some((_eh, v1, v2)) = first_edge {
         let _ = fillet_edge(&mut model, r.solid, v1, v2, 0.1);
         // Acceptable either way — fillet is approximate.
@@ -283,7 +362,11 @@ fn fillet_all_edges_runs_without_panic() {
 fn chamfer_all_edges_runs_without_panic() {
     let mut model = BRepModel::new();
     let r = make_box(&mut model, Point3::ORIGIN, 4.0, 4.0, 4.0).unwrap();
-    let first_edge = model.edges.iter().next().map(|(h, ed)| (h, ed.start, ed.end));
+    let first_edge = model
+        .edges
+        .iter()
+        .next()
+        .map(|(h, ed)| (h, ed.start, ed.end));
     if let Some((_eh, v1, v2)) = first_edge {
         let _ = chamfer_edge(&mut model, r.solid, v1, v2, 0.1);
     }
@@ -297,8 +380,10 @@ fn linear_pattern_produces_multiple_copies() {
     let result = linear_pattern(&mut model, r.solid, dir, 3.0, 3);
     match result {
         Ok(pr) => {
-            assert!(!pr.solids.is_empty() || !pr.faces.is_empty(),
-                "pattern must produce outputs");
+            assert!(
+                !pr.solids.is_empty() || !pr.faces.is_empty(),
+                "pattern must produce outputs"
+            );
         }
         Err(e) => eprintln!("linear_pattern error (may be expected): {e}"),
     }
@@ -321,7 +406,10 @@ fn pad_sketch_onto_box_increases_volume() {
     let result = pad(&base, b.solid, &profile, Vec3::Z, 1.0).expect("pad");
     let vol_base = quick_volume(&base).unwrap();
     let vol_padded = quick_volume(&result.model).unwrap();
-    assert!(vol_padded > vol_base, "pad must add material: {vol_base}→{vol_padded}");
+    assert!(
+        vol_padded > vol_base,
+        "pad must add material: {vol_base}→{vol_padded}"
+    );
 }
 
 #[test]
@@ -337,7 +425,10 @@ fn pocket_sketch_on_box_removes_material() {
     let result = pocket(&base, b.solid, &profile, Vec3::new(0.0, 0.0, -1.0), 1.0).expect("pocket");
     let vol_base = quick_volume(&base).unwrap();
     let vol_pocketed = quick_volume(&result.model).unwrap();
-    assert!(vol_pocketed < vol_base, "pocket must remove material: {vol_base}→{vol_pocketed}");
+    assert!(
+        vol_pocketed < vol_base,
+        "pocket must remove material: {vol_base}→{vol_pocketed}"
+    );
 }
 
 #[test]
@@ -530,7 +621,11 @@ fn techdraw_export_svg_renders_nonempty_svg() {
     let svg = doc.render();
     assert!(svg.starts_with("<"), "SVG did not start with a tag");
     assert!(svg.contains("</svg>"), "SVG is missing closing tag");
-    assert!(svg.len() > 100, "SVG suspiciously short: {} bytes", svg.len());
+    assert!(
+        svg.len() > 100,
+        "SVG suspiciously short: {} bytes",
+        svg.len()
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -702,7 +797,10 @@ fn draft_rectangle_fills_patch_and_adds_to_scene() {
         "DraftRect",
         model,
         r.solid,
-        Some(CreationParams::DraftRectangle { width: 2.0, height: 1.0 }),
+        Some(CreationParams::DraftRectangle {
+            width: 2.0,
+            height: 1.0,
+        }),
     );
     assert_eq!(scene.len(), 1);
     assert!(!scene.get(id).unwrap().vertices.is_empty());
@@ -719,7 +817,10 @@ fn draft_polygon_fills_patch_and_adds_to_scene() {
         "DraftPoly",
         model,
         r.solid,
-        Some(CreationParams::DraftPolygon { radius: 1.0, sides: 6 }),
+        Some(CreationParams::DraftPolygon {
+            radius: 1.0,
+            sides: 6,
+        }),
     );
     assert_eq!(scene.len(), 1);
     assert!(!scene.get(id).unwrap().vertices.is_empty());
@@ -772,7 +873,10 @@ fn surface_pipe_creates_solid_along_path() {
         "Pipe",
         model,
         r.solid,
-        Some(CreationParams::SurfacePipe { radius: 0.25, length: 2.0 }),
+        Some(CreationParams::SurfacePipe {
+            radius: 0.25,
+            length: 2.0,
+        }),
     );
     assert_eq!(scene.len(), 1);
     let obj = scene.get(id).unwrap();
@@ -791,14 +895,11 @@ fn surface_pipe_creates_solid_along_path() {
 fn fem_create_analysis_builds_tet_mesh_with_steel_material() {
     let mut model = BRepModel::new();
     let r = make_box(&mut model, Point3::ORIGIN, 2.0, 2.0, 2.0).expect("box");
-    let mesh = cadkernel_modeling::generate_tet_mesh(&model, r.solid, 1.0)
-        .expect("tet mesh");
+    let mesh = cadkernel_modeling::generate_tet_mesh(&model, r.solid, 1.0).expect("tet mesh");
     assert!(!mesh.nodes.is_empty(), "tet mesh must have nodes");
     assert!(!mesh.elements.is_empty(), "tet mesh must have elements");
-    let container = cadkernel_modeling::AnalysisContainer::new(
-        mesh,
-        cadkernel_modeling::FemMaterial::steel(),
-    );
+    let container =
+        cadkernel_modeling::AnalysisContainer::new(mesh, cadkernel_modeling::FemMaterial::steel());
     assert_eq!(container.boundary_conditions.len(), 0);
     assert!(container.result.is_none());
 }
@@ -809,14 +910,11 @@ fn fem_create_analysis_builds_tet_mesh_with_steel_material() {
 fn fem_solve_static_produces_displacement_result() {
     let mut model = BRepModel::new();
     let r = make_box(&mut model, Point3::ORIGIN, 2.0, 2.0, 2.0).expect("box");
-    let mesh = cadkernel_modeling::generate_tet_mesh(&model, r.solid, 1.0)
-        .expect("tet mesh");
+    let mesh = cadkernel_modeling::generate_tet_mesh(&model, r.solid, 1.0).expect("tet mesh");
     let n_nodes = mesh.nodes.len();
     assert!(n_nodes >= 2);
-    let mut container = cadkernel_modeling::AnalysisContainer::new(
-        mesh,
-        cadkernel_modeling::FemMaterial::steel(),
-    );
+    let mut container =
+        cadkernel_modeling::AnalysisContainer::new(mesh, cadkernel_modeling::FemMaterial::steel());
     container.add_bc(cadkernel_modeling::BoundaryCondition::FixedNode(0));
     container.add_bc(cadkernel_modeling::BoundaryCondition::Force {
         node: n_nodes - 1,
@@ -870,8 +968,10 @@ fn select_all_selects_only_visible_objects() {
     scene.get_mut(id_b).unwrap().visible = false;
     scene.select_all();
     assert!(scene.get(id_a).unwrap().selected);
-    assert!(!scene.get(id_b).unwrap().selected,
-        "select_all must skip hidden objects");
+    assert!(
+        !scene.get(id_b).unwrap().selected,
+        "select_all must skip hidden objects"
+    );
 }
 
 #[test]
@@ -912,7 +1012,10 @@ fn undo_after_create_restores_empty_state() {
     };
 
     let restored = stack.undo(after_snapshot).expect("undo");
-    assert!(restored.current_solid.is_none(), "undo should restore no-solid state");
+    assert!(
+        restored.current_solid.is_none(),
+        "undo should restore no-solid state"
+    );
     assert!(stack.can_redo());
 }
 
@@ -935,16 +1038,37 @@ fn redo_after_undo_reapplies_command() {
     };
     let _undone = stack.undo(after.clone()).unwrap();
     let redone = stack.redo(empty_snapshot).expect("redo");
-    assert!(redone.current_solid.is_some(), "redo should restore the box");
+    assert!(
+        redone.current_solid.is_some(),
+        "redo should restore the box"
+    );
 }
 
 #[test]
 fn new_command_clears_redo_stack() {
     let mut stack = CommandStack::new(50);
-    stack.push("op1", ModelSnapshot { model: BRepModel::new(), current_solid: None, current_mesh: None });
-    let _ = stack.undo(ModelSnapshot { model: BRepModel::new(), current_solid: None, current_mesh: None });
+    stack.push(
+        "op1",
+        ModelSnapshot {
+            model: BRepModel::new(),
+            current_solid: None,
+            current_mesh: None,
+        },
+    );
+    let _ = stack.undo(ModelSnapshot {
+        model: BRepModel::new(),
+        current_solid: None,
+        current_mesh: None,
+    });
     assert!(stack.can_redo());
-    stack.push("op2", ModelSnapshot { model: BRepModel::new(), current_solid: None, current_mesh: None });
+    stack.push(
+        "op2",
+        ModelSnapshot {
+            model: BRepModel::new(),
+            current_solid: None,
+            current_mesh: None,
+        },
+    );
     assert!(!stack.can_redo(), "new command must invalidate redo");
 }
 
@@ -952,11 +1076,14 @@ fn new_command_clears_redo_stack() {
 fn command_stack_honors_max_depth() {
     let mut stack = CommandStack::new(3);
     for i in 0..5 {
-        stack.push(format!("op{i}"), ModelSnapshot {
-            model: BRepModel::new(),
-            current_solid: None,
-            current_mesh: None,
-        });
+        stack.push(
+            format!("op{i}"),
+            ModelSnapshot {
+                model: BRepModel::new(),
+                current_solid: None,
+                current_mesh: None,
+            },
+        );
     }
     assert_eq!(stack.history_len(), 3, "stack should cap at max_depth");
 }
@@ -1059,7 +1186,10 @@ fn delete_group_ungroups_members_not_delete_objects() {
     scene.group_selected(gid);
     scene.delete_group(gid);
     assert_eq!(scene.get(id).unwrap().group_id, 0);
-    assert!(scene.get(id).is_some(), "delete_group must NOT delete member objects");
+    assert!(
+        scene.get(id).is_some(),
+        "delete_group must NOT delete member objects"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1112,8 +1242,10 @@ fn move_object_offsets_aabb() {
     scene.get_mut(id).unwrap().aabb_min = mn;
     scene.get_mut(id).unwrap().aabb_max = mx;
     let after_min = scene.get(id).unwrap().aabb_min;
-    assert!((after_min[0] - before_min[0] - dx).abs() < 1e-3,
-        "move must shift aabb by dx");
+    assert!(
+        (after_min[0] - before_min[0] - dx).abs() < 1e-3,
+        "move must shift aabb by dx"
+    );
 }
 
 #[test]
@@ -1133,11 +1265,19 @@ fn scale_object_uniform_grows_bbox() {
 
 #[test]
 fn creation_params_box_roundtrips_via_json() {
-    let params = CreationParams::Box { width: 1.5, height: 2.5, depth: 3.5 };
+    let params = CreationParams::Box {
+        width: 1.5,
+        height: 2.5,
+        depth: 3.5,
+    };
     let j = serde_json::to_string(&params).unwrap();
     let back: CreationParams = serde_json::from_str(&j).unwrap();
     match back {
-        CreationParams::Box { width, height, depth } => {
+        CreationParams::Box {
+            width,
+            height,
+            depth,
+        } => {
             assert!((width - 1.5).abs() < 1e-9);
             assert!((height - 2.5).abs() < 1e-9);
             assert!((depth - 3.5).abs() < 1e-9);
@@ -1148,7 +1288,10 @@ fn creation_params_box_roundtrips_via_json() {
 
 #[test]
 fn creation_params_cylinder_roundtrips_via_json() {
-    let params = CreationParams::Cylinder { radius: 2.0, height: 5.0 };
+    let params = CreationParams::Cylinder {
+        radius: 2.0,
+        height: 5.0,
+    };
     let j = serde_json::to_string(&params).unwrap();
     let back: CreationParams = serde_json::from_str(&j).unwrap();
     assert!(matches!(back, CreationParams::Cylinder { .. }));
@@ -1156,7 +1299,9 @@ fn creation_params_cylinder_roundtrips_via_json() {
 
 #[test]
 fn creation_params_boolean_roundtrips_via_json() {
-    let params = CreationParams::Boolean { op: "union".to_string() };
+    let params = CreationParams::Boolean {
+        op: "union".to_string(),
+    };
     let j = serde_json::to_string(&params).unwrap();
     let back: CreationParams = serde_json::from_str(&j).unwrap();
     if let CreationParams::Boolean { op } = back {
@@ -1269,13 +1414,18 @@ fn camera_screen_right_orientation_when_looking_down_minus_x() {
     cam.roll = 0.0;
     let r = cam.screen_right();
     // screen_right should have a substantial +Y or -Y component (not X).
-    assert!(r[1].abs() > 0.9, "screen_right should align with Y axis, got {r:?}");
+    assert!(
+        r[1].abs() > 0.9,
+        "screen_right should align with Y axis, got {r:?}"
+    );
     // For yaw=0 (eye on +X): f=(-1,0,0), up=(0,0,1); cross(f,up)=(0,1,0).
     // So screen_right MUST be +Y to preserve CLAUDE.md's cross3(f, up) order.
-    assert!(r[1] > 0.9,
+    assert!(
+        r[1] > 0.9,
         "CLAUDE.md INVARIANT: screen_right must be +Y for yaw=0, pitch=0. \
          A negative value here indicates cross3 args were swapped (cross3(up,f)). \
-         Got screen_right={r:?}");
+         Got screen_right={r:?}"
+    );
 }
 
 #[test]
@@ -1288,8 +1438,10 @@ fn camera_screen_up_orientation_when_looking_down_minus_x() {
     cam.pitch = 0.0;
     cam.roll = 0.0;
     let u = cam.screen_up();
-    assert!(u[2] > 0.9,
-        "screen_up should align with +Z for level camera, got {u:?}");
+    assert!(
+        u[2] > 0.9,
+        "screen_up should align with +Z for level camera, got {u:?}"
+    );
 }
 
 #[test]
@@ -1301,9 +1453,11 @@ fn mouse_orbit_positive_dx_decreases_yaw() {
     let mut yaw = 0.0f32;
     let mut pitch = 0.0f32;
     cfg.apply_orbit(&mut yaw, &mut pitch, 10.0, 0.0, 100.0, 100.0, 200.0, 200.0);
-    assert!(yaw < 0.0,
+    assert!(
+        yaw < 0.0,
         "CLAUDE.md INVARIANT: positive dx must DECREASE yaw (yaw -= dx). \
-         Positive yaw after orbit indicates sign was flipped. Got yaw={yaw}");
+         Positive yaw after orbit indicates sign was flipped. Got yaw={yaw}"
+    );
 }
 
 #[test]
@@ -1313,8 +1467,10 @@ fn mouse_orbit_positive_dy_adjusts_pitch() {
     let mut pitch = 0.0f32;
     cfg.apply_orbit(&mut yaw, &mut pitch, 0.0, 10.0, 100.0, 100.0, 200.0, 200.0);
     // pitch change direction depends on rotation mode, but it MUST change.
-    assert!(pitch.abs() > 1e-6,
-        "orbit with dy=10 must change pitch, got {pitch}");
+    assert!(
+        pitch.abs() > 1e-6,
+        "orbit with dy=10 must change pitch, got {pitch}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1360,7 +1516,10 @@ fn pick_face_mode_via_pick_triangle_on_real_box() {
     let inv_vp = camera.inv_view_proj();
     let (origin, dir) = screen_to_ray(720.0, 450.0, 1440.0, 900.0, inv_vp);
     let hit = pick_triangle(origin, dir, &mesh.vertices, &mesh.indices);
-    assert!(hit.is_some(), "face-mode pick at screen center must hit the box");
+    assert!(
+        hit.is_some(),
+        "face-mode pick at screen center must hit the box"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -1387,7 +1546,16 @@ fn screen_orbit_changes_yaw_and_pitch() {
     let mut cam = Camera::new(1.0);
     let yaw_before = cam.yaw;
     let pitch_before = cam.pitch;
-    cfg.apply_orbit(&mut cam.yaw, &mut cam.pitch, 5.0, 3.0, 100.0, 100.0, 200.0, 200.0);
+    cfg.apply_orbit(
+        &mut cam.yaw,
+        &mut cam.pitch,
+        5.0,
+        3.0,
+        100.0,
+        100.0,
+        200.0,
+        200.0,
+    );
     assert!(
         (cam.yaw - yaw_before).abs() > 1e-6 || (cam.pitch - pitch_before).abs() > 1e-6,
         "orbit must change at least one of yaw/pitch"
@@ -1423,8 +1591,11 @@ fn mesh_to_vertices_roundtrip_preserves_triangle_count() {
     let r = make_box(&mut model, Point3::ORIGIN, 1.0, 1.0, 1.0).unwrap();
     let mesh = tessellate_solid(&model, r.solid);
     let verts: Vec<Vertex> = mesh_to_vertices(&mesh);
-    assert_eq!(verts.len(), mesh.indices.len() * 3,
-        "mesh_to_vertices should expand each indexed triangle to 3 flat verts");
+    assert_eq!(
+        verts.len(),
+        mesh.indices.len() * 3,
+        "mesh_to_vertices should expand each indexed triangle to 3 flat verts"
+    );
 }
 
 #[test]
@@ -1494,7 +1665,8 @@ fn focus_object_dispatch_fits_camera_to_single_object_aabb() {
     // from a naive scene-wide fit (which would center at x ≈ 25.75).
     assert!(
         (cam.target[0] - 50.5).abs() < 1.0,
-        "FocusObject should fit to box B alone, target.x = {}", cam.target[0]
+        "FocusObject should fit to box B alone, target.x = {}",
+        cam.target[0]
     );
 }
 
@@ -1547,8 +1719,10 @@ fn properties_aabb_extents_match_sphere_diameter() {
         let extent = (obj.aabb_max[axis] - obj.aabb_min[axis]) as f64;
         // Sphere diameter ≈ 6.0; tessellation may under-/over-shoot very
         // slightly depending on segmentation, so accept ≥ 5.8.
-        assert!(extent >= 5.8,
-            "sphere axis {axis} extent = {extent} should be ~diameter 6.0");
+        assert!(
+            extent >= 5.8,
+            "sphere axis {axis} extent = {extent} should be ~diameter 6.0"
+        );
     }
 }
 
@@ -1567,10 +1741,14 @@ fn compute_aabb_matches_cached_object_fields() {
     let obj = scene.get(id).unwrap();
     let (mn, mx) = compute_aabb(&obj.vertices);
     for i in 0..3 {
-        assert!((mn[i] - obj.aabb_min[i]).abs() < 1e-5,
-            "cached aabb_min[{i}] diverged from fresh compute_aabb");
-        assert!((mx[i] - obj.aabb_max[i]).abs() < 1e-5,
-            "cached aabb_max[{i}] diverged from fresh compute_aabb");
+        assert!(
+            (mn[i] - obj.aabb_min[i]).abs() < 1e-5,
+            "cached aabb_min[{i}] diverged from fresh compute_aabb"
+        );
+        assert!(
+            (mx[i] - obj.aabb_max[i]).abs() < 1e-5,
+            "cached aabb_max[{i}] diverged from fresh compute_aabb"
+        );
     }
 }
 
@@ -1587,8 +1765,26 @@ fn make_unit_tet_mesh() -> cadkernel_modeling::TetMesh {
     use cadkernel_math::Point3;
     cadkernel_modeling::TetMesh {
         nodes: vec![
-            Point3 { x: 0.0, y: 0.0, z: 0.0 }, Point3 { x: 1.0, y: 0.0, z: 0.0 },
-            Point3 { x: 0.0, y: 1.0, z: 0.0 }, Point3 { x: 0.0, y: 0.0, z: 1.0 },
+            Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            Point3 {
+                x: 1.0,
+                y: 0.0,
+                z: 0.0,
+            },
+            Point3 {
+                x: 0.0,
+                y: 1.0,
+                z: 0.0,
+            },
+            Point3 {
+                x: 0.0,
+                y: 0.0,
+                z: 1.0,
+            },
         ],
         elements: vec![[0, 1, 2, 3]],
     }
@@ -1599,13 +1795,14 @@ fn commit_material_picker_updates_pending_material_for_each_preset() {
     use cadkernel_modeling::FemMaterial;
     // Preset → expected FemMaterial constructor result.
     let titanium = FemMaterial::titanium();
-    assert!((titanium.youngs_modulus - 114.0e9).abs() < 1.0
-        && (titanium.poisson_ratio - 0.34).abs() < 1e-9
-        && (titanium.density - 4430.0).abs() < 1e-6);
+    assert!(
+        (titanium.youngs_modulus - 114.0e9).abs() < 1.0
+            && (titanium.poisson_ratio - 0.34).abs() < 1e-9
+            && (titanium.density - 4430.0).abs() < 1e-6
+    );
     // Custom preset uses user-picked values when valid.
     let custom = FemMaterial::custom(88.0e9, 0.28, 4321.0).unwrap();
-    assert!((custom.youngs_modulus - 88.0e9).abs() < 1.0
-        && (custom.density - 4321.0).abs() < 1e-6);
+    assert!((custom.youngs_modulus - 88.0e9).abs() < 1.0 && (custom.density - 4321.0).abs() < 1e-6);
 }
 
 #[test]
@@ -1635,7 +1832,14 @@ fn commit_bc_editor_force_appends_one_matching_bc_xyz() {
     use cadkernel_math::Vec3;
     use cadkernel_modeling::{AnalysisContainer, BoundaryCondition, FemMaterial};
     let mut c = AnalysisContainer::new(make_unit_tet_mesh(), FemMaterial::steel());
-    c.add_bc(BoundaryCondition::Force { node: 1, force: Vec3 { x: 100.0, y: 0.0, z: -50.0 } });
+    c.add_bc(BoundaryCondition::Force {
+        node: 1,
+        force: Vec3 {
+            x: 100.0,
+            y: 0.0,
+            z: -50.0,
+        },
+    });
     assert_eq!(c.boundary_conditions.len(), 1);
     match &c.boundary_conditions[0] {
         BoundaryCondition::Force { node, force } => {
@@ -1654,17 +1858,23 @@ fn commit_bc_editor_force_appends_one_matching_bc_xyz() {
 // Field overload check: ensure the right kernel-side variant is constructed
 // with the right field meaning per BC kind (force / displacement / axis / ...).
 
-fn near(a: f64, b: f64) -> bool { (a - b).abs() <= 1e-6 * a.abs().max(b.abs()).max(1.0) }
+fn near(a: f64, b: f64) -> bool {
+    (a - b).abs() <= 1e-6 * a.abs().max(b.abs()).max(1.0)
+}
 
 #[test]
 fn commit_bc_editor_pressure_appends_one_matching_bc_element_scalar() {
     use cadkernel_modeling::{AnalysisContainer, BoundaryCondition, FemMaterial};
     let mut c = AnalysisContainer::new(make_unit_tet_mesh(), FemMaterial::steel());
-    c.add_bc(BoundaryCondition::Pressure { element: 0, pressure: 2.5e6 });
+    c.add_bc(BoundaryCondition::Pressure {
+        element: 0,
+        pressure: 2.5e6,
+    });
     assert_eq!(c.boundary_conditions.len(), 1);
     match &c.boundary_conditions[0] {
         BoundaryCondition::Pressure { element, pressure } => {
-            assert_eq!(*element, 0); assert!(near(*pressure, 2.5e6));
+            assert_eq!(*element, 0);
+            assert!(near(*pressure, 2.5e6));
         }
         _ => panic!("expected Pressure"),
     }
@@ -1676,11 +1886,18 @@ fn commit_bc_editor_displacement_appends_one_matching_bc_node_vec3() {
     use cadkernel_modeling::{AnalysisContainer, BoundaryCondition, FemMaterial};
     let mut c = AnalysisContainer::new(make_unit_tet_mesh(), FemMaterial::steel());
     c.add_bc(BoundaryCondition::Displacement {
-        node: 2, displacement: Vec3 { x: 0.001, y: 0.0, z: 0.0 } });
+        node: 2,
+        displacement: Vec3 {
+            x: 0.001,
+            y: 0.0,
+            z: 0.0,
+        },
+    });
     assert_eq!(c.boundary_conditions.len(), 1);
     match &c.boundary_conditions[0] {
         BoundaryCondition::Displacement { node, displacement } => {
-            assert_eq!(*node, 2); assert!(near(displacement.x, 0.001));
+            assert_eq!(*node, 2);
+            assert!(near(displacement.x, 0.001));
         }
         _ => panic!("expected Displacement"),
     }
@@ -1692,7 +1909,12 @@ fn commit_bc_editor_gravity_appends_one_matching_bc_vec3_only() {
     use cadkernel_modeling::{AnalysisContainer, BoundaryCondition, FemMaterial};
     let mut c = AnalysisContainer::new(make_unit_tet_mesh(), FemMaterial::steel());
     c.add_bc(BoundaryCondition::Gravity {
-        acceleration: Vec3 { x: 0.0, y: 0.0, z: -9.81 } });
+        acceleration: Vec3 {
+            x: 0.0,
+            y: 0.0,
+            z: -9.81,
+        },
+    });
     assert_eq!(c.boundary_conditions.len(), 1);
     match &c.boundary_conditions[0] {
         BoundaryCondition::Gravity { acceleration } => {
@@ -1708,11 +1930,18 @@ fn commit_bc_editor_distributed_load_appends_one_matching_bc_element_vec3() {
     use cadkernel_modeling::{AnalysisContainer, BoundaryCondition, FemMaterial};
     let mut c = AnalysisContainer::new(make_unit_tet_mesh(), FemMaterial::steel());
     c.add_bc(BoundaryCondition::DistributedLoad {
-        element: 0, load: Vec3 { x: 0.0, y: 1000.0, z: 0.0 } });
+        element: 0,
+        load: Vec3 {
+            x: 0.0,
+            y: 1000.0,
+            z: 0.0,
+        },
+    });
     assert_eq!(c.boundary_conditions.len(), 1);
     match &c.boundary_conditions[0] {
         BoundaryCondition::DistributedLoad { element, load } => {
-            assert_eq!(*element, 0); assert!(near(load.y, 1000.0));
+            assert_eq!(*element, 0);
+            assert!(near(load.y, 1000.0));
         }
         _ => panic!("expected DistributedLoad"),
     }
@@ -1722,11 +1951,15 @@ fn commit_bc_editor_distributed_load_appends_one_matching_bc_element_vec3() {
 fn commit_bc_editor_spring_appends_one_matching_bc_node_scalar() {
     use cadkernel_modeling::{AnalysisContainer, BoundaryCondition, FemMaterial};
     let mut c = AnalysisContainer::new(make_unit_tet_mesh(), FemMaterial::steel());
-    c.add_bc(BoundaryCondition::Spring { node: 3, stiffness: 1e5 });
+    c.add_bc(BoundaryCondition::Spring {
+        node: 3,
+        stiffness: 1e5,
+    });
     assert_eq!(c.boundary_conditions.len(), 1);
     match &c.boundary_conditions[0] {
         BoundaryCondition::Spring { node, stiffness } => {
-            assert_eq!(*node, 3); assert!(near(*stiffness, 1e5));
+            assert_eq!(*node, 3);
+            assert!(near(*stiffness, 1e5));
         }
         _ => panic!("expected Spring"),
     }
@@ -1738,7 +1971,13 @@ fn commit_bc_editor_centrifugal_appends_one_matching_bc_axis_omega() {
     use cadkernel_modeling::{AnalysisContainer, BoundaryCondition, FemMaterial};
     let mut c = AnalysisContainer::new(make_unit_tet_mesh(), FemMaterial::steel());
     c.add_bc(BoundaryCondition::CentrifugalLoad {
-        axis: Vec3 { x: 0.0, y: 0.0, z: 1.0 }, omega: 50.0 });
+        axis: Vec3 {
+            x: 0.0,
+            y: 0.0,
+            z: 1.0,
+        },
+        omega: 50.0,
+    });
     assert_eq!(c.boundary_conditions.len(), 1);
     match &c.boundary_conditions[0] {
         BoundaryCondition::CentrifugalLoad { axis, omega } => {
@@ -1754,7 +1993,12 @@ fn commit_bc_editor_self_weight_appends_one_matching_bc_vec3_only() {
     use cadkernel_modeling::{AnalysisContainer, BoundaryCondition, FemMaterial};
     let mut c = AnalysisContainer::new(make_unit_tet_mesh(), FemMaterial::steel());
     c.add_bc(BoundaryCondition::SelfWeight {
-        gravity: Vec3 { x: 0.0, y: 0.0, z: -9.81 } });
+        gravity: Vec3 {
+            x: 0.0,
+            y: 0.0,
+            z: -9.81,
+        },
+    });
     assert_eq!(c.boundary_conditions.len(), 1);
     match &c.boundary_conditions[0] {
         BoundaryCondition::SelfWeight { gravity } => {
@@ -1770,11 +2014,21 @@ fn commit_bc_editor_spring_constraint_appends_one_matching_bc_node_stiff_dir() {
     use cadkernel_modeling::{AnalysisContainer, BoundaryCondition, FemMaterial};
     let mut c = AnalysisContainer::new(make_unit_tet_mesh(), FemMaterial::steel());
     c.add_bc(BoundaryCondition::SpringConstraint {
-        node_id: 2, stiffness: 250.0,
-        direction: Vec3 { x: 1.0, y: 0.0, z: 0.0 } });
+        node_id: 2,
+        stiffness: 250.0,
+        direction: Vec3 {
+            x: 1.0,
+            y: 0.0,
+            z: 0.0,
+        },
+    });
     assert_eq!(c.boundary_conditions.len(), 1);
     match &c.boundary_conditions[0] {
-        BoundaryCondition::SpringConstraint { node_id, stiffness, direction } => {
+        BoundaryCondition::SpringConstraint {
+            node_id,
+            stiffness,
+            direction,
+        } => {
             assert_eq!(*node_id, 2);
             assert!(near(*stiffness, 250.0) && near(direction.x, 1.0));
         }
@@ -1788,7 +2042,12 @@ fn commit_bc_editor_body_load_appends_one_matching_bc_vec3_only() {
     use cadkernel_modeling::{AnalysisContainer, BoundaryCondition, FemMaterial};
     let mut c = AnalysisContainer::new(make_unit_tet_mesh(), FemMaterial::steel());
     c.add_bc(BoundaryCondition::BodyLoad {
-        force_density: Vec3 { x: 0.0, y: 0.0, z: -7700.0 } });
+        force_density: Vec3 {
+            x: 0.0,
+            y: 0.0,
+            z: -7700.0,
+        },
+    });
     assert_eq!(c.boundary_conditions.len(), 1);
     match &c.boundary_conditions[0] {
         BoundaryCondition::BodyLoad { force_density } => {
@@ -1802,13 +2061,97 @@ fn commit_bc_editor_body_load_appends_one_matching_bc_vec3_only() {
 fn commit_bc_editor_initial_temperature_appends_one_matching_bc_node_scalar() {
     use cadkernel_modeling::{AnalysisContainer, BoundaryCondition, FemMaterial};
     let mut c = AnalysisContainer::new(make_unit_tet_mesh(), FemMaterial::steel());
-    c.add_bc(BoundaryCondition::InitialTemperature { node: 1, temperature: 300.0 });
+    c.add_bc(BoundaryCondition::InitialTemperature {
+        node: 1,
+        temperature: 300.0,
+    });
     assert_eq!(c.boundary_conditions.len(), 1);
     match &c.boundary_conditions[0] {
         BoundaryCondition::InitialTemperature { node, temperature } => {
-            assert_eq!(*node, 1); assert!(near(*temperature, 300.0));
+            assert_eq!(*node, 1);
+            assert!(near(*temperature, 300.0));
         }
         _ => panic!("expected InitialTemperature"),
+    }
+}
+
+#[test]
+fn fem_bc_editor_section_print_dispatch_commits_plane_marker() {
+    use cadkernel_modeling::BoundaryCondition;
+
+    let mut app = CadApp::new_headless();
+    app.seed_test_fem_empty_analysis();
+    app.dispatch_fem_open_section_print_bc_editor();
+    assert!(app.fem_bc_editor_is_open());
+
+    app.set_fem_bc_vec3_for_test(0.0, 1.0, 0.0);
+    app.set_fem_bc_point_for_test(1.0, 2.0, 3.0);
+    app.dispatch_fem_commit_bc_editor();
+
+    let bcs = app.fem_boundary_conditions_for_test();
+    assert_eq!(bcs.len(), 1);
+    match &bcs[0] {
+        BoundaryCondition::SectionPrint {
+            plane_normal,
+            plane_point,
+        } => {
+            assert!(near(plane_normal.y, 1.0));
+            assert!(near(plane_point.x, 1.0) && near(plane_point.z, 3.0));
+        }
+        _ => panic!("expected SectionPrint"),
+    }
+}
+
+#[test]
+fn fem_bc_editor_multi_node_dispatch_commits_sets_and_penalty() {
+    use cadkernel_modeling::BoundaryCondition;
+
+    let mut app = CadApp::new_headless();
+    app.seed_test_fem_empty_analysis();
+
+    app.dispatch_fem_open_tie_constraint_bc_editor();
+    assert!(app.fem_bc_editor_is_open());
+    app.set_fem_bc_node_sets_for_test(0, 1, 2, 3);
+    app.dispatch_fem_commit_bc_editor();
+
+    app.dispatch_fem_open_rigid_body_bc_editor();
+    assert!(app.fem_bc_editor_is_open());
+    app.set_fem_bc_node_sets_for_test(1, 3, 0, 0);
+    app.dispatch_fem_commit_bc_editor();
+
+    app.dispatch_fem_open_contact_constraint_bc_editor();
+    assert!(app.fem_bc_editor_is_open());
+    app.set_fem_bc_node_sets_for_test(0, 1, 2, 3);
+    app.set_fem_bc_scalar_for_test(1.25e7);
+    app.dispatch_fem_commit_bc_editor();
+
+    let bcs = app.fem_boundary_conditions_for_test();
+    assert_eq!(bcs.len(), 3);
+    match &bcs[0] {
+        BoundaryCondition::TieConstraint {
+            surface_a,
+            surface_b,
+        } => {
+            assert_eq!(surface_a, &[0, 1]);
+            assert_eq!(surface_b, &[2, 3]);
+        }
+        _ => panic!("expected TieConstraint"),
+    }
+    match &bcs[1] {
+        BoundaryCondition::RigidBody { node_ids } => assert_eq!(node_ids, &[1, 2, 3]),
+        _ => panic!("expected RigidBody"),
+    }
+    match &bcs[2] {
+        BoundaryCondition::ContactConstraint {
+            surface_a,
+            surface_b,
+            penalty,
+        } => {
+            assert_eq!(surface_a, &[0, 1]);
+            assert_eq!(surface_b, &[2, 3]);
+            assert!(near(*penalty, 1.25e7));
+        }
+        _ => panic!("expected ContactConstraint"),
     }
 }
 
@@ -1841,6 +2184,29 @@ fn pad_sketch_without_active_sketch_logs_warning_and_adds_no_object() {
     assert!(
         app.scene_ref().is_empty(),
         "Pad without sketch must not create geometry"
+    );
+}
+
+#[test]
+fn pad_sketch_rejects_open_profile_even_with_three_edges() {
+    let mut app = CadApp::new_headless();
+    app.seed_test_sketch_open_profile();
+    app.dispatch_pad_sketch(3.0, false);
+    assert!(
+        app.scene_ref().is_empty(),
+        "Pad must reject open sketch chains instead of extruding a partial profile"
+    );
+}
+
+#[test]
+fn pad_sketch_accepts_square_with_construction_diagonal() {
+    let mut app = CadApp::new_headless();
+    app.seed_test_sketch_square_with_construction_diagonal(2.0);
+    app.dispatch_pad_sketch(2.0, false);
+    assert_eq!(
+        app.scene_ref().len(),
+        1,
+        "construction lines must be ignored by profile validation"
     );
 }
 
@@ -1935,8 +2301,14 @@ fn draft_ellipse_dispatch_adds_filled_solid_to_scene() {
     // units along whichever in-plane direction the kernel picks for `u`.
     let dx = (obj.aabb_max[0] - obj.aabb_min[0]) as f64;
     let dy = (obj.aabb_max[1] - obj.aabb_min[1]) as f64;
-    assert!(dx.max(dy) >= 3.5, "ellipse major-axis extent too small: dx={dx}, dy={dy}");
-    assert!(dx.min(dy) >= 1.5, "ellipse minor-axis extent too small: dx={dx}, dy={dy}");
+    assert!(
+        dx.max(dy) >= 3.5,
+        "ellipse major-axis extent too small: dx={dx}, dy={dy}"
+    );
+    assert!(
+        dx.min(dy) >= 1.5,
+        "ellipse minor-axis extent too small: dx={dx}, dy={dy}"
+    );
 }
 
 #[test]
@@ -2052,6 +2424,105 @@ fn draft_to_sketch_dispatch_populates_last_sketch() {
 }
 
 #[test]
+fn sketch_external_projection_uses_selected_object_as_construction_refs() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(2.0, 2.0, 2.0);
+    app.toggle_select_index(0);
+    app.dispatch_enter_sketch_xy();
+    app.dispatch_sketch_external_projection();
+
+    let (points, lines, construction_points, construction_lines) = app
+        .active_sketch_geometry_counts()
+        .expect("active sketch should exist");
+    assert!(points >= 8, "box projection should add vertex refs");
+    assert!(lines >= 12, "box projection should add edge refs");
+    assert_eq!(construction_points, points);
+    assert_eq!(construction_lines, lines);
+
+    let (external_refs, reused, status) = app
+        .active_sketch_reference_summary()
+        .expect("reference summary should exist");
+    assert!(external_refs >= 20, "box should project point+edge refs");
+    assert_eq!(reused, 0);
+    assert!(status.contains("external"));
+}
+
+#[test]
+fn sketch_carbon_copy_reports_reused_last_sketch_geometry() {
+    let mut app = CadApp::new_headless();
+    app.seed_test_sketch_square(2.0);
+    app.dispatch_enter_sketch_xy();
+    app.dispatch_sketch_carbon_copy();
+
+    let (points, lines, construction_points, construction_lines) = app
+        .active_sketch_geometry_counts()
+        .expect("active sketch should exist");
+    assert_eq!(points, 4);
+    assert_eq!(lines, 4);
+    assert_eq!(construction_points, 0);
+    assert_eq!(construction_lines, 0);
+
+    let (external_refs, reused, status) = app
+        .active_sketch_reference_summary()
+        .expect("reference summary should exist");
+    assert_eq!(external_refs, 0);
+    assert!(reused >= 8, "square reuse should report points + lines");
+    assert!(status.contains("copied"));
+}
+
+#[test]
+fn sketch_select_references_selects_all_construction_refs() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(2.0, 2.0, 2.0);
+    app.toggle_select_index(0);
+    app.dispatch_enter_sketch_xy();
+    app.dispatch_sketch_external_projection();
+
+    let (external_refs, _reused, _status) = app
+        .active_sketch_reference_summary()
+        .expect("reference summary should exist");
+    app.dispatch_sketch_select_references();
+
+    assert_eq!(
+        app.active_sketch_selected_count(),
+        Some(external_refs),
+        "Select References should select every construction reference entity"
+    );
+}
+
+#[test]
+fn sketch_promote_references_converts_selected_refs_to_regular_geometry() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(2.0, 2.0, 2.0);
+    app.toggle_select_index(0);
+    app.dispatch_enter_sketch_xy();
+    app.dispatch_sketch_external_projection();
+    app.dispatch_sketch_select_references();
+    app.dispatch_sketch_promote_references();
+
+    let (points, lines, construction_points, construction_lines) = app
+        .active_sketch_geometry_counts()
+        .expect("active sketch should exist");
+    assert!(
+        points >= 8,
+        "promoted references should keep points editable"
+    );
+    assert!(
+        lines >= 12,
+        "promoted references should keep lines editable"
+    );
+    assert_eq!(construction_points, 0);
+    assert_eq!(construction_lines, 0);
+
+    let (external_refs, reused, status) = app
+        .active_sketch_reference_summary()
+        .expect("reference summary should exist");
+    assert_eq!(external_refs, 0);
+    assert_eq!(reused, 0);
+    assert_eq!(status, "Refs: none");
+}
+
+#[test]
 fn draft_clone_dispatch_duplicates_selected_solid() {
     let mut app = CadApp::new_headless();
     app.dispatch_create_box(1.0, 1.0, 1.0);
@@ -2080,7 +2551,10 @@ fn draft_array_rect_dispatch_creates_grid_of_copies() {
     let added = app.scene_ref().len() - before;
     // Default 3×2 grid has 6 instances; original is the selected solid, so
     // the dispatcher adds 5 new copies as scene objects.
-    assert_eq!(added, 5, "rect array (3×2) should add 5 copies, got {added}");
+    assert_eq!(
+        added, 5,
+        "rect array (3×2) should add 5 copies, got {added}"
+    );
 }
 
 #[test]
@@ -2090,7 +2564,10 @@ fn draft_array_polar_dispatch_creates_rotational_copies() {
     let before = app.scene_ref().len();
     app.dispatch_draft_array_polar();
     let added = app.scene_ref().len() - before;
-    assert_eq!(added, 5, "polar array (6-fold) should add 5 copies, got {added}");
+    assert_eq!(
+        added, 5,
+        "polar array (6-fold) should add 5 copies, got {added}"
+    );
 }
 
 #[test]
@@ -2100,7 +2577,10 @@ fn draft_array_path_dispatch_creates_copies_along_path() {
     let before = app.scene_ref().len();
     app.dispatch_draft_array_path();
     let added = app.scene_ref().len() - before;
-    assert_eq!(added, 3, "path array (4-point path) should add 3 copies, got {added}");
+    assert_eq!(
+        added, 3,
+        "path array (4-point path) should add 3 copies, got {added}"
+    );
 }
 
 #[test]
@@ -2110,7 +2590,10 @@ fn draft_array_point_dispatch_creates_copies_at_each_position() {
     let before = app.scene_ref().len();
     app.dispatch_draft_array_point();
     let added = app.scene_ref().len() - before;
-    assert_eq!(added, 3, "point array (4 positions) should add 3 copies, got {added}");
+    assert_eq!(
+        added, 3,
+        "point array (4 positions) should add 3 copies, got {added}"
+    );
 }
 
 #[test]
@@ -2402,6 +2885,148 @@ fn fem_report_without_analysis_logs_warning() {
 }
 
 // ---------------------------------------------------------------------------
+// Phase E — Solver dispatchers (SolveThermal / SolveNonlinear)
+// ---------------------------------------------------------------------------
+
+#[test]
+fn fem_solve_thermal_with_seeded_analysis_populates_temperature_field() {
+    let mut app = CadApp::new_headless();
+    app.seed_test_fem_analysis_for_solvers();
+    let before = app.scene_ref().len();
+    app.dispatch_fem_solve_thermal();
+    // Solver mutates the container in place — no scene tree change.
+    assert_eq!(app.scene_ref().len(), before);
+}
+
+#[test]
+fn fem_solve_thermal_without_analysis_emits_status_message() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_fem_solve_thermal();
+    // No-analysis path takes the early-return status branch and produces no
+    // scene entries.
+    assert!(app.scene_ref().is_empty());
+}
+
+#[test]
+fn fem_solve_nonlinear_with_seeded_analysis_populates_result() {
+    let mut app = CadApp::new_headless();
+    app.seed_test_fem_analysis_for_solvers();
+    let before = app.scene_ref().len();
+    app.dispatch_fem_solve_nonlinear();
+    assert_eq!(app.scene_ref().len(), before);
+}
+
+#[test]
+fn fem_solve_nonlinear_without_analysis_emits_status_message() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_fem_solve_nonlinear();
+    assert!(app.scene_ref().is_empty());
+}
+
+fn fem_colormap_object_count(app: &CadApp, prefix: &str) -> usize {
+    app.scene_ref()
+        .objects
+        .iter()
+        .filter(|o| o.name.starts_with(prefix))
+        .count()
+}
+
+#[test]
+fn fem_show_displacement_after_solve_adds_colormap_mesh() {
+    let mut app = CadApp::new_headless();
+    app.seed_test_fem_analysis_for_solvers();
+    app.dispatch_fem_solve_nonlinear();
+    app.dispatch_fem_show_displacement();
+    let count = fem_colormap_object_count(&app, "FEM Displacement colormap");
+    assert!(count >= 1, "displacement colormap should add mesh bands");
+    assert!(
+        app.scene_ref()
+            .objects
+            .iter()
+            .filter(|o| o.name.starts_with("FEM Displacement colormap"))
+            .all(|o| !o.vertices.is_empty()),
+        "colormap bands should be drawable meshes"
+    );
+}
+
+#[test]
+fn fem_show_stress_and_von_mises_replace_previous_colormap() {
+    let mut app = CadApp::new_headless();
+    app.seed_test_fem_analysis_for_solvers();
+    app.dispatch_fem_solve_nonlinear();
+
+    app.dispatch_fem_show_stress();
+    assert!(fem_colormap_object_count(&app, "FEM Stress colormap") >= 1);
+
+    app.dispatch_fem_show_von_mises();
+    assert_eq!(fem_colormap_object_count(&app, "FEM Stress colormap"), 0);
+    assert!(fem_colormap_object_count(&app, "FEM Von Mises colormap") >= 1);
+}
+
+#[test]
+fn fem_show_stress_without_result_does_not_add_scene_objects() {
+    let mut app = CadApp::new_headless();
+    app.seed_test_fem_analysis_for_solvers();
+    app.dispatch_fem_show_stress();
+    assert!(app.scene_ref().is_empty());
+}
+
+#[test]
+fn fem_colormap_updates_result_legend_state() {
+    let mut app = CadApp::new_headless();
+    app.seed_test_fem_analysis_for_solvers();
+    app.dispatch_fem_solve_nonlinear();
+    app.dispatch_fem_show_von_mises();
+
+    let (label, bands, min, max) = app
+        .fem_result_legend_summary()
+        .expect("legend should be populated after colormap");
+    assert_eq!(label, "Von Mises");
+    assert_eq!(bands, 7);
+    assert!(min <= max, "legend range should be ordered");
+}
+
+#[test]
+fn fem_result_probe_records_node_element_values() {
+    let mut app = CadApp::new_headless();
+    app.seed_test_fem_analysis_for_solvers();
+    app.dispatch_fem_solve_thermal();
+    app.dispatch_fem_solve_nonlinear();
+    app.dispatch_fem_open_result_probe();
+    assert!(app.fem_result_probe_is_open());
+    app.set_fem_result_probe_for_test(3, 0);
+    app.dispatch_fem_commit_result_probe();
+
+    let (node, elem, disp, stress, temp) = app
+        .fem_last_probe_summary()
+        .expect("probe should be recorded");
+    assert_eq!(node, 3);
+    assert_eq!(elem, Some(0));
+    assert!(
+        disp.is_some(),
+        "mechanical probe should include displacement"
+    );
+    assert!(stress.is_some(), "mechanical probe should include stress");
+    assert!(temp.is_some(), "thermal probe should include temperature");
+}
+
+#[test]
+fn fem_result_table_opens_with_node_and_element_rows() {
+    let mut app = CadApp::new_headless();
+    app.seed_test_fem_analysis_for_solvers();
+    app.dispatch_fem_solve_nonlinear();
+    app.dispatch_fem_show_stress();
+    app.dispatch_fem_open_result_table();
+
+    assert!(app.fem_result_table_is_open());
+    let counts = app
+        .fem_result_table_counts()
+        .expect("result table should be open");
+    assert_eq!(counts.0, 4, "seeded FEM mesh has 4 node rows");
+    assert_eq!(counts.1, 1, "seeded FEM mesh has 1 element row");
+}
+
+// ---------------------------------------------------------------------------
 // Phase C2 — Draft modify (Offset / Trim / Stretch / Facebinder) +
 // P::ProjectCurvesOnSurface.
 // ---------------------------------------------------------------------------
@@ -2578,4 +3203,644 @@ fn partdesign_subtractive_pipe_without_selection_logs_warning() {
     let mut app = CadApp::new_headless();
     app.dispatch_partdesign_subtractive_pipe();
     assert!(app.scene_ref().is_empty());
+}
+
+#[test]
+fn partdesign_shape_binder_copies_selected_shape_faces() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(2.0, 2.0, 2.0);
+    let before = app.scene_ref().len();
+    app.dispatch_partdesign_shape_binder();
+    assert_eq!(app.scene_ref().len(), before + 1);
+    let obj = app.scene_ref().objects.last().expect("shape binder object");
+    assert!(
+        !obj.vertices.is_empty(),
+        "ShapeBinder should tessellate copied faces"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Phase D — annotation overlay + scene_overlay backfill (D::Dimension /
+// D::Label + verifying that Phase A-C wire-output features now actually
+// populate the overlay so they render via the egui foreground layer).
+// ---------------------------------------------------------------------------
+
+#[test]
+fn draft_dimension_dispatch_populates_overlay_with_lines_and_label() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_draft_dimension();
+    let (lines, _points, labels) = app.overlay_counts();
+    // 2 extension lines + 1 dimension line + 1 value label.
+    assert_eq!(lines, 3, "dimension should add 3 polylines, got {lines}");
+    assert_eq!(labels, 1, "dimension should add 1 label, got {labels}");
+    assert_eq!(
+        app.scene_ref().len(),
+        1,
+        "dimension also gains a tree entry"
+    );
+}
+
+#[test]
+fn draft_label_dispatch_populates_overlay_with_leader_and_label() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_draft_label();
+    let (lines, _points, labels) = app.overlay_counts();
+    assert_eq!(lines, 1, "label leader should add 1 polyline");
+    assert_eq!(labels, 1, "label should add 1 text entry");
+}
+
+#[test]
+fn draft_line_dispatch_now_populates_overlay() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_draft_line();
+    let (lines, _points, _labels) = app.overlay_counts();
+    assert_eq!(lines, 1, "Phase D: D::Line now populates the overlay");
+}
+
+#[test]
+fn draft_point_dispatch_now_populates_overlay() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_draft_point();
+    let (_lines, points, _labels) = app.overlay_counts();
+    assert_eq!(points, 1, "Phase D: D::Point now populates the overlay");
+}
+
+#[test]
+fn draft_wire_dispatch_now_populates_overlay() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_draft_wire();
+    let (lines, _points, _labels) = app.overlay_counts();
+    assert_eq!(lines, 1, "Phase D: D::Wire now populates the overlay");
+}
+
+#[test]
+fn draft_bspline_dispatch_now_populates_overlay() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_draft_bspline();
+    let (lines, _points, _labels) = app.overlay_counts();
+    assert_eq!(lines, 1, "Phase D: D::BSpline now populates the overlay");
+}
+
+#[test]
+fn draft_text_dispatch_populates_overlay_with_strokes_and_label() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_draft_text();
+    let (lines, _points, labels) = app.overlay_counts();
+    assert!(lines >= 1, "Text should add stroke polylines, got {lines}");
+    assert_eq!(labels, 1, "Text should add an anchored label");
+}
+
+#[test]
+fn part_points_from_shape_now_populates_overlay() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(2.0, 2.0, 2.0);
+    let before = app.overlay_counts().1;
+    app.dispatch_part_points_from_shape();
+    let after = app.overlay_counts().1;
+    // A box has 8 unique vertex positions.
+    assert!(
+        after - before >= 8,
+        "PointsFromShape should add ≥8 overlay points"
+    );
+}
+
+#[test]
+fn new_model_clears_scene_overlay() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_draft_line();
+    app.dispatch_draft_point();
+    assert!(app.overlay_counts().0 + app.overlay_counts().1 > 0);
+    app.dispatch_new_model();
+    assert_eq!(
+        app.overlay_counts(),
+        (0, 0, 0),
+        "NewModel should clear the scene_overlay"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Phase F-page — TechDraw page management.
+// ---------------------------------------------------------------------------
+
+fn temp_export_path(stem: &str, ext: &str) -> std::path::PathBuf {
+    let pid = std::process::id();
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    std::env::temp_dir().join(format!("cadk_viewer_{stem}_{pid}_{nanos}.{ext}"))
+}
+
+#[test]
+fn techdraw_new_page_creates_a4_landscape_sheet() {
+    let mut app = CadApp::new_headless();
+    assert!(app.techdraw_sheet_size().is_none());
+    app.dispatch_techdraw_new_page();
+    let (w, h) = app.techdraw_sheet_size().expect("sheet should be opened");
+    assert!((w - 297.0).abs() < 1e-6 && (h - 210.0).abs() < 1e-6);
+}
+
+#[test]
+fn techdraw_from_template_cycles_through_three_templates() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_techdraw_from_template();
+    let s1 = app.techdraw_sheet_size().unwrap();
+    assert!((s1.0 - 297.0).abs() < 1e-6 && (s1.1 - 210.0).abs() < 1e-6);
+    app.dispatch_techdraw_from_template();
+    let s2 = app.techdraw_sheet_size().unwrap();
+    assert!((s2.0 - 210.0).abs() < 1e-6 && (s2.1 - 297.0).abs() < 1e-6);
+    app.dispatch_techdraw_from_template();
+    let s3 = app.techdraw_sheet_size().unwrap();
+    assert!((s3.0 - 420.0).abs() < 1e-6 && (s3.1 - 297.0).abs() < 1e-6);
+    app.dispatch_techdraw_from_template();
+    let s4 = app.techdraw_sheet_size().unwrap();
+    assert!((s4.0 - 297.0).abs() < 1e-6 && (s4.1 - 210.0).abs() < 1e-6);
+}
+
+#[test]
+fn techdraw_page_setup_opens_stateful_dialog() {
+    let mut app = CadApp::new_headless();
+    assert!(!app.techdraw_page_setup_is_open());
+    app.dispatch_techdraw_open_page_setup();
+    assert!(app.techdraw_page_setup_is_open());
+}
+
+#[test]
+fn techdraw_page_setup_commit_applies_custom_title_and_size() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_techdraw_open_page_setup();
+    app.set_techdraw_page_setup_custom_for_test(500.0, 300.0, "Custom Fixture Sheet");
+    app.dispatch_techdraw_commit_page_setup();
+    assert!(!app.techdraw_page_setup_is_open());
+    let (w, h) = app.techdraw_sheet_size().expect("sheet should be applied");
+    assert!((w - 500.0).abs() < 1e-6 && (h - 300.0).abs() < 1e-6);
+    assert_eq!(
+        app.techdraw_sheet_title().as_deref(),
+        Some("Custom Fixture Sheet")
+    );
+}
+
+#[test]
+fn techdraw_page_setup_a3_preset_applies_named_sheet() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_techdraw_open_page_setup();
+    app.set_techdraw_page_setup_a3_for_test("A3 Assembly Drawing");
+    app.dispatch_techdraw_commit_page_setup();
+    let (w, h) = app.techdraw_sheet_size().expect("sheet should be applied");
+    assert!((w - 420.0).abs() < 1e-6 && (h - 297.0).abs() < 1e-6);
+    assert_eq!(
+        app.techdraw_sheet_title().as_deref(),
+        Some("A3 Assembly Drawing")
+    );
+}
+
+#[test]
+fn techdraw_dimension_setup_opens_stateful_dialog() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_techdraw_new_page();
+    assert!(!app.techdraw_dimension_setup_is_open());
+    app.dispatch_techdraw_open_linear_dimension_setup();
+    assert!(app.techdraw_dimension_setup_is_open());
+}
+
+#[test]
+fn techdraw_dimension_setup_commit_applies_custom_linear_dimension() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_techdraw_new_page();
+    app.dispatch_techdraw_open_linear_dimension_setup();
+    app.set_techdraw_dimension_setup_linear_for_test(
+        "CUSTOM 123.45",
+        20.0,
+        160.0,
+        180.0,
+        160.0,
+        -18.0,
+    );
+    app.dispatch_techdraw_commit_dimension_setup();
+    assert!(!app.techdraw_dimension_setup_is_open());
+    let counts = app.techdraw_dimension_counts();
+    assert_eq!(counts.0, 1, "custom linear setup should add one dimension");
+    let svg = app.techdraw_svg().expect("svg");
+    assert!(svg.contains("CUSTOM 123.45"));
+}
+
+#[test]
+fn techdraw_dimension_setup_commit_applies_custom_diameter_dimension() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_techdraw_new_page();
+    app.dispatch_techdraw_open_diameter_dimension_setup();
+    app.set_techdraw_dimension_setup_diameter_for_test(42.0, 144.0, 96.0);
+    app.dispatch_techdraw_commit_dimension_setup();
+    let counts = app.techdraw_dimension_counts();
+    assert_eq!(
+        counts.1, 1,
+        "custom diameter setup should add one extended dimension"
+    );
+    let svg = app.techdraw_svg().expect("svg");
+    assert!(svg.contains("⌀42.00"));
+}
+
+#[test]
+fn techdraw_annotation_setup_opens_stateful_dialog() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_techdraw_new_page();
+    assert!(!app.techdraw_annotation_setup_is_open());
+    app.dispatch_techdraw_open_text_annotation_setup();
+    assert!(app.techdraw_annotation_setup_is_open());
+}
+
+#[test]
+fn techdraw_annotation_setup_commit_applies_custom_text() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_techdraw_new_page();
+    app.dispatch_techdraw_open_text_annotation_setup();
+    app.set_techdraw_annotation_setup_text_for_test("CUSTOM INSPECTION NOTE", 36.0, 48.0, 7.5);
+    app.dispatch_techdraw_commit_annotation_setup();
+    assert!(!app.techdraw_annotation_setup_is_open());
+    let counts = app.techdraw_annotation_counts();
+    assert_eq!(counts.0, 1, "custom text setup should add one annotation");
+    let svg = app.techdraw_svg().expect("svg");
+    assert!(svg.contains("CUSTOM INSPECTION NOTE"));
+}
+
+#[test]
+fn techdraw_annotation_setup_commit_applies_custom_balloon() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_techdraw_new_page();
+    app.dispatch_techdraw_open_balloon_annotation_setup();
+    app.set_techdraw_annotation_setup_balloon_for_test(17, 50.0, 60.0, 110.0, 80.0, 9.0);
+    app.dispatch_techdraw_commit_annotation_setup();
+    let counts = app.techdraw_annotation_counts();
+    assert_eq!(counts.2, 1, "custom balloon setup should add one balloon");
+    let svg = app.techdraw_svg().expect("svg");
+    assert!(svg.contains(">17</text>"));
+}
+
+#[test]
+fn techdraw_centerline_setup_opens_stateful_dialog() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_techdraw_new_page();
+    assert!(!app.techdraw_centerline_setup_is_open());
+    app.dispatch_techdraw_open_center_mark_setup();
+    assert!(app.techdraw_centerline_setup_is_open());
+}
+
+#[test]
+fn techdraw_centerline_setup_commit_applies_custom_center_mark() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_techdraw_new_page();
+    app.dispatch_techdraw_open_center_mark_setup();
+    app.set_techdraw_centerline_setup_center_mark_for_test(100.0, 90.0, 18.0);
+    app.dispatch_techdraw_commit_centerline_setup();
+    assert!(!app.techdraw_centerline_setup_is_open());
+    let counts = app.techdraw_centerline_counts();
+    assert_eq!(counts.0, 1, "custom center mark setup should add one mark");
+    let svg = app.techdraw_svg().expect("svg");
+    assert!(svg.contains("stroke=\"red\""));
+}
+
+#[test]
+fn techdraw_centerline_setup_commit_applies_custom_bolt_circle() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_techdraw_new_page();
+    app.dispatch_techdraw_open_bolt_circle_setup();
+    app.set_techdraw_centerline_setup_bolt_circle_for_test(100.0, 80.0, 24.0, 8, 12.0);
+    app.dispatch_techdraw_commit_centerline_setup();
+    let counts = app.techdraw_centerline_counts();
+    assert_eq!(
+        counts.2, 1,
+        "custom bolt circle setup should add one bolt circle"
+    );
+    let svg = app.techdraw_svg().expect("svg");
+    assert!(svg.contains("<circle cx=\"100\" cy=\"80\" r=\"24\""));
+}
+
+#[test]
+fn techdraw_view_setup_opens_stateful_dialog() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(2.0, 2.0, 2.0);
+    app.dispatch_techdraw_new_page();
+    assert!(!app.techdraw_view_setup_is_open());
+    app.dispatch_techdraw_open_front_view_setup();
+    assert!(app.techdraw_view_setup_is_open());
+}
+
+#[test]
+fn techdraw_view_setup_commit_applies_custom_front_placement() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(2.0, 1.0, 1.0);
+    app.dispatch_techdraw_new_page();
+    app.dispatch_techdraw_open_front_view_setup();
+    app.set_techdraw_view_setup_placement_for_test(132.0, 88.0, 36.0);
+    app.dispatch_techdraw_commit_view_setup();
+    assert!(!app.techdraw_view_setup_is_open());
+    assert_eq!(app.techdraw_view_count(), 1);
+    assert_eq!(
+        app.techdraw_view_placement(0),
+        Some((Some(132.0), Some(88.0), Some(36.0)))
+    );
+}
+
+#[test]
+fn techdraw_view_setup_commit_applies_three_view_spacing() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(2.0, 1.0, 1.0);
+    app.dispatch_techdraw_new_page();
+    app.dispatch_techdraw_open_three_view_setup();
+    app.set_techdraw_view_setup_placement_for_test(90.0, 120.0, 28.0);
+    app.set_techdraw_three_view_spacing_for_test(70.0, 45.0);
+    app.dispatch_techdraw_commit_view_setup();
+    assert_eq!(app.techdraw_view_count(), 3);
+    assert_eq!(
+        app.techdraw_view_placement(0),
+        Some((Some(90.0), Some(120.0), Some(28.0)))
+    );
+    assert_eq!(
+        app.techdraw_view_placement(1),
+        Some((Some(90.0), Some(75.0), Some(28.0)))
+    );
+    assert_eq!(
+        app.techdraw_view_placement(2),
+        Some((Some(160.0), Some(120.0), Some(28.0)))
+    );
+}
+
+#[test]
+fn techdraw_redraw_without_sheet_logs_warning() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_techdraw_redraw();
+    assert!(app.techdraw_sheet_size().is_none());
+}
+
+#[test]
+fn techdraw_section_view_dispatch_adds_cut_view() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(2.0, 2.0, 2.0);
+    app.dispatch_techdraw_new_page();
+    app.dispatch_techdraw_section_view();
+    assert_eq!(app.techdraw_view_count(), 1);
+    assert!(
+        app.techdraw_last_view_edge_count().unwrap_or(0) > 0,
+        "section view should contain projected cut edges"
+    );
+}
+
+#[test]
+fn techdraw_detail_view_dispatch_adds_magnified_view() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(2.0, 1.0, 1.0);
+    app.dispatch_techdraw_three_view();
+    let before = app.techdraw_view_count();
+    app.dispatch_techdraw_detail_view();
+    assert_eq!(app.techdraw_view_count(), before + 1);
+    assert!(
+        app.techdraw_last_view_edge_count().unwrap_or(0) > 0,
+        "detail view should copy at least one source edge"
+    );
+}
+
+#[test]
+fn techdraw_broken_view_dispatch_adds_compressed_view() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(4.0, 1.0, 1.0);
+    app.dispatch_techdraw_three_view();
+    let before = app.techdraw_view_count();
+    app.dispatch_techdraw_broken_view();
+    assert_eq!(app.techdraw_view_count(), before + 1);
+    assert!(
+        app.techdraw_last_view_edge_count().unwrap_or(0) > 0,
+        "broken view should retain drawable source edges"
+    );
+}
+
+#[test]
+fn techdraw_dim_linear_dispatch_adds_sheet_dimension() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(2.0, 1.0, 1.0);
+    app.dispatch_techdraw_three_view();
+    app.dispatch_techdraw_dim_linear();
+    let counts = app.techdraw_dimension_counts();
+    assert_eq!(counts.0, 1, "linear dimension should use sheet dimensions");
+    let svg = app.techdraw_svg().expect("svg");
+    assert!(svg.contains("fill=\"blue\""));
+}
+
+#[test]
+fn techdraw_dim_radius_dispatch_adds_radius_dimension() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(2.0, 2.0, 1.0);
+    app.dispatch_techdraw_three_view();
+    app.dispatch_techdraw_dim_radius();
+    let counts = app.techdraw_dimension_counts();
+    assert_eq!(counts.0, 1, "radius dimension should use sheet dimensions");
+    let svg = app.techdraw_svg().expect("svg");
+    assert!(svg.contains("R"));
+}
+
+#[test]
+fn techdraw_dim_diameter_dispatch_adds_extended_dimension() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(2.0, 2.0, 1.0);
+    app.dispatch_techdraw_three_view();
+    app.dispatch_techdraw_dim_diameter();
+    let counts = app.techdraw_dimension_counts();
+    assert_eq!(
+        counts.1, 1,
+        "diameter dimension should use extended dimensions"
+    );
+    let svg = app.techdraw_svg().expect("svg");
+    assert!(svg.contains("⌀"));
+}
+
+#[test]
+fn techdraw_dim_angle_dispatch_adds_extended_dimension() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(2.0, 2.0, 1.0);
+    app.dispatch_techdraw_three_view();
+    app.dispatch_techdraw_dim_angle();
+    let counts = app.techdraw_dimension_counts();
+    assert_eq!(
+        counts.1, 1,
+        "angle dimension should use extended dimensions"
+    );
+    let svg = app.techdraw_svg().expect("svg");
+    assert!(svg.contains("°"));
+}
+
+#[test]
+fn techdraw_dim_arc_len_dispatch_adds_arc_dimension() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(2.0, 2.0, 1.0);
+    app.dispatch_techdraw_three_view();
+    app.dispatch_techdraw_dim_arc_len();
+    let counts = app.techdraw_dimension_counts();
+    assert_eq!(counts.2, 1, "arc length should use arc dimensions");
+    let svg = app.techdraw_svg().expect("svg");
+    assert!(svg.contains("Arc"));
+}
+
+#[test]
+fn techdraw_dim_area_dispatch_adds_area_annotation() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(2.0, 2.0, 1.0);
+    app.dispatch_techdraw_three_view();
+    app.dispatch_techdraw_dim_area();
+    let counts = app.techdraw_dimension_counts();
+    assert_eq!(counts.3, 1, "area dimension should use area annotations");
+    let svg = app.techdraw_svg().expect("svg");
+    assert!(svg.contains("Area:"));
+}
+
+#[test]
+fn techdraw_text_dispatch_adds_text_annotation() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_techdraw_new_page();
+    app.dispatch_techdraw_text();
+    let counts = app.techdraw_annotation_counts();
+    assert_eq!(counts.0, 1, "text annotation should be stored on sheet");
+    let svg = app.techdraw_svg().expect("svg");
+    assert!(svg.contains("NOTE: Deburr all edges"));
+}
+
+#[test]
+fn techdraw_rich_text_dispatch_adds_rich_text_annotation() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_techdraw_new_page();
+    app.dispatch_techdraw_rich_text();
+    let counts = app.techdraw_annotation_counts();
+    assert_eq!(
+        counts.1, 1,
+        "rich text annotation should be stored on sheet"
+    );
+    let svg = app.techdraw_svg().expect("svg");
+    assert!(svg.contains("Rich text note"));
+}
+
+#[test]
+fn techdraw_balloon_dispatch_adds_balloon_annotation() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_techdraw_new_page();
+    app.dispatch_techdraw_balloon();
+    let counts = app.techdraw_annotation_counts();
+    assert_eq!(counts.2, 1, "balloon annotation should be stored on sheet");
+    let svg = app.techdraw_svg().expect("svg");
+    assert!(svg.contains("<circle"));
+}
+
+#[test]
+fn techdraw_leader_dispatch_adds_leader_annotation() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_techdraw_new_page();
+    app.dispatch_techdraw_leader();
+    let counts = app.techdraw_annotation_counts();
+    assert_eq!(counts.3, 1, "leader annotation should be stored on sheet");
+    let svg = app.techdraw_svg().expect("svg");
+    assert!(svg.contains("Leader callout"));
+}
+
+#[test]
+fn techdraw_weld_dispatch_adds_weld_symbol() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_techdraw_new_page();
+    app.dispatch_techdraw_weld();
+    let counts = app.techdraw_annotation_counts();
+    assert_eq!(counts.4, 1, "weld symbol should be stored on sheet");
+    let svg = app.techdraw_svg().expect("svg");
+    assert!(svg.contains("8.0"));
+}
+
+#[test]
+fn techdraw_surface_finish_dispatch_adds_surface_finish_symbol() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_techdraw_new_page();
+    app.dispatch_techdraw_surf_finish();
+    let counts = app.techdraw_annotation_counts();
+    assert_eq!(
+        counts.5, 1,
+        "surface finish symbol should be stored on sheet"
+    );
+    let svg = app.techdraw_svg().expect("svg");
+    assert!(svg.contains("Ra 3.2"));
+}
+
+#[test]
+fn techdraw_center_face_dispatch_adds_centerline() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(2.0, 1.0, 1.0);
+    app.dispatch_techdraw_three_view();
+    app.dispatch_techdraw_center_face();
+    let counts = app.techdraw_centerline_counts();
+    assert_eq!(counts.1, 1, "center face should add one centerline");
+    let svg = app.techdraw_svg().expect("svg");
+    assert!(svg.contains("stroke=\"red\""));
+    assert!(svg.contains("stroke-dasharray=\"8,2,2,2\""));
+}
+
+#[test]
+fn techdraw_center_lines_dispatch_adds_centerline() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(1.0, 3.0, 1.0);
+    app.dispatch_techdraw_three_view();
+    app.dispatch_techdraw_center_lines();
+    let counts = app.techdraw_centerline_counts();
+    assert_eq!(counts.1, 1, "center lines should add one centerline");
+    let svg = app.techdraw_svg().expect("svg");
+    assert!(svg.contains("stroke-dasharray=\"8,2,2,2\""));
+}
+
+#[test]
+fn techdraw_center_points_dispatch_adds_center_mark() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(2.0, 2.0, 1.0);
+    app.dispatch_techdraw_three_view();
+    app.dispatch_techdraw_center_points();
+    let counts = app.techdraw_centerline_counts();
+    assert_eq!(counts.0, 1, "center points should add one center mark");
+    let svg = app.techdraw_svg().expect("svg");
+    assert!(svg.contains("stroke=\"red\""));
+}
+
+#[test]
+fn techdraw_bolt_circle_dispatch_adds_bolt_circle_centerlines() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(2.0, 2.0, 1.0);
+    app.dispatch_techdraw_three_view();
+    app.dispatch_techdraw_bolt_circle();
+    let counts = app.techdraw_centerline_counts();
+    assert_eq!(
+        counts.2, 1,
+        "bolt circle should add one bolt-circle centerline set"
+    );
+    let svg = app.techdraw_svg().expect("svg");
+    assert!(svg.contains("<circle"));
+    assert!(svg.contains("stroke-dasharray=\"8,2,2,2\""));
+}
+
+#[test]
+fn techdraw_export_dxf_dispatch_writes_file() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(2.0, 1.0, 1.0);
+    app.dispatch_techdraw_three_view();
+    let path = temp_export_path("techdraw", "dxf");
+    app.dispatch_techdraw_export_dxf(path.clone());
+
+    let content = std::fs::read_to_string(&path).expect("read exported dxf");
+    assert!(content.contains("\nSECTION\n"));
+    assert!(content.contains("\nENTITIES\n"));
+    assert!(content.contains("\nLWPOLYLINE\n"));
+    let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn techdraw_export_pdf_dispatch_writes_file() {
+    let mut app = CadApp::new_headless();
+    app.dispatch_create_box(2.0, 1.0, 1.0);
+    app.dispatch_techdraw_three_view();
+    let path = temp_export_path("techdraw", "pdf");
+    app.dispatch_techdraw_export_pdf(path.clone());
+
+    let content = std::fs::read(&path).expect("read exported pdf");
+    assert!(content.starts_with(b"%PDF-"));
+    assert!(content.windows(5).any(|w| w == b"%%EOF"));
+    let _ = std::fs::remove_file(path);
 }

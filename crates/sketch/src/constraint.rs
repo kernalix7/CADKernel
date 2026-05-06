@@ -313,7 +313,11 @@ impl ConstraintEval for ConstraintWithCtx<'_> {
                 let dpy = vars[py(p)] - vars[py(s)];
                 out[0] = dpx * dy - dpy * dx;
             }
-            Constraint::Refraction { line1, line2, ratio } => {
+            Constraint::Refraction {
+                line1,
+                line2,
+                ratio,
+            } => {
                 // Snell's law: ratio * sin(theta1) - sin(theta2) = 0
                 // theta_i = angle between line_i direction and vertical (Y axis)
                 let (s1, e1) = self.lines[line1.0];
@@ -609,12 +613,25 @@ impl ConstraintEval for ConstraintWithCtx<'_> {
                 out.push((row, px(e), -dpy));
                 out.push((row, py(e), dpx));
             }
-            Constraint::Refraction { line1, line2, ratio } => {
+            Constraint::Refraction {
+                line1,
+                line2,
+                ratio,
+            } => {
                 // Numerical Jacobian for Snell's law via finite differences
                 let (s1, e1) = self.lines[line1.0];
                 let (s2, e2) = self.lines[line2.0];
                 let h = 1e-8;
-                let indices = [px(s1), py(s1), px(e1), py(e1), px(s2), py(s2), px(e2), py(e2)];
+                let indices = [
+                    px(s1),
+                    py(s1),
+                    px(e1),
+                    py(e1),
+                    px(s2),
+                    py(s2),
+                    px(e2),
+                    py(e2),
+                ];
 
                 let eval = |v: &[f64]| -> f64 {
                     let dx1 = v[px(e1)] - v[px(s1)];

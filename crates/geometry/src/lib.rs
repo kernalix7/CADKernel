@@ -57,10 +57,10 @@ pub use surface::Surface;
 pub use surface::cone::Cone;
 pub use surface::cylinder::Cylinder;
 pub use surface::nurbs::NurbsSurface;
+pub use surface::parametric_wire::ParametricWire2D;
 pub use surface::plane::Plane;
 pub use surface::sphere::Sphere;
 pub use surface::torus::Torus;
-pub use surface::parametric_wire::ParametricWire2D;
 pub use surface::trimmed::TrimmedSurface;
 
 pub use curve::blend::blend_curve;

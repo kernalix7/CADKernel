@@ -1,24 +1,27 @@
 //! egui-based UI panels for the CAD application.
 
 pub(crate) mod assembly;
+mod command_palette;
 mod context_menu;
 mod dialogs;
 pub(crate) mod draft;
 pub(crate) mod fem;
-pub(crate) mod mesh;
 mod menu;
+pub(crate) mod mesh;
 mod overlays;
 pub(crate) mod part;
 pub(crate) mod part_design;
 mod properties;
-pub(crate) mod surface;
 mod report;
+pub(crate) mod scene_overlay;
 pub(crate) mod sketch_state;
 mod sketch_ui;
 mod status_bar;
+pub(crate) mod surface;
 pub(crate) mod task_panel;
 pub(crate) mod techdraw;
 pub(crate) mod theme;
+mod tokens;
 mod toolbar;
 mod tree;
 mod view_cube;
@@ -29,25 +32,29 @@ mod view_cube;
 pub(crate) use self::assembly::{AssemblyAction, AssemblyJointType, JointEditorState};
 pub(crate) use self::draft::DraftAction;
 pub(crate) use self::fem::{
-    BcEditorState, BcKind, FemAction, MaterialPickerState, MaterialPreset, material_from_preset,
+    BcEditorState, BcKind, FemAction, FemElementResultRow, FemNodeResultRow, FemProbeRecord,
+    FemResultField, FemResultLegendState, FemResultProbeState, FemResultTableState,
+    MaterialPickerState, MaterialPreset, material_from_preset,
 };
 pub(crate) use self::mesh::MeshAction;
 pub(crate) use self::part::PartAction;
 pub(crate) use self::part_design::PartDesignAction;
-pub(crate) use self::surface::SurfaceAction;
 pub(crate) use self::sketch_state::{
-    DimensionKind, DimensionPopup, SketchEntityRef, SketcherAction, SketchMode, SketchTool,
+    DimensionKind, DimensionPopup, SketchEntityRef, SketchMode, SketchTool, SketcherAction,
 };
-pub(crate) use self::techdraw::TechDrawAction;
+pub(crate) use self::surface::SurfaceAction;
+pub(crate) use self::techdraw::{
+    TechDrawAction, TechDrawAnnotationKind, TechDrawAnnotationSetupState, TechDrawCenterlineKind,
+    TechDrawCenterlineSetupState, TechDrawDimensionKind, TechDrawDimensionSetupState,
+    TechDrawPageSetupState, TechDrawTemplatePreset, TechDrawViewKind, TechDrawViewSetupState,
+};
 
 use crate::nav::NavConfig;
 use crate::render::{Camera, DisplayMode, GridConfig, StandardView};
 use cadkernel_io::Mesh;
 use cadkernel_modeling::MassProperties;
 use cadkernel_sketch::{Sketch, WorkPlane};
-use cadkernel_topology::{
-    BRepModel, EdgeData, FaceData, Handle, ShellData, SolidData, VertexData,
-};
+use cadkernel_topology::{BRepModel, EdgeData, FaceData, Handle, ShellData, SolidData, VertexData};
 use std::path::PathBuf;
 
 // ---------------------------------------------------------------------------
@@ -179,7 +186,11 @@ pub(crate) enum GuiAction {
     ClearRecentFiles,
     ImportFile(PathBuf),
     ExportStl(PathBuf),
-    ExportStlWithOptions { path: PathBuf, binary: bool, scale: f64 },
+    ExportStlWithOptions {
+        path: PathBuf,
+        binary: bool,
+        scale: f64,
+    },
     ExportObj(PathBuf),
     ExportGltf(PathBuf),
     ExportStep(PathBuf),
@@ -306,13 +317,31 @@ pub(crate) enum GuiAction {
     ShowAll,
     HideAll,
     // Parametric rebuild + color + task preview
-    RebuildObject { id: crate::scene::ObjectId, params: crate::scene::CreationParams },
-    SetObjectColor { id: crate::scene::ObjectId, color: [f32; 4] },
+    RebuildObject {
+        id: crate::scene::ObjectId,
+        params: crate::scene::CreationParams,
+    },
+    SetObjectColor {
+        id: crate::scene::ObjectId,
+        color: [f32; 4],
+    },
     TaskPreviewUpdate(task_panel::ActiveTask),
     // Transform operations
-    MoveObject { id: crate::scene::ObjectId, dx: f64, dy: f64, dz: f64 },
-    RotateObject { id: crate::scene::ObjectId, axis: u8, angle_deg: f64 },
-    ScaleObjectUniform { id: crate::scene::ObjectId, factor: f64 },
+    MoveObject {
+        id: crate::scene::ObjectId,
+        dx: f64,
+        dy: f64,
+        dz: f64,
+    },
+    RotateObject {
+        id: crate::scene::ObjectId,
+        axis: u8,
+        angle_deg: f64,
+    },
+    ScaleObjectUniform {
+        id: crate::scene::ObjectId,
+        factor: f64,
+    },
     // Multi-select
     ToggleSelect(crate::scene::ObjectId),
     SetSelectionMode(SelectionMode),
@@ -408,8 +437,8 @@ pub(crate) enum FemConstraintType {
 /// The single stateful modal dialog currently open, if any.
 ///
 /// Replaces the prior pattern of paired `show_X: bool` + scattered state fields
-/// for the four most state-rich dialogs (MaterialPicker, BcEditor, JointEditor,
-/// Bom). Other dialogs continue to use the loose `show_X: bool` pattern; they
+/// for the most state-rich dialogs (MaterialPicker, BcEditor, JointEditor,
+/// Bom, TechDrawPageSetup). Other dialogs continue to use the loose `show_X: bool` pattern; they
 /// have minimal accompanying state and are left for a later refactoring pass.
 ///
 /// `PartialEq` is intentionally not derived because `BomEntry` (kernel side)
@@ -421,6 +450,13 @@ pub(crate) enum ActiveDialog {
     BcEditor(BcEditorState),
     JointEditor(JointEditorState),
     Bom(Vec<cadkernel_modeling::BomEntry>),
+    TechDrawPageSetup(TechDrawPageSetupState),
+    TechDrawDimensionSetup(TechDrawDimensionSetupState),
+    TechDrawAnnotationSetup(TechDrawAnnotationSetupState),
+    TechDrawCenterlineSetup(TechDrawCenterlineSetupState),
+    TechDrawViewSetup(TechDrawViewSetupState),
+    FemResultProbe(FemResultProbeState),
+    FemResultTable(FemResultTableState),
 }
 
 // ---------------------------------------------------------------------------
@@ -491,10 +527,21 @@ pub(crate) struct GuiState {
     pub dimension_popup: Option<DimensionPopup>,
 
     pub techdraw_sheet: Option<cadkernel_io::DrawingSheet>,
+    /// Index of the next built-in TechDraw template to apply (cycles on
+    /// each `T::FromTemplate` dispatch — placeholder for a future template
+    /// picker modal).
+    pub techdraw_template_idx: usize,
+
+    /// 2D paintable primitives (polylines / points / labels) emitted by
+    /// dispatcher arms whose kernel output is wire/curve/point — rendered
+    /// over the wgpu viewport via the `scene_overlay` painter.
+    pub scene_overlay: scene_overlay::SceneOverlay,
 
     pub assembly: Option<cadkernel_modeling::Assembly>,
 
     pub fem_analysis: Option<cadkernel_modeling::AnalysisContainer>,
+    pub fem_result_legend: Option<FemResultLegendState>,
+    pub fem_last_probe: Option<FemProbeRecord>,
 
     // Boolean dialog state
     pub show_boolean_union: bool,
@@ -673,6 +720,9 @@ pub(crate) struct GuiState {
     // Toast notifications
     pub toasts: Vec<Toast>,
 
+    // Command palette (Ctrl+Shift+P)
+    pub command_palette: command_palette::CommandPaletteState,
+
     // Toolbar context (set each frame before drawing)
     pub tb_can_undo: bool,
     pub tb_can_redo: bool,
@@ -753,8 +803,12 @@ impl GuiState {
             sketch_chamfer_distance: 1.0,
             dimension_popup: None,
             techdraw_sheet: None,
+            techdraw_template_idx: 0,
+            scene_overlay: scene_overlay::SceneOverlay::new(),
             assembly: None,
             fem_analysis: None,
+            fem_result_legend: None,
+            fem_last_probe: None,
             show_boolean_union: false,
             show_boolean_subtract: false,
             show_boolean_intersect: false,
@@ -868,6 +922,7 @@ impl GuiState {
             history_entries: Vec::new(),
             future_entries: Vec::new(),
             toasts: Vec::new(),
+            command_palette: command_palette::CommandPaletteState::new(),
             tb_can_undo: false,
             tb_can_redo: false,
             tb_has_selection: false,
@@ -886,6 +941,37 @@ impl GuiState {
         self.report_lines.push((level, msg.into()));
     }
 
+    /// Push a toast notification at the given level. Prefer the
+    /// `toast_info` / `toast_success` / `toast_warning` / `toast_error`
+    /// helpers for readability at call sites.
+    pub fn push_toast(&mut self, level: ToastLevel, msg: impl Into<String>) {
+        self.toasts.push(Toast {
+            level,
+            message: msg.into(),
+            created_at: std::time::Instant::now(),
+        });
+    }
+
+    /// Convenience: push an info-level toast.
+    pub fn toast_info(&mut self, msg: impl Into<String>) {
+        self.push_toast(ToastLevel::Info, msg);
+    }
+
+    /// Convenience: push a success-level toast.
+    pub fn toast_success(&mut self, msg: impl Into<String>) {
+        self.push_toast(ToastLevel::Success, msg);
+    }
+
+    /// Convenience: push a warning-level toast.
+    pub fn toast_warning(&mut self, msg: impl Into<String>) {
+        self.push_toast(ToastLevel::Warning, msg);
+    }
+
+    /// Convenience: push an error-level toast.
+    pub fn toast_error(&mut self, msg: impl Into<String>) {
+        self.push_toast(ToastLevel::Error, msg);
+    }
+
     /// Open the FEM material picker.
     pub fn open_material_picker(&mut self) {
         self.active_dialog = Some(ActiveDialog::MaterialPicker(MaterialPickerState::new()));
@@ -894,6 +980,69 @@ impl GuiState {
     /// Open the FEM boundary-condition editor for a given kind.
     pub fn open_bc_editor(&mut self, kind: BcKind) {
         self.active_dialog = Some(ActiveDialog::BcEditor(BcEditorState::new(kind)));
+    }
+
+    /// Open the FEM result probe dialog.
+    pub fn open_fem_result_probe(&mut self) {
+        self.active_dialog = Some(ActiveDialog::FemResultProbe(FemResultProbeState::new()));
+    }
+
+    /// Open the TechDraw page setup dialog using the current sheet when present.
+    pub fn open_techdraw_page_setup(&mut self) {
+        let state = self
+            .techdraw_sheet
+            .as_ref()
+            .map(TechDrawPageSetupState::from_sheet)
+            .unwrap_or_else(TechDrawPageSetupState::new);
+        self.active_dialog = Some(ActiveDialog::TechDrawPageSetup(state));
+    }
+
+    /// Open the TechDraw dimension setup dialog for a specific dimension kind.
+    pub fn open_techdraw_dimension_setup(&mut self, kind: TechDrawDimensionKind) {
+        let (width, height) = self
+            .techdraw_sheet
+            .as_ref()
+            .map(|s| (s.width, s.height))
+            .unwrap_or((297.0, 210.0));
+        self.active_dialog = Some(ActiveDialog::TechDrawDimensionSetup(
+            TechDrawDimensionSetupState::new(kind, width, height),
+        ));
+    }
+
+    /// Open the TechDraw annotation setup dialog for a specific annotation kind.
+    pub fn open_techdraw_annotation_setup(&mut self, kind: TechDrawAnnotationKind) {
+        let (width, height) = self
+            .techdraw_sheet
+            .as_ref()
+            .map(|s| (s.width, s.height))
+            .unwrap_or((297.0, 210.0));
+        self.active_dialog = Some(ActiveDialog::TechDrawAnnotationSetup(
+            TechDrawAnnotationSetupState::new(kind, width, height),
+        ));
+    }
+
+    /// Open the TechDraw centerline setup dialog for a specific centerline kind.
+    pub fn open_techdraw_centerline_setup(&mut self, kind: TechDrawCenterlineKind) {
+        let (width, height) = self
+            .techdraw_sheet
+            .as_ref()
+            .map(|s| (s.width, s.height))
+            .unwrap_or((297.0, 210.0));
+        self.active_dialog = Some(ActiveDialog::TechDrawCenterlineSetup(
+            TechDrawCenterlineSetupState::new(kind, width, height),
+        ));
+    }
+
+    /// Open the TechDraw view setup dialog for a specific view kind.
+    pub fn open_techdraw_view_setup(&mut self, kind: TechDrawViewKind) {
+        let (width, height) = self
+            .techdraw_sheet
+            .as_ref()
+            .map(|s| (s.width, s.height))
+            .unwrap_or((297.0, 210.0));
+        self.active_dialog = Some(ActiveDialog::TechDrawViewSetup(
+            TechDrawViewSetupState::new(kind, width, height),
+        ));
     }
 
     /// Close whichever stateful dialog is currently open (no-op if none).
@@ -954,28 +1103,63 @@ pub(crate) fn draw_ui(
     // Splash screen (first ~90 frames)
     if gui.splash_frames < 90 {
         gui.splash_frames += 1;
-        let alpha = if gui.splash_frames < 60 { 1.0 } else { (90 - gui.splash_frames) as f32 / 30.0 };
+        let alpha = if gui.splash_frames < 60 {
+            1.0
+        } else {
+            (90 - gui.splash_frames) as f32 / 30.0
+        };
         egui::Area::new(egui::Id::new("splash"))
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .show(ctx, |ui| {
                 egui::Frame::new()
-                    .fill(egui::Color32::from_rgba_unmultiplied(25, 28, 38, (alpha * 240.0) as u8))
-                    .stroke(egui::Stroke::new(1.0, egui::Color32::from_rgba_unmultiplied(80, 120, 180, (alpha * 100.0) as u8)))
+                    .fill(egui::Color32::from_rgba_unmultiplied(
+                        25,
+                        28,
+                        38,
+                        (alpha * 240.0) as u8,
+                    ))
+                    .stroke(egui::Stroke::new(
+                        1.0,
+                        egui::Color32::from_rgba_unmultiplied(80, 120, 180, (alpha * 100.0) as u8),
+                    ))
                     .corner_radius(16.0)
                     .inner_margin(48.0)
                     .show(ui, |ui| {
                         ui.vertical_centered(|ui| {
-                            ui.label(egui::RichText::new("\u{2B22} CADKernel")
-                                .size(36.0)
-                                .color(egui::Color32::from_rgba_unmultiplied(200, 220, 255, (alpha * 255.0) as u8)));
+                            ui.label(egui::RichText::new("\u{2B22} CADKernel").size(36.0).color(
+                                egui::Color32::from_rgba_unmultiplied(
+                                    200,
+                                    220,
+                                    255,
+                                    (alpha * 255.0) as u8,
+                                ),
+                            ));
                             ui.add_space(8.0);
-                            ui.label(egui::RichText::new("Open-source CAD Software")
-                                .size(16.0)
-                                .color(egui::Color32::from_rgba_unmultiplied(160, 180, 200, (alpha * 255.0) as u8)));
+                            ui.label(
+                                egui::RichText::new("Open-source CAD Software")
+                                    .size(16.0)
+                                    .color(egui::Color32::from_rgba_unmultiplied(
+                                        160,
+                                        180,
+                                        200,
+                                        (alpha * 255.0) as u8,
+                                    )),
+                            );
                             ui.add_space(4.0);
-                            ui.label(egui::RichText::new("v0.1.0 — 9 crates, 15 I/O formats, NURBS kernel")
+                            ui.label(
+                                egui::RichText::new(
+                                    "v0.1.0 — 9 crates, 15 I/O formats, NURBS kernel",
+                                )
                                 .size(11.0)
-                                .color(egui::Color32::from_rgba_unmultiplied(120, 140, 160, (alpha * 255.0) as u8)));
+                                .color(
+                                    egui::Color32::from_rgba_unmultiplied(
+                                        120,
+                                        140,
+                                        160,
+                                        (alpha * 255.0) as u8,
+                                    ),
+                                ),
+                            );
                         });
                     });
             });
@@ -1029,7 +1213,11 @@ pub(crate) fn draw_ui(
                 // ---- Bottom: Task Panel OR Properties ----
                 if gui.show_properties {
                     // Panel header bar
-                    let props_title = if gui.active_task.is_some() { "Tasks" } else { "Properties" };
+                    let props_title = if gui.active_task.is_some() {
+                        "Tasks"
+                    } else {
+                        "Properties"
+                    };
                     if theme::draw_panel_header(ui, props_title, true) {
                         gui.show_properties = false;
                     }
@@ -1052,6 +1240,8 @@ pub(crate) fn draw_ui(
     report::draw_report_panel(ctx, gui);
     status_bar::draw_status_bar(ctx, gui, vp, scene);
     overlays::draw_toast_overlay(ctx, gui);
+    command_palette::handle_global_shortcut(ctx, &mut gui.command_palette);
+    command_palette::draw_command_palette(ctx, gui);
     if gui.active_task.is_none() {
         dialogs::draw_create_dialogs(ctx, gui);
     }
@@ -1060,6 +1250,7 @@ pub(crate) fn draw_ui(
         overlays::draw_welcome_screen(ctx, gui);
     }
     overlays::draw_techdraw_overlay(ctx, gui);
+    fem::draw_result_legend(ctx, gui);
     dialogs::draw_about_dialog(ctx, gui);
     dialogs::draw_shortcuts_dialog(ctx, gui);
     dialogs::draw_settings(ctx, gui, nav);
@@ -1068,6 +1259,13 @@ pub(crate) fn draw_ui(
     dialogs::draw_joint_editor_dialog(ctx, gui);
     dialogs::draw_material_picker_dialog(ctx, gui);
     dialogs::draw_bc_editor_dialog(ctx, gui);
+    dialogs::draw_fem_result_probe_dialog(ctx, gui);
+    dialogs::draw_fem_result_table_dialog(ctx, gui);
+    dialogs::draw_techdraw_page_setup_dialog(ctx, gui);
+    dialogs::draw_techdraw_dimension_setup_dialog(ctx, gui);
+    dialogs::draw_techdraw_annotation_setup_dialog(ctx, gui);
+    dialogs::draw_techdraw_centerline_setup_dialog(ctx, gui);
+    dialogs::draw_techdraw_view_setup_dialog(ctx, gui);
     if nav.show_view_cube {
         view_cube::draw_view_cube(ctx, vp.camera, gui, nav);
     }
@@ -1084,6 +1282,7 @@ pub(crate) fn draw_ui(
     overlays::draw_rubber_band(ctx, gui);
     overlays::draw_transform_gizmo(ctx, vp.camera, gui, scene);
     overlays::draw_selection_overlay(ctx, vp.camera, gui, scene, nav);
+    scene_overlay::paint(ctx, vp.camera, &gui.scene_overlay);
     if vp.show_grid {
         sketch_ui::draw_grid_scale_label(ctx, vp.grid_config);
     }
@@ -1098,7 +1297,10 @@ pub(crate) fn draw_ui(
             .show(ctx, |ui| {
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
                     // Show face/edge menu when in sub-entity selection mode
-                    if matches!(gui.selection_mode, SelectionMode::Face | SelectionMode::Edge) {
+                    if matches!(
+                        gui.selection_mode,
+                        SelectionMode::Face | SelectionMode::Edge
+                    ) {
                         context_menu::face_edge_context_menu(ui, gui);
                         ui.separator();
                     }
@@ -1125,9 +1327,5 @@ pub(crate) fn draw_ui(
 
     // Store egui pointer position in physical pixels for picking.
     // Egui's pointer is always correct regardless of platform scaling quirks.
-    gui.pointer_physical = ctx.input(|i| {
-        i.pointer.latest_pos().map(|p| (p.x * ppp, p.y * ppp))
-    });
-
+    gui.pointer_physical = ctx.input(|i| i.pointer.latest_pos().map(|p| (p.x * ppp, p.y * ppp)));
 }
-

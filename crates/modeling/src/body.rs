@@ -352,9 +352,14 @@ mod tests {
 
         let mut body = Body::new("Body");
         for &kind in &[
-            FeatureKind::Pad, FeatureKind::Pocket, FeatureKind::Revolve,
-            FeatureKind::Groove, FeatureKind::Fillet, FeatureKind::Chamfer,
-            FeatureKind::Mirror, FeatureKind::Pattern,
+            FeatureKind::Pad,
+            FeatureKind::Pocket,
+            FeatureKind::Revolve,
+            FeatureKind::Groove,
+            FeatureKind::Fillet,
+            FeatureKind::Chamfer,
+            FeatureKind::Mirror,
+            FeatureKind::Pattern,
         ] {
             body.add_feature("f", kind, r.solid);
         }

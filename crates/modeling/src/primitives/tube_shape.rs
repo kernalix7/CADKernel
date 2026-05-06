@@ -6,7 +6,9 @@ use std::sync::Arc;
 use cadkernel_core::{KernelError, KernelResult};
 use cadkernel_geometry::{Cylinder as CylSurface, Plane};
 use cadkernel_math::{Point3, Vec3};
-use cadkernel_topology::{BRepModel, EntityKind, FaceData, Handle, Orientation, SolidData, Tag, VertexData};
+use cadkernel_topology::{
+    BRepModel, EntityKind, FaceData, Handle, Orientation, SolidData, Tag, VertexData,
+};
 
 use super::{EdgeCache, bind_edge_line_segments, next_edge_tag};
 
@@ -73,7 +75,11 @@ pub fn make_tube(
             (&mut inner_bot, inner_radius, 0.0),
             (&mut inner_top, inner_radius, height),
         ] {
-            let p = Point3::new(base_center.x + r * c, base_center.y + r * s, base_center.z + dz);
+            let p = Point3::new(
+                base_center.x + r * c,
+                base_center.y + r * s,
+                base_center.z + dz,
+            );
             let tag = Tag::generated(EntityKind::Vertex, op, vert_idx);
             vert_idx += 1;
             let vh = model.add_vertex_tagged(p, tag);
@@ -89,10 +95,30 @@ pub fn make_tube(
     for i in 0..n {
         let j = (i + 1) % n;
         let hes = [
-            ec.get_or_create(model, outer_bot[i], outer_bot[j], next_edge_tag(op, &mut edge_idx)),
-            ec.get_or_create(model, outer_bot[j], outer_top[j], next_edge_tag(op, &mut edge_idx)),
-            ec.get_or_create(model, outer_top[j], outer_top[i], next_edge_tag(op, &mut edge_idx)),
-            ec.get_or_create(model, outer_top[i], outer_bot[i], next_edge_tag(op, &mut edge_idx)),
+            ec.get_or_create(
+                model,
+                outer_bot[i],
+                outer_bot[j],
+                next_edge_tag(op, &mut edge_idx),
+            ),
+            ec.get_or_create(
+                model,
+                outer_bot[j],
+                outer_top[j],
+                next_edge_tag(op, &mut edge_idx),
+            ),
+            ec.get_or_create(
+                model,
+                outer_top[j],
+                outer_top[i],
+                next_edge_tag(op, &mut edge_idx),
+            ),
+            ec.get_or_create(
+                model,
+                outer_top[i],
+                outer_bot[i],
+                next_edge_tag(op, &mut edge_idx),
+            ),
         ];
         let loop_h = model.make_loop(&hes)?;
         let tag = Tag::generated(EntityKind::Face, op, face_idx);
@@ -104,10 +130,30 @@ pub fn make_tube(
     for i in 0..n {
         let j = (i + 1) % n;
         let hes = [
-            ec.get_or_create(model, inner_bot[j], inner_bot[i], next_edge_tag(op, &mut edge_idx)),
-            ec.get_or_create(model, inner_bot[i], inner_top[i], next_edge_tag(op, &mut edge_idx)),
-            ec.get_or_create(model, inner_top[i], inner_top[j], next_edge_tag(op, &mut edge_idx)),
-            ec.get_or_create(model, inner_top[j], inner_bot[j], next_edge_tag(op, &mut edge_idx)),
+            ec.get_or_create(
+                model,
+                inner_bot[j],
+                inner_bot[i],
+                next_edge_tag(op, &mut edge_idx),
+            ),
+            ec.get_or_create(
+                model,
+                inner_bot[i],
+                inner_top[i],
+                next_edge_tag(op, &mut edge_idx),
+            ),
+            ec.get_or_create(
+                model,
+                inner_top[i],
+                inner_top[j],
+                next_edge_tag(op, &mut edge_idx),
+            ),
+            ec.get_or_create(
+                model,
+                inner_top[j],
+                inner_bot[j],
+                next_edge_tag(op, &mut edge_idx),
+            ),
         ];
         let loop_h = model.make_loop(&hes)?;
         let tag = Tag::generated(EntityKind::Face, op, face_idx);
@@ -119,10 +165,30 @@ pub fn make_tube(
     for i in 0..n {
         let j = (i + 1) % n;
         let hes = [
-            ec.get_or_create(model, outer_bot[j], outer_bot[i], next_edge_tag(op, &mut edge_idx)),
-            ec.get_or_create(model, outer_bot[i], inner_bot[i], next_edge_tag(op, &mut edge_idx)),
-            ec.get_or_create(model, inner_bot[i], inner_bot[j], next_edge_tag(op, &mut edge_idx)),
-            ec.get_or_create(model, inner_bot[j], outer_bot[j], next_edge_tag(op, &mut edge_idx)),
+            ec.get_or_create(
+                model,
+                outer_bot[j],
+                outer_bot[i],
+                next_edge_tag(op, &mut edge_idx),
+            ),
+            ec.get_or_create(
+                model,
+                outer_bot[i],
+                inner_bot[i],
+                next_edge_tag(op, &mut edge_idx),
+            ),
+            ec.get_or_create(
+                model,
+                inner_bot[i],
+                inner_bot[j],
+                next_edge_tag(op, &mut edge_idx),
+            ),
+            ec.get_or_create(
+                model,
+                inner_bot[j],
+                outer_bot[j],
+                next_edge_tag(op, &mut edge_idx),
+            ),
         ];
         let loop_h = model.make_loop(&hes)?;
         let tag = Tag::generated(EntityKind::Face, op, face_idx);
@@ -134,10 +200,30 @@ pub fn make_tube(
     for i in 0..n {
         let j = (i + 1) % n;
         let hes = [
-            ec.get_or_create(model, outer_top[i], outer_top[j], next_edge_tag(op, &mut edge_idx)),
-            ec.get_or_create(model, outer_top[j], inner_top[j], next_edge_tag(op, &mut edge_idx)),
-            ec.get_or_create(model, inner_top[j], inner_top[i], next_edge_tag(op, &mut edge_idx)),
-            ec.get_or_create(model, inner_top[i], outer_top[i], next_edge_tag(op, &mut edge_idx)),
+            ec.get_or_create(
+                model,
+                outer_top[i],
+                outer_top[j],
+                next_edge_tag(op, &mut edge_idx),
+            ),
+            ec.get_or_create(
+                model,
+                outer_top[j],
+                inner_top[j],
+                next_edge_tag(op, &mut edge_idx),
+            ),
+            ec.get_or_create(
+                model,
+                inner_top[j],
+                inner_top[i],
+                next_edge_tag(op, &mut edge_idx),
+            ),
+            ec.get_or_create(
+                model,
+                inner_top[i],
+                outer_top[i],
+                next_edge_tag(op, &mut edge_idx),
+            ),
         ];
         let loop_h = model.make_loop(&hes)?;
         let tag = Tag::generated(EntityKind::Face, op, face_idx);

@@ -1,0 +1,17 @@
+[package]
+name = "cadkernel-api"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "CADKernel stable public API — Document/Command/Session for AI agents, scripting, and tests"
+
+[dependencies]
+cadkernel-core.workspace = true
+cadkernel-math.workspace = true
+cadkernel-topology.workspace = true
+cadkernel-modeling.workspace = true
+serde.workspace = true
+serde_json.workspace = true

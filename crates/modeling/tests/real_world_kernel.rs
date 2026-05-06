@@ -80,10 +80,7 @@ fn assert_closed_manifold(model: &BRepModel, solid: Handle<SolidData>) -> Result
 
 /// Asserts that `actual` is within `rel_tol` relative error of `expected`.
 fn assert_volume_near(actual: f64, expected: f64, rel_tol: f64) {
-    assert!(
-        actual.is_finite(),
-        "volume is not finite: {actual}"
-    );
+    assert!(actual.is_finite(), "volume is not finite: {actual}");
     let rel = ((actual - expected) / expected).abs();
     assert!(
         rel <= rel_tol,
@@ -148,8 +145,7 @@ fn subtract_cylinder_through_box() {
     let rb = make_box(&mut b, Point3::ORIGIN, 10.0, 10.0, 10.0).unwrap();
 
     let mut c = BRepModel::new();
-    let rc =
-        make_cylinder(&mut c, Point3::new(5.0, 5.0, -1.0), 2.0, 12.0, 64).unwrap();
+    let rc = make_cylinder(&mut c, Point3::new(5.0, 5.0, -1.0), 2.0, 12.0, 64).unwrap();
 
     let result = boolean_op(&b, rb.solid, &c, rc.solid, BooleanOp::Difference);
     assert!(
@@ -195,11 +191,7 @@ fn intersect_sphere_box() {
     let rb = make_box(&mut bx, Point3::new(-5.0, -5.0, -5.0), 10.0, 10.0, 10.0).unwrap();
 
     let result = boolean_op(&sp, rs.solid, &bx, rb.solid, BooleanOp::Intersection);
-    assert!(
-        result.is_ok(),
-        "intersect returned Err: {:?}",
-        result.err()
-    );
+    assert!(result.is_ok(), "intersect returned Err: {:?}", result.err());
     let result = result.unwrap();
 
     assert!(
@@ -238,11 +230,7 @@ fn three_way_union_mutual_overlap() {
     let sab = first_solid(&ab);
 
     let abc = boolean_op(&ab, sab, &c, rc.solid, BooleanOp::Union);
-    assert!(
-        abc.is_ok(),
-        "(A ∪ B) ∪ C returned Err: {:?}",
-        abc.err()
-    );
+    assert!(abc.is_ok(), "(A ∪ B) ∪ C returned Err: {:?}", abc.err());
     let abc = abc.unwrap();
 
     let vol = quick_volume(&abc).expect("volume");
@@ -319,14 +307,7 @@ fn nonconvex_subtraction_l_minus_cylinder() {
     let rb_big = make_box(&mut big, Point3::ORIGIN, 10.0, 10.0, 10.0).unwrap();
 
     let mut corner = BRepModel::new();
-    let rb_corner = make_box(
-        &mut corner,
-        Point3::new(5.0, 5.0, 0.0),
-        5.0,
-        5.0,
-        10.0,
-    )
-    .unwrap();
+    let rb_corner = make_box(&mut corner, Point3::new(5.0, 5.0, 0.0), 5.0, 5.0, 10.0).unwrap();
 
     let l_shape = boolean_op(
         &big,
@@ -575,10 +556,7 @@ fn sweep_circle_along_line() {
         let t = std::f64::consts::TAU * i as f64 / n as f64;
         profile.push(Point3::new(t.cos(), t.sin(), 0.0));
     }
-    let path = vec![
-        Point3::new(0.0, 0.0, 0.0),
-        Point3::new(0.0, 0.0, 10.0),
-    ];
+    let path = vec![Point3::new(0.0, 0.0, 0.0), Point3::new(0.0, 0.0, 10.0)];
 
     let mut model = BRepModel::new();
     let r = sweep(&mut model, &profile, &path);
@@ -660,10 +638,9 @@ fn shell_hollow_sphere() {
         .last()
         .map(|(h, _)| h)
         .expect("at least one solid");
-    let props = cadkernel_modeling::solid_mass_properties(&model, solid_handle)
-        .expect("mass props");
-    let expected =
-        (4.0 / 3.0) * std::f64::consts::PI * (5.0_f64.powi(3) - 4.5_f64.powi(3));
+    let props =
+        cadkernel_modeling::solid_mass_properties(&model, solid_handle).expect("mass props");
+    let expected = (4.0 / 3.0) * std::f64::consts::PI * (5.0_f64.powi(3) - 4.5_f64.powi(3));
     assert_volume_near(props.volume, expected, 0.10);
 }
 

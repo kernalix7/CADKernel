@@ -90,9 +90,24 @@ mod tests {
         ));
         // Trim to [0.2, 0.7] of the base domain → x ∈ [2, 7]
         let trimmed = TrimmedCurve::new(line, 0.2, 0.7);
-        assert!(trimmed.point_at(0.0).distance_to(Point3::new(2.0, 0.0, 0.0)) < 1e-10);
-        assert!(trimmed.point_at(1.0).distance_to(Point3::new(7.0, 0.0, 0.0)) < 1e-10);
-        assert!(trimmed.point_at(0.5).distance_to(Point3::new(4.5, 0.0, 0.0)) < 1e-10);
+        assert!(
+            trimmed
+                .point_at(0.0)
+                .distance_to(Point3::new(2.0, 0.0, 0.0))
+                < 1e-10
+        );
+        assert!(
+            trimmed
+                .point_at(1.0)
+                .distance_to(Point3::new(7.0, 0.0, 0.0))
+                < 1e-10
+        );
+        assert!(
+            trimmed
+                .point_at(0.5)
+                .distance_to(Point3::new(4.5, 0.0, 0.0))
+                < 1e-10
+        );
     }
 
     #[test]
@@ -103,8 +118,18 @@ mod tests {
         let circle = Arc::new(Circle::xy(Point3::ORIGIN, 1.0));
         // Trim to first quadrant [0, π/2]
         let trimmed = TrimmedCurve::new(circle, 0.0, FRAC_PI_2);
-        assert!(trimmed.point_at(0.0).distance_to(Point3::new(1.0, 0.0, 0.0)) < 1e-10);
-        assert!(trimmed.point_at(1.0).distance_to(Point3::new(0.0, 1.0, 0.0)) < 1e-10);
+        assert!(
+            trimmed
+                .point_at(0.0)
+                .distance_to(Point3::new(1.0, 0.0, 0.0))
+                < 1e-10
+        );
+        assert!(
+            trimmed
+                .point_at(1.0)
+                .distance_to(Point3::new(0.0, 1.0, 0.0))
+                < 1e-10
+        );
 
         // All points should be on the unit circle
         for i in 0..=10 {

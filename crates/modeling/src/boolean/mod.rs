@@ -14,7 +14,9 @@ pub mod trim_validate;
 
 pub use csg::BooleanOp;
 pub use evaluate::boolean_op;
-pub use face_split::{BooleanSplitResult, fit_ssi_to_nurbs, fit_ssi_to_pcurve, split_solids_at_intersection};
+pub use face_split::{
+    BooleanSplitResult, fit_ssi_to_nurbs, fit_ssi_to_pcurve, split_solids_at_intersection,
+};
 pub use trim_validate::{TrimIssue, TrimValidation, ensure_correct_winding, validate_trim};
 
 use cadkernel_core::KernelResult;
@@ -57,8 +59,7 @@ pub fn boolean_xor(
     solid_b: Handle<SolidData>,
 ) -> KernelResult<BRepModel> {
     let union_model = boolean_op(model_a, solid_a, model_b, solid_b, BooleanOp::Union)?;
-    let intersect_model =
-        boolean_op(model_a, solid_a, model_b, solid_b, BooleanOp::Intersection)?;
+    let intersect_model = boolean_op(model_a, solid_a, model_b, solid_b, BooleanOp::Intersection)?;
 
     // If intersection is empty, XOR = union
     if intersect_model.solids.is_empty() {
@@ -173,8 +174,7 @@ mod tests {
         let mut b = BRepModel::new();
         let rb = make_box(&mut b, Point3::new(5.0, 5.0, 5.0), 1.0, 1.0, 1.0).unwrap();
 
-        let result =
-            boolean_op_exact(&a, ra.solid, &b, rb.solid, BooleanOp::Union, 0.001).unwrap();
+        let result = boolean_op_exact(&a, ra.solid, &b, rb.solid, BooleanOp::Union, 0.001).unwrap();
         assert!(
             result.faces.len() >= 12,
             "exact union of disjoint boxes should keep all 12 faces"
@@ -190,8 +190,7 @@ mod tests {
         let rb = make_box(&mut b, Point3::new(1.0, 1.0, 1.0), 2.0, 2.0, 2.0).unwrap();
 
         // This should at least not panic and produce a valid model
-        let result =
-            boolean_op_exact(&a, ra.solid, &b, rb.solid, BooleanOp::Union, 0.001).unwrap();
+        let result = boolean_op_exact(&a, ra.solid, &b, rb.solid, BooleanOp::Union, 0.001).unwrap();
         assert!(
             !result.faces.is_empty(),
             "exact union of overlapping boxes should produce faces"

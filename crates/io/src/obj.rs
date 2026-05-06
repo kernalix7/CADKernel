@@ -118,7 +118,9 @@ pub fn read_obj(input: &str) -> KernelResult<Mesh> {
     const MAX_OBJ_SIZE: usize = 256 * 1024 * 1024; // 256 MB
     if input.len() > MAX_OBJ_SIZE {
         return Err(KernelError::IoError(format!(
-            "OBJ input too large ({} bytes, max {})", input.len(), MAX_OBJ_SIZE
+            "OBJ input too large ({} bytes, max {})",
+            input.len(),
+            MAX_OBJ_SIZE
         )));
     }
     let lines: Vec<&str> = input.lines().collect();

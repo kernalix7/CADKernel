@@ -259,20 +259,33 @@ fn base64_decode(input: &str) -> KernelResult<Vec<u8>> {
         }
         t
     };
-    let filtered: Vec<u8> = input.bytes().filter(|&b| b != b'=' && b != b'\n' && b != b'\r' && b != b' ').collect();
+    let filtered: Vec<u8> = input
+        .bytes()
+        .filter(|&b| b != b'=' && b != b'\n' && b != b'\r' && b != b' ')
+        .collect();
     let mut out = Vec::with_capacity(filtered.len() * 3 / 4);
     let chunks = filtered.chunks(4);
     for chunk in chunks {
         let a = *DECODE.get(chunk[0] as usize).unwrap_or(&255);
-        let b = *DECODE.get(*chunk.get(1).unwrap_or(&0) as usize).unwrap_or(&255);
-        let c = *DECODE.get(*chunk.get(2).unwrap_or(&0) as usize).unwrap_or(&0);
-        let d = *DECODE.get(*chunk.get(3).unwrap_or(&0) as usize).unwrap_or(&0);
+        let b = *DECODE
+            .get(*chunk.get(1).unwrap_or(&0) as usize)
+            .unwrap_or(&255);
+        let c = *DECODE
+            .get(*chunk.get(2).unwrap_or(&0) as usize)
+            .unwrap_or(&0);
+        let d = *DECODE
+            .get(*chunk.get(3).unwrap_or(&0) as usize)
+            .unwrap_or(&0);
         if a == 255 || b == 255 {
             return Err(KernelError::IoError("invalid base64".into()));
         }
         out.push((a << 2) | (b >> 4));
-        if chunk.len() > 2 { out.push((b << 4) | (c >> 2)); }
-        if chunk.len() > 3 { out.push((c << 6) | d); }
+        if chunk.len() > 2 {
+            out.push((b << 4) | (c >> 2));
+        }
+        if chunk.len() > 3 {
+            out.push((c << 6) | d);
+        }
     }
     Ok(out)
 }
@@ -286,51 +299,67 @@ pub fn import_gltf(content: &str) -> KernelResult<super::Mesh> {
     let val: serde_json::Value = serde_json::from_str(content)
         .map_err(|e| KernelError::IoError(format!("glTF JSON parse error: {e}")))?;
 
-    let accessors = val["accessors"].as_array()
+    let accessors = val["accessors"]
+        .as_array()
         .ok_or_else(|| KernelError::IoError("no accessors".into()))?;
-    let buffer_views = val["bufferViews"].as_array()
+    let buffer_views = val["bufferViews"]
+        .as_array()
         .ok_or_else(|| KernelError::IoError("no bufferViews".into()))?;
-    let buffers = val["buffers"].as_array()
+    let buffers = val["buffers"]
+        .as_array()
         .ok_or_else(|| KernelError::IoError("no buffers".into()))?;
-    let meshes = val["meshes"].as_array()
+    let meshes = val["meshes"]
+        .as_array()
         .ok_or_else(|| KernelError::IoError("no meshes".into()))?;
 
     // Decode buffer
-    let uri = buffers.first().and_then(|b| b["uri"].as_str())
+    let uri = buffers
+        .first()
+        .and_then(|b| b["uri"].as_str())
         .ok_or_else(|| KernelError::IoError("no buffer URI".into()))?;
     let b64_prefix = "data:application/octet-stream;base64,";
     let b64_data = if let Some(stripped) = uri.strip_prefix(b64_prefix) {
         stripped
     } else {
-        return Err(KernelError::IoError("only embedded base64 glTF supported".into()));
+        return Err(KernelError::IoError(
+            "only embedded base64 glTF supported".into(),
+        ));
     };
     let buffer = base64_decode(b64_data)?;
 
     // Find the first mesh primitive
-    let prim = meshes.first()
+    let prim = meshes
+        .first()
         .and_then(|m| m["primitives"].as_array())
         .and_then(|prims| prims.first())
         .ok_or_else(|| KernelError::IoError("no mesh primitive".into()))?;
-    let pos_accessor_idx = prim["attributes"]["POSITION"].as_u64()
-        .ok_or_else(|| KernelError::IoError("no POSITION accessor".into()))? as usize;
-    let idx_accessor_idx = prim["indices"].as_u64()
-        .map(|v| v as usize);
+    let pos_accessor_idx = prim["attributes"]["POSITION"]
+        .as_u64()
+        .ok_or_else(|| KernelError::IoError("no POSITION accessor".into()))?
+        as usize;
+    let idx_accessor_idx = prim["indices"].as_u64().map(|v| v as usize);
 
     let accessor = |idx: usize| -> KernelResult<&serde_json::Value> {
-        accessors.get(idx)
+        accessors
+            .get(idx)
             .ok_or_else(|| KernelError::IoError(format!("accessor index {idx} out of bounds")))
     };
     let buffer_view = |idx: usize| -> KernelResult<&serde_json::Value> {
-        buffer_views.get(idx)
+        buffer_views
+            .get(idx)
             .ok_or_else(|| KernelError::IoError(format!("bufferView index {idx} out of bounds")))
     };
 
     // Read positions
     let pos_acc = accessor(pos_accessor_idx)?;
-    let pos_bv_idx = pos_acc["bufferView"].as_u64()
-        .ok_or_else(|| KernelError::IoError("POSITION accessor missing bufferView".into()))? as usize;
-    let pos_count = pos_acc["count"].as_u64()
-        .ok_or_else(|| KernelError::IoError("POSITION accessor missing count".into()))? as usize;
+    let pos_bv_idx = pos_acc["bufferView"]
+        .as_u64()
+        .ok_or_else(|| KernelError::IoError("POSITION accessor missing bufferView".into()))?
+        as usize;
+    let pos_count = pos_acc["count"]
+        .as_u64()
+        .ok_or_else(|| KernelError::IoError("POSITION accessor missing count".into()))?
+        as usize;
     let pos_bv = buffer_view(pos_bv_idx)?;
     let pos_offset = pos_bv["byteOffset"].as_u64().unwrap_or(0) as usize
         + pos_acc["byteOffset"].as_u64().unwrap_or(0) as usize;
@@ -349,13 +378,30 @@ pub fn import_gltf(content: &str) -> KernelResult<super::Mesh> {
         .checked_add(pos_len)
         .ok_or_else(|| KernelError::IoError("POSITION accessor byte range overflow".into()))?;
     if pos_end > buffer.len() {
-        return Err(KernelError::IoError("POSITION accessor exceeds buffer length".into()));
+        return Err(KernelError::IoError(
+            "POSITION accessor exceeds buffer length".into(),
+        ));
     }
     for i in 0..pos_count {
         let base = pos_offset + i * 12;
-        let x = f32::from_le_bytes([buffer[base], buffer[base+1], buffer[base+2], buffer[base+3]]);
-        let y = f32::from_le_bytes([buffer[base+4], buffer[base+5], buffer[base+6], buffer[base+7]]);
-        let z = f32::from_le_bytes([buffer[base+8], buffer[base+9], buffer[base+10], buffer[base+11]]);
+        let x = f32::from_le_bytes([
+            buffer[base],
+            buffer[base + 1],
+            buffer[base + 2],
+            buffer[base + 3],
+        ]);
+        let y = f32::from_le_bytes([
+            buffer[base + 4],
+            buffer[base + 5],
+            buffer[base + 6],
+            buffer[base + 7],
+        ]);
+        let z = f32::from_le_bytes([
+            buffer[base + 8],
+            buffer[base + 9],
+            buffer[base + 10],
+            buffer[base + 11],
+        ]);
         vertices.push(Point3::new(x as f64, y as f64, z as f64));
     }
 
@@ -377,9 +423,24 @@ pub fn import_gltf(content: &str) -> KernelResult<super::Mesh> {
                 normals.reserve(count);
                 for i in 0..count {
                     let base = norm_offset + i * 12;
-                    let nx = f32::from_le_bytes([buffer[base], buffer[base+1], buffer[base+2], buffer[base+3]]);
-                    let ny = f32::from_le_bytes([buffer[base+4], buffer[base+5], buffer[base+6], buffer[base+7]]);
-                    let nz = f32::from_le_bytes([buffer[base+8], buffer[base+9], buffer[base+10], buffer[base+11]]);
+                    let nx = f32::from_le_bytes([
+                        buffer[base],
+                        buffer[base + 1],
+                        buffer[base + 2],
+                        buffer[base + 3],
+                    ]);
+                    let ny = f32::from_le_bytes([
+                        buffer[base + 4],
+                        buffer[base + 5],
+                        buffer[base + 6],
+                        buffer[base + 7],
+                    ]);
+                    let nz = f32::from_le_bytes([
+                        buffer[base + 8],
+                        buffer[base + 9],
+                        buffer[base + 10],
+                        buffer[base + 11],
+                    ]);
                     normals.push(Vec3::new(nx as f64, ny as f64, nz as f64));
                 }
             }
@@ -390,10 +451,14 @@ pub fn import_gltf(content: &str) -> KernelResult<super::Mesh> {
     let mut indices = Vec::new();
     if let Some(idx_ai) = idx_accessor_idx {
         let idx_acc = accessor(idx_ai)?;
-        let idx_bv_idx = idx_acc["bufferView"].as_u64()
-            .ok_or_else(|| KernelError::IoError("index accessor missing bufferView".into()))? as usize;
-        let idx_count = idx_acc["count"].as_u64()
-            .ok_or_else(|| KernelError::IoError("index accessor missing count".into()))? as usize;
+        let idx_bv_idx = idx_acc["bufferView"]
+            .as_u64()
+            .ok_or_else(|| KernelError::IoError("index accessor missing bufferView".into()))?
+            as usize;
+        let idx_count = idx_acc["count"]
+            .as_u64()
+            .ok_or_else(|| KernelError::IoError("index accessor missing count".into()))?
+            as usize;
         let idx_bv = buffer_view(idx_bv_idx)?;
         let idx_offset = idx_bv["byteOffset"].as_u64().unwrap_or(0) as usize
             + idx_acc["byteOffset"].as_u64().unwrap_or(0) as usize;
@@ -411,7 +476,9 @@ pub fn import_gltf(content: &str) -> KernelResult<super::Mesh> {
         };
 
         if idx_count % 3 != 0 {
-            return Err(KernelError::IoError("index accessor count is not divisible by 3".into()));
+            return Err(KernelError::IoError(
+                "index accessor count is not divisible by 3".into(),
+            ));
         }
 
         let idx_len = idx_count
@@ -421,15 +488,22 @@ pub fn import_gltf(content: &str) -> KernelResult<super::Mesh> {
             .checked_add(idx_len)
             .ok_or_else(|| KernelError::IoError("index accessor byte range overflow".into()))?;
         if idx_end > buffer.len() {
-            return Err(KernelError::IoError("index accessor exceeds buffer length".into()));
+            return Err(KernelError::IoError(
+                "index accessor exceeds buffer length".into(),
+            ));
         }
 
         let read_idx = |i: usize| -> u32 {
             let base = idx_offset + i * stride;
             match idx_component {
                 5121 => buffer[base] as u32,
-                5123 => u16::from_le_bytes([buffer[base], buffer[base+1]]) as u32,
-                _ => u32::from_le_bytes([buffer[base], buffer[base+1], buffer[base+2], buffer[base+3]]),
+                5123 => u16::from_le_bytes([buffer[base], buffer[base + 1]]) as u32,
+                _ => u32::from_le_bytes([
+                    buffer[base],
+                    buffer[base + 1],
+                    buffer[base + 2],
+                    buffer[base + 3],
+                ]),
             }
         };
 
@@ -437,7 +511,8 @@ pub fn import_gltf(content: &str) -> KernelResult<super::Mesh> {
             let tri = [read_idx(t * 3), read_idx(t * 3 + 1), read_idx(t * 3 + 2)];
             if tri.iter().any(|&idx| idx as usize >= vertices.len()) {
                 return Err(KernelError::IoError(format!(
-                    "index accessor references vertex outside POSITION range: {:?}", tri
+                    "index accessor references vertex outside POSITION range: {:?}",
+                    tri
                 )));
             }
             indices.push(tri);
@@ -451,17 +526,33 @@ pub fn import_gltf(content: &str) -> KernelResult<super::Mesh> {
 
     // Compute face normals if not provided
     if norm_acc_idx.is_none() || normals.is_empty() {
-        normals = indices.iter().map(|tri| {
-            let a = vertices.get(tri[0] as usize).copied().unwrap_or(Point3::ORIGIN);
-            let b = vertices.get(tri[1] as usize).copied().unwrap_or(Point3::ORIGIN);
-            let c = vertices.get(tri[2] as usize).copied().unwrap_or(Point3::ORIGIN);
-            let ab = b - a;
-            let ac = c - a;
-            ab.cross(ac).normalized().unwrap_or(Vec3::Z)
-        }).collect();
+        normals = indices
+            .iter()
+            .map(|tri| {
+                let a = vertices
+                    .get(tri[0] as usize)
+                    .copied()
+                    .unwrap_or(Point3::ORIGIN);
+                let b = vertices
+                    .get(tri[1] as usize)
+                    .copied()
+                    .unwrap_or(Point3::ORIGIN);
+                let c = vertices
+                    .get(tri[2] as usize)
+                    .copied()
+                    .unwrap_or(Point3::ORIGIN);
+                let ab = b - a;
+                let ac = c - a;
+                ab.cross(ac).normalized().unwrap_or(Vec3::Z)
+            })
+            .collect();
     }
 
-    Ok(super::Mesh { vertices, normals, indices })
+    Ok(super::Mesh {
+        vertices,
+        normals,
+        indices,
+    })
 }
 
 #[cfg(test)]
@@ -601,7 +692,12 @@ mod tests {
         // Buffer must have byteLength and URI
         let buf = &val["buffers"][0];
         assert!(buf["byteLength"].as_u64().unwrap() > 0);
-        assert!(buf["uri"].as_str().unwrap().starts_with("data:application/octet-stream;base64,"));
+        assert!(
+            buf["uri"]
+                .as_str()
+                .unwrap()
+                .starts_with("data:application/octet-stream;base64,")
+        );
     }
 
     // -----------------------------------------------------------------------

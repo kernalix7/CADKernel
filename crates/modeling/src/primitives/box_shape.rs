@@ -84,12 +84,12 @@ pub fn make_box(
     // --- Geometry binding ---
     // Plane u_axis × v_axis = outward face normal
     let face_plane_defs: [(Point3, Vec3, Vec3); 6] = [
-        (o, Vec3::X, -Vec3::Y),                       // bottom: normal -Z
-        (o + Vec3::Z * dz, Vec3::X, Vec3::Y),         // top:    normal +Z
-        (o, Vec3::X, Vec3::Z),                         // front:  normal -Y
-        (o + Vec3::Y * dy, Vec3::X, -Vec3::Z),        // back:   normal +Y
-        (o, Vec3::Y, -Vec3::Z),                        // left:   normal -X
-        (o + Vec3::X * dx, Vec3::Y, Vec3::Z),         // right:  normal +X
+        (o, Vec3::X, -Vec3::Y),                // bottom: normal -Z
+        (o + Vec3::Z * dz, Vec3::X, Vec3::Y),  // top:    normal +Z
+        (o, Vec3::X, Vec3::Z),                 // front:  normal -Y
+        (o + Vec3::Y * dy, Vec3::X, -Vec3::Z), // back:   normal +Y
+        (o, Vec3::Y, -Vec3::Z),                // left:   normal -X
+        (o + Vec3::X * dx, Vec3::Y, Vec3::Z),  // right:  normal +X
     ];
     for (face_h, &(fo, u_ax, v_ax)) in face_handles.iter().zip(face_plane_defs.iter()) {
         let plane = Plane::new(fo, u_ax, v_ax)?;

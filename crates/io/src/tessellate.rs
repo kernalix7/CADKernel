@@ -150,18 +150,25 @@ pub fn tessellate_solid(model: &BRepModel, solid: Handle<SolidData>) -> Mesh {
                 // Validate: all tessellated vertices must be within reasonable
                 // distance of the boundary bounding box + margin.
                 let tess_ok = tess_result.as_ref().is_some_and(|tm| {
-                    if boundary.is_empty() || tm.vertices.is_empty() { return false; }
+                    if boundary.is_empty() || tm.vertices.is_empty() {
+                        return false;
+                    }
                     let (mut mn, mut mx) = (boundary[0], boundary[0]);
                     for p in &boundary {
                         mn = Point3::new(mn.x.min(p.x), mn.y.min(p.y), mn.z.min(p.z));
                         mx = Point3::new(mx.x.max(p.x), mx.y.max(p.y), mx.z.max(p.z));
                     }
-                    let diag = ((mx.x-mn.x).powi(2) + (mx.y-mn.y).powi(2) + (mx.z-mn.z).powi(2)).sqrt();
+                    let diag =
+                        ((mx.x - mn.x).powi(2) + (mx.y - mn.y).powi(2) + (mx.z - mn.z).powi(2))
+                            .sqrt();
                     let margin = diag * 0.5 + 1.0;
                     tm.vertices.iter().all(|v| {
-                        v.x >= mn.x - margin && v.x <= mx.x + margin &&
-                        v.y >= mn.y - margin && v.y <= mx.y + margin &&
-                        v.z >= mn.z - margin && v.z <= mx.z + margin
+                        v.x >= mn.x - margin
+                            && v.x <= mx.x + margin
+                            && v.y >= mn.y - margin
+                            && v.y <= mx.y + margin
+                            && v.z >= mn.z - margin
+                            && v.z <= mx.z + margin
                     })
                 });
                 if let Some(tess_mesh) = tess_result.filter(|_| tess_ok) {
@@ -184,8 +191,11 @@ pub fn tessellate_solid(model: &BRepModel, solid: Handle<SolidData>) -> Mesh {
                         let c = tess_mesh.vertices[idx[2] as usize];
                         let n = triangle_normal(a, b, c);
                         mesh.normals.push(n);
-                        mesh.indices
-                            .push([remap[idx[0] as usize], remap[idx[1] as usize], remap[idx[2] as usize]]);
+                        mesh.indices.push([
+                            remap[idx[0] as usize],
+                            remap[idx[1] as usize],
+                            remap[idx[2] as usize],
+                        ]);
                     }
                     continue;
                 }
@@ -268,18 +278,25 @@ pub fn tessellate_solid_with_face_map(
                     &fd.inner_trims,
                 );
                 let tess_ok = tess_result.as_ref().is_some_and(|tm| {
-                    if boundary.is_empty() || tm.vertices.is_empty() { return false; }
+                    if boundary.is_empty() || tm.vertices.is_empty() {
+                        return false;
+                    }
                     let (mut mn, mut mx) = (boundary[0], boundary[0]);
                     for p in &boundary {
                         mn = Point3::new(mn.x.min(p.x), mn.y.min(p.y), mn.z.min(p.z));
                         mx = Point3::new(mx.x.max(p.x), mx.y.max(p.y), mx.z.max(p.z));
                     }
-                    let diag = ((mx.x-mn.x).powi(2) + (mx.y-mn.y).powi(2) + (mx.z-mn.z).powi(2)).sqrt();
+                    let diag =
+                        ((mx.x - mn.x).powi(2) + (mx.y - mn.y).powi(2) + (mx.z - mn.z).powi(2))
+                            .sqrt();
                     let margin = diag * 0.5 + 1.0;
                     tm.vertices.iter().all(|v| {
-                        v.x >= mn.x - margin && v.x <= mx.x + margin &&
-                        v.y >= mn.y - margin && v.y <= mx.y + margin &&
-                        v.z >= mn.z - margin && v.z <= mx.z + margin
+                        v.x >= mn.x - margin
+                            && v.x <= mx.x + margin
+                            && v.y >= mn.y - margin
+                            && v.y <= mx.y + margin
+                            && v.z >= mn.z - margin
+                            && v.z <= mx.z + margin
                     })
                 });
                 if let Some(tess_mesh) = tess_result.filter(|_| tess_ok) {
@@ -301,8 +318,11 @@ pub fn tessellate_solid_with_face_map(
                         let c = tess_mesh.vertices[idx[2] as usize];
                         let n = triangle_normal(a, b, c);
                         mesh.normals.push(n);
-                        mesh.indices
-                            .push([remap[idx[0] as usize], remap[idx[1] as usize], remap[idx[2] as usize]]);
+                        mesh.indices.push([
+                            remap[idx[0] as usize],
+                            remap[idx[1] as usize],
+                            remap[idx[2] as usize],
+                        ]);
                     }
                     let tri_count = mesh.indices.len() - tri_start;
                     face_map.push((face_h, tri_start, tri_count));
@@ -362,7 +382,11 @@ pub fn merge_meshes(meshes: &[Mesh]) -> Mesh {
         }
     }
 
-    Mesh { vertices, normals, indices }
+    Mesh {
+        vertices,
+        normals,
+        indices,
+    }
 }
 
 /// Collects all face handles from a solid's shells.
@@ -487,7 +511,8 @@ pub fn tessellate_solid_with_options(
                 let (u_lo, u_hi) = surface.domain_u();
                 let (v_lo, v_hi) = surface.domain_v();
                 let (u_domain, v_domain) =
-                    if u_lo.is_finite() && u_hi.is_finite() && v_lo.is_finite() && v_hi.is_finite() {
+                    if u_lo.is_finite() && u_hi.is_finite() && v_lo.is_finite() && v_hi.is_finite()
+                    {
                         ((u_lo, u_hi), (v_lo, v_hi))
                     } else {
                         let mut u_min = f64::INFINITY;
@@ -503,12 +528,19 @@ pub fn tessellate_solid_with_options(
                                 v_max = v_max.max(v);
                             }
                         }
-                        if !u_min.is_finite() || !u_max.is_finite() || !v_min.is_finite() || !v_max.is_finite() {
+                        if !u_min.is_finite()
+                            || !u_max.is_finite()
+                            || !v_min.is_finite()
+                            || !v_max.is_finite()
+                        {
                             continue;
                         }
                         let u_margin = (u_max - u_min) * 0.01;
                         let v_margin = (v_max - v_min) * 0.01;
-                        ((u_min - u_margin, u_max + u_margin), (v_min - v_margin, v_max + v_margin))
+                        (
+                            (u_min - u_margin, u_max + u_margin),
+                            (v_min - v_margin, v_max + v_margin),
+                        )
                     };
 
                 let tess = adaptive_tessellate_surface(
@@ -534,7 +566,11 @@ pub fn tessellate_solid_with_options(
                             (a.z + b.z + c.z) / 3.0,
                         );
                         let (u, v, _) = surface.project_point(centroid);
-                        if fd.outer_trim.as_ref().is_some_and(|t| !t.contains_point(u, v)) {
+                        if fd
+                            .outer_trim
+                            .as_ref()
+                            .is_some_and(|t| !t.contains_point(u, v))
+                        {
                             continue;
                         }
                         if fd.inner_trims.iter().any(|hole| hole.contains_point(u, v)) {
@@ -555,12 +591,17 @@ pub fn tessellate_solid_with_options(
                         mn = Point3::new(mn.x.min(p.x), mn.y.min(p.y), mn.z.min(p.z));
                         mx = Point3::new(mx.x.max(p.x), mx.y.max(p.y), mx.z.max(p.z));
                     }
-                    let diag = ((mx.x - mn.x).powi(2) + (mx.y - mn.y).powi(2) + (mx.z - mn.z).powi(2)).sqrt();
+                    let diag =
+                        ((mx.x - mn.x).powi(2) + (mx.y - mn.y).powi(2) + (mx.z - mn.z).powi(2))
+                            .sqrt();
                     let margin = diag * 0.5 + 1.0;
                     let valid = tess_mesh.vertices.iter().all(|v| {
-                        v.x >= mn.x - margin && v.x <= mx.x + margin
-                            && v.y >= mn.y - margin && v.y <= mx.y + margin
-                            && v.z >= mn.z - margin && v.z <= mx.z + margin
+                        v.x >= mn.x - margin
+                            && v.x <= mx.x + margin
+                            && v.y >= mn.y - margin
+                            && v.y <= mx.y + margin
+                            && v.z >= mn.z - margin
+                            && v.z <= mx.z + margin
                     });
                     if valid {
                         let remap: Vec<u32> = tess_mesh
@@ -611,7 +652,8 @@ pub fn tessellate_solid_with_options(
             for i in 1..(face_idx.len() - 1) {
                 let n = triangle_normal(points[0], points[i], points[i + 1]);
                 mesh.normals.push(n);
-                mesh.indices.push([face_idx[0], face_idx[i], face_idx[i + 1]]);
+                mesh.indices
+                    .push([face_idx[0], face_idx[i], face_idx[i + 1]]);
             }
         }
     }
@@ -665,29 +707,34 @@ fn tessellate_surface_with_trim(
     let (u_lo, u_hi) = surface.domain_u();
     let (v_lo, v_hi) = surface.domain_v();
 
-    let (u_domain, v_domain) = if u_lo.is_finite() && u_hi.is_finite() && v_lo.is_finite() && v_hi.is_finite() {
-        ((u_lo, u_hi), (v_lo, v_hi))
-    } else {
-        let mut u_min = f64::INFINITY;
-        let mut u_max = f64::NEG_INFINITY;
-        let mut v_min = f64::INFINITY;
-        let mut v_max = f64::NEG_INFINITY;
-        for pt in boundary {
-            let (u, v, _) = surface.project_point(*pt);
-            if u.is_finite() && v.is_finite() {
-                u_min = u_min.min(u);
-                u_max = u_max.max(u);
-                v_min = v_min.min(v);
-                v_max = v_max.max(v);
+    let (u_domain, v_domain) =
+        if u_lo.is_finite() && u_hi.is_finite() && v_lo.is_finite() && v_hi.is_finite() {
+            ((u_lo, u_hi), (v_lo, v_hi))
+        } else {
+            let mut u_min = f64::INFINITY;
+            let mut u_max = f64::NEG_INFINITY;
+            let mut v_min = f64::INFINITY;
+            let mut v_max = f64::NEG_INFINITY;
+            for pt in boundary {
+                let (u, v, _) = surface.project_point(*pt);
+                if u.is_finite() && v.is_finite() {
+                    u_min = u_min.min(u);
+                    u_max = u_max.max(u);
+                    v_min = v_min.min(v);
+                    v_max = v_max.max(v);
+                }
             }
-        }
-        if !u_min.is_finite() || !u_max.is_finite() || !v_min.is_finite() || !v_max.is_finite() {
-            return None;
-        }
-        let u_margin = (u_max - u_min) * 0.01;
-        let v_margin = (v_max - v_min) * 0.01;
-        ((u_min - u_margin, u_max + u_margin), (v_min - v_margin, v_max + v_margin))
-    };
+            if !u_min.is_finite() || !u_max.is_finite() || !v_min.is_finite() || !v_max.is_finite()
+            {
+                return None;
+            }
+            let u_margin = (u_max - u_min) * 0.01;
+            let v_margin = (v_max - v_min) * 0.01;
+            (
+                (u_min - u_margin, u_max + u_margin),
+                (v_min - v_margin, v_max + v_margin),
+            )
+        };
 
     let opts = TessellationOptions::default();
     let tess = adaptive_tessellate_surface(
@@ -892,7 +939,11 @@ mod tests {
 
         let tris = tessellate_face(&model, face);
         // Adaptive tessellation produces more triangles than simple fan (min_segments=4 → 4×4=16 quads → 32 tris).
-        assert!(tris.len() >= 2, "expected at least 2 triangles, got {}", tris.len());
+        assert!(
+            tris.len() >= 2,
+            "expected at least 2 triangles, got {}",
+            tris.len()
+        );
         // All vertices should be on z=0 plane.
         for tri in &tris {
             for v in &tri.vertices {
@@ -928,7 +979,11 @@ mod tests {
         // With only 3 boundary vertices and no trim wires,
         // a sphere face falls back to fan tessellation (1 triangle).
         // Surface tessellation only activates when boundary validation passes.
-        assert!(mesh.triangle_count() >= 1, "expected ≥1 triangle, got {}", mesh.triangle_count());
+        assert!(
+            mesh.triangle_count() >= 1,
+            "expected ≥1 triangle, got {}",
+            mesh.triangle_count()
+        );
     }
 
     #[test]
@@ -958,7 +1013,8 @@ mod tests {
 
         // Bind a circular trim loop covering only a portion of the surface
         let outer_trim = ParametricWire2D::closed(vec![
-            Arc::new(Line2D::new(Point2::new(0.2, 0.2), Point2::new(0.8, 0.2))) as Arc<dyn cadkernel_geometry::curve::curve2d::Curve2D>,
+            Arc::new(Line2D::new(Point2::new(0.2, 0.2), Point2::new(0.8, 0.2)))
+                as Arc<dyn cadkernel_geometry::curve::curve2d::Curve2D>,
             Arc::new(Line2D::new(Point2::new(0.8, 0.2), Point2::new(0.8, 0.8))),
             Arc::new(Line2D::new(Point2::new(0.8, 0.8), Point2::new(0.2, 0.8))),
             Arc::new(Line2D::new(Point2::new(0.2, 0.8), Point2::new(0.2, 0.2))),
@@ -967,13 +1023,24 @@ mod tests {
 
         let tris_trimmed = tessellate_face(&model, face);
         // Trimmed face should have fewer triangles than untrimmed
-        assert!(!tris_trimmed.is_empty(), "trimmed tessellation should produce some triangles");
+        assert!(
+            !tris_trimmed.is_empty(),
+            "trimmed tessellation should produce some triangles"
+        );
         // All vertices should lie roughly inside the trim region [0.2, 0.8]
         for tri in &tris_trimmed {
             let cx = (tri.vertices[0].x + tri.vertices[1].x + tri.vertices[2].x) / 3.0;
             let cy = (tri.vertices[0].y + tri.vertices[1].y + tri.vertices[2].y) / 3.0;
-            assert!((0.1..=0.9).contains(&cx), "triangle centroid x={} outside trim", cx);
-            assert!((0.1..=0.9).contains(&cy), "triangle centroid y={} outside trim", cy);
+            assert!(
+                (0.1..=0.9).contains(&cx),
+                "triangle centroid x={} outside trim",
+                cx
+            );
+            assert!(
+                (0.1..=0.9).contains(&cy),
+                "triangle centroid y={} outside trim",
+                cy
+            );
         }
     }
 

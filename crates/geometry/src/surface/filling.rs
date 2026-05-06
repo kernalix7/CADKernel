@@ -81,13 +81,16 @@ impl Surface for CoonsPatch {
         );
         // B: bilinear interpolation of corners
         let b = Point3::new(
-            (1.0 - u) * (1.0 - v) * p00.x + u * (1.0 - v) * p10.x
+            (1.0 - u) * (1.0 - v) * p00.x
+                + u * (1.0 - v) * p10.x
                 + (1.0 - u) * v * p01.x
                 + u * v * p11.x,
-            (1.0 - u) * (1.0 - v) * p00.y + u * (1.0 - v) * p10.y
+            (1.0 - u) * (1.0 - v) * p00.y
+                + u * (1.0 - v) * p10.y
                 + (1.0 - u) * v * p01.y
                 + u * v * p11.y,
-            (1.0 - u) * (1.0 - v) * p00.z + u * (1.0 - v) * p10.z
+            (1.0 - u) * (1.0 - v) * p00.z
+                + u * (1.0 - v) * p10.z
                 + (1.0 - u) * v * p01.z
                 + u * v * p11.z,
         );
@@ -117,18 +120,22 @@ mod tests {
     use crate::curve::line::LineSegment;
 
     fn make_unit_square_patch() -> CoonsPatch {
-        let c_u0 = Arc::new(
-            LineSegment::new(Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 0.0, 0.0)),
-        ) as Arc<dyn Curve>;
-        let c_u1 = Arc::new(
-            LineSegment::new(Point3::new(0.0, 1.0, 0.0), Point3::new(1.0, 1.0, 0.0)),
-        ) as Arc<dyn Curve>;
-        let c_v0 = Arc::new(
-            LineSegment::new(Point3::new(0.0, 0.0, 0.0), Point3::new(0.0, 1.0, 0.0)),
-        ) as Arc<dyn Curve>;
-        let c_v1 = Arc::new(
-            LineSegment::new(Point3::new(1.0, 0.0, 0.0), Point3::new(1.0, 1.0, 0.0)),
-        ) as Arc<dyn Curve>;
+        let c_u0 = Arc::new(LineSegment::new(
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(1.0, 0.0, 0.0),
+        )) as Arc<dyn Curve>;
+        let c_u1 = Arc::new(LineSegment::new(
+            Point3::new(0.0, 1.0, 0.0),
+            Point3::new(1.0, 1.0, 0.0),
+        )) as Arc<dyn Curve>;
+        let c_v0 = Arc::new(LineSegment::new(
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(0.0, 1.0, 0.0),
+        )) as Arc<dyn Curve>;
+        let c_v1 = Arc::new(LineSegment::new(
+            Point3::new(1.0, 0.0, 0.0),
+            Point3::new(1.0, 1.0, 0.0),
+        )) as Arc<dyn Curve>;
         CoonsPatch::new(c_u0, c_u1, c_v0, c_v1)
     }
 

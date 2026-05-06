@@ -130,7 +130,8 @@ pub fn ders_basis_funs(knots: &[f64], span: usize, t: f64, p: usize, k: usize) -
             };
 
             for j in j1..=j2 {
-                a[s2][j] = (a[s1][j] - a[s1][j - 1]) / ndu[(pk + 1) as usize][(rk + j as isize) as usize];
+                a[s2][j] =
+                    (a[s1][j] - a[s1][j - 1]) / ndu[(pk + 1) as usize][(rk + j as isize) as usize];
                 d += a[s2][j] * ndu[(rk + j as isize) as usize][pk as usize];
             }
 

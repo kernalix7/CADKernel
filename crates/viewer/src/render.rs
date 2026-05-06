@@ -475,10 +475,14 @@ fn mat4_inv(m: [[f32; 4]; 4]) -> [[f32; 4]; 4] {
     let v3 = [m[1][3], m[0][3], m[0][3], m[0][3]];
 
     // Adjugate columns (each is a vec4)
-    let inv0: [f32; 4] = std::array::from_fn(|i| v1[i]*fac0[i] - v2[i]*fac1[i] + v3[i]*fac2[i]);
-    let inv1: [f32; 4] = std::array::from_fn(|i| v0[i]*fac0[i] - v2[i]*fac3[i] + v3[i]*fac4[i]);
-    let inv2: [f32; 4] = std::array::from_fn(|i| v0[i]*fac1[i] - v1[i]*fac3[i] + v3[i]*fac5[i]);
-    let inv3: [f32; 4] = std::array::from_fn(|i| v0[i]*fac2[i] - v1[i]*fac4[i] + v2[i]*fac5[i]);
+    let inv0: [f32; 4] =
+        std::array::from_fn(|i| v1[i] * fac0[i] - v2[i] * fac1[i] + v3[i] * fac2[i]);
+    let inv1: [f32; 4] =
+        std::array::from_fn(|i| v0[i] * fac0[i] - v2[i] * fac3[i] + v3[i] * fac4[i]);
+    let inv2: [f32; 4] =
+        std::array::from_fn(|i| v0[i] * fac1[i] - v1[i] * fac3[i] + v3[i] * fac5[i]);
+    let inv3: [f32; 4] =
+        std::array::from_fn(|i| v0[i] * fac2[i] - v1[i] * fac4[i] + v2[i] * fac5[i]);
 
     // Apply sign pattern (+−+−, −+−+, …)
     let sa = [1.0_f32, -1.0, 1.0, -1.0];
@@ -489,17 +493,41 @@ fn mat4_inv(m: [[f32; 4]; 4]) -> [[f32; 4]; 4] {
     let col3: [f32; 4] = std::array::from_fn(|i| inv3[i] * sb[i]);
 
     // Determinant = dot(m[0], first_row_of_adjugate)
-    let det = m[0][0]*col0[0] + m[0][1]*col1[0] + m[0][2]*col2[0] + m[0][3]*col3[0];
+    let det = m[0][0] * col0[0] + m[0][1] * col1[0] + m[0][2] * col2[0] + m[0][3] * col3[0];
     if det.abs() < 1e-10 {
-        return [[1.0,0.0,0.0,0.0],[0.0,1.0,0.0,0.0],
-                [0.0,0.0,1.0,0.0],[0.0,0.0,0.0,1.0]];
+        return [
+            [1.0, 0.0, 0.0, 0.0],
+            [0.0, 1.0, 0.0, 0.0],
+            [0.0, 0.0, 1.0, 0.0],
+            [0.0, 0.0, 0.0, 1.0],
+        ];
     }
     let inv_det = 1.0 / det;
     [
-        [col0[0]*inv_det, col0[1]*inv_det, col0[2]*inv_det, col0[3]*inv_det],
-        [col1[0]*inv_det, col1[1]*inv_det, col1[2]*inv_det, col1[3]*inv_det],
-        [col2[0]*inv_det, col2[1]*inv_det, col2[2]*inv_det, col2[3]*inv_det],
-        [col3[0]*inv_det, col3[1]*inv_det, col3[2]*inv_det, col3[3]*inv_det],
+        [
+            col0[0] * inv_det,
+            col0[1] * inv_det,
+            col0[2] * inv_det,
+            col0[3] * inv_det,
+        ],
+        [
+            col1[0] * inv_det,
+            col1[1] * inv_det,
+            col1[2] * inv_det,
+            col1[3] * inv_det,
+        ],
+        [
+            col2[0] * inv_det,
+            col2[1] * inv_det,
+            col2[2] * inv_det,
+            col2[3] * inv_det,
+        ],
+        [
+            col3[0] * inv_det,
+            col3[1] * inv_det,
+            col3[2] * inv_det,
+            col3[3] * inv_det,
+        ],
     ]
 }
 
@@ -741,12 +769,28 @@ pub(crate) fn extract_frustum_planes(vp: &[[f32; 4]; 4]) -> [[f32; 4]; 6] {
 
 /// Test whether an AABB is at least partially inside the frustum.
 /// Returns false only if the box is completely outside any single plane.
-pub(crate) fn aabb_in_frustum(planes: &[[f32; 4]; 6], aabb_min: [f32; 3], aabb_max: [f32; 3]) -> bool {
+pub(crate) fn aabb_in_frustum(
+    planes: &[[f32; 4]; 6],
+    aabb_min: [f32; 3],
+    aabb_max: [f32; 3],
+) -> bool {
     for p in planes {
         // Find the AABB corner that is most in the direction of the plane normal (p-vertex)
-        let px = if p[0] >= 0.0 { aabb_max[0] } else { aabb_min[0] };
-        let py = if p[1] >= 0.0 { aabb_max[1] } else { aabb_min[1] };
-        let pz = if p[2] >= 0.0 { aabb_max[2] } else { aabb_min[2] };
+        let px = if p[0] >= 0.0 {
+            aabb_max[0]
+        } else {
+            aabb_min[0]
+        };
+        let py = if p[1] >= 0.0 {
+            aabb_max[1]
+        } else {
+            aabb_min[1]
+        };
+        let pz = if p[2] >= 0.0 {
+            aabb_max[2]
+        } else {
+            aabb_min[2]
+        };
         // If the p-vertex is outside the plane, the entire AABB is outside
         if p[0] * px + p[1] * py + p[2] * pz + p[3] < -1e-6 {
             return false;
@@ -844,7 +888,11 @@ fn fs_main(fin: VertexOutput) -> @location(0) vec4<f32> {
 }
 "#;
 
-fn gradient_colors(preset: BgPreset, custom_top: [f32; 3], custom_bottom: [f32; 3]) -> ([f32; 3], [f32; 3]) {
+fn gradient_colors(
+    preset: BgPreset,
+    custom_top: [f32; 3],
+    custom_bottom: [f32; 3],
+) -> ([f32; 3], [f32; 3]) {
     match preset {
         BgPreset::Dark => ([0.16, 0.17, 0.20], [0.08, 0.08, 0.10]),
         BgPreset::Medium => ([0.28, 0.30, 0.34], [0.14, 0.15, 0.18]),
@@ -1534,53 +1582,59 @@ impl GpuState {
         self.bg_colors = new_colors;
         let (top, bot) = new_colors;
         let src = gradient_shader_src_colors(top, bot);
-        let grad_shader = self.device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("gradient_shader"),
-            source: wgpu::ShaderSource::Wgsl(src.as_str().into()),
-        });
-        let layout = self.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-            label: Some("gradient_pipeline_layout"),
-            bind_group_layouts: &[],
-            push_constant_ranges: &[],
-        });
-        self.gradient_pipeline = self.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-            label: Some("gradient_pipeline"),
-            layout: Some(&layout),
-            vertex: wgpu::VertexState {
-                module: &grad_shader,
-                entry_point: Some("vs_gradient"),
-                buffers: &[],
-                compilation_options: Default::default(),
-            },
-            fragment: Some(wgpu::FragmentState {
-                module: &grad_shader,
-                entry_point: Some("fs_gradient"),
-                targets: &[Some(wgpu::ColorTargetState {
-                    format: self.config.format,
-                    blend: Some(wgpu::BlendState::REPLACE),
-                    write_mask: wgpu::ColorWrites::ALL,
-                })],
-                compilation_options: Default::default(),
-            }),
-            primitive: wgpu::PrimitiveState {
-                topology: wgpu::PrimitiveTopology::TriangleList,
-                ..Default::default()
-            },
-            depth_stencil: Some(wgpu::DepthStencilState {
-                format: DEPTH_FORMAT,
-                depth_write_enabled: false,
-                depth_compare: wgpu::CompareFunction::Always,
-                stencil: Default::default(),
-                bias: Default::default(),
-            }),
-            multisample: wgpu::MultisampleState {
-                count: MSAA_SAMPLES,
-                mask: !0,
-                alpha_to_coverage_enabled: false,
-            },
-            multiview: None,
-            cache: None,
-        });
+        let grad_shader = self
+            .device
+            .create_shader_module(wgpu::ShaderModuleDescriptor {
+                label: Some("gradient_shader"),
+                source: wgpu::ShaderSource::Wgsl(src.as_str().into()),
+            });
+        let layout = self
+            .device
+            .create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+                label: Some("gradient_pipeline_layout"),
+                bind_group_layouts: &[],
+                push_constant_ranges: &[],
+            });
+        self.gradient_pipeline =
+            self.device
+                .create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                    label: Some("gradient_pipeline"),
+                    layout: Some(&layout),
+                    vertex: wgpu::VertexState {
+                        module: &grad_shader,
+                        entry_point: Some("vs_gradient"),
+                        buffers: &[],
+                        compilation_options: Default::default(),
+                    },
+                    fragment: Some(wgpu::FragmentState {
+                        module: &grad_shader,
+                        entry_point: Some("fs_gradient"),
+                        targets: &[Some(wgpu::ColorTargetState {
+                            format: self.config.format,
+                            blend: Some(wgpu::BlendState::REPLACE),
+                            write_mask: wgpu::ColorWrites::ALL,
+                        })],
+                        compilation_options: Default::default(),
+                    }),
+                    primitive: wgpu::PrimitiveState {
+                        topology: wgpu::PrimitiveTopology::TriangleList,
+                        ..Default::default()
+                    },
+                    depth_stencil: Some(wgpu::DepthStencilState {
+                        format: DEPTH_FORMAT,
+                        depth_write_enabled: false,
+                        depth_compare: wgpu::CompareFunction::Always,
+                        stencil: Default::default(),
+                        bias: Default::default(),
+                    }),
+                    multisample: wgpu::MultisampleState {
+                        count: MSAA_SAMPLES,
+                        mask: !0,
+                        alpha_to_coverage_enabled: false,
+                    },
+                    multiview: None,
+                    cache: None,
+                });
     }
 
     pub fn resize(&mut self, size: winit::dpi::PhysicalSize<u32>, camera: &mut Camera) {

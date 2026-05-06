@@ -62,11 +62,7 @@ pub fn hole(
     let mut profile = Vec::with_capacity(n);
 
     // Build local coordinate frame
-    let up = if dir.x.abs() < 0.9 {
-        Vec3::X
-    } else {
-        Vec3::Y
-    };
+    let up = if dir.x.abs() < 0.9 { Vec3::X } else { Vec3::Y };
     let u = dir.cross(up).normalized().unwrap_or(Vec3::X);
     let v = u.cross(dir).normalized().unwrap_or(Vec3::Y);
 
@@ -119,7 +115,9 @@ pub fn countersunk_hole(
     segments: usize,
 ) -> KernelResult<HoleResult> {
     // First create the main hole
-    let step1 = hole(base_model, base_solid, center, direction, radius, depth, segments)?;
+    let step1 = hole(
+        base_model, base_solid, center, direction, radius, depth, segments,
+    )?;
 
     // Then create the countersink (larger, shallower hole)
     let result = hole(

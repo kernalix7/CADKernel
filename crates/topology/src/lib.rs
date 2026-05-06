@@ -1023,9 +1023,7 @@ impl BRepModel {
     /// Returns `true` if the face has a bound surface geometry.
     #[cfg(feature = "geometry-binding")]
     pub fn face_has_surface(&self, face: Handle<FaceData>) -> bool {
-        self.faces
-            .get(face)
-            .is_some_and(|fd| fd.surface.is_some())
+        self.faces.get(face).is_some_and(|fd| fd.surface.is_some())
     }
 
     /// Binds a UV pcurve to an edge for a given side (left or right).

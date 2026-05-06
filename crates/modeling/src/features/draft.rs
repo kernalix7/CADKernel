@@ -102,8 +102,7 @@ pub fn draft_faces(
                 // Displace perpendicular to pull in the face plane
                 // Use the vertex's radial direction from the pull axis
                 let on_axis = pull * Vec3::new(old_pt.x, old_pt.y, old_pt.z).dot(pull);
-                let radial =
-                    Vec3::new(old_pt.x, old_pt.y, old_pt.z) - on_axis;
+                let radial = Vec3::new(old_pt.x, old_pt.y, old_pt.z) - on_axis;
                 if let Some(rd) = radial.normalized() {
                     Point3::new(
                         old_pt.x + rd.x * displacement,
@@ -194,8 +193,7 @@ mod tests {
         }
         assert_eq!(side_faces.len(), 4);
 
-        let result =
-            draft_faces(&mut model, b.solid, &side_faces, Vec3::Z, 0.1).unwrap();
+        let result = draft_faces(&mut model, b.solid, &side_faces, Vec3::Z, 0.1).unwrap();
         assert!(model.solids.is_alive(result.solid));
         assert_eq!(result.drafted_faces.len(), 4);
     }

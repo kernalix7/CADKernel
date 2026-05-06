@@ -298,7 +298,11 @@ mod tests {
         let mut b = BRepModel::new();
         make_box(&mut b, Point3::new(100.0, 100.0, 100.0), 1.0, 1.0, 1.0).unwrap();
         let result = quick_intersect(&a, &b).unwrap();
-        assert_eq!(result.faces.len(), 0, "disjoint intersection should be empty");
+        assert_eq!(
+            result.faces.len(),
+            0,
+            "disjoint intersection should be empty"
+        );
     }
 
     #[test]

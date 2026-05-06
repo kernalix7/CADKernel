@@ -2,8 +2,8 @@
 
 use cadkernel_core::{KernelError, KernelResult};
 
-use crate::entity::{BSplineId, PointId};
 use crate::Sketch;
+use crate::entity::{BSplineId, PointId};
 
 /// Converts a line, arc, or circle entity to a B-spline representation.
 ///
@@ -124,12 +124,7 @@ pub fn decrease_bspline_degree(sketch: &mut Sketch, bspline_id: BSplineId) -> Ke
     }
 
     // Keep every other control point
-    let new_cps: Vec<PointId> = bs
-        .control_points
-        .iter()
-        .step_by(2)
-        .copied()
-        .collect();
+    let new_cps: Vec<PointId> = bs.control_points.iter().step_by(2).copied().collect();
 
     if new_cps.len() < 2 {
         return Err(KernelError::InvalidArgument(
@@ -213,11 +208,7 @@ pub fn decrease_knot_multiplicity(
 ///
 /// The new control point is computed by linear interpolation between
 /// the two neighboring control points at the parameter location.
-pub fn insert_knot(
-    sketch: &mut Sketch,
-    bspline_id: BSplineId,
-    t_value: f64,
-) -> KernelResult<()> {
+pub fn insert_knot(sketch: &mut Sketch, bspline_id: BSplineId, t_value: f64) -> KernelResult<()> {
     let bs = sketch
         .bsplines
         .get(bspline_id.0)
@@ -255,11 +246,7 @@ pub fn insert_knot(
 ///
 /// Takes two entity IDs (lines, arcs, or B-splines), converts them to control
 /// points, and creates a single merged B-spline.
-pub fn join_curves(
-    sketch: &mut Sketch,
-    entity1: usize,
-    entity2: usize,
-) -> KernelResult<BSplineId> {
+pub fn join_curves(sketch: &mut Sketch, entity1: usize, entity2: usize) -> KernelResult<BSplineId> {
     let cps1 = collect_entity_points(sketch, entity1)?;
     let cps2 = collect_entity_points(sketch, entity2)?;
 
@@ -467,9 +454,7 @@ mod tests {
     #[test]
     fn test_increase_degree() {
         let mut sketch = Sketch::new();
-        let pts: Vec<_> = (0..4)
-            .map(|i| sketch.add_point(i as f64, 0.0))
-            .collect();
+        let pts: Vec<_> = (0..4).map(|i| sketch.add_point(i as f64, 0.0)).collect();
         let bs = sketch.add_bspline(pts, 2, false);
         assert_eq!(sketch.bsplines[bs.0].degree, 2);
 
@@ -481,9 +466,7 @@ mod tests {
     #[test]
     fn test_decrease_degree() {
         let mut sketch = Sketch::new();
-        let pts: Vec<_> = (0..7)
-            .map(|i| sketch.add_point(i as f64, 0.0))
-            .collect();
+        let pts: Vec<_> = (0..7).map(|i| sketch.add_point(i as f64, 0.0)).collect();
         let bs = sketch.add_bspline(pts, 3, false);
 
         // First elevate
@@ -498,9 +481,7 @@ mod tests {
     #[test]
     fn test_decrease_degree_min() {
         let mut sketch = Sketch::new();
-        let pts: Vec<_> = (0..3)
-            .map(|i| sketch.add_point(i as f64, 0.0))
-            .collect();
+        let pts: Vec<_> = (0..3).map(|i| sketch.add_point(i as f64, 0.0)).collect();
         let bs = sketch.add_bspline(pts, 1, false);
         assert!(decrease_bspline_degree(&mut sketch, bs).is_err());
     }
@@ -508,9 +489,7 @@ mod tests {
     #[test]
     fn test_increase_knot_multiplicity() {
         let mut sketch = Sketch::new();
-        let pts: Vec<_> = (0..5)
-            .map(|i| sketch.add_point(i as f64, 0.0))
-            .collect();
+        let pts: Vec<_> = (0..5).map(|i| sketch.add_point(i as f64, 0.0)).collect();
         let bs = sketch.add_bspline(pts, 3, false);
         let orig_len = sketch.bsplines[bs.0].control_points.len();
 
@@ -521,9 +500,7 @@ mod tests {
     #[test]
     fn test_decrease_knot_multiplicity() {
         let mut sketch = Sketch::new();
-        let pts: Vec<_> = (0..6)
-            .map(|i| sketch.add_point(i as f64, 0.0))
-            .collect();
+        let pts: Vec<_> = (0..6).map(|i| sketch.add_point(i as f64, 0.0)).collect();
         let bs = sketch.add_bspline(pts, 3, false);
         let orig_len = sketch.bsplines[bs.0].control_points.len();
 
@@ -534,9 +511,7 @@ mod tests {
     #[test]
     fn test_insert_knot() {
         let mut sketch = Sketch::new();
-        let pts: Vec<_> = (0..4)
-            .map(|i| sketch.add_point(i as f64, 0.0))
-            .collect();
+        let pts: Vec<_> = (0..4).map(|i| sketch.add_point(i as f64, 0.0)).collect();
         let bs = sketch.add_bspline(pts, 3, false);
         let orig_len = sketch.bsplines[bs.0].control_points.len();
 
@@ -571,13 +546,7 @@ mod tests {
     fn test_rotate_geometry() {
         let mut sketch = Sketch::new();
         let p = sketch.add_point(1.0, 0.0);
-        rotate_geometry(
-            &mut sketch,
-            &[p],
-            0.0,
-            0.0,
-            std::f64::consts::FRAC_PI_2,
-        );
+        rotate_geometry(&mut sketch, &[p], 0.0, 0.0, std::f64::consts::FRAC_PI_2);
         assert!(sketch.points[p.0].position.x.abs() < 1e-10);
         assert!((sketch.points[p.0].position.y - 1.0).abs() < 1e-10);
     }

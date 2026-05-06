@@ -30,9 +30,9 @@ pub use plane_face_shape::{PlaneFaceResult, make_plane_face};
 pub use polygon_shape::{PolygonResult, make_polygon};
 pub use prism_shape::{PrismResult, make_prism};
 pub use shape_primitives::{
-    CircleShapeResult, ConvertToSolidResult, EllipseShapeResult, LineShapeResult,
-    PointShapeResult, ShapeFromEdgesResult, convert_to_solid, make_circle_shape,
-    make_ellipse_shape, make_line_shape, make_point_shape, shape_builder_from_edges,
+    CircleShapeResult, ConvertToSolidResult, EllipseShapeResult, LineShapeResult, PointShapeResult,
+    ShapeFromEdgesResult, convert_to_solid, make_circle_shape, make_ellipse_shape, make_line_shape,
+    make_point_shape, shape_builder_from_edges,
 };
 pub use sphere_shape::{SphereResult, make_sphere};
 pub use spiral_shape::{SpiralResult, make_spiral};

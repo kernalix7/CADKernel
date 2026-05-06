@@ -1,0 +1,96 @@
+# Sketch golden 006: Two parallel lines + redundant tangent
+#
+# Two parallel lines and a circle constrained tangent to both. One of the
+# tangent constraints is redundant (implied by parallel + the other tangent
+# + the circle's fixed radius). Solver must detect OverDetermined.
+
+[sketch]
+name = "Parallel lines redundant tangent"
+units = "mm"
+
+[[entity]]
+id = 1
+kind = "Point"
+x = 0.0
+y = 0.0
+anchor = true
+
+[[entity]]
+id = 2
+kind = "Point"
+x = 50.0
+y = 0.0
+
+[[entity]]
+id = 3
+kind = "Point"
+x = 0.0
+y = 20.0
+
+[[entity]]
+id = 4
+kind = "Point"
+x = 50.0
+y = 20.0
+
+[[entity]]
+id = 5
+kind = "Point"
+x = 25.0
+y = 10.0
+
+[[entity]]
+id = 10
+kind = "Line"
+start = 1
+end = 2
+
+[[entity]]
+id = 11
+kind = "Line"
+start = 3
+end = 4
+
+[[entity]]
+id = 12
+kind = "Circle"
+center = 5
+radius = 10.0
+
+[[constraint]]
+id = 100
+kind = "Horizontal"
+between = [1, 2]
+
+[[constraint]]
+id = 101
+kind = "Parallel"
+between = [10, 11]
+
+[[constraint]]
+id = 102
+kind = "Tangent"
+between = [10, 12]
+
+[[constraint]]
+id = 103
+kind = "Tangent"          # redundant given parallel + 102 + radius + distance
+between = [11, 12]
+
+[[constraint]]
+id = 104
+kind = "Distance"
+between = [10, 11]         # perpendicular distance line-to-line
+value = 20.0
+
+[[constraint]]
+id = 105
+kind = "Radius"
+of = 12
+value = 10.0
+
+[expected]
+status = "OverDetermined"
+expected_redundant_constraints = [103]
+positional_residual_max = 1e-9
+solve_iterations_max = 12

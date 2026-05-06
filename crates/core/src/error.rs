@@ -58,21 +58,11 @@ impl KernelError {
     pub fn with_context(self, context: &str) -> Self {
         match self {
             Self::InvalidHandle(entity) => Self::InvalidHandle(entity),
-            Self::InvalidArgument(msg) => {
-                Self::InvalidArgument(format!("{context}: {msg}"))
-            }
-            Self::ValidationFailed(msg) => {
-                Self::ValidationFailed(format!("{context}: {msg}"))
-            }
-            Self::TopologyError(msg) => {
-                Self::TopologyError(format!("{context}: {msg}"))
-            }
-            Self::GeometryError(msg) => {
-                Self::GeometryError(format!("{context}: {msg}"))
-            }
-            Self::IoError(msg) => {
-                Self::IoError(format!("{context}: {msg}"))
-            }
+            Self::InvalidArgument(msg) => Self::InvalidArgument(format!("{context}: {msg}")),
+            Self::ValidationFailed(msg) => Self::ValidationFailed(format!("{context}: {msg}")),
+            Self::TopologyError(msg) => Self::TopologyError(format!("{context}: {msg}")),
+            Self::GeometryError(msg) => Self::GeometryError(format!("{context}: {msg}")),
+            Self::IoError(msg) => Self::IoError(format!("{context}: {msg}")),
         }
     }
 }
@@ -81,7 +71,10 @@ impl fmt::Display for KernelError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::InvalidHandle(entity) => {
-                write!(f, "invalid handle: {entity} (entity may have been deleted or belongs to another model)")
+                write!(
+                    f,
+                    "invalid handle: {entity} (entity may have been deleted or belongs to another model)"
+                )
             }
             Self::InvalidArgument(msg) => write!(f, "invalid argument: {msg}"),
             Self::ValidationFailed(msg) => {
@@ -143,7 +136,10 @@ mod tests {
         let wrapped = err.with_context("make_cylinder");
         let msg = wrapped.to_string();
         assert!(msg.contains("make_cylinder"), "context missing: {msg}");
-        assert!(msg.contains("radius must be > 0"), "original missing: {msg}");
+        assert!(
+            msg.contains("radius must be > 0"),
+            "original missing: {msg}"
+        );
     }
 
     #[test]

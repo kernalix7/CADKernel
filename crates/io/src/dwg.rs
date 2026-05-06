@@ -85,24 +85,48 @@ pub fn import_dwg(data: &[u8]) -> KernelResult<Mesh> {
         )));
     }
 
-    let normals: Vec<Vec3> = indices.iter().map(|tri| {
-        let a = vertices.get(tri[0] as usize).copied().unwrap_or(Point3::ORIGIN);
-        let b = vertices.get(tri[1] as usize).copied().unwrap_or(Point3::ORIGIN);
-        let c = vertices.get(tri[2] as usize).copied().unwrap_or(Point3::ORIGIN);
-        (b - a).cross(c - a).normalized().unwrap_or(Vec3::Z)
-    }).collect();
+    let normals: Vec<Vec3> = indices
+        .iter()
+        .map(|tri| {
+            let a = vertices
+                .get(tri[0] as usize)
+                .copied()
+                .unwrap_or(Point3::ORIGIN);
+            let b = vertices
+                .get(tri[1] as usize)
+                .copied()
+                .unwrap_or(Point3::ORIGIN);
+            let c = vertices
+                .get(tri[2] as usize)
+                .copied()
+                .unwrap_or(Point3::ORIGIN);
+            (b - a).cross(c - a).normalized().unwrap_or(Vec3::Z)
+        })
+        .collect();
 
-    Ok(Mesh { vertices, normals, indices })
+    Ok(Mesh {
+        vertices,
+        normals,
+        indices,
+    })
 }
 
 /// Try to read 4 × Point3 (f64) at the given byte offset.
 fn try_read_3dface(data: &[u8], offset: usize) -> Option<[Point3; 4]> {
-    if offset + 96 > data.len() { return None; }
+    if offset + 96 > data.len() {
+        return None;
+    }
 
     let read_f64 = |o: usize| -> f64 {
         f64::from_le_bytes([
-            data[o], data[o+1], data[o+2], data[o+3],
-            data[o+4], data[o+5], data[o+6], data[o+7],
+            data[o],
+            data[o + 1],
+            data[o + 2],
+            data[o + 3],
+            data[o + 4],
+            data[o + 5],
+            data[o + 6],
+            data[o + 7],
         ])
     };
 
@@ -112,14 +136,20 @@ fn try_read_3dface(data: &[u8], offset: usize) -> Option<[Point3; 4]> {
         let x = read_f64(base);
         let y = read_f64(base + 8);
         let z = read_f64(base + 16);
-        if !x.is_finite() || !y.is_finite() || !z.is_finite() { return None; }
-        if x.abs() > 1e12 || y.abs() > 1e12 || z.abs() > 1e12 { return None; }
+        if !x.is_finite() || !y.is_finite() || !z.is_finite() {
+            return None;
+        }
+        if x.abs() > 1e12 || y.abs() > 1e12 || z.abs() > 1e12 {
+            return None;
+        }
         *pt = Point3::new(x, y, z);
     }
 
     // Validate: points should not all be identical
     let all_same = (1..4).all(|i| (pts[i] - pts[0]).length() < 1e-14);
-    if all_same { return None; }
+    if all_same {
+        return None;
+    }
 
     Some(pts)
 }
@@ -197,7 +227,11 @@ mod tests {
 
     #[test]
     fn test_dwg_export_empty_mesh() {
-        let mesh = Mesh { vertices: vec![], normals: vec![], indices: vec![] };
+        let mesh = Mesh {
+            vertices: vec![],
+            normals: vec![],
+            indices: vec![],
+        };
         assert!(export_dwg(&mesh).is_err());
     }
 

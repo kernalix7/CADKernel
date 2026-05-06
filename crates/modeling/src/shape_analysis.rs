@@ -46,10 +46,7 @@ fn face_vertex_positions(model: &BRepModel, face: Handle<FaceData>) -> Vec<cadke
 ///
 /// A face is considered planar if all its vertices lie within `1e-6` distance
 /// of the plane defined by the first three non-collinear vertices.
-pub fn find_planar_faces(
-    model: &BRepModel,
-    solid: Handle<SolidData>,
-) -> Vec<Handle<FaceData>> {
+pub fn find_planar_faces(model: &BRepModel, solid: Handle<SolidData>) -> Vec<Handle<FaceData>> {
     const TOL: f64 = 1e-6;
     let all_faces = faces_of_solid(model, solid);
     let mut result = Vec::new();
@@ -248,14 +245,7 @@ mod tests {
     #[test]
     fn test_classify_cylinder() {
         let mut model = BRepModel::new();
-        let cyl = make_cylinder(
-            &mut model,
-            Point3::new(0.0, 0.0, 0.0),
-            1.0,
-            3.0,
-            64,
-        )
-        .unwrap();
+        let cyl = make_cylinder(&mut model, Point3::new(0.0, 0.0, 0.0), 1.0, 3.0, 64).unwrap();
         let st = classify_solid(&model, cyl.solid);
         assert_eq!(st, SolidType::Cylinder);
     }
@@ -265,7 +255,11 @@ mod tests {
         let mut model = BRepModel::new();
         let cyl = make_cylinder(&mut model, Point3::ORIGIN, 1.0, 2.0, 64).unwrap();
         let planar = find_planar_faces(&model, cyl.solid);
-        assert!(planar.len() >= 2, "cylinder should have at least 2 planar-like faces, got {}", planar.len());
+        assert!(
+            planar.len() >= 2,
+            "cylinder should have at least 2 planar-like faces, got {}",
+            planar.len()
+        );
     }
 
     #[test]
@@ -273,7 +267,10 @@ mod tests {
         let mut model = BRepModel::new();
         let cyl = make_cylinder(&mut model, Point3::ORIGIN, 2.0, 5.0, 64).unwrap();
         let cyl_faces = find_cylindrical_faces(&model, cyl.solid);
-        assert!(!cyl_faces.is_empty(), "cylinder should have cylindrical faces");
+        assert!(
+            !cyl_faces.is_empty(),
+            "cylinder should have cylindrical faces"
+        );
     }
 
     #[test]

@@ -166,7 +166,9 @@ pub fn read_stl_ascii(input: &str) -> KernelResult<Mesh> {
     const MAX_ASCII_STL_SIZE: usize = 256 * 1024 * 1024; // 256 MB
     if input.len() > MAX_ASCII_STL_SIZE {
         return Err(KernelError::IoError(format!(
-            "ASCII STL too large ({} bytes, max {})", input.len(), MAX_ASCII_STL_SIZE
+            "ASCII STL too large ({} bytes, max {})",
+            input.len(),
+            MAX_ASCII_STL_SIZE
         )));
     }
     let raw_tris: Vec<[Point3; 3]> = parse_ascii_triangles(input)?;
@@ -606,7 +608,11 @@ mod tests {
             }
         }
 
-        let mesh = Mesh { vertices, normals, indices };
+        let mesh = Mesh {
+            vertices,
+            normals,
+            indices,
+        };
         assert!(mesh.triangle_count() > 10000);
 
         // Binary round-trip

@@ -1,0 +1,33 @@
+[test]
+id = "006"
+description = "Idempotency: union of identical coincident boxes equals one box."
+
+[a]
+kind = "Box"
+size = [2.0, 2.0, 2.0]
+origin = [0.0, 0.0, 0.0]
+
+[b]
+kind = "Box"
+size = [2.0, 2.0, 2.0]
+origin = [0.0, 0.0, 0.0]
+
+[op]
+kind = "Union"
+
+[expected]
+solid_count = 1
+shell_count = 1
+manifold = true
+genus = 0
+volume_min = 7.999
+volume_max = 8.001
+face_count = 6           # must match a single 2x2x2 box exactly
+edge_count = 12
+vertex_count = 8
+
+# Property test: Union(A, A) == A topologically
+idempotent = true
+
+all_faces_tagged = true
+recompute_deterministic = true

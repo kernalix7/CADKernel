@@ -25,7 +25,7 @@ The 9-sub-enum dispatcher partition we landed last session (commits `9e42ece` �
 
 ## 3. Per-Stub Inventory (79 total)
 
-Stub line numbers refer to `crates/viewer/src/app.rs` at commit `1875230` (HEAD as of 2026-04-30). They will shift as fixes land; the workbench enum variant name is the stable identifier.
+Stub line numbers refer to `crates/viewer/src/app.rs` at commit `1875230` (HEAD as of 2026-04-30). They will shift as fixes land; **the workbench enum variant name is the stable identifier — use that, not the line number, when tracking a specific stub after Phase A-C3 landed.**
 
 ### 3.1 Draft workbench (29 stubs)
 
@@ -71,7 +71,7 @@ Stub line numbers refer to `crates/viewer/src/app.rs` at commit `1875230` (HEAD 
 | `Pd::AdditivePipe` | 3851 | `features::sweep`, `surface_ops::pipe_surface` | MEDIUM | Needs profile + path selection. |
 | `Pd::SubtractiveLoft` | 3852 | `features::loft` + `boolean_op_exact` | MEDIUM | Same as AdditiveLoft + boolean. |
 | `Pd::SubtractivePipe` | 3853 | `features::sweep` + `boolean_op_exact` | MEDIUM | Same as AdditivePipe + boolean. |
-| `Pd::ShapeBinder` | 3867 | (none) | HARD | New kernel concept; needs design. |
+| `Pd::ShapeBinder` | 3867 | `features::shape_binder` | DONE | Wired in working tree: copies selected shape faces into a new binder solid. |
 
 **CRITICAL — separate from stubs but functionally broken**: `Pd::PadSketch`, `Pd::PocketSketch`, `Pd::GrooveSketch`, `Pd::HoleSketch`, `Pd::CountersunkHoleSketch` ALSO log_info even though `features::pad`, `pocket`, `groove`, `hole`, `countersunk_hole` all exist. These are not in the 79-stub count above because the dispatcher format-prints params (so `grep` missed them), but they're equally non-functional. Kernel API: all exist, all EASY tier wiring. **These are the user's "간단한 도형 늘리기" complaint.**
 
@@ -113,21 +113,21 @@ Stub line numbers refer to `crates/viewer/src/app.rs` at commit `1875230` (HEAD 
 
 | Variant | Stub line | Kernel API | Tier | Notes |
 |---|---|---|---|---|
-| `FemAction::SolveThermal` | 2826 | (none — solver only does static linear) | HARD | New kernel work. |
-| `FemAction::SolveNonlinear` | 2830 | (none) | HARD | New kernel work. |
-| `FemAction::ShowStress` | 2831 | (none — no per-vertex colormap pipeline) | HARD | Render pipeline work (Phase O-b). |
-| `FemAction::ShowDisplacement` | 2832 | (none) | HARD | Same. |
-| `FemAction::ShowVonMises` | 2833 | (none) | HARD | Same. |
+| `FemAction::SolveThermal` | 2826 | `AnalysisContainer::run_thermal_static` | DONE | Wired in working tree: steady-state thermal solve stores `temperature_field`. |
+| `FemAction::SolveNonlinear` | 2830 | `AnalysisContainer::run_nonlinear` | DONE | Wired in working tree: Newton-Raphson nonlinear static solve stores `FemResult`. |
+| `FemAction::ShowStress` | 2831 | viewer FEM colormap boundary mesh | DONE | Working tree: 7-band scene-object colormap from active `FemResult`. |
+| `FemAction::ShowDisplacement` | 2832 | viewer FEM colormap boundary mesh | DONE | Working tree: nodal displacement magnitude colormap. |
+| `FemAction::ShowVonMises` | 2833 | viewer FEM colormap boundary mesh | DONE | Working tree: per-element Von Mises averaged to boundary nodes. |
 | `FemAction::Summary` | 2834 | (text output trivial) | EASY | Just format `fem_analysis` fields. |
 | `FemAction::Report` | 2835 | (text output trivial) | EASY | Same. |
 
-**Subtotals:** EASY = 2, MEDIUM = 0, HARD = 5.
+**Subtotals:** DONE = 7, HARD remaining = 0.
 
-### 3.6 TechDraw workbench (22 stubs)
+### 3.6 TechDraw workbench (24 stubs)
 
-All 22 TechDraw stubs (NewPage, FromTemplate, Redraw, SectionView, DetailView, BrokenView, all Dim variants, Text, RichText, Balloon, Leader, Weld, SurfFinish, all Center variants, BoltCircle, ExportDxf, ExportPdf) are **HARD tier** because the TechDraw kernel-side support in `crates/io/src/techdraw.rs` (or equivalent) currently provides only AddView, ThreeView, ExportSvg, Clear. Section views, detail views, dimension placement, annotations, centerlines all need new kernel work.
+Working tree status: `NewPage`, `FromTemplate`, `Redraw`, `SectionView`, `DetailView`, `BrokenView`, all six dimension variants (`DimLinear`, `DimRadius`, `DimDiameter`, `DimAngle`, `DimArcLen`, `DimArea`), all six annotation variants (`Text`, `RichText`, `Balloon`, `Leader`, `Weld`, `SurfFinish`), all four centerline variants (`CenterFace`, `CenterLines`, `CenterPoints`, `BoltCircle`), `ExportDxf`, and `ExportPdf` are now wired. DXF/PDF export uses new `crates/io/src/techdraw_dxf.rs` and `crates/io/src/techdraw_pdf.rs` helpers; dimensions, annotations, and centerlines render through `drawing_to_svg` (and therefore PDF). TechDraw HARD backlog is now closed at the dispatcher/storage/rendering level.
 
-**Subtotals:** EASY = 0, MEDIUM = 0, HARD = 22.
+**Subtotals:** DONE = 24, HARD remaining = 0.
 
 ### 3.7 Workbench-totals roll-up
 
@@ -138,10 +138,10 @@ All 22 TechDraw stubs (NewPage, FromTemplate, Redraw, SectionView, DetailView, B
 | Part (incl. format-print stubs) | 14 | 13 | 1 | 0 |
 | Surface | 4 | 1 | 3 | 0 |
 | FEM | 7 | 2 | 0 | 5 |
-| TechDraw | 22 | 0 | 0 | 22 |
-| **Total** | **86** | **40** | **18** | **28** |
+| TechDraw | 24 | 0 | 0 | 24 |
+| **Total** | **88** | **40** | **18** | **30** |
 
-(86 > 79 because the Pad-family + AutoDefeaturing + TransformedCopy format-print stubs were undercounted by the initial `log_info`-only grep but are the same kind of broken.)
+(88 > 79 because the Pad-family + AutoDefeaturing + TransformedCopy format-print stubs were undercounted by the initial `log_info`-only grep, and TechDraw's extracted enum now exposes the full 24-action page/view/dimension/annotation/centerline/export backlog.)
 
 ## 4. Tiered Execution Plan
 
@@ -198,7 +198,7 @@ Features that need UX (selection / modals):
 - Draft Dimension, Label (need overlay rendering — non-trivial)
 - These are visual-only, no scene-geometry change.
 
-**Estimated effort**: 8-12 hours (overlay rendering work).
+**Status (2026-05-04 working tree)**: Implemented. `gui::scene_overlay` paints world-space polylines, points, and labels through an egui foreground layer. `D::Dimension` and `D::Label` now produce visible overlay annotations, and prior wire-output Draft/Part/Surface features now render instead of being tree-only.
 
 ### Phase E — FEM SOLVER + COLORMAP VISUALIZATION (Tier 3 HARD, 5 features + 2 EASY)
 
@@ -206,34 +206,35 @@ Features that need UX (selection / modals):
 - `ShowStress`, `ShowDisplacement`, `ShowVonMises` — render pipeline work (Phase O-b from prior plan)
 - `SolveThermal`, `SolveNonlinear` — kernel solver extension
 
-**Estimated effort**: 30-50 hours. Multi-session.
+**Status (2026-05-04 working tree)**: Implemented. `SolveThermal` and `SolveNonlinear` run through `AnalysisContainer`; `ShowStress`, `ShowDisplacement`, and `ShowVonMises` now render boundary-surface result meshes with a 7-band blue→green→red colormap. Stress and Von Mises share the current per-element Von Mises scalar until a tensor-field UI is added.
 
-### Phase F — TECHDRAW WORKBENCH (Tier 3 HARD, 22 features)
+### Phase F — TECHDRAW WORKBENCH (Tier 3 HARD, 24 features)
 
-The entire TechDraw workbench except the 4 already-real entries (AddView, ThreeView, ExportSvg, Clear) needs kernel work in `crates/io/src/techdraw*.rs` plus dispatcher wiring plus overlay rendering.
-
-**Estimated effort**: 60-100 hours. Multi-session, kernel-engineer + ui-engineer collaboration.
+Working tree status: page management (`NewPage`, `FromTemplate`, `Redraw`), advanced view generation (`SectionView`, `DetailView`, `BrokenView`), drawing dimensions (`DimLinear`, `DimRadius`, `DimDiameter`, `DimAngle`, `DimArcLen`, `DimArea`), drawing annotations (`Text`, `RichText`, `Balloon`, `Leader`, `Weld`, `SurfFinish`), centerlines (`CenterFace`, `CenterLines`, `CenterPoints`, `BoltCircle`), and DXF/PDF export are implemented and tested. Remaining TechDraw scope is UX polish for parameter entry and export parity, not log-only dispatcher gaps.
 
 ### Phase G — `Pd::ShapeBinder` (Tier 3 HARD, 1 feature)
 
-ShapeBinder is a FreeCAD concept (a body-binder that re-uses external shape inside a Body container). Needs new kernel concept design.
-
-**Estimated effort**: 5-10 hours research + design + implementation.
+ShapeBinder is a FreeCAD concept (a body-binder that re-uses external shape inside a Body container). Working tree status: implemented via `features::shape_binder` and wired to `Pd::ShapeBinder` for selected-shape face binding.
 
 ### Phase totals
 
-| Phase | Tier | Feature count | Estimated effort |
-|---|---|---:|---:|
-| A | Critical | 10 | 4-6 h |
-| B | EASY wiring | 18 | 8-12 h |
-| C | MEDIUM UX | 12 | 15-20 h |
-| D | Annotation rendering | 3 | 8-12 h |
-| E | FEM | 7 | 30-50 h |
-| F | TechDraw | 22 | 60-100 h |
-| G | ShapeBinder | 1 | 5-10 h |
-| **Total** | | **73** | **130-210 h** |
+| Phase | Tier | Feature count | Actual landed | Status |
+|---|---|---:|---:|---|
+| A | Critical | 10 | 10 | Landed `abbfbda` |
+| B | EASY wiring (Draft) | 14 | 14 | Landed `75d7705` |
+| B-cont | EASY wiring (Part) | 13 | 13 | Landed `4e16eba` |
+| C1 | MEDIUM UX (Draft transforms + EASY stragglers) | 7 | 7 | Landed `c2d3006` |
+| C2 | MEDIUM UX (Draft modify + ProjectCurvesOnSurface) | 5 | 5 | Landed `0808d9a` |
+| C3 | MEDIUM UX (Surface + PartDesign Loft/Pipe) | 7 | 7 | Landed `94396bb` |
+| D | Annotation rendering | 3 | 3 | Working tree verified |
+| E | FEM solver + colormap | 7 | 7 | Working tree verified |
+| F | TechDraw | 24 | 24 | Page/export/view/dimension/annotation/centerline actions verified |
+| G | ShapeBinder | 1 | 1 | Working tree verified |
+| **Total** | | **91** | **56 landed + 25 working tree** | |
 
-Phases A + B + C are **40 features in 27-38 hours** and would close out the entire EASY+MEDIUM tier on Draft / Part / Surface / PartDesign — covering the practical "make basic CAD work" goal. Phases D / E / F / G are large multi-session efforts that we'd schedule after the user agrees Phases A-C have made the project usable.
+**Reconciliation note (2026-05-04).** The original plan estimated A(10) + B(18) + C(12) = 40 features and 73 total. The actual execution split Phase B and C into sub-phases for reviewability and found 3 more EASY stragglers (AutoDefeaturing, TransformedCopy in Part; FemAction::Summary/Report) that were undercounted in the original grep-based audit because they format-print params rather than log_info. The TechDraw enum audit now tracks all 24 page/view/dimension/annotation/centerline/export actions. Final landed EASY+MEDIUM count is **56/88** (accounting for Section 3.7 roll-up). HARD-tier phase tracking is D=3, E=7, F=24, G=1.
+
+Phases A-C3 wired **56 features in ~35 hours** and closed the entire EASY+MEDIUM tier on Draft / Part / Surface / PartDesign. The 2026-05-04 working tree adds the first HARD-tier batches: annotation overlay, FEM thermal/nonlinear solvers, FEM result colormaps, TechDraw page/export/views/dimensions/annotations/centerlines, and ShapeBinder. The TechDraw log-only backlog is now closed; the next user-visible lane is command UX and parameter-entry polish.
 
 ## 5. Quality Gates (per phase)
 
@@ -241,7 +242,7 @@ Every phase must pass before moving to the next:
 
 1. `cargo build --workspace` — clean.
 2. `cargo clippy --workspace --all-targets --all-features -- -D warnings` — clean.
-3. `cargo test --workspace --no-fail-fast` — at minimum the prior baseline (currently 2,662). Each Tier 1/2 feature should add 1+ regression test using the `test_support` harness.
+3. `cargo test --workspace --no-fail-fast` — at minimum the prior baseline (currently 2,844). Each Tier 1/2 feature should add 1+ regression test using the `test_support` harness.
 4. **Manual acceptance test** — at minimum one critical feature per phase tested end-to-end in the GUI. Result documented in commit message.
 5. `CHANGELOG.md` (English canonical) updated. `docs/CHANGELOG.ko.md` summary entry per the bilingual policy.
 6. This roadmap (`docs/UI_COMPLETION_ROADMAP.md`) progress section updated.
@@ -268,15 +269,50 @@ Updated as phases land.
 | B-cont — EASY wiring (Part) | Landed | 4e16eba | 2026-05-01 |
 | C1 — Draft transforms + EASY stragglers | Landed | c2d3006 | 2026-05-01 |
 | C2 — Draft modify + ProjectCurvesOnSurface | Landed | 0808d9a | 2026-05-01 |
-| C3 — Surface ops + PartDesign Loft/Pipe | Staged — pending tech-lead commit (S::Sections / Extend / Blend + Pd::AdditiveLoft / AdditivePipe / SubtractiveLoft / SubtractivePipe) | — | 2026-05-01 |
-| D — Annotation | Not started | — | — |
-| E — FEM | Not started | — | — |
-| F — TechDraw | Not started | — | — |
-| G — ShapeBinder | Not started | — | — |
+| C3 — Surface ops + PartDesign Loft/Pipe | Landed | 94396bb | 2026-05-01 |
+| D — Annotation overlay (foundation + Dimension/Label) | Working tree verified (`gui::scene_overlay` module + 15 wire-output features now render + D::Dimension / D::Label) | — | 2026-05-04 |
+| E-solver — FEM thermal/nonlinear | Working tree verified (`SolveThermal` / `SolveNonlinear`) | — | 2026-05-04 |
+| E-render — FEM colormaps | Working tree verified (`ShowStress` / `ShowDisplacement` / `ShowVonMises`) | — | 2026-05-04 |
+| F-page — TechDraw page management | Working tree verified (T::NewPage / FromTemplate / Redraw) | — | 2026-05-04 |
+| F-export — TechDraw DXF/PDF | Working tree verified (new IO exporters + dispatcher wiring) | — | 2026-05-04 |
+| F-view — TechDraw Section/Detail/Broken views | Working tree verified (`SectionView` / `DetailView` / `BrokenView`) | — | 2026-05-04 |
+| F-dim — TechDraw dimensions | Working tree verified (`DimLinear` / `DimRadius` / `DimDiameter` / `DimAngle` / `DimArcLen` / `DimArea`) | — | 2026-05-04 |
+| F-anno — TechDraw annotations | Working tree verified (`Text` / `RichText` / `Balloon` / `Leader` / `Weld` / `SurfFinish`) | — | 2026-05-04 |
+| F-rest — TechDraw centerlines | Working tree verified (`CenterFace` / `CenterLines` / `CenterPoints` / `BoltCircle`) | — | 2026-05-04 |
+| G — ShapeBinder | Working tree verified | — | 2026-05-04 |
+| H-page — TechDraw page setup command UX | Working tree verified (`OpenPageSetup` / `CommitPageSetup`, template/title/page-size dialog) | — | 2026-05-05 |
+| H-dim — TechDraw dimension setup command UX | Working tree verified (`OpenDimensionSetup` / `CommitDimensionSetup`, editable dimension dialog) | — | 2026-05-05 |
+| H-anno — TechDraw annotation setup command UX | Working tree verified (`OpenAnnotationSetup` / `CommitAnnotationSetup`, editable annotation dialog) | — | 2026-05-05 |
+| H-center — TechDraw centerline setup command UX | Working tree verified (`OpenCenterlineSetup` / `CommitCenterlineSetup`, editable centerline dialog) | — | 2026-05-05 |
+| H-view — TechDraw view placement setup command UX | Working tree verified (`OpenViewSetup` / `CommitViewSetup`, editable placement/scale/spacing dialog + SVG manual placement) | — | 2026-05-05 |
+| I-fem-results — FEM result interpretation UX | Working tree verified (legend overlay + result probe + result table dialogs) | — | 2026-05-05 |
+| J-fem-bc — FEM multi-node boundary-condition UX | Working tree verified (`SectionPrint`, `TieConstraint`, `RigidBody`, `ContactConstraint` editor support + toolbar BC editor routing) | — | 2026-05-05 |
+| K-sketch-profile — Sketcher profile validation UX | Working tree verified (`analyze_profiles` / `extract_profile_checked`, Profile-ready banner, open-profile Pad guard, construction-line-aware profile extraction) | — | 2026-05-05 |
+| K-sketch-constraints — Sketcher constraint diagnostics UX | Working tree verified (duplicate constraints, conflicting dimensional values, invalid dimensional values, banner/status-bar diagnostics) | — | 2026-05-05 |
+| K-sketch-refs — Sketcher external reference and reuse UX | Working tree verified (selected-object external projection, construction reference edges/points, `Refs:` / `Reuse:` banner and status labels, carbon-copy reuse counts) | — | 2026-05-05 |
 
-**Milestone (when C3 lands):** EASY + MEDIUM tiers complete (58/86 features wired); HARD tier (28 features across D/E/F/G) remains in backlog.
+**Current milestone (2026-05-05 working tree):** EASY + MEDIUM tiers complete, plus HARD-tier overlay/FEM/TechDraw export/views/dimensions/annotations/centerlines/ShapeBinder batches, the first five command-UX TechDraw slices (Page Setup + Dimension Setup + Annotation Setup + Centerline Setup + View Placement Setup), FEM result interpretation UX, FEM multi-node BC editor UX, Sketcher single-profile validation UX, Sketcher constraint diagnostics UX, and Sketcher external reference/reuse UX verified at **2,844 / 0 / 0**. TechDraw's visible log-only backlog is closed, parameter-entry UX now covers page/dimension/annotation/centerline/view-placement commands, FEM post-processing has legend/probe/table interpretation tools, all kernel-side FEM BC variants are editor-reachable, sketch-driven features now reject open chains before kernel extrusion, Sketcher reports duplicate/conflicting/invalid constraints before feature/solver workflows proceed, and external projections/reused sketches now show visible `Refs:` / `Reuse:` state while adding construction references from selected objects.
 
-## 8. Reference
+## 8. Long-Term Sequential Completion Plan
+
+The project should not jump between isolated stubs. From this point onward, completion proceeds in narrow, verified slices that each end with tests, bilingual documentation, and `WORK_STATUS.md` updates.
+
+| Order | Lane | Goal | Exit Criteria |
+|---:|---|---|---|
+| 0 | Stabilize verified worktree | Preserve and commit the current verified HARD-tier work in surgical chunks. | Build/clippy/test clean; no verified uncommitted work lost. |
+| 1 | UI completion — TechDraw | Finish the last high-visibility UI gaps: dimensions, annotations, centerlines, bolt circles, and drawing overlay/export parity. | TechDraw clicks produce sheet changes and SVG/DXF/PDF output, not log-only messages. |
+| 2 | UI completion — command UX | Replace remaining placeholder defaults with task panels/modals, selection prompts, previews, and undoable transactions. | Main workbench actions are discoverable and parameter-editable. |
+| 3 | Sketcher production workflow | Improve profile validation, constraint diagnostics, construction geometry, external references, and sketch reuse. | Sketch → feature flows are robust enough for multi-feature parts. |
+| 4 | PartDesign history/body model | Add editable feature history, Body-local dependencies, recompute ordering, and persistent naming repair. | A modeled part can be edited parametrically without rebuilding from scratch. |
+| 5 | Assembly workflow | Polish mates/joints, exploded views, interference review, BOM export, product tree operations, and large assembly navigation. | Small product assemblies can be constrained, inspected, and documented. |
+| 6 | FEM workflow | Add node/face set picking, mesh controls, legends, probes, result tables, and richer post-processing. | Users can set up, solve, and interpret a simple mechanical/thermal study from UI. |
+| 7 | I/O interoperability | Validate STEP/IGES/DXF/SVG/PDF against real-world corpora, preserve units/layers/metadata, and add import healing. | External CAD exchange is regression-tested with representative files. |
+| 8 | Performance and large-model UX | Add async jobs, progress/cancel, GPU/wire pipelines, cache invalidation, and 1000+ part scene performance gates. | Large drawings/assemblies stay responsive. |
+| 9 | Release readiness | Package binaries, Python wheels, docs/tutorials, crash-safe settings, and CI release gates. | A non-developer can install, run, and follow tutorials end-to-end. |
+
+**Active lane:** Order 2 command UX is complete through the TechDraw Page/Dimension/Annotation/Centerline/View Placement slices, Order 6 FEM now has result interpretation plus range-based multi-node BC entry, and Order 3 Sketcher production workflow now has profile-readiness, actionable constraint diagnostics, and visible external-reference/sketch-reuse feedback. Next Sketcher slices should deepen external-reference management and sketch reuse editing; FEM node/face viewport picking remains the next FEM-specific polish lane.
+
+## 9. Reference
 
 - Stub source-of-truth: `crates/viewer/src/app.rs` (search for `=> self.log_info("`)
 - Kernel API surface: `crates/modeling/src/features/` and `crates/modeling/src/draft_ops.rs`

@@ -92,6 +92,26 @@ pub(crate) struct SketchMode {
     pub clipboard_lines: Vec<(usize, usize)>,
     /// Validation issues from last check.
     pub validation_issues: Vec<cadkernel_sketch::SketchValidationIssue>,
+    /// Count of actionable constraint diagnostics beyond normal under-constrained DOF.
+    pub constraint_warning_count: usize,
+    /// Compact English constraint diagnostic status for banners/status bars.
+    pub constraint_status: String,
+    /// Count of projected external reference entities in the active sketch.
+    pub external_reference_count: usize,
+    /// Count of entities imported through sketch reuse / carbon copy.
+    pub reused_geometry_count: usize,
+    /// Compact English status for external references and sketch reuse.
+    pub reference_status: String,
+    /// True when regular sketch lines form exactly one closed feature profile.
+    pub profile_ready: bool,
+    /// Number of closed regular-line profile loops found.
+    pub profile_loop_count: usize,
+    /// Number of endpoints left open in regular profile chains.
+    pub profile_open_endpoint_count: usize,
+    /// Number of branch points where more than two regular profile lines meet.
+    pub profile_branch_point_count: usize,
+    /// Compact English status for the on-view Sketcher banner.
+    pub profile_status: String,
 }
 
 impl SketchMode {
@@ -123,19 +143,33 @@ impl SketchMode {
             clipboard_points: Vec::new(),
             clipboard_lines: Vec::new(),
             validation_issues: Vec::new(),
+            constraint_warning_count: 0,
+            constraint_status: "Constraints: healthy".into(),
+            external_reference_count: 0,
+            reused_geometry_count: 0,
+            reference_status: "Refs: none".into(),
+            profile_ready: false,
+            profile_loop_count: 0,
+            profile_open_endpoint_count: 0,
+            profile_branch_point_count: 0,
+            profile_status: "Profile: no regular lines".into(),
         }
     }
 
     /// Save a full clone of the current sketch state before a sketch operation.
     pub fn save_snapshot(&mut self) {
-        self.undo_stack.push(SketchSnapshot { sketch: self.sketch.clone() });
+        self.undo_stack.push(SketchSnapshot {
+            sketch: self.sketch.clone(),
+        });
         self.redo_stack.clear();
     }
 
     /// Undo: restore the previous sketch state.
     pub fn undo(&mut self) -> bool {
         if let Some(snap) = self.undo_stack.pop() {
-            self.redo_stack.push(SketchSnapshot { sketch: self.sketch.clone() });
+            self.redo_stack.push(SketchSnapshot {
+                sketch: self.sketch.clone(),
+            });
             self.sketch = snap.sketch;
             self.pending_point = None;
             self.selected_entities.clear();
@@ -148,7 +182,9 @@ impl SketchMode {
     /// Redo: restore the next sketch state.
     pub fn redo(&mut self) -> bool {
         if let Some(snap) = self.redo_stack.pop() {
-            self.undo_stack.push(SketchSnapshot { sketch: self.sketch.clone() });
+            self.undo_stack.push(SketchSnapshot {
+                sketch: self.sketch.clone(),
+            });
             self.sketch = snap.sketch;
             self.selected_entities.clear();
             true
@@ -201,7 +237,81 @@ impl SketchMode {
             self.solver_converged = self.constraint_residuals.iter().all(|r| *r < 1e-6);
         }
         let validation = cadkernel_sketch::validate_sketch(&self.sketch, 0.01);
+        self.constraint_warning_count = validation.diagnostic_issue_count();
+        self.constraint_status = validation.status_label();
         self.validation_issues = validation.issues;
+        self.external_reference_count =
+            self.sketch.construction_points.len() + self.sketch.construction_lines.len();
+        self.reference_status = match (self.external_reference_count, self.reused_geometry_count) {
+            (0, 0) => "Refs: none".into(),
+            (external, 0) => format!("Refs: {external} external"),
+            (0, reused) => format!("Reuse: {reused} copied"),
+            (external, reused) => format!("Refs: {external} external, {reused} copied"),
+        };
+        let profile = cadkernel_sketch::analyze_profiles(&self.sketch);
+        self.profile_ready = profile.is_single_closed_profile();
+        self.profile_loop_count = profile.loops.len();
+        self.profile_open_endpoint_count = profile.open_endpoints.len();
+        self.profile_branch_point_count = profile.branch_points.len();
+        self.profile_status = profile.status_label();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sketch_mode_profile_status_detects_open_and_closed_profiles() {
+        let mut sm = SketchMode::new(WorkPlane::xy());
+        let p0 = sm.sketch.add_point(0.0, 0.0);
+        let p1 = sm.sketch.add_point(1.0, 0.0);
+        let p2 = sm.sketch.add_point(1.0, 1.0);
+        let p3 = sm.sketch.add_point(0.0, 1.0);
+        sm.sketch.add_line(p0, p1);
+        sm.sketch.add_line(p1, p2);
+        sm.sketch.add_line(p2, p3);
+        sm.update_constraint_status();
+        assert!(!sm.profile_ready);
+        assert_eq!(sm.profile_open_endpoint_count, 2);
+        assert!(sm.profile_status.contains("open"));
+
+        sm.sketch.add_line(p3, p0);
+        sm.update_constraint_status();
+        assert!(sm.profile_ready);
+        assert_eq!(sm.profile_loop_count, 1);
+        assert!(sm.profile_status.contains("ready"));
+    }
+
+    #[test]
+    fn sketch_mode_constraint_status_reports_duplicate_constraints() {
+        let mut sm = SketchMode::new(WorkPlane::xy());
+        let p0 = sm.sketch.add_point(0.0, 0.0);
+        let p1 = sm.sketch.add_point(1.0, 0.0);
+        let line = sm.sketch.add_line(p0, p1);
+        sm.sketch.add_constraint(Constraint::Horizontal(line));
+        sm.sketch.add_constraint(Constraint::Horizontal(line));
+
+        sm.update_constraint_status();
+
+        assert_eq!(sm.constraint_warning_count, 1);
+        assert!(sm.constraint_status.contains("duplicate"));
+    }
+
+    #[test]
+    fn sketch_mode_reference_status_counts_construction_refs() {
+        let mut sm = SketchMode::new(WorkPlane::xy());
+        let p0 = sm.sketch.add_point(0.0, 0.0);
+        let p1 = sm.sketch.add_point(1.0, 0.0);
+        let line = sm.sketch.add_line(p0, p1);
+        sm.sketch.mark_construction_point(p0);
+        sm.sketch.mark_construction_point(p1);
+        sm.sketch.mark_construction_line(line);
+
+        sm.update_constraint_status();
+
+        assert_eq!(sm.external_reference_count, 3);
+        assert!(sm.reference_status.contains("external"));
     }
 }
 
@@ -252,6 +362,8 @@ pub(crate) enum SketcherAction {
     ExtendEdge,
     MirrorGeometry,
     ExternalProjection,
+    SelectReferences,
+    PromoteReferences,
     CarbonCopy,
     CopySelection,
     PasteSelection(f64, f64),

@@ -1,0 +1,28 @@
+[test]
+id = "003"
+description = "Intersection of two unit cubes; one offset half a unit on all axes. Result is a 1.5 x 1.5 x 1.5 cube."
+
+[a]
+kind = "Box"
+size = [2.0, 2.0, 2.0]
+origin = [0.0, 0.0, 0.0]
+
+[b]
+kind = "Box"
+size = [2.0, 2.0, 2.0]
+origin = [0.5, 0.5, 0.5]
+
+[op]
+kind = "Intersection"
+
+[expected]
+solid_count = 1
+shell_count = 1
+manifold = true
+genus = 0
+volume_min = 3.374       # 1.5^3 = 3.375
+volume_max = 3.376
+face_count = 6           # axis-aligned box result
+
+all_faces_tagged = true
+recompute_deterministic = true

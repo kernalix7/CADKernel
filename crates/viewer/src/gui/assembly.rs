@@ -144,7 +144,11 @@ impl GuiState {
     /// the current assembly has fewer components than the joint variant
     /// requires (1 for Grounded, 2 for every other type).
     pub fn open_joint_editor(&mut self, jtype: AssemblyJointType) -> bool {
-        let n = self.assembly.as_ref().map(|a| a.num_components()).unwrap_or(0);
+        let n = self
+            .assembly
+            .as_ref()
+            .map(|a| a.num_components())
+            .unwrap_or(0);
         if n < jtype.min_components() {
             return false;
         }
@@ -183,42 +187,74 @@ impl GuiState {
         };
         let joint = match state.joint_type {
             AssemblyJointType::Grounded => JointType::Grounded,
-            AssemblyJointType::Fixed => JointType::FixedJoint { component_a: a, component_b: b },
+            AssemblyJointType::Fixed => JointType::FixedJoint {
+                component_a: a,
+                component_b: b,
+            },
             AssemblyJointType::Revolute => JointType::Revolute {
-                component_a: a, component_b: b, axis, origin,
+                component_a: a,
+                component_b: b,
+                axis,
+                origin,
             },
             AssemblyJointType::Cylindrical => JointType::Cylindrical {
-                component_a: a, component_b: b, axis, origin,
+                component_a: a,
+                component_b: b,
+                axis,
+                origin,
             },
             AssemblyJointType::Slider => JointType::Slider {
-                component_a: a, component_b: b, axis,
+                component_a: a,
+                component_b: b,
+                axis,
             },
             AssemblyJointType::Ball => JointType::BallJoint {
-                component_a: a, component_b: b, center: origin,
+                component_a: a,
+                component_b: b,
+                center: origin,
             },
             AssemblyJointType::Distance => JointType::AngleJoint {
-                component_a: a, component_b: b, angle: state.angle,
+                component_a: a,
+                component_b: b,
+                angle: state.angle,
             },
             AssemblyJointType::Angle => JointType::AngleJoint {
-                component_a: a, component_b: b, angle: state.angle,
+                component_a: a,
+                component_b: b,
+                angle: state.angle,
             },
             AssemblyJointType::Parallel => JointType::ParallelAxes {
-                component_a: a, component_b: b, axis_a: axis, axis_b: axis,
+                component_a: a,
+                component_b: b,
+                axis_a: axis,
+                axis_b: axis,
             },
             AssemblyJointType::Perpendicular => JointType::PerpendicularAxes {
-                component_a: a, component_b: b, axis_a: axis, axis_b: axis,
+                component_a: a,
+                component_b: b,
+                axis_a: axis,
+                axis_b: axis,
             },
             AssemblyJointType::Gear => JointType::GearJoint {
-                component_a: a, component_b: b, ratio: state.ratio,
+                component_a: a,
+                component_b: b,
+                ratio: state.ratio,
             },
             AssemblyJointType::Rack => JointType::RackAndPinion {
-                component_a: a, component_b: b, pitch_radius: state.pitch,
+                component_a: a,
+                component_b: b,
+                pitch_radius: state.pitch,
             },
             AssemblyJointType::Screw => JointType::ScrewJoint {
-                component_a: a, component_b: b, axis, pitch: state.pitch,
+                component_a: a,
+                component_b: b,
+                axis,
+                pitch: state.pitch,
             },
             AssemblyJointType::Belt => JointType::BeltJoint {
-                component_a: a, component_b: b, ratio: state.ratio,
+                component_a: a,
+                component_b: b,
+                ratio: state.ratio,
             },
         };
         asm.add_joint(joint);
@@ -384,7 +420,11 @@ mod assembly_helper_tests {
         let j = JointType::Revolute {
             component_a: 0,
             component_b: 1,
-            axis: cadkernel_math::Vec3 { x: 0.0, y: 0.0, z: 1.0 },
+            axis: cadkernel_math::Vec3 {
+                x: 0.0,
+                y: 0.0,
+                z: 1.0,
+            },
             origin: Point3::ORIGIN,
         };
         assert_eq!(joint_label(&j), "Revolute(0\u{2194}1)");
@@ -399,9 +439,16 @@ mod assembly_helper_tests {
     #[test]
     fn joint_label_fixed_and_gear() {
         use crate::gui::tree::joint_label;
-        let f = JointType::FixedJoint { component_a: 2, component_b: 3 };
+        let f = JointType::FixedJoint {
+            component_a: 2,
+            component_b: 3,
+        };
         assert_eq!(joint_label(&f), "FixedJoint(2\u{2194}3)");
-        let g = JointType::GearJoint { component_a: 4, component_b: 5, ratio: 2.0 };
+        let g = JointType::GearJoint {
+            component_a: 4,
+            component_b: 5,
+            ratio: 2.0,
+        };
         assert_eq!(joint_label(&g), "Gear(4\u{2194}5)");
     }
 
@@ -417,7 +464,10 @@ mod assembly_helper_tests {
             offset: 0.0,
         };
         assert_eq!(constraint_label(&coin), "Coincident(0,1)");
-        let conc = C::Concentric { comp_a: ComponentId(2), comp_b: ComponentId(3) };
+        let conc = C::Concentric {
+            comp_a: ComponentId(2),
+            comp_b: ComponentId(3),
+        };
         assert_eq!(constraint_label(&conc), "Concentric(2,3)");
         let dist = C::Distance {
             comp_a: ComponentId(4),
@@ -441,7 +491,10 @@ mod assembly_helper_tests {
         assert!(gui.active_dialog.is_none());
 
         gui.open_material_picker();
-        assert!(matches!(gui.active_dialog, Some(ActiveDialog::MaterialPicker(_))));
+        assert!(matches!(
+            gui.active_dialog,
+            Some(ActiveDialog::MaterialPicker(_))
+        ));
 
         // Opening a different stateful dialog evicts the previous one.
         gui.open_bc_editor(BcKind::Force);

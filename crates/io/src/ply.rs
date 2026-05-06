@@ -64,9 +64,9 @@ pub fn import_ply(content: &str) -> KernelResult<Mesh> {
 
     // Parse header
     while in_header {
-        let line = lines.next().ok_or_else(|| {
-            KernelError::IoError("unexpected end of PLY header".into())
-        })?;
+        let line = lines
+            .next()
+            .ok_or_else(|| KernelError::IoError("unexpected end of PLY header".into()))?;
         let trimmed = line.trim();
         if trimmed == "end_header" {
             in_header = false;
@@ -416,8 +416,14 @@ mod tests {
         let reimported = import_ply(&ply1).unwrap();
         let ply2 = export_ply(&reimported).unwrap();
 
-        let v1_count = ply1.lines().filter(|l| l.contains("element vertex")).count();
-        let v2_count = ply2.lines().filter(|l| l.contains("element vertex")).count();
+        let v1_count = ply1
+            .lines()
+            .filter(|l| l.contains("element vertex"))
+            .count();
+        let v2_count = ply2
+            .lines()
+            .filter(|l| l.contains("element vertex"))
+            .count();
         assert_eq!(v1_count, v2_count);
     }
 

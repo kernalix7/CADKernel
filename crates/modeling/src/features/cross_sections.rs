@@ -4,8 +4,8 @@ use cadkernel_core::{KernelError, KernelResult};
 use cadkernel_math::{Point3, Vec3};
 use cadkernel_topology::{BRepModel, Handle, SolidData};
 
-use super::section::{SectionResult, section_solid};
 use super::copy_utils::collect_solid_faces;
+use super::section::{SectionResult, section_solid};
 
 /// Creates multiple cross-sections of a solid at regular intervals along a direction.
 ///

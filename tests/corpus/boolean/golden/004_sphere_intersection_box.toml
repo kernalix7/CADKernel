@@ -1,0 +1,30 @@
+[test]
+id = "004"
+description = "Sphere clipped by box. Box fully contains sphere, so result equals sphere."
+
+[a]
+kind = "Sphere"
+center = [0.0, 0.0, 0.0]
+radius = 1.0
+
+[b]
+kind = "Box"
+size = [4.0, 4.0, 4.0]
+origin = [-2.0, -2.0, -2.0]   # box from -2 to +2 on each axis; sphere fully inside
+
+[op]
+kind = "Intersection"
+
+[expected]
+solid_count = 1
+shell_count = 1
+manifold = true
+genus = 0
+# 4/3 * pi * r^3 = 4.18879...
+volume_min = 4.188
+volume_max = 4.190
+face_count = 1            # single sphere face
+sphere_face_kind = "Sphere"   # surface binding must be preserved
+
+all_faces_tagged = true
+recompute_deterministic = true

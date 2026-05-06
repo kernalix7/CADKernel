@@ -31,11 +31,7 @@ pub struct SsiCurve {
 /// Finds starting points for SSI by coarse sampling and proximity test.
 ///
 /// Tessellates both surfaces on a grid and finds close point pairs.
-pub fn ssi_starting_points(
-    s1: &dyn Surface,
-    s2: &dyn Surface,
-    tolerance: f64,
-) -> Vec<SsiSeed> {
+pub fn ssi_starting_points(s1: &dyn Surface, s2: &dyn Surface, tolerance: f64) -> Vec<SsiSeed> {
     let grid = 20;
     let (u10, u11) = s1.domain_u();
     let (v10, v11) = s1.domain_v();
@@ -61,7 +57,10 @@ pub fn ssi_starting_points(
         if dist < tolerance * 10.0 {
             // Refine with Newton
             if let Some(seed) = refine_ssi_point(s1, s2, u1, v1, u2, v2, tolerance) {
-                if !seeds.iter().any(|s: &SsiSeed| s.point.distance_to(seed.point) < tolerance * 5.0) {
+                if !seeds
+                    .iter()
+                    .any(|s: &SsiSeed| s.point.distance_to(seed.point) < tolerance * 5.0)
+                {
                     seeds.push(seed);
                 }
             }
@@ -78,7 +77,10 @@ pub fn ssi_starting_points(
             let dist = p1.distance_to(p2);
             if dist < tolerance * 10.0 {
                 if let Some(seed) = refine_ssi_point(s1, s2, u1, v1, u, v, tolerance) {
-                    if !seeds.iter().any(|s: &SsiSeed| s.point.distance_to(seed.point) < tolerance * 5.0) {
+                    if !seeds
+                        .iter()
+                        .any(|s: &SsiSeed| s.point.distance_to(seed.point) < tolerance * 5.0)
+                    {
                         seeds.push(seed);
                     }
                 }
@@ -90,11 +92,7 @@ pub fn ssi_starting_points(
 }
 
 /// Marches from seed points to produce intersection curves.
-pub fn intersect_surfaces(
-    s1: &dyn Surface,
-    s2: &dyn Surface,
-    tolerance: f64,
-) -> Vec<SsiCurve> {
+pub fn intersect_surfaces(s1: &dyn Surface, s2: &dyn Surface, tolerance: f64) -> Vec<SsiCurve> {
     let seeds = ssi_starting_points(s1, s2, tolerance);
     let mut curves = Vec::new();
     let mut used = vec![false; seeds.len()];
@@ -132,7 +130,11 @@ pub fn intersect_surfaces(
 
         // Mark nearby seeds as used
         for (j, other) in seeds.iter().enumerate() {
-            if !used[j] && points.iter().any(|p| p.distance_to(other.point) < tolerance * 20.0) {
+            if !used[j]
+                && points
+                    .iter()
+                    .any(|p| p.distance_to(other.point) < tolerance * 20.0)
+            {
                 used[j] = true;
             }
         }
@@ -200,8 +202,14 @@ fn march(
         // Refine
         if let Some(refined) = refine_ssi_point(s1, s2, nu1, nv1, nu2, nv2, tolerance) {
             // Check domain bounds
-            if refined.u1 < u10 || refined.u1 > u11 || refined.v1 < v10 || refined.v1 > v11
-                || refined.u2 < u20 || refined.u2 > u21 || refined.v2 < v20 || refined.v2 > v21
+            if refined.u1 < u10
+                || refined.u1 > u11
+                || refined.v1 < v10
+                || refined.v1 > v11
+                || refined.u2 < u20
+                || refined.u2 > u21
+                || refined.v2 < v20
+                || refined.v2 > v21
             {
                 break;
             }
@@ -307,10 +315,7 @@ mod tests {
                 seed.point
             );
             let r = (seed.point.x * seed.point.x + seed.point.y * seed.point.y).sqrt();
-            assert!(
-                (r - 1.0).abs() < 0.1,
-                "seed radius should be ~1: r={r}"
-            );
+            assert!((r - 1.0).abs() < 0.1, "seed radius should be ~1: r={r}");
         }
     }
 

@@ -130,7 +130,8 @@ pub fn shell_solid(
     // Outer faces (same winding as original)
     for &fh in &remaining_faces {
         let verts = model.vertices_of_face(fh)?;
-        let mapped: Vec<Handle<VertexData>> = verts.iter().map(|vh| outer_map[&vh.index()]).collect();
+        let mapped: Vec<Handle<VertexData>> =
+            verts.iter().map(|vh| outer_map[&vh.index()]).collect();
         let f = make_polygon_face(model, &mapped, op, &mut edge_idx, face_idx, false)?;
         new_faces.push(f);
         face_idx += 1;
@@ -139,7 +140,8 @@ pub fn shell_solid(
     // Inner faces (reversed winding for inward-facing normals)
     for &fh in &remaining_faces {
         let verts = model.vertices_of_face(fh)?;
-        let mapped: Vec<Handle<VertexData>> = verts.iter().map(|vh| inner_map[&vh.index()]).collect();
+        let mapped: Vec<Handle<VertexData>> =
+            verts.iter().map(|vh| inner_map[&vh.index()]).collect();
         let f = make_polygon_face(model, &mapped, op, &mut edge_idx, face_idx, true)?;
         new_faces.push(f);
         face_idx += 1;

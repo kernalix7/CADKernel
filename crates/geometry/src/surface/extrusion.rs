@@ -38,11 +38,7 @@ impl Surface for ExtrusionSurface {
         let dv = self.dv(u, v);
         let n = du.cross(dv);
         let len = n.length();
-        if len < 1e-14 {
-            Vec3::Z
-        } else {
-            n / len
-        }
+        if len < 1e-14 { Vec3::Z } else { n / len }
     }
 
     fn domain_u(&self) -> (f64, f64) {
@@ -70,10 +66,7 @@ mod tests {
     #[test]
     fn test_extrusion_of_line_produces_plane() {
         // Extrude a line along X in the Z direction
-        let line = Arc::new(LineSegment::new(
-            Point3::ORIGIN,
-            Point3::new(4.0, 0.0, 0.0),
-        ));
+        let line = Arc::new(LineSegment::new(Point3::ORIGIN, Point3::new(4.0, 0.0, 0.0)));
         let ext = ExtrusionSurface::new(line, Vec3::Z, 3.0);
 
         // At v=0, should be on the original line
@@ -91,10 +84,7 @@ mod tests {
 
     #[test]
     fn test_extrusion_domain() {
-        let line = Arc::new(LineSegment::new(
-            Point3::ORIGIN,
-            Point3::new(1.0, 0.0, 0.0),
-        ));
+        let line = Arc::new(LineSegment::new(Point3::ORIGIN, Point3::new(1.0, 0.0, 0.0)));
         let ext = ExtrusionSurface::new(line, Vec3::Y, 5.0);
         assert_eq!(ext.domain_u(), (0.0, 1.0));
         assert_eq!(ext.domain_v(), (0.0, 1.0));
@@ -102,10 +92,7 @@ mod tests {
 
     #[test]
     fn test_extrusion_normal() {
-        let line = Arc::new(LineSegment::new(
-            Point3::ORIGIN,
-            Point3::new(1.0, 0.0, 0.0),
-        ));
+        let line = Arc::new(LineSegment::new(Point3::ORIGIN, Point3::new(1.0, 0.0, 0.0)));
         let ext = ExtrusionSurface::new(line, Vec3::Z, 1.0);
         // du = X direction, dv = Z direction, normal = X × Z = -Y
         let n = ext.normal_at(0.5, 0.5);

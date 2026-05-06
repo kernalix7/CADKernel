@@ -1,7 +1,7 @@
 # CADKernel Developer Wiki
 
 > **Version**: 0.1.0 (pre-alpha)  
-> **Last updated**: 2026-04-13
+> **Last updated**: 2026-05-05
 > **Audience**: CADKernel kernel developers and contributors
 
 [한국어](DEVELOPER_WIKI.ko.md) | **English**
@@ -33,6 +33,8 @@
 - [21. Convenience API](#21-convenience-api)
 - [22. Example Scripts](#22-example-scripts)
 - [23. Known Limitations (V36 audit)](#23-known-limitations-v36-audit)
+- [24. UI Completion HARD-tier Working Tree](#24-ui-completion-hard-tier-working-tree)
+- [25. Commercial CAD Completion Roadmap](#25-commercial-cad-completion-roadmap)
 
 ---
 
@@ -87,6 +89,8 @@ cadkernel-modeling      + cadkernel-core, cadkernel-math, cadkernel-geometry
 cadkernel-sketch        + cadkernel-math, cadkernel-topology
 cadkernel-io            + cadkernel-math, cadkernel-topology
     ↑
+cadkernel-api           + cadkernel-core, cadkernel-math, cadkernel-topology, cadkernel-modeling
+    ↑                     (Phase 1 of `docs/COMMERCIAL_CAD_ROADMAP.md`)
 cadkernel (root)        full integration
 ```
 
@@ -95,6 +99,22 @@ cadkernel (root)        full integration
 | Crate | Feature | Default | Effect |
 |-------|---------|---------|--------|
 | `cadkernel-topology` | `geometry-binding` | enabled | Includes `EdgeData.curve`, `FaceData.surface` fields |
+
+### `cadkernel-api` — Stable Public Surface (added 2026-05-06)
+
+The single sanctioned entry point for non-GUI consumers (AI agents, scripting,
+integration tests, downstream embedders). Three primary types:
+
+- `Document` — top-level model container. Phase 2 absorbs sketches, drawings,
+  assembly, and FEM into it.
+- `Command` — serializable enum of every state-mutating action; JSON-schema'd
+  via `serde`. Adding a variant is non-breaking for existing replay logs.
+- `Session` — execute/replay engine. Owns one `Document`, applies `Command`s,
+  records them to a log, returns typed `Outcome`s. Provides
+  `Session::replay(commands)`, `log_to_json()`, `replay_from_json()` for
+  deterministic regression tests and AI evaluation harnesses.
+
+See `docs/COMMERCIAL_CAD_ROADMAP.md` (Phase 1 in §2) for the long-term plan.
 
 ---
 
@@ -1254,6 +1274,50 @@ CADKernel uses three tiers of parallelism:
 - Redo: Ctrl+Shift+Z restores from `redo_stack`; Escape clears pending geometry before cancelling sketch
 - Right-click context menu: `draw_sketch_context_menu()` popup with Delete/Horizontal/Vertical/Fixed/Select All/Clear Selection; context-sensitive constraint items
 - DOF indicator: `degrees_of_freedom()` (per-constraint-type weighting) shown in banner and status bar; banner turns green when fully constrained; selection count in banner + status bar
+
+## 24. UI Completion HARD-tier Working Tree
+
+The 2026-05-04 working tree starts the HARD-tier UI completion effort after A-C3 closed the EASY/MEDIUM dispatcher wiring.
+
+| Area | Modules | Status |
+|------|---------|--------|
+| Draft/Part overlay rendering | `crates/viewer/src/gui/scene_overlay.rs`, `crates/viewer/src/app.rs` | World-space polylines, points, and labels are projected through the active camera and painted in an egui foreground layer. Prior wire-output features now render instead of being tree-only. |
+| Draft annotations | `crates/viewer/src/app.rs`, `cadkernel_modeling::make_draft_dimension_full`, `make_label_full` | `D::Dimension` and `D::Label` create visible overlay annotation primitives. |
+| FEM solver dispatch | `crates/modeling/src/fem.rs`, `crates/viewer/src/app.rs` | `FemMaterial::thermal_conductivity`, `AnalysisContainer::temperature_field`, `run_thermal_static()`, `run_nonlinear()`, `solve_thermal()`, and `solve_nonlinear()` are wired to `FemAction::SolveThermal` / `SolveNonlinear`. |
+| FEM result colormaps | `crates/viewer/src/app.rs`, `cadkernel_modeling::FemResult` | `ShowStress`, `ShowDisplacement`, and `ShowVonMises` build tetrahedral boundary-surface meshes, bucket values into 7 blue→green→red bands, and add colored scene objects for viewport display. |
+| FEM result interpretation UX | `crates/viewer/src/gui/fem.rs`, `crates/viewer/src/gui/dialogs.rs`, `crates/viewer/src/gui/menu.rs`, `crates/viewer/src/gui/toolbar.rs`, `crates/viewer/src/app.rs` | Result colormap actions now persist legend metadata and render a legend overlay. `OpenResultProbe` / `CommitResultProbe` and `OpenResultTable` add node/element probing and tabular post-processing dialogs for displacement, stress, and thermal values. |
+| FEM multi-node BC editor UX | `crates/viewer/src/gui/fem.rs`, `crates/viewer/src/gui/dialogs.rs`, `crates/viewer/src/gui/menu.rs`, `crates/viewer/src/gui/toolbar.rs`, `crates/viewer/src/app.rs` | The BC editor now exposes `SectionPrint`, `TieConstraint`, `RigidBody`, and `ContactConstraint` through section-plane inputs and inclusive Set A / Set B node-range inputs. FEM toolbar constraint buttons open the stateful BC editor instead of the legacy log-only constraint path. |
+| Sketcher profile validation UX | `crates/sketch/src/profile.rs`, `crates/viewer/src/gui/sketch_state.rs`, `crates/viewer/src/gui/sketch_ui.rs`, `crates/viewer/src/app.rs` | `analyze_profiles` / `extract_profile_checked` ignore construction lines and reject open, branched, invalid, or multi-loop profiles. The Sketcher banner reports profile readiness, and sketch-driven PartDesign commands now require a single closed regular profile before extrusion. |
+| Sketcher constraint diagnostics UX | `crates/sketch/src/validate.rs`, `crates/viewer/src/gui/sketch_state.rs`, `crates/viewer/src/gui/sketch_ui.rs`, `crates/viewer/src/gui/status_bar.rs` | `validate_sketch` now reports duplicate constraints, conflicting dimensional values, and invalid dimensional values. The Sketcher banner/status bar show compact actionable diagnostics before users hit opaque solver failures. |
+| Sketcher external reference/reuse UX | `crates/viewer/src/app.rs`, `crates/viewer/src/gui/sketch_state.rs`, `crates/viewer/src/gui/sketch_ui.rs`, `crates/viewer/src/gui/status_bar.rs`, `cadkernel_sketch::bspline_tools` | `ExternalProjection` now uses the selected scene object when available and adds projected vertices/edges as construction references. `CarbonCopy` reports copied reusable entities, while the Sketcher banner/status bar show `Refs:` / `Reuse:` counts for visible reference and reuse feedback. |
+| TechDraw page/export/views/dimensions/annotations/centerlines | `crates/io/src/techdraw.rs`, `crates/io/src/techdraw_dxf.rs`, `crates/io/src/techdraw_pdf.rs`, `crates/viewer/src/app.rs` | `T::NewPage`, `T::FromTemplate`, `T::Redraw`, `T::SectionView`, `T::DetailView`, `T::BrokenView`, `T::DimLinear`, `T::DimRadius`, `T::DimDiameter`, `T::DimAngle`, `T::DimArcLen`, `T::DimArea`, `T::Text`, `T::RichText`, `T::Balloon`, `T::Leader`, `T::Weld`, `T::SurfFinish`, `T::CenterFace`, `T::CenterLines`, `T::CenterPoints`, `T::BoltCircle`, `T::ExportDxf`, and `T::ExportPdf` now perform real work. |
+| TechDraw page setup command UX | `crates/viewer/src/gui/techdraw.rs`, `crates/viewer/src/gui/dialogs.rs`, `crates/viewer/src/app.rs` | `T::OpenPageSetup` / `T::CommitPageSetup` add a stateful template/title/page-size dialog. The interactive `From Template...` menu and toolbar template button now open this dialog; the legacy template-cycle dispatcher remains available for headless coverage. |
+| TechDraw dimension setup command UX | `crates/viewer/src/gui/techdraw.rs`, `crates/viewer/src/gui/dialogs.rs`, `crates/viewer/src/gui/menu.rs`, `crates/viewer/src/gui/toolbar.rs`, `crates/viewer/src/app.rs` | `T::OpenDimensionSetup` / `T::CommitDimensionSetup` add a stateful dialog for linear/radius/diameter/angle/arc-length/area parameters. Interactive dimension menu/toolbar entries open the dialog; direct `Dim*` dispatchers remain available for fast headless coverage. |
+| TechDraw annotation setup command UX | `crates/viewer/src/gui/techdraw.rs`, `crates/viewer/src/gui/dialogs.rs`, `crates/viewer/src/gui/menu.rs`, `crates/viewer/src/gui/toolbar.rs`, `crates/viewer/src/app.rs` | `T::OpenAnnotationSetup` / `T::CommitAnnotationSetup` add a stateful dialog for text/rich text/balloon/leader/weld/surface-finish parameters. Interactive annotation menu/toolbar entries open the dialog; direct annotation dispatchers remain available for fast headless coverage. |
+| TechDraw centerline setup command UX | `crates/viewer/src/gui/techdraw.rs`, `crates/viewer/src/gui/dialogs.rs`, `crates/viewer/src/gui/menu.rs`, `crates/viewer/src/gui/toolbar.rs`, `crates/viewer/src/app.rs` | `T::OpenCenterlineSetup` / `T::CommitCenterlineSetup` add a stateful dialog for face centerlines, centerlines between lines, center marks, and bolt-circle centerlines. Interactive centerline menu/toolbar entries open the dialog; direct centerline dispatchers remain available for fast headless coverage. |
+| TechDraw view placement setup command UX | `crates/io/src/techdraw.rs`, `crates/viewer/src/gui/techdraw.rs`, `crates/viewer/src/gui/dialogs.rs`, `crates/viewer/src/gui/menu.rs`, `crates/viewer/src/gui/toolbar.rs`, `crates/viewer/src/app.rs` | `T::OpenViewSetup` / `T::CommitViewSetup` add a stateful dialog for projection/3-view/section/detail/broken view placement. `DrawingView` stores optional sheet X/Y/scale metadata; SVG rendering honors those overrides while preserving automatic layout when none are set. |
+| ShapeBinder | `cadkernel_modeling::features::shape_binder`, `crates/viewer/src/app.rs` | `Pd::ShapeBinder` copies selected shape faces into a new binder solid and adds it to the scene. |
+
+F-view adds three TechDraw dispatcher paths: `SectionView` cuts the selected solid through a midpoint plane, `DetailView` magnifies the first sheet view, and `BrokenView` compresses the first sheet view across a default break gap. F-dim adds all six drawing dimensions: linear/radius dimensions use the existing sheet dimension list; diameter/angle/arc length/area use extended sheet-level storage rendered by `drawing_to_svg` and the PDF path. F-anno adds six drawing annotations: text, rich text, balloon, leader, weld, and surface finish symbols use sheet-level annotation storage rendered by `drawing_to_svg` and the PDF path. F-rest adds centerline sheet storage for center marks, centerlines, and bolt-circle centerline sets, then renders `CenterFace`, `CenterLines`, `CenterPoints`, and `BoltCircle` through `drawing_to_svg` and the PDF path. H-page starts command UX by replacing the interactive TechDraw template click path with a Page Setup dialog for template, title, and custom sheet dimensions. H-dim continues command UX by replacing the interactive TechDraw dimension menu/toolbar path with a Dimension Setup dialog while preserving direct `Dim*` dispatchers for tests. H-anno adds the same task-dialog pattern for text, rich text, balloon, leader, weld, and surface-finish annotation parameters. H-center completes the same pattern for face centerlines, centerlines between lines, center marks, and bolt-circle centerlines. H-view applies the pattern to front/top/right/isometric projections, 3-view layout, section, detail, and broken views with explicit sheet placement metadata. I-fem-results adds FEM legend/probe/table interpretation UX for computed stress, displacement, Von Mises, and thermal values. J-fem-bc adds the remaining FEM BC variants with section-plane and node-range dialog inputs. K-sketch-profile starts the Sketcher production lane with construction-aware single-loop profile validation for Pad/Pocket/Groove/Close sketch flows. K-sketch-constraints adds actionable duplicate/conflicting/invalid constraint diagnostics to the Sketcher banner and status bar. K-sketch-refs adds selected-object external projection, construction reference edges/points, carbon-copy reuse counts, and visible `Refs:` / `Reuse:` status. The current working tree verifies cleanly at **2,844 / 0 / 0**. HARD-tier TechDraw log-only gaps are closed, parameter-entry UX covers page/dimension/annotation/centerline/view-placement commands, FEM post-processing has legend/probe/table interpretation tools, all kernel-side FEM BC variants are reachable from the editor, sketch-driven feature commands reject open chains before extrusion, Sketcher reports common constraint mistakes before solver/feature execution, and external references/reused sketches now have visible status feedback.
+
+## 25. Commercial CAD Completion Roadmap
+
+CADKernel's completion work now follows a sequential roadmap rather than opportunistic stub wiring. Each slice must end with regression tests, bilingual documentation, `WORK_STATUS.md`, and the workspace build/clippy/test gate.
+
+| Order | Lane | Goal |
+|---:|---|---|
+| 0 | Stabilize verified worktree | Preserve the current verified HARD-tier work and commit it in reviewable chunks. |
+| 1 | UI/TechDraw completion | Finish annotations, centerlines, bolt circles, overlay/export parity. |
+| 2 | UI command UX | Replace placeholder defaults with task panels, modals, selection prompts, previews, and undoable commands. |
+| 3 | Sketcher production workflow | Harden profile validation, constraint diagnostics, construction geometry, external references, and sketch reuse. |
+| 4 | PartDesign history/body model | Add editable feature history, Body-local dependencies, recompute ordering, and persistent naming repair. |
+| 5 | Assembly workflow | Polish mates, exploded views, interference review, BOM export, and large assembly navigation. |
+| 6 | FEM workflow | Add node/face sets, mesh controls, legends, probes, result tables, and richer post-processing. |
+| 7 | I/O interoperability | Validate STEP/IGES/DXF/SVG/PDF against real corpora with units, layers, metadata, and healing. |
+| 8 | Performance and large-model UX | Add async jobs, progress/cancel, GPU/wire pipelines, cache invalidation, and 1000+ part gates. |
+| 9 | Release readiness | Package binaries, Python wheels, tutorials, crash-safe settings, and CI release gates. |
+
+**Active lane:** Order 2 command UX is complete through the TechDraw page/dimension/annotation/centerline/view-placement slices, Order 6 FEM now has result interpretation plus range-based multi-node BC entry, and Order 3 Sketcher production workflow now has profile-readiness, actionable constraint diagnostics, and visible external reference / sketch reuse feedback. Next work should deepen Sketcher reference management/reuse editing, or upgrade FEM node/face selection from numeric ranges to viewport picking in a narrow verified slice.
 
 **Future Focus Areas:**
 | Priority | Focus | Key Items |

@@ -73,9 +73,12 @@ pub fn import_3mf(content: &str) -> KernelResult<Mesh> {
                     "3MF vertex count exceeds limit {MAX_3MF_VERTICES}"
                 )));
             }
-            let x = extract_attr(trimmed, "x").ok_or_else(|| KernelError::IoError("3MF: missing vertex x".into()))?;
-            let y = extract_attr(trimmed, "y").ok_or_else(|| KernelError::IoError("3MF: missing vertex y".into()))?;
-            let z = extract_attr(trimmed, "z").ok_or_else(|| KernelError::IoError("3MF: missing vertex z".into()))?;
+            let x = extract_attr(trimmed, "x")
+                .ok_or_else(|| KernelError::IoError("3MF: missing vertex x".into()))?;
+            let y = extract_attr(trimmed, "y")
+                .ok_or_else(|| KernelError::IoError("3MF: missing vertex y".into()))?;
+            let z = extract_attr(trimmed, "z")
+                .ok_or_else(|| KernelError::IoError("3MF: missing vertex z".into()))?;
             vertices.push(Point3::new(x, y, z));
         } else if trimmed.starts_with("<triangle ") {
             if indices.len() >= MAX_3MF_TRIANGLES {
@@ -83,9 +86,12 @@ pub fn import_3mf(content: &str) -> KernelResult<Mesh> {
                     "3MF triangle count exceeds limit {MAX_3MF_TRIANGLES}"
                 )));
             }
-            let v1 = extract_attr_u32(trimmed, "v1").ok_or_else(|| KernelError::IoError("3MF: missing triangle v1".into()))?;
-            let v2 = extract_attr_u32(trimmed, "v2").ok_or_else(|| KernelError::IoError("3MF: missing triangle v2".into()))?;
-            let v3 = extract_attr_u32(trimmed, "v3").ok_or_else(|| KernelError::IoError("3MF: missing triangle v3".into()))?;
+            let v1 = extract_attr_u32(trimmed, "v1")
+                .ok_or_else(|| KernelError::IoError("3MF: missing triangle v1".into()))?;
+            let v2 = extract_attr_u32(trimmed, "v2")
+                .ok_or_else(|| KernelError::IoError("3MF: missing triangle v2".into()))?;
+            let v3 = extract_attr_u32(trimmed, "v3")
+                .ok_or_else(|| KernelError::IoError("3MF: missing triangle v3".into()))?;
             for idx in [v1, v2, v3] {
                 if idx as usize >= vertices.len() {
                     return Err(KernelError::IoError(format!(
@@ -98,16 +104,32 @@ pub fn import_3mf(content: &str) -> KernelResult<Mesh> {
         }
     }
 
-    let normals: Vec<Vec3> = indices.iter().map(|tri| {
-        let a = vertices.get(tri[0] as usize).copied().unwrap_or(Point3::ORIGIN);
-        let b = vertices.get(tri[1] as usize).copied().unwrap_or(Point3::ORIGIN);
-        let c = vertices.get(tri[2] as usize).copied().unwrap_or(Point3::ORIGIN);
-        let ab = b - a;
-        let ac = c - a;
-        ab.cross(ac).normalized().unwrap_or(Vec3::Z)
-    }).collect();
+    let normals: Vec<Vec3> = indices
+        .iter()
+        .map(|tri| {
+            let a = vertices
+                .get(tri[0] as usize)
+                .copied()
+                .unwrap_or(Point3::ORIGIN);
+            let b = vertices
+                .get(tri[1] as usize)
+                .copied()
+                .unwrap_or(Point3::ORIGIN);
+            let c = vertices
+                .get(tri[2] as usize)
+                .copied()
+                .unwrap_or(Point3::ORIGIN);
+            let ab = b - a;
+            let ac = c - a;
+            ab.cross(ac).normalized().unwrap_or(Vec3::Z)
+        })
+        .collect();
 
-    Ok(Mesh { vertices, normals, indices })
+    Ok(Mesh {
+        vertices,
+        normals,
+        indices,
+    })
 }
 
 fn extract_attr(line: &str, name: &str) -> Option<f64> {
@@ -126,8 +148,7 @@ fn extract_attr_u32(line: &str, name: &str) -> Option<u32> {
 
 /// Writes a 3MF XML string to a file at the given path.
 pub fn write_3mf(path: &str, content: &str) -> KernelResult<()> {
-    std::fs::write(path, content)
-        .map_err(|e| cadkernel_core::KernelError::IoError(e.to_string()))
+    std::fs::write(path, content).map_err(|e| cadkernel_core::KernelError::IoError(e.to_string()))
 }
 
 #[cfg(test)]

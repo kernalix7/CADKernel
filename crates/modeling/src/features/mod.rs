@@ -38,22 +38,23 @@ pub mod thickness;
 pub use additive::{
     additive_box, additive_cone, additive_cylinder, additive_ellipsoid, additive_helix,
     additive_loft, additive_pipe, additive_prism, additive_sphere, additive_torus, additive_wedge,
-    make_sprocket, shaft_design, shape_binder, sub_shape_binder, subtractive_box,
-    subtractive_cone, subtractive_cylinder, subtractive_ellipsoid, subtractive_helix,
-    subtractive_loft, subtractive_pipe, subtractive_prism, subtractive_sphere, subtractive_torus,
-    subtractive_wedge,
+    make_sprocket, shaft_design, shape_binder, sub_shape_binder, subtractive_box, subtractive_cone,
+    subtractive_cylinder, subtractive_ellipsoid, subtractive_helix, subtractive_loft,
+    subtractive_pipe, subtractive_prism, subtractive_sphere, subtractive_torus, subtractive_wedge,
 };
+pub use chamfer::{ChamferResult, chamfer_edge, chamfer_edges};
 pub use compound_ops::{
     BooleanFragmentsResult, SliceToCompoundResult, boolean_fragments, compound_filter,
     explode_compound, slice_to_compound,
 };
-pub use chamfer::{ChamferResult, chamfer_edge, chamfer_edges};
-pub use defeature::{auto_defeaturing, remove_face, simplify_solid};
 pub use cross_sections::cross_sections;
+pub use defeature::{auto_defeaturing, remove_face, simplify_solid};
 pub use draft::{DraftResult, draft_faces};
 pub use extrude::{ExtrudeResult, extrude};
+pub use face_from_wires::{
+    FaceFromWiresResult, PointsFromShapeResult, face_from_wires, points_from_shape,
+};
 pub use fillet::{FilletResult, fillet_edge, fillet_edge_segments, fillet_edges};
-pub use face_from_wires::{FaceFromWiresResult, PointsFromShapeResult, face_from_wires, points_from_shape};
 pub use groove::{GrooveResult, groove};
 pub use hole::{HoleResult, countersunk_hole, hole};
 pub use join::{JoinResult, connect_shapes, cutout_shapes, embed_shapes};
@@ -68,7 +69,9 @@ pub use projection::project_curve_on_solid;
 pub use revolve::{RevolveResult, revolve};
 pub use scale::{ScaleResult, scale_solid};
 pub use section::{SectionEdge, SectionResult, section_solid};
-pub use shape_convert::{RefineResult, ReverseResult, ShapeFromMeshResult, refine_shape, reverse_solid, shape_from_mesh};
+pub use shape_convert::{
+    RefineResult, ReverseResult, ShapeFromMeshResult, refine_shape, reverse_solid, shape_from_mesh,
+};
 pub use shell::{ShellResult, shell_solid};
 pub use split::{SplitResult, split_solid};
 pub use sweep::{SweepResult, sweep};

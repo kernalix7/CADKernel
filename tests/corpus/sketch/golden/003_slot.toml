@@ -1,0 +1,141 @@
+# Sketch golden 003: Slot (oblong)
+#
+# Two parallel lines connected by two semicircular arcs of equal radius.
+# Symmetric about the X axis. Width 30, total length 60.
+# Verifies tangent + equal-radius + symmetric constraint set.
+
+[sketch]
+name = "Slot"
+units = "mm"
+description = "Oblong slot: 30 wide, 60 long, symmetric about X axis."
+
+[[entity]]
+id = 1
+kind = "Point"
+x = -15.0
+y = -15.0
+
+[[entity]]
+id = 2
+kind = "Point"
+x = 15.0
+y = -15.0
+
+[[entity]]
+id = 3
+kind = "Point"
+x = 15.0
+y = 15.0
+
+[[entity]]
+id = 4
+kind = "Point"
+x = -15.0
+y = 15.0
+
+[[entity]]
+id = 5  # left arc centre
+kind = "Point"
+x = -15.0
+y = 0.0
+
+[[entity]]
+id = 6  # right arc centre
+kind = "Point"
+x = 15.0
+y = 0.0
+anchor = true   # pin the slot
+
+[[entity]]
+id = 10
+kind = "Line"
+start = 1
+end = 2
+
+[[entity]]
+id = 11
+kind = "Line"
+start = 4
+end = 3
+
+[[entity]]
+id = 12
+kind = "Arc"
+center = 6
+start = 2
+end = 3
+radius = 15.0
+
+[[entity]]
+id = 13
+kind = "Arc"
+center = 5
+start = 4
+end = 1
+radius = 15.0
+
+[[constraint]]
+id = 100
+kind = "Horizontal"
+between = [1, 2]
+
+[[constraint]]
+id = 101
+kind = "Horizontal"
+between = [4, 3]
+
+[[constraint]]
+id = 102
+kind = "EqualRadius"
+between = [12, 13]
+
+[[constraint]]
+id = 103
+kind = "Tangent"
+between = [10, 12]
+
+[[constraint]]
+id = 104
+kind = "Tangent"
+between = [10, 13]
+
+[[constraint]]
+id = 105
+kind = "Tangent"
+between = [11, 12]
+
+[[constraint]]
+id = 106
+kind = "Tangent"
+between = [11, 13]
+
+[[constraint]]
+id = 107
+kind = "SymmetricAboutAxis"
+axis = "X"
+between = [1, 4]
+
+[[constraint]]
+id = 108
+kind = "SymmetricAboutAxis"
+axis = "X"
+between = [2, 3]
+
+[[constraint]]
+id = 109
+kind = "Distance"
+between = [5, 6]
+value = 30.0
+
+[[constraint]]
+id = 110
+kind = "Radius"
+of = 12
+value = 15.0
+
+[expected]
+status = "WellDetermined"
+dof = 0
+positional_residual_max = 1e-9
+dimensional_residual_max = 1e-6
+solve_iterations_max = 8

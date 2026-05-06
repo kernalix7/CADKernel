@@ -197,11 +197,7 @@ impl Assembly {
     }
 
     /// Adds a component (solid with identity placement) and returns its ID.
-    pub fn add_component(
-        &mut self,
-        name: &str,
-        solid: Handle<SolidData>,
-    ) -> ComponentId {
+    pub fn add_component(&mut self, name: &str, solid: Handle<SolidData>) -> ComponentId {
         let id = ComponentId(self.next_id);
         self.next_id += 1;
         let idx = self.components.len();
@@ -217,23 +213,21 @@ impl Assembly {
     }
 
     /// Sets the placement transform of a component.
-    pub fn set_placement(
-        &mut self,
-        id: ComponentId,
-        placement: Mat4,
-    ) -> KernelResult<()> {
-        let idx = *self.id_index.get(&id.0).ok_or(
-            KernelError::InvalidArgument("component not found".into()),
-        )?;
+    pub fn set_placement(&mut self, id: ComponentId, placement: Mat4) -> KernelResult<()> {
+        let idx = *self
+            .id_index
+            .get(&id.0)
+            .ok_or(KernelError::InvalidArgument("component not found".into()))?;
         self.components[idx].placement = placement;
         Ok(())
     }
 
     /// Sets visibility of a component.
     pub fn set_visible(&mut self, id: ComponentId, visible: bool) -> KernelResult<()> {
-        let idx = *self.id_index.get(&id.0).ok_or(
-            KernelError::InvalidArgument("component not found".into()),
-        )?;
+        let idx = *self
+            .id_index
+            .get(&id.0)
+            .ok_or(KernelError::InvalidArgument("component not found".into()))?;
         self.components[idx].visible = visible;
         Ok(())
     }
@@ -395,10 +389,7 @@ impl Assembly {
             let hits = bvh.query_aabb(query_aabb);
             for idx_b in hits {
                 if idx_b > idx_a {
-                    pairs.push((
-                        self.components[idx_a].id,
-                        self.components[idx_b].id,
-                    ));
+                    pairs.push((self.components[idx_a].id, self.components[idx_b].id));
                 }
             }
         }
@@ -470,9 +461,24 @@ pub fn rotation(axis: Vec3, angle_rad: f64) -> Mat4 {
     let s = angle_rad.sin();
     let t = 1.0 - c;
     Mat4::from_rows(
-        [t * a.x * a.x + c, t * a.x * a.y - s * a.z, t * a.x * a.z + s * a.y, 0.0],
-        [t * a.x * a.y + s * a.z, t * a.y * a.y + c, t * a.y * a.z - s * a.x, 0.0],
-        [t * a.x * a.z - s * a.y, t * a.y * a.z + s * a.x, t * a.z * a.z + c, 0.0],
+        [
+            t * a.x * a.x + c,
+            t * a.x * a.y - s * a.z,
+            t * a.x * a.z + s * a.y,
+            0.0,
+        ],
+        [
+            t * a.x * a.y + s * a.z,
+            t * a.y * a.y + c,
+            t * a.y * a.z - s * a.x,
+            0.0,
+        ],
+        [
+            t * a.x * a.z - s * a.y,
+            t * a.y * a.z + s * a.x,
+            t * a.z * a.z + c,
+            0.0,
+        ],
         [0.0, 0.0, 0.0, 1.0],
     )
 }
@@ -599,12 +605,32 @@ impl Assembly {
                     let uz = dz / current_dist;
 
                     if !a_fixed && !b_fixed {
-                        self.translate_component(*comp_a, ux * correction, uy * correction, uz * correction);
-                        self.translate_component(*comp_b, -ux * correction, -uy * correction, -uz * correction);
+                        self.translate_component(
+                            *comp_a,
+                            ux * correction,
+                            uy * correction,
+                            uz * correction,
+                        );
+                        self.translate_component(
+                            *comp_b,
+                            -ux * correction,
+                            -uy * correction,
+                            -uz * correction,
+                        );
                     } else if !a_fixed {
-                        self.translate_component(*comp_a, ux * correction * 2.0, uy * correction * 2.0, uz * correction * 2.0);
+                        self.translate_component(
+                            *comp_a,
+                            ux * correction * 2.0,
+                            uy * correction * 2.0,
+                            uz * correction * 2.0,
+                        );
                     } else {
-                        self.translate_component(*comp_b, -ux * correction * 2.0, -uy * correction * 2.0, -uz * correction * 2.0);
+                        self.translate_component(
+                            *comp_b,
+                            -ux * correction * 2.0,
+                            -uy * correction * 2.0,
+                            -uz * correction * 2.0,
+                        );
                     }
                 }
             }
@@ -692,12 +718,32 @@ impl Assembly {
                         let uz = dz / current;
 
                         if !a_fixed && !b_fixed {
-                            self.translate_component(*comp_a, ux * correction, uy * correction, uz * correction);
-                            self.translate_component(*comp_b, -ux * correction, -uy * correction, -uz * correction);
+                            self.translate_component(
+                                *comp_a,
+                                ux * correction,
+                                uy * correction,
+                                uz * correction,
+                            );
+                            self.translate_component(
+                                *comp_b,
+                                -ux * correction,
+                                -uy * correction,
+                                -uz * correction,
+                            );
                         } else if !a_fixed {
-                            self.translate_component(*comp_a, ux * correction * 2.0, uy * correction * 2.0, uz * correction * 2.0);
+                            self.translate_component(
+                                *comp_a,
+                                ux * correction * 2.0,
+                                uy * correction * 2.0,
+                                uz * correction * 2.0,
+                            );
                         } else {
-                            self.translate_component(*comp_b, -ux * correction * 2.0, -uy * correction * 2.0, -uz * correction * 2.0);
+                            self.translate_component(
+                                *comp_b,
+                                -ux * correction * 2.0,
+                                -uy * correction * 2.0,
+                                -uz * correction * 2.0,
+                            );
                         }
                     }
                     AssemblyConstraint::Coincident {
@@ -732,16 +778,23 @@ impl Assembly {
                             let uy = dy / current;
                             let uz = dz / current;
                             if !b_fixed {
-                                self.translate_component(*comp_b, -ux * correction, -uy * correction, -uz * correction);
+                                self.translate_component(
+                                    *comp_b,
+                                    -ux * correction,
+                                    -uy * correction,
+                                    -uz * correction,
+                                );
                             } else if !a_fixed {
-                                self.translate_component(*comp_a, ux * correction, uy * correction, uz * correction);
+                                self.translate_component(
+                                    *comp_a,
+                                    ux * correction,
+                                    uy * correction,
+                                    uz * correction,
+                                );
                             }
                         }
                     }
-                    AssemblyConstraint::Concentric {
-                        comp_a,
-                        comp_b,
-                    } => {
+                    AssemblyConstraint::Concentric { comp_a, comp_b } => {
                         let a_fixed = fixed_ids.contains(comp_a);
                         let b_fixed = fixed_ids.contains(comp_b);
                         if a_fixed && b_fixed {
@@ -776,11 +829,7 @@ impl Assembly {
         }
 
         // Return current transforms
-        Ok(self
-            .components
-            .iter()
-            .map(|c| c.placement)
-            .collect())
+        Ok(self.components.iter().map(|c| c.placement).collect())
     }
 
     /// Advance a kinematic simulation by one time step.
@@ -809,7 +858,8 @@ impl Assembly {
                     let sin_a = angle.sin();
                     let dir = axis.normalized().unwrap_or(Vec3::Z);
 
-                    if let Some(comp) = self.components.iter_mut().find(|c| c.id.0 == *component_b) {
+                    if let Some(comp) = self.components.iter_mut().find(|c| c.id.0 == *component_b)
+                    {
                         let pos = Point3::new(
                             comp.placement.0[(0, 3)],
                             comp.placement.0[(1, 3)],
@@ -820,7 +870,8 @@ impl Assembly {
                         let perp = v - along;
                         let perp_len = perp.length();
                         if perp_len > 1e-15 {
-                            let u = Vec3::new(perp.x / perp_len, perp.y / perp_len, perp.z / perp_len);
+                            let u =
+                                Vec3::new(perp.x / perp_len, perp.y / perp_len, perp.z / perp_len);
                             let w = dir.cross(u);
                             let rotated = u * (perp_len * cos_a) + w * (perp_len * sin_a) + along;
                             comp.placement.0[(0, 3)] = origin.x + rotated.x;
@@ -830,15 +881,14 @@ impl Assembly {
                     }
                 }
                 JointType::Slider {
-                    component_b,
-                    axis,
-                    ..
+                    component_b, axis, ..
                 } => {
                     let velocity = 1.0; // m/s default
                     let displacement = velocity * dt;
                     let dir = axis.normalized().unwrap_or(Vec3::X);
 
-                    if let Some(comp) = self.components.iter_mut().find(|c| c.id.0 == *component_b) {
+                    if let Some(comp) = self.components.iter_mut().find(|c| c.id.0 == *component_b)
+                    {
                         comp.placement.0[(0, 3)] += dir.x * displacement;
                         comp.placement.0[(1, 3)] += dir.y * displacement;
                         comp.placement.0[(2, 3)] += dir.z * displacement;
@@ -871,16 +921,28 @@ impl Assembly {
         for (i, c) in self.constraints.iter().enumerate() {
             let desc = match c {
                 AssemblyConstraint::Fixed(id) => format!("Fixed({})", id.0),
-                AssemblyConstraint::Coincident { comp_a, comp_b, offset } => {
+                AssemblyConstraint::Coincident {
+                    comp_a,
+                    comp_b,
+                    offset,
+                } => {
                     format!("Coincident({}, {}, offset={})", comp_a.0, comp_b.0, offset)
                 }
                 AssemblyConstraint::Concentric { comp_a, comp_b } => {
                     format!("Concentric({}, {})", comp_a.0, comp_b.0)
                 }
-                AssemblyConstraint::Distance { comp_a, comp_b, distance } => {
+                AssemblyConstraint::Distance {
+                    comp_a,
+                    comp_b,
+                    distance,
+                } => {
                     format!("Distance({}, {}, d={})", comp_a.0, comp_b.0, distance)
                 }
-                AssemblyConstraint::Angle { comp_a, comp_b, angle } => {
+                AssemblyConstraint::Angle {
+                    comp_a,
+                    comp_b,
+                    angle,
+                } => {
                     format!("Angle({}, {}, a={})", comp_a.0, comp_b.0, angle)
                 }
             };
@@ -986,12 +1048,7 @@ pub fn joint_residual(joint: &JointType, comp_a: &Mat4, comp_b: &Mat4) -> Vec<f6
             let cross_x = bz.y * dir.z - bz.z * dir.y;
             let cross_y = bz.z * dir.x - bz.x * dir.z;
 
-            vec![
-                perp_b_x - perp_a_x,
-                perp_b_y - perp_a_y,
-                cross_x,
-                cross_y,
-            ]
+            vec![perp_b_x - perp_a_x, perp_b_y - perp_a_y, cross_x, cross_y]
         }
         JointType::Slider { axis, .. } => {
             // Constrain 2 translations perpendicular + 3 rotations
@@ -1087,13 +1144,7 @@ pub fn joint_residual(joint: &JointType, comp_a: &Mat4, comp_b: &Mat4) -> Vec<f6
             let cross_x = bz.y * dir.z - bz.z * dir.y;
             let cross_y = bz.z * dir.x - bz.x * dir.z;
 
-            vec![
-                linear - expected_linear,
-                perp_x,
-                perp_y,
-                cross_x,
-                cross_y,
-            ]
+            vec![linear - expected_linear, perp_x, perp_y, cross_x, cross_y]
         }
         JointType::BeltJoint { ratio, .. } => {
             // Same direction coupled rotation (unlike gears which are opposite)
@@ -1117,8 +1168,12 @@ pub fn joint_jacobian(joint: &JointType, comp_a: &Mat4, comp_b: &Mat4) -> Vec<Ve
     let mut jac = vec![vec![0.0; 6]; n_residuals];
 
     let dof_perturbations: [(usize, bool); 6] = [
-        (0, true), (1, true), (2, true),
-        (0, false), (1, false), (2, false),
+        (0, true),
+        (1, true),
+        (2, true),
+        (0, false),
+        (1, false),
+        (2, false),
     ];
     for (dof, &(axis, is_translation)) in dof_perturbations.iter().enumerate() {
         let mut perturbed = *comp_b;
@@ -1346,7 +1401,10 @@ mod tests {
         // Components should have moved apart
         let dist_before = (before_c2_x - before_c1_x).abs();
         let dist_after = (after_c2_x - after_c1_x).abs();
-        assert!(dist_after > dist_before, "Components should be further apart after explosion");
+        assert!(
+            dist_after > dist_before,
+            "Components should be further apart after explosion"
+        );
     }
 
     #[test]
@@ -1505,7 +1563,8 @@ mod tests {
         let mut asm = Assembly::new("Sim Test");
         asm.add_component("A", b.solid);
         asm.add_component("B", b.solid);
-        asm.set_placement(ComponentId(1), translation(5.0, 0.0, 0.0)).unwrap();
+        asm.set_placement(ComponentId(1), translation(5.0, 0.0, 0.0))
+            .unwrap();
 
         asm.add_joint(JointType::Slider {
             component_a: 0,
@@ -1557,7 +1616,14 @@ mod tests {
     #[test]
     fn test_joint_residual_fixed_joint_at_identity() {
         let m = Mat4::IDENTITY;
-        let r = joint_residual(&JointType::FixedJoint { component_a: 0, component_b: 1 }, &m, &m);
+        let r = joint_residual(
+            &JointType::FixedJoint {
+                component_a: 0,
+                component_b: 1,
+            },
+            &m,
+            &m,
+        );
         assert_eq!(r.len(), 6);
         for v in &r {
             assert!(v.abs() < 1e-10);
@@ -1690,7 +1756,10 @@ mod tests {
         let idx = new_part_in_assembly(&mut asm, "EmptyPart").unwrap();
         assert_eq!(idx, 0);
         assert_eq!(asm.num_components(), 1);
-        assert_eq!(asm.get_component(ComponentId(idx)).unwrap().name, "EmptyPart");
+        assert_eq!(
+            asm.get_component(ComponentId(idx)).unwrap().name,
+            "EmptyPart"
+        );
     }
 
     #[test]
@@ -1707,7 +1776,8 @@ mod tests {
         let mut asm = Assembly::new("Sim");
         asm.add_component("A", b.solid);
         asm.add_component("B", b.solid);
-        asm.set_placement(ComponentId(1), translation(5.0, 0.0, 0.0)).unwrap();
+        asm.set_placement(ComponentId(1), translation(5.0, 0.0, 0.0))
+            .unwrap();
         asm.add_joint(JointType::Slider {
             component_a: 0,
             component_b: 1,
@@ -1899,7 +1969,10 @@ mod tests {
     fn test_assembly_add_joints() {
         let mut assembly = Assembly::new("test");
         assembly.add_joint(JointType::Grounded);
-        assembly.add_joint(JointType::FixedJoint { component_a: 0, component_b: 1 });
+        assembly.add_joint(JointType::FixedJoint {
+            component_a: 0,
+            component_b: 1,
+        });
         assert_eq!(assembly.joint_count(), 2);
     }
 
@@ -1938,8 +2011,12 @@ mod tests {
 
         let pairs = asm.check_all_interferences(&model).unwrap();
         assert!(pairs.contains(&(c0, c1)), "c0-c1 should overlap");
-        assert!(!pairs.iter().any(|&(a, b)| (a == c0 && b == c2) || (a == c2 && b == c0)),
-            "c0-c2 should not overlap");
+        assert!(
+            !pairs
+                .iter()
+                .any(|&(a, b)| (a == c0 && b == c2) || (a == c2 && b == c0)),
+            "c0-c2 should not overlap"
+        );
     }
 
     #[test]
@@ -2003,6 +2080,9 @@ mod tests {
 
         let pairs = asm.check_all_interferences(&model).unwrap();
         // Adjacent parts should overlap (spacing 1.0 < size 2.0)
-        assert!(!pairs.is_empty(), "adjacent parts with 1.0 spacing and 2.0 size should overlap");
+        assert!(
+            !pairs.is_empty(),
+            "adjacent parts with 1.0 spacing and 2.0 size should overlap"
+        );
     }
 }

@@ -1,0 +1,33 @@
+[test]
+id = "001"
+description = "Union of two overlapping axis-aligned boxes; validates manifold output and sub-additive volume."
+
+[a]
+kind = "Box"
+size = [2.0, 1.0, 0.5]
+origin = [0.0, 0.0, 0.0]
+
+[b]
+kind = "Box"
+size = [1.0, 2.0, 1.0]
+origin = [0.0, 0.0, 0.0]
+
+[op]
+kind = "Union"
+
+[expected]
+solid_count = 1
+shell_count = 1
+manifold = true
+genus = 0
+volume_min = 1.0           # at least the larger of either input's overlap
+volume_max = 3.0           # bounded by V_a + V_b = 2*1*0.5 + 1*2*1 = 3.0
+volume_strict_less_or_equal = 3.0
+face_count_min = 6         # at least cube-equivalent
+face_count_max = 24        # generous upper bound for split faces
+
+# Persistent-naming requirement: every output face must carry a Tag.
+all_faces_tagged = true
+
+# After the union, recompute via History should reproduce identical hash
+recompute_deterministic = true

@@ -246,9 +246,13 @@ pub fn shape_builder_from_edges(
         let last_edge = model.edges.get(edges[edges.len() - 1]);
         if let (Some(fhe), Some(le)) = (first_he, last_edge) {
             if let Some(he_b) = le.half_edge_b {
-                if let (Some(first_v), Some(last_v)) =
-                    (model.vertices.get(fhe.origin), model.half_edges.get(he_b).and_then(|h| model.vertices.get(h.origin)))
-                {
+                if let (Some(first_v), Some(last_v)) = (
+                    model.vertices.get(fhe.origin),
+                    model
+                        .half_edges
+                        .get(he_b)
+                        .and_then(|h| model.vertices.get(h.origin)),
+                ) {
                     (first_v.point - last_v.point).length() < 1e-10
                 } else {
                     false

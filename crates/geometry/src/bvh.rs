@@ -28,7 +28,10 @@ impl Aabb {
     ///
     /// Panics if `points` is empty.
     pub fn from_points(points: &[Point3]) -> Self {
-        assert!(!points.is_empty(), "Aabb::from_points requires at least one point");
+        assert!(
+            !points.is_empty(),
+            "Aabb::from_points requires at least one point"
+        );
         let mut min = points[0];
         let mut max = points[0];
         for &p in &points[1..] {
@@ -104,8 +107,16 @@ impl Aabb {
     #[inline]
     pub fn expand(&self, margin: f64) -> Aabb {
         Aabb {
-            min: Point3::new(self.min.x - margin, self.min.y - margin, self.min.z - margin),
-            max: Point3::new(self.max.x + margin, self.max.y + margin, self.max.z + margin),
+            min: Point3::new(
+                self.min.x - margin,
+                self.min.y - margin,
+                self.min.z - margin,
+            ),
+            max: Point3::new(
+                self.max.x + margin,
+                self.max.y + margin,
+                self.max.z + margin,
+            ),
         }
     }
 
@@ -334,7 +345,8 @@ impl Bvh {
             // Evaluate SAH cost at each split position
             // Cost(split=k) = C_trav + (left_sa/parent_sa * k + right_sa/parent_sa * (n-k))
             for k in 1..n {
-                let cost = 1.0 + (left_sa[k - 1] * k as f64 + right_sa[k] * (n - k) as f64) / parent_sa;
+                let cost =
+                    1.0 + (left_sa[k - 1] * k as f64 + right_sa[k] * (n - k) as f64) / parent_sa;
                 if cost < best_cost {
                     best_cost = cost;
                     best_axis = axis;
@@ -621,9 +633,15 @@ mod tests {
         let bvh = Bvh::build(&[]);
         assert!(bvh.is_empty());
         assert_eq!(bvh.len(), 0);
-        assert!(bvh.query_aabb(&aabb(0.0, 0.0, 0.0, 1.0, 1.0, 1.0)).is_empty());
+        assert!(
+            bvh.query_aabb(&aabb(0.0, 0.0, 0.0, 1.0, 1.0, 1.0))
+                .is_empty()
+        );
         assert!(bvh.query_point(Point3::new(0.0, 0.0, 0.0)).is_empty());
-        assert!(bvh.query_ray(Point3::new(0.0, 0.0, 0.0), Vec3::new(1.0, 0.0, 0.0)).is_empty());
+        assert!(
+            bvh.query_ray(Point3::new(0.0, 0.0, 0.0), Vec3::new(1.0, 0.0, 0.0))
+                .is_empty()
+        );
     }
 
     #[test]
@@ -803,7 +821,17 @@ mod tests {
             .map(|i| {
                 let f = i as f64;
                 let size = 0.5 + (i % 3) as f64;
-                (aabb(f * 2.0, f * 0.5, f * 1.5, f * 2.0 + size, f * 0.5 + size, f * 1.5 + size), i)
+                (
+                    aabb(
+                        f * 2.0,
+                        f * 0.5,
+                        f * 1.5,
+                        f * 2.0 + size,
+                        f * 0.5 + size,
+                        f * 1.5 + size,
+                    ),
+                    i,
+                )
             })
             .collect();
 

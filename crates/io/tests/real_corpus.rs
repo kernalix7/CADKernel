@@ -43,8 +43,7 @@ fn read_iges(name: &str) -> String {
 
 fn parse_step_with_solids(name: &str) {
     let content = read_step(name);
-    let model = import_step(&content)
-        .unwrap_or_else(|e| panic!("import_step {name}: {e:?}"));
+    let model = import_step(&content).unwrap_or_else(|e| panic!("import_step {name}: {e:?}"));
     assert!(
         !model.solids.is_empty(),
         "{name}: expected at least one solid, got 0"
@@ -53,14 +52,13 @@ fn parse_step_with_solids(name: &str) {
 
 fn parse_iges_nonempty(name: &str) {
     let content = read_iges(name);
-    let entities = cadkernel_io::parse_iges(&content)
-        .unwrap_or_else(|e| panic!("parse_iges {name}: {e:?}"));
+    let entities =
+        cadkernel_io::parse_iges(&content).unwrap_or_else(|e| panic!("parse_iges {name}: {e:?}"));
     assert!(
         !entities.is_empty(),
         "{name}: expected at least one IGES entity, got 0"
     );
-    let _ = import_iges(&content)
-        .unwrap_or_else(|e| panic!("import_iges {name}: {e:?}"));
+    let _ = import_iges(&content).unwrap_or_else(|e| panic!("import_iges {name}: {e:?}"));
 }
 
 // -----------------------------------------------------------------------------

@@ -220,11 +220,11 @@ mod tests {
         let r = make_spiral(
             &mut model,
             Point3::ORIGIN,
-            5.0,  // initial_radius
-            1.0,  // growth_per_rev
-            2.0,  // turns
-            0.5,  // tube_radius
-            8,    // segments_per_turn
+            5.0, // initial_radius
+            1.0, // growth_per_rev
+            2.0, // turns
+            0.5, // tube_radius
+            8,   // segments_per_turn
         )
         .unwrap();
         // 2 turns * 8 segs = 16, ceil = 16, n_rings = 17

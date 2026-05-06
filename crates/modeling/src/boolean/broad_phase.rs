@@ -53,9 +53,7 @@ pub fn find_overlapping_face_pairs(
     let bvh_items: Vec<(Aabb, usize)> = bboxes_b
         .iter()
         .enumerate()
-        .map(|(i, (_, bb))| {
-            (Aabb::new(bb.min, bb.max), i)
-        })
+        .map(|(i, (_, bb))| (Aabb::new(bb.min, bb.max), i))
         .collect();
     let bvh = Bvh::build(&bvh_items);
 

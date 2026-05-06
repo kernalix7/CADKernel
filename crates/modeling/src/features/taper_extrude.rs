@@ -63,11 +63,7 @@ pub fn taper_extrude(
 
         // Compute inward direction for this vertex (toward centroid, projected onto
         // the plane perpendicular to the extrusion direction)
-        let to_center = Point3::new(
-            centroid.x - pt.x,
-            centroid.y - pt.y,
-            centroid.z - pt.z,
-        );
+        let to_center = Point3::new(centroid.x - pt.x, centroid.y - pt.y, centroid.z - pt.z);
         // Remove the component along the extrusion direction
         let dot = to_center.x * dir.x + to_center.y * dir.y + to_center.z * dir.z;
         let planar = Vec3::new(
@@ -77,7 +73,11 @@ pub fn taper_extrude(
         );
         let planar_len = planar.length();
         let inward = if planar_len > 1e-12 {
-            Vec3::new(planar.x / planar_len, planar.y / planar_len, planar.z / planar_len)
+            Vec3::new(
+                planar.x / planar_len,
+                planar.y / planar_len,
+                planar.z / planar_len,
+            )
         } else {
             Vec3::ZERO
         };
@@ -184,8 +184,14 @@ mod tests {
         let top_v = model.vertices.get(top_vh).unwrap();
         // Bottom vertex 0 is at (0,0,0), centroid is (1,1,0)
         // Inward direction is toward (1,1), so top_x > 0
-        assert!(top_v.point.x > 0.1, "top vertex should be inward from origin");
-        assert!((top_v.point.z - height).abs() < 1e-8, "top z should equal height");
+        assert!(
+            top_v.point.x > 0.1,
+            "top vertex should be inward from origin"
+        );
+        assert!(
+            (top_v.point.z - height).abs() < 1e-8,
+            "top z should equal height"
+        );
     }
 
     #[test]
@@ -207,8 +213,14 @@ mod tests {
         for i in 0..4 {
             let bot_tag = Tag::generated(EntityKind::Vertex, op, i);
             let top_tag = Tag::generated(EntityKind::Vertex, op, 4 + i);
-            let bot = model.vertices.get(model.find_vertex_by_tag(&bot_tag).unwrap()).unwrap();
-            let top = model.vertices.get(model.find_vertex_by_tag(&top_tag).unwrap()).unwrap();
+            let bot = model
+                .vertices
+                .get(model.find_vertex_by_tag(&bot_tag).unwrap())
+                .unwrap();
+            let top = model
+                .vertices
+                .get(model.find_vertex_by_tag(&top_tag).unwrap())
+                .unwrap();
             assert!((top.point.x - bot.point.x).abs() < 1e-10);
             assert!((top.point.y - bot.point.y).abs() < 1e-10);
             assert!((top.point.z - 3.0).abs() < 1e-10);

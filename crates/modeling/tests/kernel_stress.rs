@@ -28,8 +28,7 @@ fn stress_multi_boolean_union_chain_7_boxes() {
             8.0,
         )
         .unwrap();
-        let result =
-            boolean_op(&cur_model, cur_solid, &next, nb.solid, BooleanOp::Union).unwrap();
+        let result = boolean_op(&cur_model, cur_solid, &next, nb.solid, BooleanOp::Union).unwrap();
         cur_solid = result.solids.iter().next().map(|(h, _)| h).unwrap();
         cur_model = result;
     }
@@ -66,14 +65,8 @@ fn stress_multi_boolean_difference_chain_6() {
     for (x, y) in positions {
         let mut cyl = BRepModel::new();
         let cr = make_cylinder(&mut cyl, Point3::new(x, y, -1.0), 2.0, 7.0, 16).unwrap();
-        let result = boolean_op(
-            &cur_model,
-            cur_solid,
-            &cyl,
-            cr.solid,
-            BooleanOp::Difference,
-        )
-        .unwrap();
+        let result =
+            boolean_op(&cur_model, cur_solid, &cyl, cr.solid, BooleanOp::Difference).unwrap();
         cur_solid = result.solids.iter().next().map(|(h, _)| h).unwrap();
         cur_model = result;
     }
@@ -99,13 +92,9 @@ fn stress_boolean_on_filleted_solid() {
         if let Ok(fr) = fillet_result {
             // Now boolean-subtract a cylinder from the filleted solid
             let mut cyl = BRepModel::new();
-            let cr =
-                make_cylinder(&mut cyl, Point3::new(10.0, 10.0, -1.0), 3.0, 22.0, 16).unwrap();
+            let cr = make_cylinder(&mut cyl, Point3::new(10.0, 10.0, -1.0), 3.0, 22.0, 16).unwrap();
             let result = boolean_op(&model, fr.solid, &cyl, cr.solid, BooleanOp::Difference);
-            assert!(
-                result.is_ok(),
-                "Boolean on filleted solid should not panic"
-            );
+            assert!(result.is_ok(), "Boolean on filleted solid should not panic");
         }
     }
 }
@@ -120,8 +109,7 @@ fn stress_boolean_on_chamfered_solid() {
         let chamfer_result = chamfer_edge(&mut model, r.solid, verts[0], verts[1], 1.5);
         if let Ok(cr) = chamfer_result {
             let mut tool = BRepModel::new();
-            let tr =
-                make_box(&mut tool, Point3::new(5.0, 5.0, 5.0), 10.0, 10.0, 10.0).unwrap();
+            let tr = make_box(&mut tool, Point3::new(5.0, 5.0, 5.0), 10.0, 10.0, 10.0).unwrap();
             let result = boolean_op(&model, cr.solid, &tool, tr.solid, BooleanOp::Intersection);
             assert!(
                 result.is_ok(),
@@ -148,7 +136,10 @@ fn stress_assembly_50_components_with_constraints() {
     for i in 0..25usize {
         let id = assembly.add_component(&format!("Box{i}"), box_r.solid);
         assembly
-            .set_placement(id, translation((i % 10) as f64 * 5.0, (i / 10) as f64 * 5.0, 0.0))
+            .set_placement(
+                id,
+                translation((i % 10) as f64 * 5.0, (i / 10) as f64 * 5.0, 0.0),
+            )
             .unwrap();
         ids.push(id);
     }
@@ -213,7 +204,9 @@ fn stress_sketch_30_constraints_hexagonal_profile() {
     let mut sketch = Sketch::new();
 
     // Hexagonal profile (6 vertices)
-    let angles: Vec<f64> = (0..6).map(|i| i as f64 * std::f64::consts::TAU / 6.0).collect();
+    let angles: Vec<f64> = (0..6)
+        .map(|i| i as f64 * std::f64::consts::TAU / 6.0)
+        .collect();
     let radius = 10.0;
     let points: Vec<_> = angles
         .iter()
@@ -498,13 +491,7 @@ fn stress_near_zero_angle_draft() {
     let face_handles: Vec<_> = model.faces.iter().map(|(h, _)| h).collect();
     if !face_handles.is_empty() {
         // Near-zero draft angle (0.001 radians)
-        let result = draft_faces(
-            &mut model,
-            r.solid,
-            &face_handles[..1],
-            Vec3::Z,
-            0.001,
-        );
+        let result = draft_faces(&mut model, r.solid, &face_handles[..1], Vec3::Z, 0.001);
         // Should either succeed or gracefully error, never panic
         // Graceful error is acceptable for near-zero draft
         if let Ok(dr) = result {
@@ -551,15 +538,9 @@ fn stress_invalid_torus_too_few_segments() {
     let mut model = BRepModel::new();
     // Too few segments should error
     let result = make_torus(&mut model, Point3::ORIGIN, 5.0, 1.5, 2, 8);
-    assert!(
-        result.is_err(),
-        "Torus with 2 major segments should error"
-    );
+    assert!(result.is_err(), "Torus with 2 major segments should error");
     let result2 = make_torus(&mut model, Point3::ORIGIN, 5.0, 1.5, 16, 2);
-    assert!(
-        result2.is_err(),
-        "Torus with 2 minor segments should error"
-    );
+    assert!(result2.is_err(), "Torus with 2 minor segments should error");
 }
 
 #[test]
@@ -730,10 +711,7 @@ fn stress_fem_static_analysis_multi_bc() {
     ];
 
     let result = static_analysis(&mesh, &mat, &bcs);
-    assert!(
-        result.is_ok(),
-        "Multi-BC static analysis should succeed"
-    );
+    assert!(result.is_ok(), "Multi-BC static analysis should succeed");
     let fem = result.unwrap();
     assert_eq!(
         fem.displacements.len(),
@@ -817,10 +795,7 @@ fn stress_ruled_surface_curved_profiles() {
 
 #[test]
 fn stress_pipe_surface_straight_path() {
-    let path_pts = vec![
-        Point3::new(0.0, 0.0, 0.0),
-        Point3::new(0.0, 0.0, 20.0),
-    ];
+    let path_pts = vec![Point3::new(0.0, 0.0, 0.0), Point3::new(0.0, 0.0, 20.0)];
 
     let mut model = BRepModel::new();
     let result = pipe_surface(&mut model, &path_pts, 2.0, 16);
@@ -835,11 +810,7 @@ fn stress_pipe_surface_curved_path() {
     let path_pts: Vec<Point3> = (0..20)
         .map(|i| {
             let t = i as f64 / 19.0;
-            Point3::new(
-                15.0 * t,
-                10.0 * (std::f64::consts::PI * t).sin(),
-                15.0 * t,
-            )
+            Point3::new(15.0 * t, 10.0 * (std::f64::consts::PI * t).sin(), 15.0 * t)
         })
         .collect();
 
@@ -857,10 +828,10 @@ fn stress_gear_50_teeth() {
     let mut model = BRepModel::new();
     let result = make_involute_gear(
         &mut model,
-        2.0,               // module
-        50,                // teeth
+        2.0,                   // module
+        50,                    // teeth
         20.0_f64.to_radians(), // pressure angle
-        8.0,               // face width
+        8.0,                   // face width
     );
     assert!(result.is_ok(), "50-tooth gear should succeed");
     let gr = result.unwrap();
@@ -877,10 +848,10 @@ fn stress_gear_100_teeth() {
     let mut model = BRepModel::new();
     let result = make_involute_gear(
         &mut model,
-        1.0,               // module
-        100,               // teeth
+        1.0,                   // module
+        100,                   // teeth
         20.0_f64.to_radians(), // pressure angle
-        5.0,               // face width
+        5.0,                   // face width
     );
     assert!(result.is_ok(), "100-tooth gear should succeed");
     let gr = result.unwrap();
@@ -893,7 +864,13 @@ fn stress_gear_100_teeth() {
 
 #[test]
 fn stress_all_primitives_tessellate_mass() {
-    type PrimFactory = (&'static str, fn() -> (BRepModel, cadkernel_topology::Handle<cadkernel_topology::SolidData>));
+    type PrimFactory = (
+        &'static str,
+        fn() -> (
+            BRepModel,
+            cadkernel_topology::Handle<cadkernel_topology::SolidData>,
+        ),
+    );
     let primitives: Vec<PrimFactory> = vec![
         ("box", || {
             let mut m = BRepModel::new();
@@ -926,14 +903,24 @@ fn stress_all_primitives_tessellate_mass() {
         let (model, solid) = factory();
         // Check geometry
         let check = check_geometry(&model, solid);
-        assert!(check.is_valid, "{name} geometry check failed: {:?}", check.issues);
+        assert!(
+            check.is_valid,
+            "{name} geometry check failed: {:?}",
+            check.issues
+        );
         // Tessellate
         let mesh = cadkernel_io::tessellate_solid(&model, solid);
-        assert!(mesh.triangle_count() > 0, "{name} tessellation should produce triangles");
+        assert!(
+            mesh.triangle_count() > 0,
+            "{name} tessellation should produce triangles"
+        );
         // Mass properties
         let props = compute_mass_properties(&mesh);
         assert!(props.volume > 0.0, "{name} should have positive volume");
-        assert!(props.surface_area > 0.0, "{name} should have positive surface area");
+        assert!(
+            props.surface_area > 0.0,
+            "{name} should have positive surface area"
+        );
     }
 }
 
@@ -963,20 +950,14 @@ fn stress_bvh_large_dataset() {
 
     // Point query at center of a known item
     let hits = bvh.query_point(Point3::new(50.25, 50.25, 0.25));
-    assert!(
-        !hits.is_empty(),
-        "Point query in 10k BVH should find item"
-    );
+    assert!(!hits.is_empty(), "Point query in 10k BVH should find item");
 
     // Nearest query
     let nearest = bvh.query_nearest(Point3::new(50.25, 50.25, 0.25));
     assert!(nearest.is_some());
 
     // Ray query
-    let ray_hits = bvh.query_ray(
-        Point3::new(-1.0, 50.25, 0.25),
-        Vec3::new(1.0, 0.0, 0.0),
-    );
+    let ray_hits = bvh.query_ray(Point3::new(-1.0, 50.25, 0.25), Vec3::new(1.0, 0.0, 0.0));
     assert!(!ray_hits.is_empty(), "Ray through 10k BVH should hit items");
 }
 
@@ -1008,7 +989,11 @@ fn stress_extrude_complex_polygon() {
         model.faces.len()
     );
     let check = check_geometry(&model, er.solid);
-    assert!(check.is_valid, "Dodecagon extrude valid: {:?}", check.issues);
+    assert!(
+        check.is_valid,
+        "Dodecagon extrude valid: {:?}",
+        check.issues
+    );
 }
 
 #[test]
@@ -1074,5 +1059,8 @@ fn stress_measure_distance_via_model() {
     let v1 = model.add_vertex(Point3::new(0.0, 0.0, 0.0));
     let v2 = model.add_vertex(Point3::new(3.0, 4.0, 0.0));
     let dist = measure_distance(&model, v1, v2).unwrap();
-    assert!((dist - 5.0).abs() < 1e-10, "Distance should be 5.0, got {dist}");
+    assert!(
+        (dist - 5.0).abs() < 1e-10,
+        "Distance should be 5.0, got {dist}"
+    );
 }

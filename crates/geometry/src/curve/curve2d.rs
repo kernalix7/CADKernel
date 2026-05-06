@@ -217,10 +217,8 @@ impl Curve2D for NurbsCurve2D {
     }
 
     fn is_closed(&self) -> bool {
-        if let (Some(first), Some(last)) = (
-            self.control_points.first(),
-            self.control_points.last(),
-        ) {
+        if let (Some(first), Some(last)) = (self.control_points.first(), self.control_points.last())
+        {
             first.distance_to(*last) < 1e-10
         } else {
             false

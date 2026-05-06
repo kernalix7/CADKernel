@@ -32,7 +32,10 @@ pub enum FacePosition {
 impl FacePosition {
     /// True when the face lies on the other solid's boundary (either subtype).
     pub fn is_on_boundary(self) -> bool {
-        matches!(self, FacePosition::OnBoundarySame | FacePosition::OnBoundaryOpposite)
+        matches!(
+            self,
+            FacePosition::OnBoundarySame | FacePosition::OnBoundaryOpposite
+        )
     }
 }
 
@@ -276,11 +279,7 @@ pub fn classify_face(
     for i in 0..n {
         let a = polygon[i];
         let b = polygon[(i + 1) % polygon.len()];
-        let mid = Point3::new(
-            (a.x + b.x) * 0.5,
-            (a.y + b.y) * 0.5,
-            (a.z + b.z) * 0.5,
-        );
+        let mid = Point3::new((a.x + b.x) * 0.5, (a.y + b.y) * 0.5, (a.z + b.z) * 0.5);
         // Offset midpoint slightly toward centroid to stay inside the face
         let toward_center = (centroid - mid).normalized().unwrap_or(Vec3::ZERO);
         sample_points.push(mid + toward_center * 1e-4 + normal * 1e-6);
@@ -370,11 +369,7 @@ pub fn classify_face_with_coplanar(
         }
         let a = polygon[i];
         let b = polygon[(i + 1) % n_poly];
-        let mid = Point3::new(
-            (a.x + b.x) * 0.5,
-            (a.y + b.y) * 0.5,
-            (a.z + b.z) * 0.5,
-        );
+        let mid = Point3::new((a.x + b.x) * 0.5, (a.y + b.y) * 0.5, (a.z + b.z) * 0.5);
         let tangent = (b - a).normalized().unwrap_or(Vec3::X);
         // Inward perpendicular: (face_normal × tangent) lies in the polygon
         // plane and points into the polygon interior when the polygon is
@@ -408,11 +403,7 @@ pub fn classify_face_with_coplanar(
         for &(_, i) in edge_list.iter().take(8) {
             let a = polygon[i];
             let b = polygon[(i + 1) % n_poly];
-            let mid = Point3::new(
-                (a.x + b.x) * 0.5,
-                (a.y + b.y) * 0.5,
-                (a.z + b.z) * 0.5,
-            );
+            let mid = Point3::new((a.x + b.x) * 0.5, (a.y + b.y) * 0.5, (a.z + b.z) * 0.5);
             let toward = (centroid - mid).normalized().unwrap_or(Vec3::ZERO);
             let cand = mid + toward * 1e-3;
             if point_in_polygon_2d(cand, &polygon, drop_axis) {

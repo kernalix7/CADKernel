@@ -209,33 +209,21 @@ impl NavStyle {
             Self::Gesture => {
                 "LMB drag: Orbit  |  RMB: Pan  |  Scroll / Pinch: Zoom  |  Tap: Select"
             }
-            Self::Blender => {
-                "LMB: Select  |  MMB: Orbit  |  Shift+MMB: Pan  |  Scroll: Zoom"
-            }
+            Self::Blender => "LMB: Select  |  MMB: Orbit  |  Shift+MMB: Pan  |  Scroll: Zoom",
             Self::Maya => {
                 "LMB: Select  |  Alt+LMB: Orbit  |  Alt+MMB: Pan  |  Alt+RMB / Scroll: Zoom"
             }
             Self::SolidWorks => {
                 "LMB: Select  |  MMB: Orbit  |  Ctrl+MMB: Pan  |  Shift+MMB / Scroll: Zoom"
             }
-            Self::Inventor => {
-                "Ctrl+LMB: Select  |  LMB: Orbit  |  MMB: Pan  |  Scroll: Zoom"
-            }
+            Self::Inventor => "Ctrl+LMB: Select  |  LMB: Orbit  |  MMB: Pan  |  Scroll: Zoom",
             Self::OpenCascade => {
                 "LMB: Select  |  Ctrl+RMB: Orbit  |  Ctrl+MMB: Pan  |  Ctrl+LMB / Scroll: Zoom"
             }
-            Self::OpenSCAD => {
-                "LMB drag: Orbit  |  RMB: Pan  |  MMB / Shift+RMB / Scroll: Zoom"
-            }
-            Self::Revit => {
-                "LMB: Select  |  Shift+MMB: Orbit  |  MMB: Pan  |  Scroll: Zoom"
-            }
-            Self::SiemensNX => {
-                "LMB: Select  |  MMB: Orbit  |  MMB+RMB: Pan  |  Scroll: Zoom"
-            }
-            Self::TinkerCAD => {
-                "LMB: Select  |  RMB: Orbit  |  MMB: Pan  |  Scroll: Zoom"
-            }
+            Self::OpenSCAD => "LMB drag: Orbit  |  RMB: Pan  |  MMB / Shift+RMB / Scroll: Zoom",
+            Self::Revit => "LMB: Select  |  Shift+MMB: Orbit  |  MMB: Pan  |  Scroll: Zoom",
+            Self::SiemensNX => "LMB: Select  |  MMB: Orbit  |  MMB+RMB: Pan  |  Scroll: Zoom",
+            Self::TinkerCAD => "LMB: Select  |  RMB: Orbit  |  MMB: Pan  |  Scroll: Zoom",
             Self::Touchpad => {
                 "LMB: Select  |  Alt+Move: Orbit  |  Shift+Move: Pan  |  Ctrl+Shift+Move / Scroll: Zoom"
             }

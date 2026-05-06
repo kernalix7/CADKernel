@@ -1,0 +1,155 @@
+# Sketch golden 004: Hexagonal pattern
+#
+# Six lines forming a regular hexagon centred at origin, with one edge
+# horizontal. Verifies equal-length + 120° angle + horizontal.
+
+[sketch]
+name = "Hexagon"
+units = "mm"
+description = "Regular hexagon, side 10 mm, one edge horizontal at bottom."
+
+[[entity]]
+id = 1
+kind = "Point"
+x = -5.0
+y = -8.660254
+anchor = true
+
+[[entity]]
+id = 2
+kind = "Point"
+x = 5.0
+y = -8.660254
+
+[[entity]]
+id = 3
+kind = "Point"
+x = 10.0
+y = 0.0
+
+[[entity]]
+id = 4
+kind = "Point"
+x = 5.0
+y = 8.660254
+
+[[entity]]
+id = 5
+kind = "Point"
+x = -5.0
+y = 8.660254
+
+[[entity]]
+id = 6
+kind = "Point"
+x = -10.0
+y = 0.0
+
+[[entity]]
+id = 10
+kind = "Line"
+start = 1
+end = 2
+
+[[entity]]
+id = 11
+kind = "Line"
+start = 2
+end = 3
+
+[[entity]]
+id = 12
+kind = "Line"
+start = 3
+end = 4
+
+[[entity]]
+id = 13
+kind = "Line"
+start = 4
+end = 5
+
+[[entity]]
+id = 14
+kind = "Line"
+start = 5
+end = 6
+
+[[entity]]
+id = 15
+kind = "Line"
+start = 6
+end = 1
+
+[[constraint]]
+id = 100
+kind = "Horizontal"
+between = [1, 2]
+
+[[constraint]]
+id = 101
+kind = "EqualLength"
+between = [10, 11]
+
+[[constraint]]
+id = 102
+kind = "EqualLength"
+between = [11, 12]
+
+[[constraint]]
+id = 103
+kind = "EqualLength"
+between = [12, 13]
+
+[[constraint]]
+id = 104
+kind = "EqualLength"
+between = [13, 14]
+
+[[constraint]]
+id = 105
+kind = "EqualLength"
+between = [14, 15]
+
+[[constraint]]
+id = 106
+kind = "Angle"
+between = [10, 11]
+value_deg = 120.0
+
+[[constraint]]
+id = 107
+kind = "Angle"
+between = [11, 12]
+value_deg = 120.0
+
+[[constraint]]
+id = 108
+kind = "Angle"
+between = [12, 13]
+value_deg = 120.0
+
+[[constraint]]
+id = 109
+kind = "Angle"
+between = [13, 14]
+value_deg = 120.0
+
+[[constraint]]
+id = 110
+kind = "Angle"
+between = [14, 15]
+value_deg = 120.0
+
+[[constraint]]
+id = 111
+kind = "Distance"
+between = [1, 2]
+value = 10.0
+
+[expected]
+status = "WellDetermined"
+dof = 0
+positional_residual_max = 1e-9
+dimensional_residual_max = 1e-6
+solve_iterations_max = 10

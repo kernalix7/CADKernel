@@ -78,9 +78,7 @@ pub fn point_in_solid(
     }
 
     // Use non-axis-aligned direction to avoid edge/face coincidence
-    let ray_dir = Vec3::new(1.0, 0.31, 0.37)
-        .normalized()
-        .unwrap_or(Vec3::X);
+    let ray_dir = Vec3::new(1.0, 0.31, 0.37).normalized().unwrap_or(Vec3::X);
     let mut crossings = 0u32;
 
     for &fh in &faces {
@@ -227,8 +225,7 @@ mod tests {
         let mut model = BRepModel::new();
         let b = crate::make_box(&mut model, Point3::ORIGIN, 2.0, 2.0, 2.0).unwrap();
 
-        let result =
-            closest_point_on_solid(&model, b.solid, Point3::new(1.0, 1.0, 5.0)).unwrap();
+        let result = closest_point_on_solid(&model, b.solid, Point3::new(1.0, 1.0, 5.0)).unwrap();
         assert!((result.distance - 3.0).abs() < 1e-6);
         assert!((result.point.z - 2.0).abs() < 1e-6);
     }

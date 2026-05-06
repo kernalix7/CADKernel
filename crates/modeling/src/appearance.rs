@@ -126,9 +126,7 @@ pub fn compute_attachment(
 ) -> KernelResult<Mat4> {
     let verts = model.vertices_of_face(face)?;
     if verts.is_empty() {
-        return Err(KernelError::InvalidArgument(
-            "face has no vertices".into(),
-        ));
+        return Err(KernelError::InvalidArgument("face has no vertices".into()));
     }
 
     // Compute face centroid
@@ -167,11 +165,13 @@ pub fn compute_attachment(
     let normal = normal_raw.normalized().unwrap_or(Vec3::Z);
 
     match mode {
-        AttachmentMode::FlatFace
-        | AttachmentMode::Concentric
-        | AttachmentMode::Tangent => {
+        AttachmentMode::FlatFace | AttachmentMode::Concentric | AttachmentMode::Tangent => {
             // Build frame: Z = normal, X/Y = tangent plane
-            let up = if normal.x.abs() < 0.9 { Vec3::X } else { Vec3::Y };
+            let up = if normal.x.abs() < 0.9 {
+                Vec3::X
+            } else {
+                Vec3::Y
+            };
             let x_axis_raw = Vec3::new(
                 up.y * normal.z - up.z * normal.y,
                 up.z * normal.x - up.x * normal.z,
@@ -198,7 +198,9 @@ pub fn compute_attachment(
                 normal.y * edge_dir.z - normal.z * edge_dir.y,
                 normal.z * edge_dir.x - normal.x * edge_dir.z,
                 normal.x * edge_dir.y - normal.y * edge_dir.x,
-            ).normalized().unwrap_or(Vec3::Y);
+            )
+            .normalized()
+            .unwrap_or(Vec3::Y);
 
             Ok(Mat4::from_rows(
                 [edge_dir.x, y_axis.x, normal.x, cx + normal.x * offset],
@@ -207,13 +209,11 @@ pub fn compute_attachment(
                 [0.0, 0.0, 0.0, 1.0],
             ))
         }
-        AttachmentMode::FreeTranslation => {
-            Ok(Mat4::translation(Vec3::new(
-                cx + normal.x * offset,
-                cy + normal.y * offset,
-                cz + normal.z * offset,
-            )))
-        }
+        AttachmentMode::FreeTranslation => Ok(Mat4::translation(Vec3::new(
+            cx + normal.x * offset,
+            cy + normal.y * offset,
+            cz + normal.z * offset,
+        ))),
     }
 }
 
@@ -235,8 +235,7 @@ pub fn defeaturing_remove_faces(
         ));
     }
 
-    let remove_set: std::collections::HashSet<usize> =
-        face_indices.iter().copied().collect();
+    let remove_set: std::collections::HashSet<usize> = face_indices.iter().copied().collect();
 
     let remaining: Vec<Handle<FaceData>> = all_faces
         .iter()

@@ -125,10 +125,7 @@ mod tests {
         let b = crate::make_box(&mut model, Point3::ORIGIN, 2.0, 2.0, 2.0).unwrap();
 
         // Points above the box should project onto the top face (z=2)
-        let points = vec![
-            Point3::new(1.0, 1.0, 5.0),
-            Point3::new(0.5, 0.5, 10.0),
-        ];
+        let points = vec![Point3::new(1.0, 1.0, 5.0), Point3::new(0.5, 0.5, 10.0)];
         let projected = project_curve_on_solid(&model, b.solid, &points);
         assert_eq!(projected.len(), 2);
         for p in &projected {

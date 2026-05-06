@@ -38,10 +38,7 @@ impl TrimmedSurface {
         holes: Vec<Vec<Arc<dyn Curve2D>>>,
     ) -> Self {
         let outer_wire = ParametricWire2D::closed(outer);
-        let hole_wires = holes
-            .into_iter()
-            .map(ParametricWire2D::closed)
-            .collect();
+        let hole_wires = holes.into_iter().map(ParametricWire2D::closed).collect();
         Self::new(base, outer_wire, hole_wires)
     }
 
@@ -88,9 +85,9 @@ impl Surface for TrimmedSurface {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cadkernel_math::Point2;
     use crate::curve::curve2d::Line2D;
     use crate::surface::plane::Plane;
+    use cadkernel_math::Point2;
 
     fn square_loop() -> Vec<Arc<dyn Curve2D>> {
         vec![

@@ -1,4 +1,9 @@
+use std::collections::{HashMap, HashSet};
+
+use cadkernel_core::{KernelError, KernelResult};
 use cadkernel_math::{Point3, Vec3};
+
+use crate::{LineId, PointId, Sketch, SketchLine};
 
 /// A work plane in 3D space on which sketches are drawn.
 ///
@@ -62,7 +67,222 @@ impl WorkPlane {
     }
 }
 
-use crate::Sketch;
+/// Connectivity analysis for non-construction sketch profile lines.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SketchProfileAnalysis {
+    /// Closed profile loops, each represented by ordered point ids.
+    pub loops: Vec<Vec<PointId>>,
+    /// Points that terminate an open profile chain.
+    pub open_endpoints: Vec<PointId>,
+    /// Points where more than two regular profile lines meet.
+    pub branch_points: Vec<PointId>,
+    /// Regular profile lines skipped because they reference missing points.
+    pub invalid_line_indices: Vec<usize>,
+    /// Number of non-construction lines considered for profile extraction.
+    pub regular_line_count: usize,
+    /// Number of construction lines ignored by the profile analyzer.
+    pub construction_line_count: usize,
+}
+
+impl SketchProfileAnalysis {
+    /// Returns true when the sketch contains exactly one usable closed profile.
+    pub fn is_single_closed_profile(&self) -> bool {
+        self.invalid_line_indices.is_empty()
+            && self.open_endpoints.is_empty()
+            && self.branch_points.is_empty()
+            && self.loops.len() == 1
+            && self.regular_line_count == self.loops[0].len()
+            && self.loops[0].len() >= 3
+    }
+
+    /// Compact English status text suitable for UI banners and diagnostics.
+    pub fn status_label(&self) -> String {
+        if self.regular_line_count == 0 {
+            return "Profile: no regular lines".to_string();
+        }
+        if !self.invalid_line_indices.is_empty() {
+            return format!(
+                "Profile: {} invalid line refs",
+                self.invalid_line_indices.len()
+            );
+        }
+        if !self.branch_points.is_empty() {
+            return format!("Profile: {} branch points", self.branch_points.len());
+        }
+        if !self.open_endpoints.is_empty() {
+            return format!("Profile: open ({} endpoints)", self.open_endpoints.len());
+        }
+        if self.loops.len() == 1 && self.regular_line_count == self.loops[0].len() {
+            return format!("Profile: ready ({} edges)", self.loops[0].len());
+        }
+        if self.loops.is_empty() {
+            "Profile: no closed loop".to_string()
+        } else {
+            format!("Profile: {} closed loops", self.loops.len())
+        }
+    }
+}
+
+/// Analyze regular (non-construction) sketch lines for closed profile loops.
+///
+/// Construction lines are ignored. The analyzer reports open endpoints and
+/// branch points so the viewer can explain why Pad/Pocket/Groove cannot use a
+/// sketch, instead of passing a partial open chain into the modeling kernel.
+pub fn analyze_profiles(sketch: &Sketch) -> SketchProfileAnalysis {
+    let construction_lines: HashSet<usize> = sketch
+        .construction_lines
+        .iter()
+        .map(|LineId(i)| *i)
+        .collect();
+    let construction_line_count = sketch
+        .lines
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| construction_lines.contains(i))
+        .count();
+
+    let mut invalid_line_indices = Vec::new();
+    let mut regular_edges: Vec<(usize, SketchLine)> = Vec::new();
+    for (idx, line) in sketch.lines.iter().copied().enumerate() {
+        if construction_lines.contains(&idx) {
+            continue;
+        }
+        if line.start.0 >= sketch.points.len()
+            || line.end.0 >= sketch.points.len()
+            || line.start == line.end
+        {
+            invalid_line_indices.push(idx);
+            continue;
+        }
+        regular_edges.push((idx, line));
+    }
+
+    let regular_line_count = regular_edges.len();
+    if regular_edges.is_empty() {
+        return SketchProfileAnalysis {
+            invalid_line_indices,
+            regular_line_count,
+            construction_line_count,
+            ..SketchProfileAnalysis::default()
+        };
+    }
+
+    let mut adj: HashMap<usize, Vec<(usize, usize)>> = HashMap::new();
+    for (li, line) in &regular_edges {
+        adj.entry(line.start.0).or_default().push((*li, line.end.0));
+        adj.entry(line.end.0).or_default().push((*li, line.start.0));
+    }
+
+    let mut open_endpoints: Vec<PointId> = adj
+        .iter()
+        .filter_map(|(&pid, edges)| (edges.len() == 1).then_some(PointId(pid)))
+        .collect();
+    let mut branch_points: Vec<PointId> = adj
+        .iter()
+        .filter_map(|(&pid, edges)| (edges.len() > 2).then_some(PointId(pid)))
+        .collect();
+    open_endpoints.sort_by_key(|p| p.0);
+    branch_points.sort_by_key(|p| p.0);
+
+    let mut edge_by_index: HashMap<usize, SketchLine> = HashMap::new();
+    for (idx, line) in &regular_edges {
+        edge_by_index.insert(*idx, *line);
+    }
+    let mut visited: HashSet<usize> = HashSet::new();
+    let mut loops = Vec::new();
+
+    for (start_li, start_line) in &regular_edges {
+        if visited.contains(start_li) {
+            continue;
+        }
+
+        let component = collect_component(*start_li, &edge_by_index, &adj);
+        for li in &component {
+            visited.insert(*li);
+        }
+
+        let all_degree_two = component.iter().all(|li| {
+            let line = edge_by_index[li];
+            adj.get(&line.start.0).is_some_and(|v| v.len() == 2)
+                && adj.get(&line.end.0).is_some_and(|v| v.len() == 2)
+        });
+        if !all_degree_two {
+            continue;
+        }
+
+        if let Some(loop_pts) = trace_loop(*start_li, *start_line, &adj, component.len()) {
+            if loop_pts.len() >= 3 {
+                loops.push(loop_pts);
+            }
+        }
+    }
+
+    SketchProfileAnalysis {
+        loops,
+        open_endpoints,
+        branch_points,
+        invalid_line_indices,
+        regular_line_count,
+        construction_line_count,
+    }
+}
+
+fn collect_component(
+    start_li: usize,
+    edge_by_index: &HashMap<usize, SketchLine>,
+    adj: &HashMap<usize, Vec<(usize, usize)>>,
+) -> Vec<usize> {
+    let mut out = Vec::new();
+    let mut seen: HashSet<usize> = HashSet::new();
+    let mut stack = vec![start_li];
+    while let Some(li) = stack.pop() {
+        if !seen.insert(li) {
+            continue;
+        }
+        out.push(li);
+        let line = edge_by_index[&li];
+        for pid in [line.start.0, line.end.0] {
+            if let Some(edges) = adj.get(&pid) {
+                for (next_li, _) in edges {
+                    if !seen.contains(next_li) {
+                        stack.push(*next_li);
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+fn trace_loop(
+    start_li: usize,
+    start_line: SketchLine,
+    adj: &HashMap<usize, Vec<(usize, usize)>>,
+    expected_edges: usize,
+) -> Option<Vec<PointId>> {
+    let start = start_line.start.0;
+    let mut current = start_line.end.0;
+    let mut prev_line = start_li;
+    let mut used = HashSet::from([start_li]);
+    let mut points = vec![PointId(start)];
+
+    loop {
+        if current == start {
+            return (used.len() == expected_edges).then_some(points);
+        }
+        if points.len() > expected_edges {
+            return None;
+        }
+        points.push(PointId(current));
+        let neighbors = adj.get(&current)?;
+        let (next_line, next_point) = neighbors.iter().find(|(li, _)| *li != prev_line).copied()?;
+        if !used.insert(next_line) && next_point != start {
+            return None;
+        }
+        prev_line = next_line;
+        current = next_point;
+    }
+}
 
 /// Extracts the solved sketch point positions as a 3D polygon on the given
 /// work plane. Returns the ordered list of points forming a closed profile.
@@ -126,6 +346,26 @@ pub fn extract_profile(sketch: &Sketch, plane: &WorkPlane) -> Vec<Point3> {
         .collect()
 }
 
+/// Extract a single closed, non-construction profile loop as world points.
+///
+/// Returns a validation error for open chains, branch points, invalid line
+/// references, or sketches with zero/multiple closed loops. Use this for
+/// feature commands such as Pad/Pocket that require an extrudable profile.
+pub fn extract_profile_checked(sketch: &Sketch, plane: &WorkPlane) -> KernelResult<Vec<Point3>> {
+    let analysis = analyze_profiles(sketch);
+    if analysis.is_single_closed_profile() {
+        return Ok(analysis.loops[0]
+            .iter()
+            .map(|pid| {
+                let p = &sketch.points[pid.0];
+                plane.to_world(p.position.x, p.position.y)
+            })
+            .collect());
+    }
+
+    Err(KernelError::InvalidArgument(analysis.status_label()))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -176,5 +416,57 @@ mod tests {
         assert_eq!(profile.len(), 3);
         assert!(profile[0].y.abs() < 1e-10);
         assert!((profile[2].z - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn test_analyze_profiles_reports_single_closed_square() {
+        let mut sketch = Sketch::new();
+        let p0 = sketch.add_point(0.0, 0.0);
+        let p1 = sketch.add_point(1.0, 0.0);
+        let p2 = sketch.add_point(1.0, 1.0);
+        let p3 = sketch.add_point(0.0, 1.0);
+        sketch.add_line(p0, p1);
+        sketch.add_line(p1, p2);
+        sketch.add_line(p2, p3);
+        sketch.add_line(p3, p0);
+
+        let analysis = analyze_profiles(&sketch);
+        assert!(analysis.is_single_closed_profile(), "{analysis:?}");
+        assert_eq!(analysis.loops.len(), 1);
+        assert_eq!(analysis.loops[0], vec![p0, p1, p2, p3]);
+        assert!(analysis.open_endpoints.is_empty());
+    }
+
+    #[test]
+    fn test_analyze_profiles_ignores_construction_diagonal() {
+        let mut sketch = Sketch::new();
+        let p0 = sketch.add_point(0.0, 0.0);
+        let p1 = sketch.add_point(1.0, 0.0);
+        let p2 = sketch.add_point(1.0, 1.0);
+        let p3 = sketch.add_point(0.0, 1.0);
+        sketch.add_line(p0, p1);
+        sketch.add_line(p1, p2);
+        sketch.add_line(p2, p3);
+        sketch.add_line(p3, p0);
+        let diag = sketch.add_line(p0, p2);
+        sketch.construction_lines.push(diag);
+
+        let analysis = analyze_profiles(&sketch);
+        assert!(analysis.is_single_closed_profile(), "{analysis:?}");
+        assert_eq!(analysis.regular_line_count, 4);
+        assert_eq!(analysis.construction_line_count, 1);
+    }
+
+    #[test]
+    fn test_extract_profile_checked_rejects_open_chain() {
+        let mut sketch = Sketch::new();
+        let p0 = sketch.add_point(0.0, 0.0);
+        let p1 = sketch.add_point(1.0, 0.0);
+        let p2 = sketch.add_point(1.0, 1.0);
+        sketch.add_line(p0, p1);
+        sketch.add_line(p1, p2);
+
+        let err = extract_profile_checked(&sketch, &WorkPlane::xy()).unwrap_err();
+        assert!(err.to_string().contains("open"), "{err}");
     }
 }

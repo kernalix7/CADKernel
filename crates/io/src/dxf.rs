@@ -10,8 +10,8 @@ use cadkernel_core::{KernelError, KernelResult};
 use cadkernel_math::{Point3, Vec3};
 
 use crate::techdraw::{
-    Centerline, CosmeticLine, CosmeticLineStyle, Dimension, DrawingSheet, HatchPattern,
-    LeaderLine, TextAnnotation,
+    Centerline, CosmeticLine, CosmeticLineStyle, Dimension, DrawingSheet, HatchPattern, LeaderLine,
+    TextAnnotation,
 };
 use crate::tessellate::Mesh;
 
@@ -94,7 +94,11 @@ pub fn import_dxf(content: &str) -> KernelResult<Mesh> {
             let v02 = pts[2] - pts[0];
             let n = v01.cross(v02);
             let n_len = n.length();
-            let normal = if n_len > 1e-14 { n * (1.0 / n_len) } else { Vec3::Z };
+            let normal = if n_len > 1e-14 {
+                n * (1.0 / n_len)
+            } else {
+                Vec3::Z
+            };
 
             for pt in &pts[..3] {
                 vertices.push(*pt);
@@ -136,10 +140,7 @@ pub fn export_drawing_dxf(sheet: &DrawingSheet) -> KernelResult<String> {
     out.push_str("0\nSECTION\n2\nHEADER\n");
     let _ = write!(out, "9\n$ACADVER\n1\nAC1021\n");
     let _ = write!(out, "9\n$INSBASE\n10\n0.0\n20\n0.0\n30\n0.0\n");
-    let _ = write!(
-        out,
-        "9\n$EXTMIN\n10\n0.0\n20\n0.0\n30\n0.0\n"
-    );
+    let _ = write!(out, "9\n$EXTMIN\n10\n0.0\n20\n0.0\n30\n0.0\n");
     let _ = write!(
         out,
         "9\n$EXTMAX\n10\n{}\n20\n{}\n30\n0.0\n",
@@ -158,8 +159,22 @@ pub fn export_drawing_dxf(sheet: &DrawingSheet) -> KernelResult<String> {
 
     // Sheet border
     write_dxf_line_2d(&mut out, 0.0, 0.0, sheet.width, 0.0, "Border");
-    write_dxf_line_2d(&mut out, sheet.width, 0.0, sheet.width, sheet.height, "Border");
-    write_dxf_line_2d(&mut out, sheet.width, sheet.height, 0.0, sheet.height, "Border");
+    write_dxf_line_2d(
+        &mut out,
+        sheet.width,
+        0.0,
+        sheet.width,
+        sheet.height,
+        "Border",
+    );
+    write_dxf_line_2d(
+        &mut out,
+        sheet.width,
+        sheet.height,
+        0.0,
+        sheet.height,
+        "Border",
+    );
     write_dxf_line_2d(&mut out, 0.0, sheet.height, 0.0, 0.0, "Border");
 
     // Drawing views (projected edges)
@@ -273,11 +288,7 @@ pub fn export_leaders_dxf(out: &mut String, leaders: &[LeaderLine]) {
             "10\n{}\n20\n{}\n30\n0.0\n",
             leader.start.x, leader.start.y
         );
-        let _ = write!(
-            out,
-            "10\n{}\n20\n{}\n30\n0.0\n",
-            leader.end.x, leader.end.y
-        );
+        let _ = write!(out, "10\n{}\n20\n{}\n30\n0.0\n", leader.end.x, leader.end.y);
         // Annotation text
         if !leader.text.is_empty() {
             write_dxf_text(
@@ -530,6 +541,9 @@ mod tests {
             center_x: 100.0,
             center_y: 100.0,
             scale: 1.0,
+            sheet_x: None,
+            sheet_y: None,
+            sheet_scale: None,
         });
         let dxf = export_drawing_dxf(&sheet).unwrap();
         assert!(dxf.contains("DIMENSION"));
@@ -670,7 +684,11 @@ mod tests {
 
     #[test]
     fn test_dxf_empty_entities_section() {
-        let mesh = Mesh { vertices: vec![], normals: vec![], indices: vec![] };
+        let mesh = Mesh {
+            vertices: vec![],
+            normals: vec![],
+            indices: vec![],
+        };
         let dxf = export_dxf(&mesh).unwrap();
         assert!(dxf.contains("ENTITIES"));
         assert!(!dxf.contains("3DFACE"));
@@ -738,7 +756,11 @@ mod tests {
         let imported = import_dxf(&dxf).unwrap();
         assert_eq!(imported.triangle_count(), 1);
         // Verify Z coordinate is preserved
-        let max_z = imported.vertices.iter().map(|v| v.z).fold(f64::NEG_INFINITY, f64::max);
+        let max_z = imported
+            .vertices
+            .iter()
+            .map(|v| v.z)
+            .fold(f64::NEG_INFINITY, f64::max);
         assert!(max_z > 1.0);
     }
 

@@ -283,10 +283,9 @@ impl PluginRegistry {
         command_name: &str,
         args: serde_json::Value,
     ) -> KernelResult<serde_json::Value> {
-        let entry = self
-            .entries
-            .get(&plugin_id)
-            .ok_or_else(|| KernelError::InvalidArgument(format!("unknown plugin id {plugin_id}")))?;
+        let entry = self.entries.get(&plugin_id).ok_or_else(|| {
+            KernelError::InvalidArgument(format!("unknown plugin id {plugin_id}"))
+        })?;
 
         if entry.state != PluginState::Active {
             return Err(KernelError::InvalidArgument(format!(
@@ -492,20 +491,12 @@ impl Plugin for AutoNamingPlugin {
             missing.push(format!("{untagged_verts} vertices without tags"));
         }
 
-        let untagged_edges = model
-            .edges
-            .iter()
-            .filter(|(_, e)| e.tag.is_none())
-            .count();
+        let untagged_edges = model.edges.iter().filter(|(_, e)| e.tag.is_none()).count();
         if untagged_edges > 0 {
             missing.push(format!("{untagged_edges} edges without tags"));
         }
 
-        let untagged_faces = model
-            .faces
-            .iter()
-            .filter(|(_, f)| f.tag.is_none())
-            .count();
+        let untagged_faces = model.faces.iter().filter(|(_, f)| f.tag.is_none()).count();
         if untagged_faces > 0 {
             missing.push(format!("{untagged_faces} faces without tags"));
         }
@@ -725,10 +716,7 @@ mod tests {
                     name: "greet".into(),
                     description: "Returns a greeting".into(),
                     execute: Box::new(|args| {
-                        let name = args
-                            .get("name")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("world");
+                        let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("world");
                         Ok(serde_json::json!({ "greeting": format!("hello, {name}") }))
                     }),
                 },
@@ -830,9 +818,10 @@ mod tests {
         let mut reg = PluginRegistry::new();
         let id = reg.register(Box::new(EchoPlugin::new()));
         // Not initialized: still Unloaded
-        assert!(reg
-            .execute_command(id, "echo", serde_json::Value::Null)
-            .is_err());
+        assert!(
+            reg.execute_command(id, "echo", serde_json::Value::Null)
+                .is_err()
+        );
     }
 
     #[test]
@@ -840,9 +829,10 @@ mod tests {
         let mut reg = PluginRegistry::new();
         let id = reg.register(Box::new(EchoPlugin::new()));
         reg.init_all().unwrap();
-        assert!(reg
-            .execute_command(id, "nonexistent", serde_json::Value::Null)
-            .is_err());
+        assert!(
+            reg.execute_command(id, "nonexistent", serde_json::Value::Null)
+                .is_err()
+        );
     }
 
     // -----------------------------------------------------------------------

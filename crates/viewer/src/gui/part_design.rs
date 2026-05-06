@@ -14,11 +14,26 @@
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) enum PartDesignAction {
     // Sketch-driven primary features
-    PadSketch { depth: f64, symmetric: bool },
-    PocketSketch { depth: f64, through_all: bool },
-    GrooveSketch { angle: f64 },
-    HoleSketch { radius: f64, depth: f64 },
-    CountersunkHoleSketch { radius: f64, depth: f64, countersink_angle: f64 },
+    PadSketch {
+        depth: f64,
+        symmetric: bool,
+    },
+    PocketSketch {
+        depth: f64,
+        through_all: bool,
+    },
+    GrooveSketch {
+        angle: f64,
+    },
+    HoleSketch {
+        radius: f64,
+        depth: f64,
+    },
+    CountersunkHoleSketch {
+        radius: f64,
+        depth: f64,
+        countersink_angle: f64,
+    },
 
     // Loft / pipe variants
     AdditiveLoft,
@@ -27,9 +42,20 @@ pub(crate) enum PartDesignAction {
     SubtractivePipe,
 
     // Built-in mechanical generators
-    CreateSprocket { teeth: u32, roller_diameter: f64, pitch: f64, bore: f64 },
-    CreateShaftDesign { segments: Vec<(f64, f64)> },
-    CreateInvoluteGear { teeth: u32, module_val: f64, pressure_angle: f64 },
+    CreateSprocket {
+        teeth: u32,
+        roller_diameter: f64,
+        pitch: f64,
+        bore: f64,
+    },
+    CreateShaftDesign {
+        segments: Vec<(f64, f64)>,
+    },
+    CreateInvoluteGear {
+        teeth: u32,
+        module_val: f64,
+        pressure_angle: f64,
+    },
 
     // Feature management
     ShapeBinder,

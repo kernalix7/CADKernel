@@ -1,0 +1,136 @@
+# Sketch golden 001: Rectangle
+#
+# A simple axis-aligned 100 × 50 mm rectangle with the bottom-left corner
+# anchored at the origin. Demonstrates: anchor, horizontal, vertical,
+# distance constraints. Verifies basic well-determined solver behaviour.
+
+[sketch]
+name = "Rectangle"
+units = "mm"
+description = "100 x 50 mm axis-aligned rectangle anchored at origin."
+
+# ---- Entities ---------------------------------------------------------
+
+[[entity]]
+id = 1
+kind = "Point"
+x = 0.0
+y = 0.0
+anchor = true              # bottom-left corner — pins 2 DoF (translation)
+
+[[entity]]
+id = 2
+kind = "Point"
+x = 100.0
+y = 0.0
+
+[[entity]]
+id = 3
+kind = "Point"
+x = 100.0
+y = 50.0
+
+[[entity]]
+id = 4
+kind = "Point"
+x = 0.0
+y = 50.0
+
+[[entity]]
+id = 10
+kind = "Line"
+start = 1
+end = 2
+
+[[entity]]
+id = 11
+kind = "Line"
+start = 2
+end = 3
+
+[[entity]]
+id = 12
+kind = "Line"
+start = 3
+end = 4
+
+[[entity]]
+id = 13
+kind = "Line"
+start = 4
+end = 1
+
+# ---- Constraints ------------------------------------------------------
+# 4 lines × 4 endpoints already share vertices, so we only need:
+#   - bottom edge horizontal
+#   - top edge horizontal
+#   - left edge vertical
+#   - right edge vertical
+#   - bottom edge length 100 mm
+#   - left edge length 50 mm
+# This pins all 6 remaining DoF (8 free coords - 2 anchored - 6 constraints = 0).
+
+[[constraint]]
+id = 100
+kind = "Horizontal"
+between = [1, 2]
+
+[[constraint]]
+id = 101
+kind = "Horizontal"
+between = [4, 3]
+
+[[constraint]]
+id = 102
+kind = "Vertical"
+between = [1, 4]
+
+[[constraint]]
+id = 103
+kind = "Vertical"
+between = [2, 3]
+
+[[constraint]]
+id = 104
+kind = "Distance"
+between = [1, 2]
+value = 100.0
+
+[[constraint]]
+id = 105
+kind = "Distance"
+between = [1, 4]
+value = 50.0
+
+# ---- Expected solver outcome ------------------------------------------
+
+[expected]
+status = "WellDetermined"
+dof = 0
+positional_residual_max = 1e-12
+dimensional_residual_max = 1e-9
+solve_iterations_max = 5     # warm start typically converges in 1-2
+
+# ---- Expected solved positions (for verification) ---------------------
+# (Vertex 1 stays at origin per anchor; others should snap to the four
+# corners of a 100 x 50 axis-aligned rectangle.)
+
+[[expected.position]]
+id = 1
+x = 0.0
+y = 0.0
+
+[[expected.position]]
+id = 2
+x = 100.0
+y = 0.0
+
+[[expected.position]]
+id = 3
+x = 100.0
+y = 50.0
+
+[[expected.position]]
+id = 4
+x = 0.0
+y = 50.0

@@ -22,28 +22,17 @@ pub struct TrimValidation {
 #[derive(Debug, Clone)]
 pub enum TrimIssue {
     /// Gap between segment endpoints larger than tolerance.
-    GapInLoop {
-        segment_index: usize,
-        gap: f64,
-    },
+    GapInLoop { segment_index: usize, gap: f64 },
     /// Outer loop has wrong winding (should be CCW).
     OuterLoopClockwise,
     /// Inner loop (hole) has wrong winding (should be CW).
-    InnerLoopCounterClockwise {
-        hole_index: usize,
-    },
+    InnerLoopCounterClockwise { hole_index: usize },
     /// Hole is not fully inside outer loop.
-    HoleOutsideOuter {
-        hole_index: usize,
-    },
+    HoleOutsideOuter { hole_index: usize },
     /// Loop self-intersects.
-    SelfIntersection {
-        loop_index: usize,
-    },
+    SelfIntersection { loop_index: usize },
     /// Loop has too few segments.
-    DegenerateLoop {
-        segment_count: usize,
-    },
+    DegenerateLoop { segment_count: usize },
 }
 
 /// Validates a trim configuration (outer + holes).
@@ -259,7 +248,12 @@ mod tests {
         let outer = cw_square();
         let result = validate_trim(&outer, &[], 0.01);
         assert!(!result.valid);
-        assert!(result.issues.iter().any(|i| matches!(i, TrimIssue::OuterLoopClockwise)));
+        assert!(
+            result
+                .issues
+                .iter()
+                .any(|i| matches!(i, TrimIssue::OuterLoopClockwise))
+        );
     }
 
     #[test]
@@ -275,7 +269,12 @@ mod tests {
         let ccw_hole = ParametricWire2D::closed(segs);
         let result = validate_trim(&outer, &[ccw_hole], 0.01);
         assert!(!result.valid);
-        assert!(result.issues.iter().any(|i| matches!(i, TrimIssue::InnerLoopCounterClockwise { .. })));
+        assert!(
+            result
+                .issues
+                .iter()
+                .any(|i| matches!(i, TrimIssue::InnerLoopCounterClockwise { .. }))
+        );
     }
 
     #[test]
@@ -291,7 +290,12 @@ mod tests {
         let outside_hole = ParametricWire2D::closed(segs);
         let result = validate_trim(&outer, &[outside_hole], 0.01);
         assert!(!result.valid);
-        assert!(result.issues.iter().any(|i| matches!(i, TrimIssue::HoleOutsideOuter { .. })));
+        assert!(
+            result
+                .issues
+                .iter()
+                .any(|i| matches!(i, TrimIssue::HoleOutsideOuter { .. }))
+        );
     }
 
     #[test]
@@ -340,6 +344,11 @@ mod tests {
         let wire = ParametricWire2D::closed(segs);
         let result = validate_trim(&wire, &[], 0.01);
         assert!(!result.valid);
-        assert!(result.issues.iter().any(|i| matches!(i, TrimIssue::GapInLoop { .. })));
+        assert!(
+            result
+                .issues
+                .iter()
+                .any(|i| matches!(i, TrimIssue::GapInLoop { .. }))
+        );
     }
 }

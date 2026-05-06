@@ -33,12 +33,7 @@ impl Line {
     pub fn to_nurbs(&self, t_start: f64, t_end: f64) -> KernelResult<NurbsCurve> {
         let p0 = self.origin + self.direction * t_start;
         let p1 = self.origin + self.direction * t_end;
-        NurbsCurve::new(
-            1,
-            vec![p0, p1],
-            vec![1.0, 1.0],
-            vec![0.0, 0.0, 1.0, 1.0],
-        )
+        NurbsCurve::new(1, vec![p0, p1], vec![1.0, 1.0], vec![0.0, 0.0, 1.0, 1.0])
     }
 }
 

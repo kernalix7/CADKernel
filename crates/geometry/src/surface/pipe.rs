@@ -61,11 +61,7 @@ impl Surface for PipeSurface {
         let p = self.point_at(u, v);
         let n = Vec3::new(p.x - center.x, p.y - center.y, p.z - center.z);
         let n_len = n.length();
-        if n_len < 1e-14 {
-            Vec3::Z
-        } else {
-            n / n_len
-        }
+        if n_len < 1e-14 { Vec3::Z } else { n / n_len }
     }
 
     fn domain_u(&self) -> (f64, f64) {
@@ -84,9 +80,10 @@ mod tests {
 
     #[test]
     fn test_pipe_along_line() {
-        let path = Arc::new(
-            LineSegment::new(Point3::ORIGIN, Point3::new(10.0, 0.0, 0.0)),
-        );
+        let path = Arc::new(LineSegment::new(
+            Point3::ORIGIN,
+            Point3::new(10.0, 0.0, 0.0),
+        ));
         let pipe = PipeSurface::new(path, 1.0);
 
         // At midpoint of path (u=0.5), v=0 should be at radius distance from center
@@ -103,9 +100,7 @@ mod tests {
 
     #[test]
     fn test_pipe_full_circle() {
-        let path = Arc::new(
-            LineSegment::new(Point3::ORIGIN, Point3::new(0.0, 0.0, 5.0)),
-        );
+        let path = Arc::new(LineSegment::new(Point3::ORIGIN, Point3::new(0.0, 0.0, 5.0)));
         let pipe = PipeSurface::new(path, 2.0);
 
         let (u0, u1) = pipe.domain_u();
@@ -129,9 +124,7 @@ mod tests {
 
     #[test]
     fn test_pipe_normal_outward() {
-        let path = Arc::new(
-            LineSegment::new(Point3::ORIGIN, Point3::new(5.0, 0.0, 0.0)),
-        );
+        let path = Arc::new(LineSegment::new(Point3::ORIGIN, Point3::new(5.0, 0.0, 0.0)));
         let pipe = PipeSurface::new(path, 1.0);
 
         let (u0, u1) = pipe.domain_u();

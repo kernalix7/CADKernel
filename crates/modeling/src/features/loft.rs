@@ -206,11 +206,19 @@ mod tests {
     fn test_loft_validation() {
         let mut model = BRepModel::new();
         // Too few profiles
-        let p = vec![Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 0.0, 0.0), Point3::new(0.5, 1.0, 0.0)];
+        let p = vec![
+            Point3::new(0.0, 0.0, 0.0),
+            Point3::new(1.0, 0.0, 0.0),
+            Point3::new(0.5, 1.0, 0.0),
+        ];
         assert!(loft(&mut model, &[&p]).is_err());
 
         // Mismatched point counts
-        let a = vec![Point3::ORIGIN, Point3::new(1.0, 0.0, 0.0), Point3::new(0.5, 1.0, 0.0)];
+        let a = vec![
+            Point3::ORIGIN,
+            Point3::new(1.0, 0.0, 0.0),
+            Point3::new(0.5, 1.0, 0.0),
+        ];
         let b = vec![
             Point3::new(0.0, 0.0, 5.0),
             Point3::new(1.0, 0.0, 5.0),

@@ -1,8 +1,7 @@
 use cadkernel_viewer::{
-    Camera, DisplayMode, Projection, StandardView,
+    Camera, DisplayMode, Projection, StandardView, Vertex,
     nav::{BgPreset, NavAction, NavConfig, NavStyle, OrbitStyle, RotationMode, UnitSystem},
     scene::{CreationParams, ObjectGroup, Scene, compute_aabb},
-    Vertex,
 };
 
 // ---------------------------------------------------------------------------
@@ -10,7 +9,10 @@ use cadkernel_viewer::{
 // ---------------------------------------------------------------------------
 
 fn make_vertex(px: f32, py: f32, pz: f32) -> Vertex {
-    Vertex { position: [px, py, pz], normal: [0.0, 0.0, 1.0] }
+    Vertex {
+        position: [px, py, pz],
+        normal: [0.0, 0.0, 1.0],
+    }
 }
 
 #[test]
@@ -132,7 +134,10 @@ fn standard_view_labels_non_empty() {
 #[test]
 fn standard_view_yaw_pitch_front_is_pi_over_2_zero() {
     let (yaw, pitch) = StandardView::Front.yaw_pitch();
-    assert!((yaw - std::f32::consts::FRAC_PI_2).abs() < 1e-5, "front yaw={yaw}");
+    assert!(
+        (yaw - std::f32::consts::FRAC_PI_2).abs() < 1e-5,
+        "front yaw={yaw}"
+    );
     assert!(pitch.abs() < 1e-5, "front pitch={pitch}");
 }
 
@@ -145,7 +150,10 @@ fn standard_view_top_pitch_near_plus_90() {
 #[test]
 fn standard_view_bottom_pitch_near_minus_90() {
     let (_yaw, pitch) = StandardView::Bottom.yaw_pitch();
-    assert!(pitch < -1.0, "bottom pitch should be near -PI/2, got {pitch}");
+    assert!(
+        pitch < -1.0,
+        "bottom pitch should be near -PI/2, got {pitch}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -215,7 +223,11 @@ fn camera_eye_is_different_from_target() {
     let cam = Camera::new(1.0);
     let eye = cam.eye();
     let target = cam.target;
-    let diff: f32 = eye.iter().zip(target.iter()).map(|(a, b)| (a - b).abs()).sum();
+    let diff: f32 = eye
+        .iter()
+        .zip(target.iter())
+        .map(|(a, b)| (a - b).abs())
+        .sum();
     assert!(diff > 0.01, "eye should not coincide with target");
 }
 
@@ -395,10 +407,19 @@ fn bg_preset_all_have_non_empty_labels() {
 
 #[test]
 fn creation_params_box_serialises_and_deserialises() {
-    let params = CreationParams::Box { width: 1.0, height: 2.0, depth: 3.0 };
+    let params = CreationParams::Box {
+        width: 1.0,
+        height: 2.0,
+        depth: 3.0,
+    };
     let json = serde_json::to_string(&params).unwrap();
     let back: CreationParams = serde_json::from_str(&json).unwrap();
-    if let CreationParams::Box { width, height, depth } = back {
+    if let CreationParams::Box {
+        width,
+        height,
+        depth,
+    } = back
+    {
         assert!((width - 1.0).abs() < f64::EPSILON);
         assert!((height - 2.0).abs() < f64::EPSILON);
         assert!((depth - 3.0).abs() < f64::EPSILON);
@@ -412,7 +433,9 @@ fn creation_params_sphere_serialises_and_deserialises() {
     let params = CreationParams::Sphere { radius: 5.0 };
     let json = serde_json::to_string(&params).unwrap();
     let back: CreationParams = serde_json::from_str(&json).unwrap();
-    assert!(matches!(back, CreationParams::Sphere { radius } if (radius - 5.0).abs() < f64::EPSILON));
+    assert!(
+        matches!(back, CreationParams::Sphere { radius } if (radius - 5.0).abs() < f64::EPSILON)
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -421,7 +444,11 @@ fn creation_params_sphere_serialises_and_deserialises() {
 
 #[test]
 fn object_group_construction_stores_fields() {
-    let g = ObjectGroup { id: 42, name: "test_group".into(), visible: true };
+    let g = ObjectGroup {
+        id: 42,
+        name: "test_group".into(),
+        visible: true,
+    };
     assert_eq!(g.id, 42);
     assert_eq!(g.name, "test_group");
     assert!(g.visible);

@@ -50,12 +50,9 @@ pub fn pocket(
     let solids: Vec<Handle<SolidData>> = result_model.solids.iter().map(|(h, _)| h).collect();
     let faces: Vec<Handle<FaceData>> = result_model.faces.iter().map(|(h, _)| h).collect();
 
-    let solid = solids
-        .first()
-        .copied()
-        .ok_or(KernelError::TopologyError(
-            "pocket produced no solid".into(),
-        ))?;
+    let solid = solids.first().copied().ok_or(KernelError::TopologyError(
+        "pocket produced no solid".into(),
+    ))?;
 
     Ok(PocketResult {
         model: result_model,

@@ -117,7 +117,10 @@ pub fn snap_to_sketch_geometry(
             consider(sketch.points[line.end.0].position, SnapType::Endpoint);
         }
         for arc in &sketch.arcs {
-            consider(sketch.points[arc.start_point.0].position, SnapType::Endpoint);
+            consider(
+                sketch.points[arc.start_point.0].position,
+                SnapType::Endpoint,
+            );
             consider(sketch.points[arc.end_point.0].position, SnapType::Endpoint);
         }
     }
@@ -292,10 +295,7 @@ pub fn paste_entities(
     for entity in entities {
         match entity {
             SketchEntity::Point(pt) => {
-                let pid = sketch.add_point(
-                    pt.position.x + offset.x,
-                    pt.position.y + offset.y,
-                );
+                let pid = sketch.add_point(pt.position.x + offset.x, pt.position.y + offset.y);
                 new_ids.push(pid.0);
             }
             SketchEntity::Line(line) => {
@@ -349,10 +349,7 @@ pub fn add_periodic_bspline_from_knots(
 ///
 /// Returns `Constraint::Length` for lines, `Constraint::Radius` for arcs,
 /// `Constraint::Diameter` for circles, or `Constraint::Distance` for two points.
-pub fn contextual_dimension(
-    sketch: &Sketch,
-    selection: &[usize],
-) -> Option<Constraint> {
+pub fn contextual_dimension(sketch: &Sketch, selection: &[usize]) -> Option<Constraint> {
     match selection.len() {
         1 => {
             let id = selection[0];
@@ -396,11 +393,7 @@ pub fn unified_radius_diameter(sketch: &Sketch, entity_id: usize) -> Option<Cons
     // Check arcs first
     if entity_id < sketch.arcs.len() {
         let arc = &sketch.arcs[entity_id];
-        return Some(Constraint::Radius(
-            arc.center,
-            arc.start_point,
-            arc.radius,
-        ));
+        return Some(Constraint::Radius(arc.center, arc.start_point, arc.radius));
     }
     // Then circles
     if entity_id < sketch.circles.len() {
@@ -515,12 +508,7 @@ mod tests {
             ..Default::default()
         };
         let grid = SketchGrid::default();
-        let result = snap_to_sketch_geometry(
-            &sketch,
-            Point2::new(0.1, 0.1),
-            &snap,
-            &grid,
-        );
+        let result = snap_to_sketch_geometry(&sketch, Point2::new(0.1, 0.1), &snap, &grid);
         assert!(result.is_some());
         let (p, st) = result.unwrap();
         assert!((p.x).abs() < 1e-6);
@@ -538,13 +526,11 @@ mod tests {
             snap_to_grid: false,
             ..Default::default()
         };
-        let grid = SketchGrid { visible: false, ..Default::default() };
-        let result = snap_to_sketch_geometry(
-            &sketch,
-            Point2::new(5.0, 0.1),
-            &snap,
-            &grid,
-        );
+        let grid = SketchGrid {
+            visible: false,
+            ..Default::default()
+        };
+        let result = snap_to_sketch_geometry(&sketch, Point2::new(5.0, 0.1), &snap, &grid);
         assert!(result.is_some());
         let (p, st) = result.unwrap();
         assert!((p.x - 5.0).abs() < 1e-6);
@@ -562,13 +548,11 @@ mod tests {
             snap_to_grid: false,
             ..Default::default()
         };
-        let grid = SketchGrid { visible: false, ..Default::default() };
-        let result = snap_to_sketch_geometry(
-            &sketch,
-            Point2::new(5.1, 5.1),
-            &snap,
-            &grid,
-        );
+        let grid = SketchGrid {
+            visible: false,
+            ..Default::default()
+        };
+        let result = snap_to_sketch_geometry(&sketch, Point2::new(5.1, 5.1), &snap, &grid);
         assert!(result.is_some());
         let (_, st) = result.unwrap();
         assert_eq!(st, SnapType::Center);
@@ -702,10 +686,8 @@ mod tests {
 
     #[test]
     fn test_align_view_to_sketch_xy() {
-        let (yaw, pitch, roll) = align_view_to_sketch(
-            cadkernel_math::Point3::ORIGIN,
-            cadkernel_math::Vec3::Z,
-        );
+        let (yaw, pitch, roll) =
+            align_view_to_sketch(cadkernel_math::Point3::ORIGIN, cadkernel_math::Vec3::Z);
         assert!((roll).abs() < 1e-10);
         assert!((pitch).abs() < 1e-10);
         // yaw = atan2(0, 1) = 0
@@ -729,12 +711,7 @@ mod tests {
         let p3 = sketch.add_point(0.0, 1.0);
 
         let knots = vec![0.0, 0.0, 0.0, 0.25, 0.5, 0.75, 1.0, 1.0, 1.0];
-        let bsp = add_periodic_bspline_from_knots(
-            &mut sketch,
-            vec![p0, p1, p2, p3],
-            knots,
-            2,
-        );
+        let bsp = add_periodic_bspline_from_knots(&mut sketch, vec![p0, p1, p2, p3], knots, 2);
         assert!(sketch.bsplines[bsp.0].closed);
         assert_eq!(sketch.bsplines[bsp.0].knots.len(), 9);
     }

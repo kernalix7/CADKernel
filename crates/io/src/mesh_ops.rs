@@ -22,9 +22,7 @@ fn triangle_normal(a: Point3, b: Point3, c: Point3) -> Vec3 {
 
 /// Compute the unit normal for a triangle, falling back to zero if degenerate.
 fn unit_triangle_normal(a: Point3, b: Point3, c: Point3) -> Vec3 {
-    triangle_normal(a, b, c)
-        .normalized()
-        .unwrap_or(Vec3::ZERO)
+    triangle_normal(a, b, c).normalized().unwrap_or(Vec3::ZERO)
 }
 
 /// Recompute per-triangle normals for all faces in the mesh.
@@ -352,18 +350,17 @@ pub fn subdivide_mesh(mesh: &Mesh) -> KernelResult<Mesh> {
     let mut vertices = mesh.vertices.clone();
     let mut edge_midpoints: HashMap<(u32, u32), u32> = HashMap::new();
 
-    let mut get_midpoint =
-        |verts: &mut Vec<Point3>, a: u32, b: u32| -> u32 {
-            let key = edge_key(a, b);
-            if let Some(&idx) = edge_midpoints.get(&key) {
-                return idx;
-            }
-            let mid = verts[a as usize].midpoint(verts[b as usize]);
-            let idx = verts.len() as u32;
-            verts.push(mid);
-            edge_midpoints.insert(key, idx);
-            idx
-        };
+    let mut get_midpoint = |verts: &mut Vec<Point3>, a: u32, b: u32| -> u32 {
+        let key = edge_key(a, b);
+        if let Some(&idx) = edge_midpoints.get(&key) {
+            return idx;
+        }
+        let mid = verts[a as usize].midpoint(verts[b as usize]);
+        let idx = verts.len() as u32;
+        verts.push(mid);
+        edge_midpoints.insert(key, idx);
+        idx
+    };
 
     let mut new_indices = Vec::with_capacity(mesh.indices.len() * 4);
 
@@ -953,12 +950,7 @@ pub fn regular_solid(solid_type: RegularSolidType, size: f64) -> KernelResult<Me
     let (raw_verts, raw_faces) = match solid_type {
         RegularSolidType::Tetrahedron => {
             let s = size;
-            let verts = vec![
-                [s, s, s],
-                [-s, -s, s],
-                [-s, s, -s],
-                [s, -s, -s],
-            ];
+            let verts = vec![[s, s, s], [-s, -s, s], [-s, s, -s], [s, -s, -s]];
             let faces: Vec<Vec<usize>> =
                 vec![vec![0, 1, 2], vec![0, 2, 3], vec![0, 3, 1], vec![1, 3, 2]];
             (verts, faces)
@@ -966,16 +958,28 @@ pub fn regular_solid(solid_type: RegularSolidType, size: f64) -> KernelResult<Me
         RegularSolidType::Cube => {
             let s = size * 0.5;
             let verts = vec![
-                [-s, -s, -s], [s, -s, -s], [s, s, -s], [-s, s, -s],
-                [-s, -s, s], [s, -s, s], [s, s, s], [-s, s, s],
+                [-s, -s, -s],
+                [s, -s, -s],
+                [s, s, -s],
+                [-s, s, -s],
+                [-s, -s, s],
+                [s, -s, s],
+                [s, s, s],
+                [-s, s, s],
             ];
             let faces: Vec<Vec<usize>> = vec![
-                vec![0, 2, 1], vec![0, 3, 2],
-                vec![4, 5, 6], vec![4, 6, 7],
-                vec![0, 1, 5], vec![0, 5, 4],
-                vec![2, 3, 7], vec![2, 7, 6],
-                vec![0, 4, 7], vec![0, 7, 3],
-                vec![1, 2, 6], vec![1, 6, 5],
+                vec![0, 2, 1],
+                vec![0, 3, 2],
+                vec![4, 5, 6],
+                vec![4, 6, 7],
+                vec![0, 1, 5],
+                vec![0, 5, 4],
+                vec![2, 3, 7],
+                vec![2, 7, 6],
+                vec![0, 4, 7],
+                vec![0, 7, 3],
+                vec![1, 2, 6],
+                vec![1, 6, 5],
             ];
             (verts, faces)
         }
@@ -990,8 +994,14 @@ pub fn regular_solid(solid_type: RegularSolidType, size: f64) -> KernelResult<Me
                 [0.0, 0.0, -s],
             ];
             let faces: Vec<Vec<usize>> = vec![
-                vec![0, 1, 2], vec![0, 2, 3], vec![0, 3, 4], vec![0, 4, 1],
-                vec![5, 2, 1], vec![5, 3, 2], vec![5, 4, 3], vec![5, 1, 4],
+                vec![0, 1, 2],
+                vec![0, 2, 3],
+                vec![0, 3, 4],
+                vec![0, 4, 1],
+                vec![5, 2, 1],
+                vec![5, 3, 2],
+                vec![5, 4, 3],
+                vec![5, 1, 4],
             ];
             (verts, faces)
         }
@@ -1011,12 +1021,18 @@ pub fn regular_solid(solid_type: RegularSolidType, size: f64) -> KernelResult<Me
             ];
             // Dodecahedron has 12 pentagonal faces; triangulate each into 3 triangles
             let pentagons: Vec<Vec<usize>> = vec![
-                vec![0, 16, 2, 10, 8], vec![0, 8, 4, 14, 12],
-                vec![16, 17, 1, 12, 0], vec![1, 9, 11, 3, 17],
-                vec![1, 12, 14, 5, 9], vec![2, 13, 15, 6, 10],
-                vec![13, 3, 17, 16, 2], vec![3, 11, 7, 15, 13],
-                vec![4, 8, 10, 6, 18], vec![14, 4, 18, 19, 5],
-                vec![5, 19, 7, 11, 9], vec![15, 7, 19, 18, 6],
+                vec![0, 16, 2, 10, 8],
+                vec![0, 8, 4, 14, 12],
+                vec![16, 17, 1, 12, 0],
+                vec![1, 9, 11, 3, 17],
+                vec![1, 12, 14, 5, 9],
+                vec![2, 13, 15, 6, 10],
+                vec![13, 3, 17, 16, 2],
+                vec![3, 11, 7, 15, 13],
+                vec![4, 8, 10, 6, 18],
+                vec![14, 4, 18, 19, 5],
+                vec![5, 19, 7, 11, 9],
+                vec![15, 7, 19, 18, 6],
             ];
             let mut faces: Vec<Vec<usize>> = Vec::new();
             for pent in &pentagons {
@@ -1032,15 +1048,40 @@ pub fn regular_solid(solid_type: RegularSolidType, size: f64) -> KernelResult<Me
             let a = s;
             let b = s * phi;
             let verts = vec![
-                [-a, b, 0.0], [a, b, 0.0], [-a, -b, 0.0], [a, -b, 0.0],
-                [0.0, -a, b], [0.0, a, b], [0.0, -a, -b], [0.0, a, -b],
-                [b, 0.0, -a], [b, 0.0, a], [-b, 0.0, -a], [-b, 0.0, a],
+                [-a, b, 0.0],
+                [a, b, 0.0],
+                [-a, -b, 0.0],
+                [a, -b, 0.0],
+                [0.0, -a, b],
+                [0.0, a, b],
+                [0.0, -a, -b],
+                [0.0, a, -b],
+                [b, 0.0, -a],
+                [b, 0.0, a],
+                [-b, 0.0, -a],
+                [-b, 0.0, a],
             ];
             let faces: Vec<Vec<usize>> = vec![
-                vec![0, 11, 5], vec![0, 5, 1], vec![0, 1, 7], vec![0, 7, 10], vec![0, 10, 11],
-                vec![1, 5, 9], vec![5, 11, 4], vec![11, 10, 2], vec![10, 7, 6], vec![7, 1, 8],
-                vec![3, 9, 4], vec![3, 4, 2], vec![3, 2, 6], vec![3, 6, 8], vec![3, 8, 9],
-                vec![4, 9, 5], vec![2, 4, 11], vec![6, 2, 10], vec![8, 6, 7], vec![9, 8, 1],
+                vec![0, 11, 5],
+                vec![0, 5, 1],
+                vec![0, 1, 7],
+                vec![0, 7, 10],
+                vec![0, 10, 11],
+                vec![1, 5, 9],
+                vec![5, 11, 4],
+                vec![11, 10, 2],
+                vec![10, 7, 6],
+                vec![7, 1, 8],
+                vec![3, 9, 4],
+                vec![3, 4, 2],
+                vec![3, 2, 6],
+                vec![3, 6, 8],
+                vec![3, 8, 9],
+                vec![4, 9, 5],
+                vec![2, 4, 11],
+                vec![6, 2, 10],
+                vec![8, 6, 7],
+                vec![9, 8, 1],
             ];
             (verts, faces)
         }
@@ -1222,16 +1263,17 @@ pub fn unwrap_mesh(mesh: &Mesh) -> UnwrapResult {
     let size = Vec3::new(max.x - min.x, max.y - min.y, max.z - min.z);
 
     // Project along the smallest axis
-    let (u_axis, v_axis, u_offset, v_offset, u_range, v_range) = if size.x <= size.y && size.x <= size.z {
-        // X is smallest → project to YZ plane
-        (1usize, 2usize, min.y, min.z, size.y, size.z)
-    } else if size.y <= size.z {
-        // Y is smallest → project to XZ plane
-        (0usize, 2usize, min.x, min.z, size.x, size.z)
-    } else {
-        // Z is smallest → project to XY plane
-        (0usize, 1usize, min.x, min.y, size.x, size.y)
-    };
+    let (u_axis, v_axis, u_offset, v_offset, u_range, v_range) =
+        if size.x <= size.y && size.x <= size.z {
+            // X is smallest → project to YZ plane
+            (1usize, 2usize, min.y, min.z, size.y, size.z)
+        } else if size.y <= size.z {
+            // Y is smallest → project to XZ plane
+            (0usize, 2usize, min.x, min.z, size.x, size.z)
+        } else {
+            // Z is smallest → project to XY plane
+            (0usize, 1usize, min.x, min.y, size.x, size.y)
+        };
 
     let uvs = mesh
         .vertices
@@ -1349,11 +1391,7 @@ pub fn trim_mesh(mesh: &Mesh, tool: &Mesh) -> Mesh {
 /// Generate multiple parallel cross-sections through a mesh.
 ///
 /// Creates `count` evenly-spaced cross-sections along the given axis direction.
-pub fn mesh_cross_sections(
-    mesh: &Mesh,
-    axis: Vec3,
-    count: usize,
-) -> Vec<Vec<[Point3; 2]>> {
+pub fn mesh_cross_sections(mesh: &Mesh, axis: Vec3, count: usize) -> Vec<Vec<[Point3; 2]>> {
     if count == 0 || mesh.vertices.is_empty() {
         return Vec::new();
     }
@@ -1439,9 +1477,7 @@ pub fn segment_mesh(mesh: &Mesh, angle_threshold: f64) -> Vec<MeshSegment> {
         // Region-growing: add unassigned triangles with similar normal
         let mut i = 0;
         while i < group.len() {
-            let avg = sum_normal
-                .normalized()
-                .unwrap_or(Vec3::Z);
+            let avg = sum_normal.normalized().unwrap_or(Vec3::Z);
             // Check all remaining unassigned triangles
             for j in 0..mesh.indices.len() {
                 if assigned[j] {
@@ -1457,9 +1493,7 @@ pub fn segment_mesh(mesh: &Mesh, angle_threshold: f64) -> Vec<MeshSegment> {
             i += 1;
         }
 
-        let average_normal = sum_normal
-            .normalized()
-            .unwrap_or(Vec3::Z);
+        let average_normal = sum_normal.normalized().unwrap_or(Vec3::Z);
         segments.push(MeshSegment {
             triangle_indices: group,
             average_normal,
@@ -2046,14 +2080,24 @@ mod tests {
             Point3::new(0.0, 1.0, 1.0),
         ];
         let indices = vec![
-            [0, 2, 1], [0, 3, 2],
-            [4, 5, 6], [4, 6, 7],
-            [0, 1, 5], [0, 5, 4],
-            [2, 3, 7], [2, 7, 6],
-            [0, 4, 7], [0, 7, 3],
-            [1, 2, 6], [1, 6, 5],
+            [0, 2, 1],
+            [0, 3, 2],
+            [4, 5, 6],
+            [4, 6, 7],
+            [0, 1, 5],
+            [0, 5, 4],
+            [2, 3, 7],
+            [2, 7, 6],
+            [0, 4, 7],
+            [0, 7, 3],
+            [1, 2, 6],
+            [1, 6, 5],
         ];
-        let mut mesh = Mesh { vertices, normals: Vec::new(), indices };
+        let mut mesh = Mesh {
+            vertices,
+            normals: Vec::new(),
+            indices,
+        };
         recompute_normals(&mut mesh);
         mesh
     }
@@ -2090,20 +2134,13 @@ mod tests {
             merged.triangle_count(),
             a.triangle_count() + b.triangle_count()
         );
-        assert_eq!(
-            merged.vertices.len(),
-            a.vertices.len() + b.vertices.len()
-        );
+        assert_eq!(merged.vertices.len(), a.vertices.len() + b.vertices.len());
     }
 
     #[test]
     fn test_cut_mesh_with_plane_half_cube() {
         let mesh = make_cube();
-        let cut = cut_mesh_with_plane(
-            &mesh,
-            Point3::new(0.0, 0.0, 0.5),
-            Vec3::Z,
-        );
+        let cut = cut_mesh_with_plane(&mesh, Point3::new(0.0, 0.0, 0.5), Vec3::Z);
         assert!(cut.triangle_count() > 0, "cut should retain some triangles");
         for v in &cut.vertices {
             assert!(v.z >= 0.5 - 1e-10, "vertex z={} below cut plane", v.z);
@@ -2113,22 +2150,14 @@ mod tests {
     #[test]
     fn test_cut_mesh_discard_all() {
         let mesh = make_cube();
-        let cut = cut_mesh_with_plane(
-            &mesh,
-            Point3::new(0.0, 0.0, 2.0),
-            Vec3::Z,
-        );
+        let cut = cut_mesh_with_plane(&mesh, Point3::new(0.0, 0.0, 2.0), Vec3::Z);
         assert_eq!(cut.triangle_count(), 0);
     }
 
     #[test]
     fn test_mesh_section_from_plane_cube() {
         let mesh = make_cube();
-        let segments = mesh_section_from_plane(
-            &mesh,
-            Point3::new(0.0, 0.0, 0.5),
-            Vec3::Z,
-        );
+        let segments = mesh_section_from_plane(&mesh, Point3::new(0.0, 0.0, 0.5), Vec3::Z);
         assert!(
             segments.len() >= 4,
             "expected at least 4 segments, got {}",
@@ -2194,13 +2223,19 @@ mod tests {
             }
         }
         // Some boundary edges won't have opposites, but internal edges should
-        assert!(bad_edges < harmonized.indices.len(), "most edges should be consistent");
+        assert!(
+            bad_edges < harmonized.indices.len(),
+            "most edges should be consistent"
+        );
     }
 
     #[test]
     fn test_check_mesh_watertight_closed_cube() {
         let mesh = make_cube();
-        assert!(check_mesh_watertight(&mesh), "closed cube should be watertight");
+        assert!(
+            check_mesh_watertight(&mesh),
+            "closed cube should be watertight"
+        );
     }
 
     #[test]
@@ -2218,7 +2253,10 @@ mod tests {
             v.x += 0.5;
         }
         let result = mesh_boolean_intersection(&a, &b);
-        assert!(result.triangle_count() > 0, "intersection should have triangles");
+        assert!(
+            result.triangle_count() > 0,
+            "intersection should have triangles"
+        );
         assert!(
             result.triangle_count() < a.triangle_count() + b.triangle_count(),
             "intersection should be smaller than union"
@@ -2367,7 +2405,10 @@ mod tests {
         let sections = mesh_cross_sections(&mesh, Vec3::Z, 3);
         assert_eq!(sections.len(), 3);
         for section in &sections {
-            assert!(!section.is_empty(), "each cross-section should have segments");
+            assert!(
+                !section.is_empty(),
+                "each cross-section should have segments"
+            );
         }
     }
 
@@ -2376,7 +2417,11 @@ mod tests {
         let mesh = make_cube();
         let segments = segment_mesh(&mesh, 0.1); // tight angle → many segments
         // A cube has 6 distinct face normals, so expect 6 segments
-        assert_eq!(segments.len(), 6, "cube should have 6 normal-based segments");
+        assert_eq!(
+            segments.len(),
+            6,
+            "cube should have 6 normal-based segments"
+        );
         let total: usize = segments.iter().map(|s| s.triangle_indices.len()).sum();
         assert_eq!(total, 12, "all 12 triangles should be assigned");
     }

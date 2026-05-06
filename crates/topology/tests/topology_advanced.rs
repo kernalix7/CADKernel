@@ -882,7 +882,10 @@ fn property_store_serialization_roundtrip() {
     let json = serde_json::to_string(&s).unwrap();
     let restored: PropertyStore = serde_json::from_str(&json).unwrap();
     assert_eq!(restored.get_material(0).unwrap().name, "Steel");
-    assert_eq!(restored.get_metadata(0, "count"), Some(&PropertyValue::Int(5)));
+    assert_eq!(
+        restored.get_metadata(0, "count"),
+        Some(&PropertyValue::Int(5))
+    );
     assert_eq!(
         restored.get_metadata(1, "name"),
         Some(&PropertyValue::String("bolt".into()))
@@ -1079,7 +1082,10 @@ fn evolution_variants_all_serializable() {
         },
         Evolution::Split {
             parent_tag: tag_a.clone(),
-            child_tags: vec![tag_a.split(OperationId(2), 0), tag_a.split(OperationId(2), 1)],
+            child_tags: vec![
+                tag_a.split(OperationId(2), 0),
+                tag_a.split(OperationId(2), 1),
+            ],
         },
         Evolution::Deleted { tag: tag_b },
     ];

@@ -53,11 +53,7 @@ impl SharedBuilder {
         // so sharing a half-edge across two loops would overwrite the
         // previous loop's next/prev pointers and produce a corrupt topology.
         if let Some(&he) = self.edge_map.get(&key_fwd) {
-            if dst
-                .half_edges
-                .get(he)
-                .is_some_and(|h| h.loop_ref.is_none())
-            {
+            if dst.half_edges.get(he).is_some_and(|h| h.loop_ref.is_none()) {
                 return he;
             }
             // Already bound — fall through and allocate a fresh edge pair.
@@ -126,11 +122,7 @@ fn insert_colinear_vertices(
                 continue;
             }
             // Perpendicular distance from the segment.
-            let proj = Point3::new(
-                ps.x + t * seg.x,
-                ps.y + t * seg.y,
-                ps.z + t * seg.z,
-            );
+            let proj = Point3::new(ps.x + t * seg.x, ps.y + t * seg.y, ps.z + t * seg.z);
             if proj.distance_to(vp) < T_TOL * 10.0 {
                 inserts.push((t, vh));
             }
@@ -267,18 +259,22 @@ pub fn boolean_op(
     }
 
     // Check for degenerate solids (no shells or no faces)
-    let has_faces_a = model_a
-        .solids
-        .get(solid_a)
-        .is_some_and(|s| s.shells.iter().any(|&sh| {
-            model_a.shells.get(sh).is_some_and(|shell| !shell.faces.is_empty())
-        }));
-    let has_faces_b = model_b
-        .solids
-        .get(solid_b)
-        .is_some_and(|s| s.shells.iter().any(|&sh| {
-            model_b.shells.get(sh).is_some_and(|shell| !shell.faces.is_empty())
-        }));
+    let has_faces_a = model_a.solids.get(solid_a).is_some_and(|s| {
+        s.shells.iter().any(|&sh| {
+            model_a
+                .shells
+                .get(sh)
+                .is_some_and(|shell| !shell.faces.is_empty())
+        })
+    });
+    let has_faces_b = model_b.solids.get(solid_b).is_some_and(|s| {
+        s.shells.iter().any(|&sh| {
+            model_b
+                .shells
+                .get(sh)
+                .is_some_and(|shell| !shell.faces.is_empty())
+        })
+    });
 
     if !has_faces_a && !has_faces_b {
         return Ok(BRepModel::new());
@@ -299,9 +295,8 @@ pub fn boolean_op(
     }
 
     // Try split path first — if faces overlap, split them for precision
-    let split_result = super::face_split::split_solids_at_intersection(
-        model_a, solid_a, model_b, solid_b, 1e-6,
-    );
+    let split_result =
+        super::face_split::split_solids_at_intersection(model_a, solid_a, model_b, solid_b, 1e-6);
 
     // Use split models if splitting succeeded and produced splits
     let (eff_a, eff_solid_a, eff_b, eff_solid_b) = match &split_result {
@@ -370,13 +365,22 @@ pub fn boolean_op(
                 matches!(pos, FacePosition::Inside | FacePosition::OnBoundarySame)
             }
             BooleanOp::Difference => {
-                matches!(pos, FacePosition::Outside | FacePosition::OnBoundaryOpposite)
+                matches!(
+                    pos,
+                    FacePosition::Outside | FacePosition::OnBoundaryOpposite
+                )
             }
         };
         if keep {
-            if let Some(new_face) =
-                copy_face_shared(eff_a, *face_h, &mut result, result_op, face_counter, &mut builder, false)?
-            {
+            if let Some(new_face) = copy_face_shared(
+                eff_a,
+                *face_h,
+                &mut result,
+                result_op,
+                face_counter,
+                &mut builder,
+                false,
+            )? {
                 result_faces.push(new_face);
                 face_counter += 1;
             }
@@ -408,9 +412,15 @@ pub fn boolean_op(
             // Intersection keep B's winding as-is because B's kept faces
             // in those ops already face the outside of the result solid.
             let flip = matches!(op, BooleanOp::Difference);
-            if let Some(new_face) =
-                copy_face_shared(eff_b, *face_h, &mut result, result_op, face_counter, &mut builder, flip)?
-            {
+            if let Some(new_face) = copy_face_shared(
+                eff_b,
+                *face_h,
+                &mut result,
+                result_op,
+                face_counter,
+                &mut builder,
+                flip,
+            )? {
                 result_faces.push(new_face);
                 face_counter += 1;
             }
@@ -428,20 +438,23 @@ pub fn boolean_op(
 }
 
 /// Copies a solid into a fresh BRepModel (used for degenerate-operand cases).
-fn copy_solid_to_new_model(
-    src: &BRepModel,
-    solid: Handle<SolidData>,
-) -> KernelResult<BRepModel> {
+fn copy_solid_to_new_model(src: &BRepModel, solid: Handle<SolidData>) -> KernelResult<BRepModel> {
     let mut dst = BRepModel::new();
     let op = dst.history.next_operation("boolean_copy");
 
-    let src_solid = src.solids.get(solid).ok_or(KernelError::InvalidHandle("solid"))?;
+    let src_solid = src
+        .solids
+        .get(solid)
+        .ok_or(KernelError::InvalidHandle("solid"))?;
     let mut all_faces = Vec::new();
     let mut builder = SharedBuilder::new();
     let mut face_counter = 0u32;
 
     for &shell_h in &src_solid.shells {
-        let shell_data = src.shells.get(shell_h).ok_or(KernelError::InvalidHandle("shell"))?;
+        let shell_data = src
+            .shells
+            .get(shell_h)
+            .ok_or(KernelError::InvalidHandle("shell"))?;
         for &face_h in &shell_data.faces {
             if let Some(new_face) =
                 copy_face_shared(src, face_h, &mut dst, op, face_counter, &mut builder, false)?
@@ -587,7 +600,10 @@ mod tests {
 
         // Intersection should produce a result
         let result = boolean_op(&a, ra.solid, &b, rb.solid, BooleanOp::Intersection);
-        assert!(result.is_ok(), "identical solid intersection should not panic");
+        assert!(
+            result.is_ok(),
+            "identical solid intersection should not panic"
+        );
     }
 
     #[test]
@@ -601,14 +617,23 @@ mod tests {
 
         // Difference: should keep A faces (outer), add B faces (inner)
         let result = boolean_op(&a, ra.solid, &b, rb.solid, BooleanOp::Difference);
-        assert!(result.is_ok(), "contained solid difference should not panic");
+        assert!(
+            result.is_ok(),
+            "contained solid difference should not panic"
+        );
 
         // Intersection: should produce the inner box
         let result = boolean_op(&a, ra.solid, &b, rb.solid, BooleanOp::Intersection);
-        assert!(result.is_ok(), "contained solid intersection should not panic");
+        assert!(
+            result.is_ok(),
+            "contained solid intersection should not panic"
+        );
         let model = result.unwrap();
         // Inner box faces should be classified as Inside, so kept
-        assert!(!model.faces.is_empty(), "intersection of containment should produce faces");
+        assert!(
+            !model.faces.is_empty(),
+            "intersection of containment should produce faces"
+        );
     }
 
     #[test]
@@ -654,7 +679,11 @@ mod tests {
         let result = boolean_op(&a, ra.solid, &b, rb.solid, BooleanOp::Union);
         assert!(result.is_ok(), "vertex-touching union should not panic");
         let model = result.unwrap();
-        assert_eq!(model.faces.len(), 12, "disjoint-touching union should keep all 12 faces");
+        assert_eq!(
+            model.faces.len(),
+            12,
+            "disjoint-touching union should keep all 12 faces"
+        );
     }
 
     #[test]
@@ -684,7 +713,11 @@ mod tests {
         let result = boolean_op(&a, solid_a, &b, rb.solid, BooleanOp::Union);
         assert!(result.is_ok());
         let model = result.unwrap();
-        assert_eq!(model.faces.len(), 6, "union with empty should return other solid's faces");
+        assert_eq!(
+            model.faces.len(),
+            6,
+            "union with empty should return other solid's faces"
+        );
     }
 
     #[test]
@@ -720,12 +753,17 @@ mod tests {
             let mut b = BRepModel::new();
             let rb = make_box(&mut b, *offset, 1.0, 1.0, 1.0).unwrap();
 
-            for op in [BooleanOp::Union, BooleanOp::Intersection, BooleanOp::Difference] {
+            for op in [
+                BooleanOp::Union,
+                BooleanOp::Intersection,
+                BooleanOp::Difference,
+            ] {
                 let result = boolean_op(&a, ra.solid, &b, rb.solid, op);
                 assert!(
                     result.is_ok(),
                     "boolean {:?} at offset {:?} should not panic/fail",
-                    op, offset
+                    op,
+                    offset
                 );
             }
         }

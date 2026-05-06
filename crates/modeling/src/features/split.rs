@@ -156,13 +156,8 @@ pub fn split_solid(
 
     // Add cap faces on the split plane
     // Collect intersection points along the split plane from the positive side
-    let cap_verts_pos: Vec<Handle<VertexData>> = collect_plane_verts(
-        model,
-        &pos_faces,
-        normal,
-        d,
-        eps,
-    )?;
+    let cap_verts_pos: Vec<Handle<VertexData>> =
+        collect_plane_verts(model, &pos_faces, normal, d, eps)?;
     if cap_verts_pos.len() >= 3 {
         let fh = build_face_from_verts(model, &cap_verts_pos, op, face_idx, &mut edge_idx)?;
         pos_faces.push(fh);
@@ -170,13 +165,8 @@ pub fn split_solid(
         face_idx += 1;
     }
 
-    let cap_verts_neg: Vec<Handle<VertexData>> = collect_plane_verts(
-        model,
-        &neg_faces,
-        normal,
-        d,
-        eps,
-    )?;
+    let cap_verts_neg: Vec<Handle<VertexData>> =
+        collect_plane_verts(model, &neg_faces, normal, d, eps)?;
     if cap_verts_neg.len() >= 3 {
         let mut reversed = cap_verts_neg;
         reversed.reverse();
@@ -291,13 +281,7 @@ mod tests {
         let mut model = BRepModel::new();
         let b = crate::make_box(&mut model, Point3::ORIGIN, 4.0, 4.0, 4.0).unwrap();
 
-        let result = split_solid(
-            &mut model,
-            b.solid,
-            Point3::new(0.0, 0.0, 2.0),
-            Vec3::Z,
-        )
-        .unwrap();
+        let result = split_solid(&mut model, b.solid, Point3::new(0.0, 0.0, 2.0), Vec3::Z).unwrap();
 
         assert_eq!(result.solids.len(), 2);
         for &sh in &result.solids {
@@ -310,13 +294,8 @@ mod tests {
         let mut model = BRepModel::new();
         let b = crate::make_box(&mut model, Point3::ORIGIN, 2.0, 2.0, 2.0).unwrap();
 
-        let result = split_solid(
-            &mut model,
-            b.solid,
-            Point3::new(0.0, 0.0, 10.0),
-            Vec3::Z,
-        )
-        .unwrap();
+        let result =
+            split_solid(&mut model, b.solid, Point3::new(0.0, 0.0, 10.0), Vec3::Z).unwrap();
 
         // All verts on negative side, positive side should be empty
         assert!(!result.solids.is_empty());
@@ -327,13 +306,7 @@ mod tests {
         let mut model = BRepModel::new();
         let b = crate::make_box(&mut model, Point3::ORIGIN, 2.0, 2.0, 2.0).unwrap();
 
-        let err = split_solid(
-            &mut model,
-            b.solid,
-            Point3::ORIGIN,
-            Vec3::ZERO,
-        )
-        .unwrap_err();
+        let err = split_solid(&mut model, b.solid, Point3::ORIGIN, Vec3::ZERO).unwrap_err();
         assert!(matches!(err, KernelError::InvalidArgument(_)));
     }
 }

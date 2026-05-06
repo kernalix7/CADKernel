@@ -130,7 +130,11 @@ pub fn solve(sketch: &mut Sketch, max_iter: usize, tol: f64) -> SolverResult {
             }
         }
 
-        last_step_norm = if accepted { (dx.norm() * alpha).abs() } else { 0.0 };
+        last_step_norm = if accepted {
+            (dx.norm() * alpha).abs()
+        } else {
+            0.0
+        };
     }
 
     vars_to_sketch(&vars, sketch);
@@ -436,7 +440,10 @@ mod tests {
         let s2 = &sketch.points[p2.0].position;
         let dx = e2.x - s2.x;
         let dy = e2.y - s2.y;
-        assert!((dy - dx).abs() < 1e-6, "l2 not parallel to y=x: dx={dx}, dy={dy}");
+        assert!(
+            (dy - dx).abs() < 1e-6,
+            "l2 not parallel to y=x: dx={dx}, dy={dy}"
+        );
     }
 
     #[test]

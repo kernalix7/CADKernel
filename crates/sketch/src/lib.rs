@@ -40,33 +40,34 @@ pub mod solver;
 pub mod tools;
 pub mod validate;
 
-pub use constraint::Constraint;
-pub use entity::{
-    ArcId, BSplineId, CircleId, EllipseId, EllipticalArcId, HyperbolicArcId, LineId,
-    ParabolicArcId, PointId, SketchArc, SketchBSpline, SketchCircle, SketchEllipse,
-    SketchEllipticalArc, SketchHyperbolicArc, SketchLine, SketchParabolicArc, SketchPoint,
-};
-pub use profile::{WorkPlane, extract_profile};
-pub use solver::{SolverResult, constraint_residuals, drag_solve, solve};
-pub use tools::{
-    FilletResult, SketchChamferResult, SplitResult, TrimResult, chamfer_sketch_corner,
-    extend_edge, external_intersection, fillet_sketch_corner, split_edge, trim_edge,
-};
-pub use validate::{SketchValidation, SketchValidationIssue, validate_sketch};
-pub use display::{
-    SectionViewState, SketchDisplayOptions, SketchEntity, SketchGrid, SketchSnap, SnapType,
-    add_periodic_bspline_from_knots, align_view_to_sketch, contextual_dimension,
-    copy_entities, paste_entities, remove_axes_alignment, select_h_axis, select_origin,
-    select_v_axis, snap_to_sketch_geometry, stop_operation, toggle_constraints_visibility,
-    toggle_construction, toggle_section_view, unified_horizontal_vertical,
-    unified_radius_diameter,
-};
 pub use bspline_tools::{
     carbon_copy, decrease_bspline_degree, decrease_knot_multiplicity, delete_all_constraints,
     delete_all_geometry, external_projection, geometry_to_bspline, increase_bspline_degree,
     increase_knot_multiplicity, insert_knot, join_curves, mirror_geometry_axis, move_geometry,
     offset_geometry, rotate_geometry, scale_geometry,
 };
+pub use constraint::Constraint;
+pub use display::{
+    SectionViewState, SketchDisplayOptions, SketchEntity, SketchGrid, SketchSnap, SnapType,
+    add_periodic_bspline_from_knots, align_view_to_sketch, contextual_dimension, copy_entities,
+    paste_entities, remove_axes_alignment, select_h_axis, select_origin, select_v_axis,
+    snap_to_sketch_geometry, stop_operation, toggle_constraints_visibility, toggle_construction,
+    toggle_section_view, unified_horizontal_vertical, unified_radius_diameter,
+};
+pub use entity::{
+    ArcId, BSplineId, CircleId, EllipseId, EllipticalArcId, HyperbolicArcId, LineId,
+    ParabolicArcId, PointId, SketchArc, SketchBSpline, SketchCircle, SketchEllipse,
+    SketchEllipticalArc, SketchHyperbolicArc, SketchLine, SketchParabolicArc, SketchPoint,
+};
+pub use profile::{
+    SketchProfileAnalysis, WorkPlane, analyze_profiles, extract_profile, extract_profile_checked,
+};
+pub use solver::{SolverResult, constraint_residuals, drag_solve, solve};
+pub use tools::{
+    FilletResult, SketchChamferResult, SplitResult, TrimResult, chamfer_sketch_corner, extend_edge,
+    external_intersection, fillet_sketch_corner, split_edge, trim_edge,
+};
+pub use validate::{SketchValidation, SketchValidationIssue, validate_sketch};
 
 /// A 2D parametric sketch containing points, lines, arcs, circles, ellipses,
 /// B-splines, and geometric/dimensional constraints.
@@ -509,12 +510,20 @@ impl Sketch {
         // End cap arcs (semicircles)
         let cap_start_angle = start_angle + std::f64::consts::PI;
         let arc_cap_start = self.add_arc(
-            cap_start, po0, pi0, half_w,
-            cap_start_angle, cap_start_angle + std::f64::consts::PI,
+            cap_start,
+            po0,
+            pi0,
+            half_w,
+            cap_start_angle,
+            cap_start_angle + std::f64::consts::PI,
         );
         let arc_cap_end = self.add_arc(
-            cap_end, pi1, po1, half_w,
-            end_angle, end_angle + std::f64::consts::PI,
+            cap_end,
+            pi1,
+            po1,
+            half_w,
+            end_angle,
+            end_angle + std::f64::consts::PI,
         );
 
         (
@@ -756,11 +765,7 @@ impl Sketch {
             angle_base + std::f64::consts::TAU,
         );
 
-        (
-            vec![p0, p1, p2, p3],
-            vec![l0, l1],
-            vec![arc0, arc1],
-        )
+        (vec![p0, p1, p2, p3], vec![l0, l1], vec![arc0, arc1])
     }
 
     /// Toggles a constraint between driving mode and reference mode.
@@ -847,7 +852,11 @@ impl Sketch {
         // Copy B-splines with offset point IDs
         for bs in &other.bsplines {
             self.bsplines.push(SketchBSpline {
-                control_points: bs.control_points.iter().map(|p| PointId(p.0 + point_offset)).collect(),
+                control_points: bs
+                    .control_points
+                    .iter()
+                    .map(|p| PointId(p.0 + point_offset))
+                    .collect(),
                 degree: bs.degree,
                 closed: bs.closed,
                 knots: bs.knots.clone(),
@@ -994,12 +1003,7 @@ impl Sketch {
     }
 }
 
-fn offset_constraint(
-    c: &Constraint,
-    po: usize,
-    lo: usize,
-    _ao: usize,
-) -> Constraint {
+fn offset_constraint(c: &Constraint, po: usize, lo: usize, _ao: usize) -> Constraint {
     let op = |p: PointId| PointId(p.0 + po);
     let ol = |l: LineId| LineId(l.0 + lo);
     match *c {
@@ -1027,9 +1031,15 @@ fn offset_constraint(
         Constraint::HorizontalDistance(a, b, d) => Constraint::HorizontalDistance(op(a), op(b), d),
         Constraint::VerticalDistance(a, b, d) => Constraint::VerticalDistance(op(a), op(b), d),
         Constraint::PointOnObject(p, l) => Constraint::PointOnObject(op(p), ol(l)),
-        Constraint::Refraction { line1, line2, ratio } => {
-            Constraint::Refraction { line1: ol(line1), line2: ol(line2), ratio }
-        }
+        Constraint::Refraction {
+            line1,
+            line2,
+            ratio,
+        } => Constraint::Refraction {
+            line1: ol(line1),
+            line2: ol(line2),
+            ratio,
+        },
     }
 }
 
@@ -1273,7 +1283,12 @@ mod tests {
         for pid in &offset_pts {
             let op = &sketch.points[pid.0].position;
             let dist = ((op.x - 0.5) * (op.x - 0.5) + (op.y - 0.5) * (op.y - 0.5)).sqrt();
-            assert!(dist > 0.7, "offset point too close to center: ({}, {})", op.x, op.y);
+            assert!(
+                dist > 0.7,
+                "offset point too close to center: ({}, {})",
+                op.x,
+                op.y
+            );
         }
     }
 
@@ -1338,9 +1353,7 @@ mod tests {
     #[test]
     fn test_bspline_from_knots() {
         let mut sketch = Sketch::new();
-        let pts: Vec<_> = (0..5)
-            .map(|i| sketch.add_point(i as f64, 0.0))
-            .collect();
+        let pts: Vec<_> = (0..5).map(|i| sketch.add_point(i as f64, 0.0)).collect();
         let knots = vec![0.0, 0.0, 0.0, 0.5, 1.0, 1.0, 1.0];
         let bs = sketch.add_bspline_from_knots(pts, knots.clone(), 2);
         assert_eq!(sketch.bsplines[bs.0].knots, knots);

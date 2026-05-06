@@ -72,11 +72,17 @@ pub fn offset_solid(
 
     let op = model.history.next_operation("offset_solid");
 
-    let result = copy_solid_transformed(model, solid, op, |pt| {
-        // Find this vertex's normal — we need to search by position matching
-        // Since copy_solid_transformed gives us the original point, look up by position
-        pt
-    }, false)?;
+    let result = copy_solid_transformed(
+        model,
+        solid,
+        op,
+        |pt| {
+            // Find this vertex's normal — we need to search by position matching
+            // Since copy_solid_transformed gives us the original point, look up by position
+            pt
+        },
+        false,
+    )?;
 
     // Now offset the new vertices using the computed normals
     // We need to re-map: collect all vertices of the new solid and offset them

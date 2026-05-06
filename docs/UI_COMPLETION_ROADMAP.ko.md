@@ -1,6 +1,6 @@
 # UI 완성 로드맵 (요약)
 
-**상태:** 진행 중. 시작 2026-04-30.
+**상태:** 진행 중. 시작 2026-04-30. 2026-05-05 기준 A-C3 완료 + HARD-tier overlay/FEM/TechDraw export/view/dimension/annotation/centerline/ShapeBinder + TechDraw Page/Dimension/Annotation/Centerline/View Placement command UX + FEM Result Interpretation UX + FEM multi-node BC editor UX + Sketcher profile validation UX + Sketcher constraint diagnostics UX + Sketcher external reference/reuse UX 작업 트리 검증 완료.
 **원문:** [English (canonical)](UI_COMPLETION_ROADMAP.md)
 
 이 한국어 파일은 영문 원문의 요약입니다 — 자세한 표 / 단계별 세부 사항 / 모든 79개 스텁 매핑은 영문판을 참조하십시오 (CLAUDE.md Section 5의 이중 언어 정책에 따라 영문 원문이 정본).
@@ -19,7 +19,7 @@
 |---|---:|---|
 | EASY (커널 API 존재, wiring만) | 40 | 15-30분 |
 | MEDIUM (커널 API 존재, UX 필요) | 18 | 1-2시간 |
-| HARD (커널 API 없음) | 28 | 3-10시간 |
+| HARD (커널/API/렌더링 작업 필요) | 28 | 3-10시간 |
 
 ## 단계별 계획 (요약)
 
@@ -28,18 +28,35 @@
 | A | **Critical CAD 워크플로** (Pad / Pocket / Hole / Draft Line·Circle·Arc·Ellipse·Point) | 10 | 4-6h |
 | B | **Draft 2D + 어레이 + Part 작업 EASY** | 18 | 8-12h |
 | C | **Surface + Loft / Pipe + Draft transform MEDIUM** | 12 | 15-20h |
-| D | **Draft 주석 (Dimension / Label)** | 3 | 8-12h |
-| E | **FEM 솔버 + colormap 시각화** | 7 | 30-50h |
-| F | **TechDraw 워크벤치** (대부분 새 커널 작업) | 22 | 60-100h |
-| G | **ShapeBinder** (새 커널 개념) | 1 | 5-10h |
+| D | **Draft 주석 (Dimension / Label + overlay)** | 3 | 작업 트리 검증 |
+| E | **FEM 솔버 + colormap 시각화** | 7 | solver 2개 + colormap 3개 작업 트리 검증 |
+| F | **TechDraw 워크벤치** | 24 | page/export/view/dimension/annotation/centerline 24개 검증 |
+| G | **ShapeBinder** | 1 | 작업 트리 검증 |
 
-**A + B + C 합계: 40개 기능 / 27-38시간** — 이 세 단계만 완료해도 Draft / Part / Surface / PartDesign의 EASY+MEDIUM 티어 전체 종료, 즉 "기본 CAD가 작동" 목표 달성.
+**A-C3 합계:** Draft / Part / Surface / PartDesign의 EASY+MEDIUM 티어 종료. **2026-05-05 작업 트리:** overlay annotation, FEM thermal/nonlinear solver, FEM stress/displacement/VonMises colormap, TechDraw page/export/view/dimension/annotation/centerline, ShapeBinder, TechDraw Page/Dimension/Annotation/Centerline/View Placement command UX, FEM result legend/probe/table 해석 UX, FEM SectionPrint/Tie/Rigid/Contact BC editor UX, Sketcher single-profile validation UX, Sketcher constraint diagnostics UX, Sketcher external reference/reuse UX까지 **2,844 / 0 / 0**으로 검증 완료. TechDraw log-only 잔여는 닫혔고 page/dimension/annotation/centerline/view-placement parameter-entry UX와 FEM post-processing/BC editor UX, sketch profile readiness guard, duplicate/conflicting/invalid constraint 진단, 선택 객체 기반 external projection 및 `Refs:` / `Reuse:` 상태 표시가 완료되었습니다.
+
+## 장기 순차 계획 (요약)
+
+무작위 스텁 처리 대신 아래 순서로 진행합니다. 각 슬라이스는 구현 → 테스트 → 영문/국문 문서 → `WORK_STATUS.md` 갱신 → build/clippy/test 검증으로 종료합니다.
+
+1. 검증된 현재 작업 트리 보존 및 작은 단위 커밋.
+2. UI/TechDraw 완료: 주석, 중심선, 볼트 원, export/overlay 일치성.
+3. UI 명령 UX: placeholder 기본값을 task panel/modal/selection prompt/preview로 교체.
+4. Sketcher 생산 워크플로우: profile 검증, 제약 진단, 외부 참조, sketch 재사용.
+5. PartDesign history/body 모델: editable feature tree, recompute, persistent naming repair.
+6. Assembly 워크플로우: mate/joint UX, exploded view, interference, BOM export.
+7. FEM 워크플로우: node/face set picker, mesh control, legend/probe/result table.
+8. I/O 상호운용성: STEP/IGES/DXF/SVG/PDF 실전 corpus, units/layers/metadata/healing.
+9. 성능/대형 모델 UX: async job, progress/cancel, GPU/wire pipeline, 1000+ part 기준.
+10. 릴리스 준비: binary/Python wheel, 튜토리얼, CI release gate.
+
+**현재 활성 순서:** 3번 UI 명령 UX는 TechDraw Page/Dimension/Annotation/Centerline/View Placement까지 완료되었고, 7번 FEM 워크플로우는 결과 해석 UX(legend/probe/result table)와 range 기반 multi-node BC editor까지 완료되었습니다. 4번 Sketcher 생산 워크플로우는 profile-readiness, actionable constraint diagnostics, visible external reference / sketch reuse feedback까지 완료했습니다. 다음은 Sketcher reference 관리 심화 또는 FEM node/face viewport picker를 좁은 검증 슬라이스로 진행합니다.
 
 ## 품질 게이트 (단계별 필수)
 
 1. `cargo build --workspace` 클린
 2. `cargo clippy ... -D warnings` 클린
-3. `cargo test --workspace --no-fail-fast` — 최소 직전 베이스라인 유지 (현재 2,662). 각 Tier 1/2 기능당 1개 이상 회귀 테스트 추가
+3. `cargo test --workspace --no-fail-fast` — 최소 직전 베이스라인 유지 (현재 2,844). 각 Tier 1/2 기능당 1개 이상 회귀 테스트 추가
 4. **수동 수락 테스트** — 단계당 최소 1개 핵심 기능 GUI에서 end-to-end 검증, 결과를 커밋 메시지에 명시
 5. `CHANGELOG.md`(영문 정본) + `docs/CHANGELOG.ko.md` 요약 업데이트
 6. `docs/UI_COMPLETION_ROADMAP.md` 진행 트래커 갱신

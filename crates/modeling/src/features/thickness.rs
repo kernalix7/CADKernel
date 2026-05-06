@@ -36,8 +36,7 @@ pub fn thickness_solid(
     let face_handles = collect_solid_faces(model, solid)?;
 
     // Compute per-vertex normals (averaged from adjacent faces)
-    let mut vertex_normals: std::collections::HashMap<u32, Vec3> =
-        std::collections::HashMap::new();
+    let mut vertex_normals: std::collections::HashMap<u32, Vec3> = std::collections::HashMap::new();
 
     for &face_h in &face_handles {
         let verts = model.vertices_of_face(face_h)?;

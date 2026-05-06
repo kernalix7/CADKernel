@@ -1,5 +1,5 @@
 use super::{GuiState, SketchEntityRef, SketchTool};
-use crate::render::{dot3, normalize3, sub3, Camera, GridConfig};
+use crate::render::{Camera, GridConfig, dot3, normalize3, sub3};
 use cadkernel_sketch::Constraint;
 
 // ---------------------------------------------------------------------------
@@ -180,15 +180,29 @@ fn detect_auto_constraints(
         for j in (i + 1)..n_lines {
             let li = &sm.sketch.lines[i];
             let lj = &sm.sketch.lines[j];
-            if li.start.0 >= sm.sketch.points.len() || li.end.0 >= sm.sketch.points.len()
-                || lj.start.0 >= sm.sketch.points.len() || lj.end.0 >= sm.sketch.points.len()
+            if li.start.0 >= sm.sketch.points.len()
+                || li.end.0 >= sm.sketch.points.len()
+                || lj.start.0 >= sm.sketch.points.len()
+                || lj.end.0 >= sm.sketch.points.len()
             {
                 continue;
             }
-            let (ax, ay) = (sm.sketch.points[li.start.0].position.x, sm.sketch.points[li.start.0].position.y);
-            let (bx, by) = (sm.sketch.points[li.end.0].position.x, sm.sketch.points[li.end.0].position.y);
-            let (cx, cy) = (sm.sketch.points[lj.start.0].position.x, sm.sketch.points[lj.start.0].position.y);
-            let (dx2, dy2) = (sm.sketch.points[lj.end.0].position.x, sm.sketch.points[lj.end.0].position.y);
+            let (ax, ay) = (
+                sm.sketch.points[li.start.0].position.x,
+                sm.sketch.points[li.start.0].position.y,
+            );
+            let (bx, by) = (
+                sm.sketch.points[li.end.0].position.x,
+                sm.sketch.points[li.end.0].position.y,
+            );
+            let (cx, cy) = (
+                sm.sketch.points[lj.start.0].position.x,
+                sm.sketch.points[lj.start.0].position.y,
+            );
+            let (dx2, dy2) = (
+                sm.sketch.points[lj.end.0].position.x,
+                sm.sketch.points[lj.end.0].position.y,
+            );
             let denom = (bx - ax) * (dy2 - cy) - (by - ay) * (dx2 - cx);
             if denom.abs() < 1e-12 {
                 continue;
@@ -252,13 +266,13 @@ pub(crate) fn draw_sketch_overlay(ctx: &egui::Context, gui: &mut GuiState, camer
         mouse_screen.and_then(|sp| screen_to_sketch(camera, viewport, &sm.plane, sp));
 
     // FreeCAD-style sketch colors
-    let point_color = egui::Color32::from_rgb(240, 240, 240);       // bright white points
-    let line_color = egui::Color32::from_rgb(240, 240, 240);        // white geometry
-    let selected_color = egui::Color32::from_rgb(50, 220, 50);      // green selected
-    let hovered_color = egui::Color32::from_rgb(120, 255, 100);     // bright green hover
+    let point_color = egui::Color32::from_rgb(240, 240, 240); // bright white points
+    let line_color = egui::Color32::from_rgb(240, 240, 240); // white geometry
+    let selected_color = egui::Color32::from_rgb(50, 220, 50); // green selected
+    let hovered_color = egui::Color32::from_rgb(120, 255, 100); // bright green hover
     let construction_color = egui::Color32::from_rgb(60, 120, 220); // blue construction
-    let pending_color = egui::Color32::from_rgb(255, 200, 50);      // golden pending
-    let constraint_color = egui::Color32::from_rgb(220, 60, 60);    // red constraints
+    let pending_color = egui::Color32::from_rgb(255, 200, 50); // golden pending
+    let constraint_color = egui::Color32::from_rgb(220, 60, 60); // red constraints
     let grid_color = egui::Color32::from_rgba_premultiplied(50, 55, 70, 35);
     let grid_axis_color = egui::Color32::from_rgba_premultiplied(90, 95, 110, 70);
     let point_radius = 3.5;
@@ -389,11 +403,17 @@ pub(crate) fn draw_sketch_overlay(ctx: &egui::Context, gui: &mut GuiState, camer
                 let h = 4.0_f32;
                 let c_stroke = egui::Stroke::new(1.5, construction_color);
                 painter.line_segment(
-                    [egui::pos2(sp.x - h, sp.y - h), egui::pos2(sp.x + h, sp.y + h)],
+                    [
+                        egui::pos2(sp.x - h, sp.y - h),
+                        egui::pos2(sp.x + h, sp.y + h),
+                    ],
                     c_stroke,
                 );
                 painter.line_segment(
-                    [egui::pos2(sp.x + h, sp.y - h), egui::pos2(sp.x - h, sp.y + h)],
+                    [
+                        egui::pos2(sp.x + h, sp.y - h),
+                        egui::pos2(sp.x - h, sp.y + h),
+                    ],
                     c_stroke,
                 );
             }
@@ -410,38 +430,57 @@ pub(crate) fn draw_sketch_overlay(ctx: &egui::Context, gui: &mut GuiState, camer
         let mut y_constrained = vec![false; n_pts];
         for c in &sm.sketch.constraints {
             match c {
-                Constraint::Fixed(p, ..)
-                    if p.0 < n_pts => { x_constrained[p.0] = true; y_constrained[p.0] = true; }
-                Constraint::Horizontal(lid)
-                    if lid.0 < sm.sketch.lines.len() => {
-                        let ln = &sm.sketch.lines[lid.0];
-                        if ln.start.0 < n_pts { y_constrained[ln.start.0] = true; }
-                        if ln.end.0 < n_pts { y_constrained[ln.end.0] = true; }
-                    }
-                Constraint::Vertical(lid)
-                    if lid.0 < sm.sketch.lines.len() => {
-                        let ln = &sm.sketch.lines[lid.0];
-                        if ln.start.0 < n_pts { x_constrained[ln.start.0] = true; }
-                        if ln.end.0 < n_pts { x_constrained[ln.end.0] = true; }
-                    }
-                Constraint::Coincident(p0, p1)
-                    if p0.0 < n_pts && p1.0 < n_pts => {
-                        x_constrained[p0.0] = true; y_constrained[p0.0] = true;
-                        x_constrained[p1.0] = true; y_constrained[p1.0] = true;
-                    }
-                Constraint::Distance(p0, p1, _) | Constraint::HorizontalDistance(p0, p1, _) | Constraint::VerticalDistance(p0, p1, _) => {
-                    if p0.0 < n_pts { x_constrained[p0.0] = true; }
-                    if p1.0 < n_pts { x_constrained[p1.0] = true; }
+                Constraint::Fixed(p, ..) if p.0 < n_pts => {
+                    x_constrained[p.0] = true;
+                    y_constrained[p.0] = true;
                 }
-                Constraint::Block(p, ..)
-                    if p.0 < n_pts => { x_constrained[p.0] = true; y_constrained[p.0] = true; }
+                Constraint::Horizontal(lid) if lid.0 < sm.sketch.lines.len() => {
+                    let ln = &sm.sketch.lines[lid.0];
+                    if ln.start.0 < n_pts {
+                        y_constrained[ln.start.0] = true;
+                    }
+                    if ln.end.0 < n_pts {
+                        y_constrained[ln.end.0] = true;
+                    }
+                }
+                Constraint::Vertical(lid) if lid.0 < sm.sketch.lines.len() => {
+                    let ln = &sm.sketch.lines[lid.0];
+                    if ln.start.0 < n_pts {
+                        x_constrained[ln.start.0] = true;
+                    }
+                    if ln.end.0 < n_pts {
+                        x_constrained[ln.end.0] = true;
+                    }
+                }
+                Constraint::Coincident(p0, p1) if p0.0 < n_pts && p1.0 < n_pts => {
+                    x_constrained[p0.0] = true;
+                    y_constrained[p0.0] = true;
+                    x_constrained[p1.0] = true;
+                    y_constrained[p1.0] = true;
+                }
+                Constraint::Distance(p0, p1, _)
+                | Constraint::HorizontalDistance(p0, p1, _)
+                | Constraint::VerticalDistance(p0, p1, _) => {
+                    if p0.0 < n_pts {
+                        x_constrained[p0.0] = true;
+                    }
+                    if p1.0 < n_pts {
+                        x_constrained[p1.0] = true;
+                    }
+                }
+                Constraint::Block(p, ..) if p.0 < n_pts => {
+                    x_constrained[p.0] = true;
+                    y_constrained[p.0] = true;
+                }
                 _ => {}
             }
         }
         for (i, pt) in sm.sketch.points.iter().enumerate() {
             let xc = x_constrained[i];
             let yc = y_constrained[i];
-            if xc && yc { continue; }
+            if xc && yc {
+                continue;
+            }
             if let Some(sp) = project(pt.position.x, pt.position.y) {
                 if !xc {
                     // Show X-direction arrow
@@ -577,7 +616,11 @@ pub(crate) fn draw_sketch_overlay(ctx: &egui::Context, gui: &mut GuiState, camer
     let ctrl_poly_color = egui::Color32::from_rgba_premultiplied(100, 160, 240, 60);
     for (i_bsp, bsp) in sm.sketch.bsplines.iter().enumerate() {
         let is_sel = sel.contains(&SketchEntityRef::BSpline(i_bsp));
-        let curve_color = if is_sel { selected_color } else { bspline_color };
+        let curve_color = if is_sel {
+            selected_color
+        } else {
+            bspline_color
+        };
         // Gather 2D control point coordinates
         let ctrl_2d: Vec<[f64; 2]> = bsp
             .control_points
@@ -592,10 +635,8 @@ pub(crate) fn draw_sketch_overlay(ctx: &egui::Context, gui: &mut GuiState, camer
             })
             .collect();
         // Control polygon (dashed)
-        let ctrl_screen: Vec<egui::Pos2> = ctrl_2d
-            .iter()
-            .filter_map(|p| project(p[0], p[1]))
-            .collect();
+        let ctrl_screen: Vec<egui::Pos2> =
+            ctrl_2d.iter().filter_map(|p| project(p[0], p[1])).collect();
         if ctrl_screen.len() >= 2 {
             for seg in ctrl_screen.windows(2) {
                 draw_dashed_line(&painter, seg[0], seg[1], ctrl_poly_color, 1.0, 4.0, 3.0);
@@ -670,11 +711,8 @@ pub(crate) fn draw_sketch_overlay(ctx: &egui::Context, gui: &mut GuiState, camer
                 })
                 .collect();
             if screen_pts.len() >= 3 {
-                let shape = egui::Shape::convex_polygon(
-                    screen_pts,
-                    profile_fill,
-                    egui::Stroke::NONE,
-                );
+                let shape =
+                    egui::Shape::convex_polygon(screen_pts, profile_fill, egui::Stroke::NONE);
                 painter.add(shape);
             }
         }
@@ -706,10 +744,7 @@ pub(crate) fn draw_sketch_overlay(ctx: &egui::Context, gui: &mut GuiState, camer
             ) {
                 let arrow_color = egui::Color32::from_rgb(100, 220, 140);
                 // Shaft
-                painter.line_segment(
-                    [base_s, tip_s],
-                    egui::Stroke::new(2.0, arrow_color),
-                );
+                painter.line_segment([base_s, tip_s], egui::Stroke::new(2.0, arrow_color));
                 // Arrowhead
                 let dx = tip_s.x - base_s.x;
                 let dy = tip_s.y - base_s.y;
@@ -734,10 +769,7 @@ pub(crate) fn draw_sketch_overlay(ctx: &egui::Context, gui: &mut GuiState, camer
                     ));
                 }
                 // Distance label
-                let mid = egui::pos2(
-                    (base_s.x + tip_s.x) * 0.5 + 8.0,
-                    (base_s.y + tip_s.y) * 0.5,
-                );
+                let mid = egui::pos2((base_s.x + tip_s.x) * 0.5 + 8.0, (base_s.y + tip_s.y) * 0.5);
                 painter.text(
                     mid,
                     egui::Align2::LEFT_CENTER,
@@ -766,12 +798,30 @@ pub(crate) fn draw_sketch_overlay(ctx: &egui::Context, gui: &mut GuiState, camer
             let rect = egui::Rect::from_two_pos(sp, ep);
             painter.rect_filled(rect, 0.0, fill);
             if window_mode {
-                painter.rect_stroke(rect, 0.0, egui::Stroke::new(1.5, stroke_color), egui::StrokeKind::Middle);
+                painter.rect_stroke(
+                    rect,
+                    0.0,
+                    egui::Stroke::new(1.5, stroke_color),
+                    egui::StrokeKind::Middle,
+                );
             } else {
                 // Crossing: dashed border
-                let corners = [rect.left_top(), rect.right_top(), rect.right_bottom(), rect.left_bottom()];
+                let corners = [
+                    rect.left_top(),
+                    rect.right_top(),
+                    rect.right_bottom(),
+                    rect.left_bottom(),
+                ];
                 for i in 0..4 {
-                    draw_dashed_line(&painter, corners[i], corners[(i + 1) % 4], stroke_color, 1.5, 6.0, 4.0);
+                    draw_dashed_line(
+                        &painter,
+                        corners[i],
+                        corners[(i + 1) % 4],
+                        stroke_color,
+                        1.5,
+                        6.0,
+                        4.0,
+                    );
                 }
             }
         }
@@ -942,19 +992,31 @@ pub(crate) fn draw_sketch_overlay(ctx: &egui::Context, gui: &mut GuiState, camer
                 let ch_stroke = egui::Stroke::new(1.0, ch_color);
                 // Gap in center (cleaner crosshair)
                 painter.line_segment(
-                    [egui::pos2(sp.x - ch_outer, sp.y), egui::pos2(sp.x - ch_inner, sp.y)],
+                    [
+                        egui::pos2(sp.x - ch_outer, sp.y),
+                        egui::pos2(sp.x - ch_inner, sp.y),
+                    ],
                     ch_stroke,
                 );
                 painter.line_segment(
-                    [egui::pos2(sp.x + ch_inner, sp.y), egui::pos2(sp.x + ch_outer, sp.y)],
+                    [
+                        egui::pos2(sp.x + ch_inner, sp.y),
+                        egui::pos2(sp.x + ch_outer, sp.y),
+                    ],
                     ch_stroke,
                 );
                 painter.line_segment(
-                    [egui::pos2(sp.x, sp.y - ch_outer), egui::pos2(sp.x, sp.y - ch_inner)],
+                    [
+                        egui::pos2(sp.x, sp.y - ch_outer),
+                        egui::pos2(sp.x, sp.y - ch_inner),
+                    ],
                     ch_stroke,
                 );
                 painter.line_segment(
-                    [egui::pos2(sp.x, sp.y + ch_inner), egui::pos2(sp.x, sp.y + ch_outer)],
+                    [
+                        egui::pos2(sp.x, sp.y + ch_inner),
+                        egui::pos2(sp.x, sp.y + ch_outer),
+                    ],
                     ch_stroke,
                 );
             }
@@ -990,15 +1052,20 @@ pub(crate) fn draw_sketch_overlay(ctx: &egui::Context, gui: &mut GuiState, camer
                         // Horizontal guideline (subtle red dashed)
                         let pos = mouse_screen_pos;
                         let guide_color = egui::Color32::from_rgba_premultiplied(220, 60, 60, 80);
-                        draw_dashed_line(&painter,
+                        draw_dashed_line(
+                            &painter,
                             egui::pos2(viewport.left(), pos.y),
                             egui::pos2(viewport.right(), pos.y),
-                            guide_color, 0.8, 10.0, 6.0,
+                            guide_color,
+                            0.8,
+                            10.0,
+                            6.0,
                         );
                         // H badge
                         painter.text(
                             egui::pos2(pos.x + 16.0, pos.y - 2.0),
-                            egui::Align2::LEFT_CENTER, "H",
+                            egui::Align2::LEFT_CENTER,
+                            "H",
                             egui::FontId::proportional(9.0),
                             egui::Color32::from_rgb(220, 100, 100),
                         );
@@ -1007,15 +1074,20 @@ pub(crate) fn draw_sketch_overlay(ctx: &egui::Context, gui: &mut GuiState, camer
                         // Vertical guideline (subtle red dashed)
                         let pos = mouse_screen_pos;
                         let guide_color = egui::Color32::from_rgba_premultiplied(220, 60, 60, 80);
-                        draw_dashed_line(&painter,
+                        draw_dashed_line(
+                            &painter,
                             egui::pos2(pos.x, viewport.top()),
                             egui::pos2(pos.x, viewport.bottom()),
-                            guide_color, 0.8, 10.0, 6.0,
+                            guide_color,
+                            0.8,
+                            10.0,
+                            6.0,
                         );
                         // V badge
                         painter.text(
                             egui::pos2(pos.x + 4.0, pos.y - 14.0),
-                            egui::Align2::LEFT_CENTER, "V",
+                            egui::Align2::LEFT_CENTER,
+                            "V",
                             egui::FontId::proportional(9.0),
                             egui::Color32::from_rgb(220, 100, 100),
                         );
@@ -1055,11 +1127,17 @@ pub(crate) fn draw_sketch_overlay(ctx: &egui::Context, gui: &mut GuiState, camer
                         let h = 6.0_f32;
                         let int_color = egui::Color32::from_rgb(255, 180, 40);
                         painter.line_segment(
-                            [egui::pos2(pos.x - h, pos.y - h), egui::pos2(pos.x + h, pos.y + h)],
+                            [
+                                egui::pos2(pos.x - h, pos.y - h),
+                                egui::pos2(pos.x + h, pos.y + h),
+                            ],
                             egui::Stroke::new(2.0, int_color),
                         );
                         painter.line_segment(
-                            [egui::pos2(pos.x + h, pos.y - h), egui::pos2(pos.x - h, pos.y + h)],
+                            [
+                                egui::pos2(pos.x + h, pos.y - h),
+                                egui::pos2(pos.x - h, pos.y + h),
+                            ],
                             egui::Stroke::new(2.0, int_color),
                         );
                         painter.circle_stroke(pos, h + 2.0, egui::Stroke::new(1.5, int_color));
@@ -1100,7 +1178,11 @@ pub(crate) fn draw_sketch_overlay(ctx: &egui::Context, gui: &mut GuiState, camer
     let ln_count = sm.sketch.lines.len();
     let c_count = sm.sketch.constraints.len();
     let dof = sm.degrees_of_freedom();
-    let n_violated = sm.constraint_residuals.iter().filter(|r| **r > 1e-6).count();
+    let n_violated = sm
+        .constraint_residuals
+        .iter()
+        .filter(|r| **r > 1e-6)
+        .count();
     let dof_tag = if pt_count == 0 {
         String::new()
     } else if n_violated > 0 {
@@ -1115,27 +1197,67 @@ pub(crate) fn draw_sketch_overlay(ctx: &egui::Context, gui: &mut GuiState, camer
     } else {
         format!(" \u{2022} Sel: {}", sm.selected_entities.len())
     };
+    let constraint_blocked = sm.constraint_warning_count > 0;
+    let constraint_tag = if constraint_blocked {
+        if sm.constraint_warning_count == 1 {
+            format!(" \u{2022} {}", sm.constraint_status)
+        } else {
+            format!(
+                " \u{2022} {} (+{} more)",
+                sm.constraint_status,
+                sm.constraint_warning_count - 1
+            )
+        }
+    } else {
+        String::new()
+    };
+    let reference_tag = if sm.external_reference_count > 0 || sm.reused_geometry_count > 0 {
+        format!(" \u{2022} {}", sm.reference_status)
+    } else {
+        String::new()
+    };
+    let profile_blocked = ln_count > 0 && !sm.profile_ready;
+    let profile_tag = if sm.profile_ready {
+        " \u{2022} Profile ready".to_string()
+    } else if profile_blocked {
+        format!(" \u{2022} {}", sm.profile_status)
+    } else {
+        String::new()
+    };
     let banner = format!(
-        "Sketcher ({plane_label})  \u{2502}  {tool_label}  \u{2502}  P:{pt_count} L:{ln_count} C:{c_count}{toggles}{dof_tag}{sel_tag}{}",
-        if pt_count == 0 { "  \u{2502}  Click to add" } else { "" },
+        "Sketcher ({plane_label})  \u{2502}  {tool_label}  \u{2502}  P:{pt_count} L:{ln_count} C:{c_count}{toggles}{dof_tag}{constraint_tag}{reference_tag}{sel_tag}{profile_tag}{}",
+        if pt_count == 0 {
+            "  \u{2502}  Click to add"
+        } else {
+            ""
+        },
     );
     let (banner_bg, banner_fg) = if n_violated > 0 {
-        (egui::Color32::from_rgba_premultiplied(180, 40, 40, 180),
-         egui::Color32::from_rgb(255, 200, 200))
+        (
+            egui::Color32::from_rgba_premultiplied(180, 40, 40, 180),
+            egui::Color32::from_rgb(255, 200, 200),
+        )
+    } else if constraint_blocked || profile_blocked {
+        (
+            egui::Color32::from_rgba_premultiplied(140, 90, 30, 190),
+            egui::Color32::from_rgb(255, 225, 170),
+        )
     } else if dof == 0 && pt_count > 0 {
-        (egui::Color32::from_rgba_premultiplied(30, 120, 60, 180),
-         egui::Color32::from_rgb(180, 255, 200))
+        (
+            egui::Color32::from_rgba_premultiplied(30, 120, 60, 180),
+            egui::Color32::from_rgb(180, 255, 200),
+        )
     } else {
-        (egui::Color32::from_rgba_premultiplied(40, 50, 70, 200),
-         egui::Color32::from_rgb(220, 220, 240))
+        (
+            egui::Color32::from_rgba_premultiplied(40, 50, 70, 200),
+            egui::Color32::from_rgb(220, 220, 240),
+        )
     };
     let banner_pos = egui::pos2(viewport.center().x, viewport.top() + 80.0);
     let banner_font = egui::FontId::proportional(12.0);
     let banner_galley = painter.layout_no_wrap(banner.clone(), banner_font.clone(), banner_fg);
-    let banner_rect = egui::Rect::from_center_size(
-        banner_pos,
-        banner_galley.size() + egui::vec2(16.0, 6.0),
-    );
+    let banner_rect =
+        egui::Rect::from_center_size(banner_pos, banner_galley.size() + egui::vec2(16.0, 6.0));
     painter.rect_filled(banner_rect, 4.0, banner_bg);
     painter.text(
         banner_pos,
@@ -1150,43 +1272,100 @@ pub(crate) fn draw_sketch_overlay(ctx: &egui::Context, gui: &mut GuiState, camer
         use cadkernel_sketch::SketchValidationIssue;
         let warn_font = egui::FontId::proportional(10.0);
         let warn_color = egui::Color32::from_rgb(255, 180, 50);
+        let mut top_warning_row = 0.0_f32;
         for issue in &sm.validation_issues {
             match issue {
                 SketchValidationIssue::ZeroLengthLine { line_index } => {
                     let li = *line_index;
                     if li < sm.sketch.lines.len() {
                         let line = &sm.sketch.lines[li];
-                        if line.start.0 < sm.sketch.points.len() && line.end.0 < sm.sketch.points.len() {
+                        if line.start.0 < sm.sketch.points.len()
+                            && line.end.0 < sm.sketch.points.len()
+                        {
                             let sp = &sm.sketch.points[line.start.0];
                             let ep = &sm.sketch.points[line.end.0];
                             let mx = (sp.position.x + ep.position.x) * 0.5;
                             let my = (sp.position.y + ep.position.y) * 0.5;
                             if let Some(scr) = project(mx, my) {
-                                painter.text(scr, egui::Align2::CENTER_CENTER, "\u{26A0} zero-len", warn_font.clone(), warn_color);
+                                painter.text(
+                                    scr,
+                                    egui::Align2::CENTER_CENTER,
+                                    "\u{26A0} zero-len",
+                                    warn_font.clone(),
+                                    warn_color,
+                                );
                             }
                         }
                     }
                 }
-                SketchValidationIssue::NearlyCoincidentPoints { point_a, point_b, .. }
-                    if *point_a < sm.sketch.points.len() && *point_b < sm.sketch.points.len() => {
-                        let pa = &sm.sketch.points[*point_a].position;
-                        let pb = &sm.sketch.points[*point_b].position;
-                        let mx = (pa.x + pb.x) * 0.5;
-                        let my = (pa.y + pb.y) * 0.5;
-                        if let Some(scr) = project(mx, my) {
-                            painter.text(scr + egui::vec2(0.0, 10.0), egui::Align2::CENTER_TOP, "\u{26A0} merge?", warn_font.clone(), warn_color);
-                        }
+                SketchValidationIssue::NearlyCoincidentPoints {
+                    point_a, point_b, ..
+                } if *point_a < sm.sketch.points.len() && *point_b < sm.sketch.points.len() => {
+                    let pa = &sm.sketch.points[*point_a].position;
+                    let pb = &sm.sketch.points[*point_b].position;
+                    let mx = (pa.x + pb.x) * 0.5;
+                    let my = (pa.y + pb.y) * 0.5;
+                    if let Some(scr) = project(mx, my) {
+                        painter.text(
+                            scr + egui::vec2(0.0, 10.0),
+                            egui::Align2::CENTER_TOP,
+                            "\u{26A0} merge?",
+                            warn_font.clone(),
+                            warn_color,
+                        );
                     }
+                }
                 SketchValidationIssue::OverConstrained { .. } => {
                     let oc_pos = egui::pos2(viewport.center().x, viewport.top() + 100.0);
                     let oc_text = "\u{26A0} Over-constrained";
                     let oc_font = warn_font.clone();
                     let oc_color = egui::Color32::from_rgb(255, 100, 100);
                     let oc_bg = egui::Color32::from_rgba_premultiplied(160, 30, 30, 180);
-                    let oc_galley = painter.layout_no_wrap(oc_text.to_string(), oc_font.clone(), oc_color);
-                    let oc_rect = egui::Rect::from_center_size(oc_pos, oc_galley.size() + egui::vec2(12.0, 4.0));
+                    let oc_galley =
+                        painter.layout_no_wrap(oc_text.to_string(), oc_font.clone(), oc_color);
+                    let oc_rect = egui::Rect::from_center_size(
+                        oc_pos,
+                        oc_galley.size() + egui::vec2(12.0, 4.0),
+                    );
                     painter.rect_filled(oc_rect, 3.0, oc_bg);
-                    painter.text(oc_pos, egui::Align2::CENTER_CENTER, oc_text, oc_font, oc_color);
+                    painter.text(
+                        oc_pos,
+                        egui::Align2::CENTER_CENTER,
+                        oc_text,
+                        oc_font,
+                        oc_color,
+                    );
+                }
+                SketchValidationIssue::DuplicateConstraint { .. }
+                | SketchValidationIssue::ConflictingConstraintValue { .. }
+                | SketchValidationIssue::InvalidConstraintValue { .. } => {
+                    let text = format!("\u{26A0} {}", issue.status_label());
+                    let warn_pos = egui::pos2(
+                        viewport.center().x,
+                        viewport.top() + 118.0 + top_warning_row * 16.0,
+                    );
+                    top_warning_row += 1.0;
+                    let warn_galley = painter.layout_no_wrap(
+                        text.clone(),
+                        warn_font.clone(),
+                        egui::Color32::from_rgb(255, 220, 170),
+                    );
+                    let warn_rect = egui::Rect::from_center_size(
+                        warn_pos,
+                        warn_galley.size() + egui::vec2(12.0, 4.0),
+                    );
+                    painter.rect_filled(
+                        warn_rect,
+                        3.0,
+                        egui::Color32::from_rgba_premultiplied(140, 80, 20, 180),
+                    );
+                    painter.text(
+                        warn_pos,
+                        egui::Align2::CENTER_CENTER,
+                        text,
+                        warn_font.clone(),
+                        egui::Color32::from_rgb(255, 220, 170),
+                    );
                 }
                 _ => {}
             }
@@ -1266,13 +1445,21 @@ fn draw_dimension_popup(ctx: &egui::Context, gui: &mut GuiState) {
     };
 
     let kind = popup.kind;
-    let speed = if matches!(kind, DimensionKind::Angle) { 1.0 } else { 0.1 };
+    let speed = if matches!(kind, DimensionKind::Angle) {
+        1.0
+    } else {
+        0.1
+    };
     let just_opened = popup.just_opened;
 
     let mut confirmed = false;
     let mut cancelled = false;
 
-    let suffix = if matches!(kind, DimensionKind::Angle) { "\u{00B0}" } else { " mm" };
+    let suffix = if matches!(kind, DimensionKind::Angle) {
+        "\u{00B0}"
+    } else {
+        " mm"
+    };
 
     egui::Window::new(format!("\u{1F4CF} {label}"))
         .collapsible(false)
@@ -1299,16 +1486,24 @@ fn draw_dimension_popup(ctx: &egui::Context, gui: &mut GuiState) {
             });
             ui.add_space(4.0);
             ui.horizontal(|ui| {
-                if ui.add(
-                    egui::Button::new(egui::RichText::new("\u{2714} OK").strong().color(egui::Color32::WHITE))
+                if ui
+                    .add(
+                        egui::Button::new(
+                            egui::RichText::new("\u{2714} OK")
+                                .strong()
+                                .color(egui::Color32::WHITE),
+                        )
                         .fill(egui::Color32::from_rgb(0, 100, 180))
                         .min_size(egui::vec2(60.0, 24.0)),
-                ).clicked() {
+                    )
+                    .clicked()
+                {
                     confirmed = true;
                 }
-                if ui.add(
-                    egui::Button::new("\u{2716} Cancel").min_size(egui::vec2(60.0, 24.0)),
-                ).clicked() {
+                if ui
+                    .add(egui::Button::new("\u{2716} Cancel").min_size(egui::vec2(60.0, 24.0)))
+                    .clicked()
+                {
                     cancelled = true;
                 }
             });
@@ -1350,7 +1545,8 @@ fn draw_dimension_popup(ctx: &egui::Context, gui: &mut GuiState) {
                 }
                 DimensionKind::Distance => {
                     gui.constraint_distance_value = v;
-                    gui.actions.push(GuiAction::Sketcher(S::ConstrainDistance(v)));
+                    gui.actions
+                        .push(GuiAction::Sketcher(S::ConstrainDistance(v)));
                 }
                 DimensionKind::Angle => {
                     gui.constraint_angle_value = v;
@@ -1362,15 +1558,18 @@ fn draw_dimension_popup(ctx: &egui::Context, gui: &mut GuiState) {
                 }
                 DimensionKind::Diameter => {
                     gui.constraint_radius_value = v / 2.0;
-                    gui.actions.push(GuiAction::Sketcher(S::ConstrainDiameter(v)));
+                    gui.actions
+                        .push(GuiAction::Sketcher(S::ConstrainDiameter(v)));
                 }
                 DimensionKind::HDistance => {
                     gui.constraint_distance_value = v;
-                    gui.actions.push(GuiAction::Sketcher(S::ConstrainHDistance(v)));
+                    gui.actions
+                        .push(GuiAction::Sketcher(S::ConstrainHDistance(v)));
                 }
                 DimensionKind::VDistance => {
                     gui.constraint_distance_value = v;
-                    gui.actions.push(GuiAction::Sketcher(S::ConstrainVDistance(v)));
+                    gui.actions
+                        .push(GuiAction::Sketcher(S::ConstrainVDistance(v)));
                 }
             }
         }
@@ -1391,27 +1590,38 @@ fn draw_sketch_context_menu(ctx: &egui::Context, gui: &mut GuiState) {
         return;
     }
     let has_sel = !sm.selected_entities.is_empty();
-    let has_lines = sm.selected_entities.iter().any(|e| matches!(e, SketchEntityRef::Line(_)));
+    let has_lines = sm
+        .selected_entities
+        .iter()
+        .any(|e| matches!(e, SketchEntityRef::Line(_)));
 
     let mut close = false;
     let mut action: Option<SketchCtxAction> = None;
     egui::Area::new(egui::Id::new("sketch_ctx_menu"))
         .order(egui::Order::Foreground)
-        .current_pos(ctx.input(|i| {
-            i.pointer.hover_pos().unwrap_or(egui::pos2(200.0, 200.0))
-        }))
+        .current_pos(ctx.input(|i| i.pointer.hover_pos().unwrap_or(egui::pos2(200.0, 200.0))))
         .show(ctx, |ui| {
             egui::Frame::popup(ui.style()).show(ui, |ui| {
                 ui.set_min_width(160.0);
                 if has_sel {
-                    ui.label(egui::RichText::new("Edit").size(10.0).color(super::theme::MENU_SECTION_COLOR).strong());
+                    ui.label(
+                        egui::RichText::new("Edit")
+                            .size(10.0)
+                            .color(super::theme::MENU_SECTION_COLOR)
+                            .strong(),
+                    );
                     if ui.button("\u{1F5D1} Delete  (Del)").clicked() {
                         action = Some(SketchCtxAction::Delete);
                         close = true;
                     }
                     ui.separator();
                     if has_lines {
-                        ui.label(egui::RichText::new("Constraints").size(10.0).color(super::theme::MENU_SECTION_COLOR).strong());
+                        ui.label(
+                            egui::RichText::new("Constraints")
+                                .size(10.0)
+                                .color(super::theme::MENU_SECTION_COLOR)
+                                .strong(),
+                        );
                         if ui.button("\u{2014} Horizontal  (H)").clicked() {
                             action = Some(SketchCtxAction::Horizontal);
                             close = true;
@@ -1427,7 +1637,12 @@ fn draw_sketch_context_menu(ctx: &egui::Context, gui: &mut GuiState) {
                     }
                     ui.separator();
                 }
-                ui.label(egui::RichText::new("Selection").size(10.0).color(super::theme::MENU_SECTION_COLOR).strong());
+                ui.label(
+                    egui::RichText::new("Selection")
+                        .size(10.0)
+                        .color(super::theme::MENU_SECTION_COLOR)
+                        .strong(),
+                );
                 if ui.button("\u{2610} Select All  (Ctrl+A)").clicked() {
                     action = Some(SketchCtxAction::SelectAll);
                     close = true;
@@ -1481,13 +1696,19 @@ fn apply_sketch_ctx_action(gui: &mut GuiState, action: SketchCtxAction) {
             }
         }
         SketchCtxAction::Horizontal => {
-            gui.actions.push(super::GuiAction::Sketcher(super::SketcherAction::ConstrainHorizontal));
+            gui.actions.push(super::GuiAction::Sketcher(
+                super::SketcherAction::ConstrainHorizontal,
+            ));
         }
         SketchCtxAction::Vertical => {
-            gui.actions.push(super::GuiAction::Sketcher(super::SketcherAction::ConstrainVertical));
+            gui.actions.push(super::GuiAction::Sketcher(
+                super::SketcherAction::ConstrainVertical,
+            ));
         }
         SketchCtxAction::Fixed => {
-            gui.actions.push(super::GuiAction::Sketcher(super::SketcherAction::ConstrainFixed));
+            gui.actions.push(super::GuiAction::Sketcher(
+                super::SketcherAction::ConstrainFixed,
+            ));
         }
         SketchCtxAction::SelectAll => {
             let n_pts = sm.sketch.points.len();
@@ -1497,12 +1718,24 @@ fn apply_sketch_ctx_action(gui: &mut GuiState, action: SketchCtxAction) {
             let n_ellipses = sm.sketch.ellipses.len();
             let n_bsplines = sm.sketch.bsplines.len();
             sm.selected_entities.clear();
-            for i in 0..n_pts { sm.selected_entities.push(SketchEntityRef::Point(i)); }
-            for i in 0..n_lines { sm.selected_entities.push(SketchEntityRef::Line(i)); }
-            for i in 0..n_arcs { sm.selected_entities.push(SketchEntityRef::Arc(i)); }
-            for i in 0..n_circles { sm.selected_entities.push(SketchEntityRef::Circle(i)); }
-            for i in 0..n_ellipses { sm.selected_entities.push(SketchEntityRef::Ellipse(i)); }
-            for i in 0..n_bsplines { sm.selected_entities.push(SketchEntityRef::BSpline(i)); }
+            for i in 0..n_pts {
+                sm.selected_entities.push(SketchEntityRef::Point(i));
+            }
+            for i in 0..n_lines {
+                sm.selected_entities.push(SketchEntityRef::Line(i));
+            }
+            for i in 0..n_arcs {
+                sm.selected_entities.push(SketchEntityRef::Arc(i));
+            }
+            for i in 0..n_circles {
+                sm.selected_entities.push(SketchEntityRef::Circle(i));
+            }
+            for i in 0..n_ellipses {
+                sm.selected_entities.push(SketchEntityRef::Ellipse(i));
+            }
+            for i in 0..n_bsplines {
+                sm.selected_entities.push(SketchEntityRef::BSpline(i));
+            }
             gui.status_message = format!("Selected {} entities", sm.selected_entities.len());
         }
         SketchCtxAction::ClearSelection => {
@@ -1527,12 +1760,12 @@ fn draw_dynamic_dimensions(
 
     match sm.tool {
         SketchTool::Line | SketchTool::Polyline => {
-            let start =
-                if matches!(sm.tool, SketchTool::Polyline) && !sm.polyline_points.is_empty() {
-                    sm.polyline_points.last().copied()
-                } else {
-                    sm.pending_point
-                };
+            let start = if matches!(sm.tool, SketchTool::Polyline) && !sm.polyline_points.is_empty()
+            {
+                sm.polyline_points.last().copied()
+            } else {
+                sm.pending_point
+            };
             if let Some((sx, sy)) = start {
                 let (Some(sp), Some(ep)) = (project(sx, sy), project(mx, my)) else {
                     return;
@@ -1542,15 +1775,7 @@ fn draw_dynamic_dimensions(
                 let len = (dx * dx + dy * dy).sqrt();
                 let angle_deg = dy.atan2(dx).to_degrees();
 
-                draw_dynamic_dim_line(
-                    painter,
-                    sp,
-                    ep,
-                    12.0,
-                    &format!("{len:.2}"),
-                    font,
-                    dim_color,
-                );
+                draw_dynamic_dim_line(painter, sp, ep, 12.0, &format!("{len:.2}"), font, dim_color);
 
                 if len > 0.5 {
                     let arc_r = 18.0_f32;
@@ -1565,8 +1790,7 @@ fn draw_dynamic_dimensions(
                         arc_pts.push(egui::pos2(ax, ay));
                     }
                     if arc_pts.len() >= 2 {
-                        let arc_color =
-                            egui::Color32::from_rgba_premultiplied(180, 180, 120, 150);
+                        let arc_color = egui::Color32::from_rgba_premultiplied(180, 180, 120, 150);
                         painter.add(egui::Shape::line(
                             arc_pts,
                             egui::Stroke::new(0.8, arc_color),
@@ -1671,8 +1895,7 @@ fn draw_dynamic_dimensions(
                     font,
                     dim_color,
                 );
-                let label_pos =
-                    egui::pos2((cp.x + ep.x) * 0.5, (cp.y + ep.y) * 0.5 - 18.0);
+                let label_pos = egui::pos2((cp.x + ep.x) * 0.5, (cp.y + ep.y) * 0.5 - 18.0);
                 painter.text(
                     label_pos,
                     egui::Align2::CENTER_CENTER,
@@ -1835,8 +2058,17 @@ fn draw_ovp_panel(
                     // Tool header
                     if !tool_name.is_empty() {
                         ui.horizontal(|ui| {
-                            ui.label(egui::RichText::new(tool_icon).size(11.0).color(egui::Color32::from_rgb(100, 180, 255)));
-                            ui.label(egui::RichText::new(tool_name).size(10.5).color(egui::Color32::from_rgb(140, 170, 210)).strong());
+                            ui.label(
+                                egui::RichText::new(tool_icon)
+                                    .size(11.0)
+                                    .color(egui::Color32::from_rgb(100, 180, 255)),
+                            );
+                            ui.label(
+                                egui::RichText::new(tool_name)
+                                    .size(10.5)
+                                    .color(egui::Color32::from_rgb(140, 170, 210))
+                                    .strong(),
+                            );
                         });
                         ui.add_space(2.0);
                     }
@@ -1849,72 +2081,46 @@ fn draw_ovp_panel(
 
                     match tool {
                         SketchTool::Line | SketchTool::Polyline
-                            if (pending.is_some() || poly_last.is_some()) => {
-                                ui.separator();
-                                ovp_row(ui, "L:", &format!("{seg_len:.2}"), "mm", lc, vc, uc);
-                                ovp_row(
-                                    ui,
-                                    "A:",
-                                    &format!("{seg_angle_deg:.1}\u{00B0}"),
-                                    "",
-                                    lc,
-                                    vc,
-                                    uc,
-                                );
-                            }
-                        SketchTool::Rectangle
-                            if pending.is_some() => {
-                                ui.separator();
-                                ovp_row(ui, "W:", &format!("{rect_w:.2}"), "mm", lc, vc, uc);
-                                ovp_row(ui, "H:", &format!("{rect_h:.2}"), "mm", lc, vc, uc);
-                            }
-                        SketchTool::Circle
-                            if pending.is_some() => {
-                                ui.separator();
-                                ovp_row(
-                                    ui,
-                                    "R:",
-                                    &format!("{circle_r:.2}"),
-                                    "mm",
-                                    lc,
-                                    vc,
-                                    uc,
-                                );
-                            }
-                        SketchTool::Arc
-                            if pending.is_some() => {
-                                ui.separator();
-                                ovp_row(
-                                    ui,
-                                    "R:",
-                                    &format!("{circle_r:.2}"),
-                                    "mm",
-                                    lc,
-                                    vc,
-                                    uc,
-                                );
-                                ovp_row(
-                                    ui,
-                                    "A:",
-                                    &format!("{seg_angle_deg:.1}\u{00B0}"),
-                                    "",
-                                    lc,
-                                    vc,
-                                    uc,
-                                );
-                            }
+                            if (pending.is_some() || poly_last.is_some()) =>
+                        {
+                            ui.separator();
+                            ovp_row(ui, "L:", &format!("{seg_len:.2}"), "mm", lc, vc, uc);
+                            ovp_row(
+                                ui,
+                                "A:",
+                                &format!("{seg_angle_deg:.1}\u{00B0}"),
+                                "",
+                                lc,
+                                vc,
+                                uc,
+                            );
+                        }
+                        SketchTool::Rectangle if pending.is_some() => {
+                            ui.separator();
+                            ovp_row(ui, "W:", &format!("{rect_w:.2}"), "mm", lc, vc, uc);
+                            ovp_row(ui, "H:", &format!("{rect_h:.2}"), "mm", lc, vc, uc);
+                        }
+                        SketchTool::Circle if pending.is_some() => {
+                            ui.separator();
+                            ovp_row(ui, "R:", &format!("{circle_r:.2}"), "mm", lc, vc, uc);
+                        }
+                        SketchTool::Arc if pending.is_some() => {
+                            ui.separator();
+                            ovp_row(ui, "R:", &format!("{circle_r:.2}"), "mm", lc, vc, uc);
+                            ovp_row(
+                                ui,
+                                "A:",
+                                &format!("{seg_angle_deg:.1}\u{00B0}"),
+                                "",
+                                lc,
+                                vc,
+                                uc,
+                            );
+                        }
                         SketchTool::Polygon { sides } => {
                             if pending.is_some() {
                                 ui.separator();
-                                ovp_row(
-                                    ui,
-                                    "R:",
-                                    &format!("{circle_r:.2}"),
-                                    "mm",
-                                    lc,
-                                    vc,
-                                    uc,
-                                );
+                                ovp_row(ui, "R:", &format!("{circle_r:.2}"), "mm", lc, vc, uc);
                             }
                             ovp_row(ui, "N:", &format!("{sides}"), "", lc, vc, uc);
                         }
@@ -1928,14 +2134,10 @@ fn draw_ovp_panel(
                             let ac_color = egui::Color32::from_rgb(80, 200, 80);
                             ui.horizontal(|ui| {
                                 ui.label(
-                                    egui::RichText::new(ac.symbol())
-                                        .color(ac_color)
-                                        .size(12.0),
+                                    egui::RichText::new(ac.symbol()).color(ac_color).size(12.0),
                                 );
                                 ui.label(
-                                    egui::RichText::new(ac.label())
-                                        .color(ac_color)
-                                        .size(11.0),
+                                    egui::RichText::new(ac.label()).color(ac_color).size(11.0),
                                 );
                             });
                         }
@@ -1947,8 +2149,8 @@ fn draw_ovp_panel(
 // ---------------------------------------------------------------------------
 // Constraint visualization colors
 // ---------------------------------------------------------------------------
-const GEO_COLOR: egui::Color32 = egui::Color32::from_rgb(220, 60, 60);   // FreeCAD red constraints
-const ERR_COLOR: egui::Color32 = egui::Color32::from_rgb(255, 100, 40);  // orange-red violated
+const GEO_COLOR: egui::Color32 = egui::Color32::from_rgb(220, 60, 60); // FreeCAD red constraints
+const ERR_COLOR: egui::Color32 = egui::Color32::from_rgb(255, 100, 40); // orange-red violated
 const WARN_COLOR: egui::Color32 = egui::Color32::from_rgb(255, 200, 50); // yellow warning
 
 struct ConstraintCtx<'a> {
@@ -1977,11 +2179,19 @@ fn draw_constraint_indicators(
         match c {
             Constraint::Distance(p0, p1, d) => cx.draw_distance_c(*p0, *p1, *d, color_override),
             Constraint::Length(lid, val) => cx.draw_length_c(*lid, *val, color_override),
-            Constraint::Radius(center, edge, r) => cx.draw_radius(*center, *edge, *r, color_override),
-            Constraint::Diameter(center, edge, d) => cx.draw_diameter(*center, *edge, *d, color_override),
+            Constraint::Radius(center, edge, r) => {
+                cx.draw_radius(*center, *edge, *r, color_override)
+            }
+            Constraint::Diameter(center, edge, d) => {
+                cx.draw_diameter(*center, *edge, *d, color_override)
+            }
             Constraint::Angle(l0, l1, a) => cx.draw_angle(*l0, *l1, *a, color_override),
-            Constraint::HorizontalDistance(p0, p1, d) => cx.draw_h_distance(*p0, *p1, *d, color_override),
-            Constraint::VerticalDistance(p0, p1, d) => cx.draw_v_distance(*p0, *p1, *d, color_override),
+            Constraint::HorizontalDistance(p0, p1, d) => {
+                cx.draw_h_distance(*p0, *p1, *d, color_override)
+            }
+            Constraint::VerticalDistance(p0, p1, d) => {
+                cx.draw_v_distance(*p0, *p1, *d, color_override)
+            }
             Constraint::Horizontal(lid) => cx.draw_geo_line_sym_c(*lid, "H", color_override),
             Constraint::Vertical(lid) => cx.draw_geo_line_sym_c(*lid, "V", color_override),
             Constraint::Parallel(l0, l1) => {
@@ -2001,14 +2211,24 @@ fn draw_constraint_indicators(
             }
             Constraint::Symmetric(p0, p1, lid) => cx.draw_symmetric(*p0, *p1, *lid, color_override),
             Constraint::Fixed(pid, _, _) => cx.draw_fixed_c(*pid, color_override),
-            Constraint::Block(pid, _, _) => cx.draw_geo_point_sym_c(*pid, "\u{229E}", color_override),
+            Constraint::Block(pid, _, _) => {
+                cx.draw_geo_point_sym_c(*pid, "\u{229E}", color_override)
+            }
             Constraint::Midpoint(pid, lid) => cx.draw_midpoint(*pid, *lid, color_override),
             Constraint::Collinear(l0, l1) => cx.draw_collinear(*l0, *l1, color_override),
             Constraint::Concentric(p0, p1) => cx.draw_concentric(*p0, *p1, color_override),
-            Constraint::PointOnLine(pid, _) => cx.draw_geo_point_sym_c(*pid, "\u{00D7}", color_override),
-            Constraint::PointOnCircle(pid, _, _) => cx.draw_geo_point_sym_c(*pid, "\u{00D7}", color_override),
-            Constraint::PointOnObject(pid, _) => cx.draw_geo_point_sym_c(*pid, "\u{00D7}", color_override),
-            Constraint::Refraction { line1, .. } => cx.draw_geo_line_sym_c(*line1, "Ref", color_override),
+            Constraint::PointOnLine(pid, _) => {
+                cx.draw_geo_point_sym_c(*pid, "\u{00D7}", color_override)
+            }
+            Constraint::PointOnCircle(pid, _, _) => {
+                cx.draw_geo_point_sym_c(*pid, "\u{00D7}", color_override)
+            }
+            Constraint::PointOnObject(pid, _) => {
+                cx.draw_geo_point_sym_c(*pid, "\u{00D7}", color_override)
+            }
+            Constraint::Refraction { line1, .. } => {
+                cx.draw_geo_line_sym_c(*line1, "Ref", color_override)
+            }
         }
     }
 }
@@ -2017,12 +2237,7 @@ fn draw_constraint_indicators(
 // Drawing helpers
 // ---------------------------------------------------------------------------
 
-fn draw_arrowhead(
-    painter: &egui::Painter,
-    tip: egui::Pos2,
-    dir: egui::Vec2,
-    color: egui::Color32,
-) {
+fn draw_arrowhead(painter: &egui::Painter, tip: egui::Pos2, dir: egui::Vec2, color: egui::Color32) {
     let len = 6.0_f32;
     let half_w = 2.5_f32;
     let d = dir.normalized();
@@ -2102,7 +2317,13 @@ impl ConstraintCtx<'_> {
     /// Color for constraint index: green=satisfied, red=violated, yellow=warning.
     fn constraint_color(&self, idx: usize) -> egui::Color32 {
         if let Some(&res) = self.sm.constraint_residuals.get(idx) {
-            if res < 1e-6 { GEO_COLOR } else if res < 0.1 { WARN_COLOR } else { ERR_COLOR }
+            if res < 1e-6 {
+                GEO_COLOR
+            } else if res < 0.1 {
+                WARN_COLOR
+            } else {
+                ERR_COLOR
+            }
         } else {
             GEO_COLOR
         }
@@ -2110,20 +2331,52 @@ impl ConstraintCtx<'_> {
 
     // --- Color-override variants for residual feedback ---
 
-    fn draw_distance_c(&self, p0: cadkernel_sketch::PointId, p1: cadkernel_sketch::PointId, d: f64, color: egui::Color32) {
-        let (Some(a), Some(b)) = (self.pt_pos(p0), self.pt_pos(p1)) else { return };
-        let (Some(sa), Some(sb)) = (self.proj(a.0, a.1), self.proj(b.0, b.1)) else { return };
-        draw_dim_line_c(self.painter, sa, sb, 14.0, &format!("{d:.1}"), &self.dim_font, color);
+    fn draw_distance_c(
+        &self,
+        p0: cadkernel_sketch::PointId,
+        p1: cadkernel_sketch::PointId,
+        d: f64,
+        color: egui::Color32,
+    ) {
+        let (Some(a), Some(b)) = (self.pt_pos(p0), self.pt_pos(p1)) else {
+            return;
+        };
+        let (Some(sa), Some(sb)) = (self.proj(a.0, a.1), self.proj(b.0, b.1)) else {
+            return;
+        };
+        draw_dim_line_c(
+            self.painter,
+            sa,
+            sb,
+            14.0,
+            &format!("{d:.1}"),
+            &self.dim_font,
+            color,
+        );
     }
 
     fn draw_length_c(&self, lid: cadkernel_sketch::LineId, val: f64, color: egui::Color32) {
-        let Some((s, e)) = self.line_ends(lid) else { return };
-        let (Some(sa), Some(sb)) = (self.proj(s.0, s.1), self.proj(e.0, e.1)) else { return };
-        draw_dim_line_c(self.painter, sa, sb, 14.0, &format!("{val:.1}"), &self.dim_font, color);
+        let Some((s, e)) = self.line_ends(lid) else {
+            return;
+        };
+        let (Some(sa), Some(sb)) = (self.proj(s.0, s.1), self.proj(e.0, e.1)) else {
+            return;
+        };
+        draw_dim_line_c(
+            self.painter,
+            sa,
+            sb,
+            14.0,
+            &format!("{val:.1}"),
+            &self.dim_font,
+            color,
+        );
     }
 
     fn draw_geo_line_sym_c(&self, lid: cadkernel_sketch::LineId, sym: &str, color: egui::Color32) {
-        let Some((s, e)) = self.line_ends(lid) else { return };
+        let Some((s, e)) = self.line_ends(lid) else {
+            return;
+        };
         let mx = (s.0 + e.0) * 0.5;
         let my = (s.1 + e.1) * 0.5;
         if let Some(mp) = self.proj(mx, my) {
@@ -2135,19 +2388,41 @@ impl ConstraintCtx<'_> {
             } else {
                 egui::vec2(0.0, -12.0)
             };
-            self.painter.text(mp + off, egui::Align2::CENTER_CENTER, sym, self.sym_font.clone(), color);
+            self.painter.text(
+                mp + off,
+                egui::Align2::CENTER_CENTER,
+                sym,
+                self.sym_font.clone(),
+                color,
+            );
         }
     }
 
-    fn draw_geo_point_sym_c(&self, pid: cadkernel_sketch::PointId, sym: &str, color: egui::Color32) {
+    fn draw_geo_point_sym_c(
+        &self,
+        pid: cadkernel_sketch::PointId,
+        sym: &str,
+        color: egui::Color32,
+    ) {
         if let Some(p) = self.pt_pos(pid) {
             if let Some(sp) = self.proj(p.0, p.1) {
-                self.painter.text(sp + egui::vec2(8.0, -8.0), egui::Align2::LEFT_CENTER, sym, self.sym_font.clone(), color);
+                self.painter.text(
+                    sp + egui::vec2(8.0, -8.0),
+                    egui::Align2::LEFT_CENTER,
+                    sym,
+                    self.sym_font.clone(),
+                    color,
+                );
             }
         }
     }
 
-    fn draw_coincident_c(&self, p0: cadkernel_sketch::PointId, _p1: cadkernel_sketch::PointId, color: egui::Color32) {
+    fn draw_coincident_c(
+        &self,
+        p0: cadkernel_sketch::PointId,
+        _p1: cadkernel_sketch::PointId,
+        color: egui::Color32,
+    ) {
         if let Some(p) = self.pt_pos(p0) {
             if let Some(sp) = self.proj(p.0, p.1) {
                 self.painter.circle_filled(sp, 6.0, color);
@@ -2160,39 +2435,84 @@ impl ConstraintCtx<'_> {
             if let Some(sp) = self.proj(p.0, p.1) {
                 let h = 5.0_f32;
                 let stroke = egui::Stroke::new(1.5, color);
-                self.painter.rect_stroke(egui::Rect::from_center_size(sp, egui::vec2(h * 2.0, h * 2.0)), 0.0, stroke, egui::StrokeKind::Middle);
+                self.painter.rect_stroke(
+                    egui::Rect::from_center_size(sp, egui::vec2(h * 2.0, h * 2.0)),
+                    0.0,
+                    stroke,
+                    egui::StrokeKind::Middle,
+                );
             }
         }
     }
 
-    fn draw_radius(&self, center: cadkernel_sketch::PointId, edge: cadkernel_sketch::PointId, r: f64, color: egui::Color32) {
-        let (Some(cp), Some(ep)) = (self.pt_pos(center), self.pt_pos(edge)) else { return };
-        let (Some(sc), Some(se)) = (self.proj(cp.0, cp.1), self.proj(ep.0, ep.1)) else { return };
+    fn draw_radius(
+        &self,
+        center: cadkernel_sketch::PointId,
+        edge: cadkernel_sketch::PointId,
+        r: f64,
+        color: egui::Color32,
+    ) {
+        let (Some(cp), Some(ep)) = (self.pt_pos(center), self.pt_pos(edge)) else {
+            return;
+        };
+        let (Some(sc), Some(se)) = (self.proj(cp.0, cp.1), self.proj(ep.0, ep.1)) else {
+            return;
+        };
         let stroke = egui::Stroke::new(1.0, color);
         self.painter.line_segment([sc, se], stroke);
         let dir = (se - sc).normalized();
         draw_arrowhead(self.painter, se, dir, color);
         let mid = egui::pos2((sc.x + se.x) * 0.5, (sc.y + se.y) * 0.5);
-        self.painter.text(mid + egui::vec2(0.0, -9.0), egui::Align2::CENTER_BOTTOM, format!("R {r:.1}"), self.dim_font.clone(), color);
+        self.painter.text(
+            mid + egui::vec2(0.0, -9.0),
+            egui::Align2::CENTER_BOTTOM,
+            format!("R {r:.1}"),
+            self.dim_font.clone(),
+            color,
+        );
     }
 
-    fn draw_diameter(&self, center: cadkernel_sketch::PointId, edge: cadkernel_sketch::PointId, d: f64, color: egui::Color32) {
-        let (Some(cp), Some(ep)) = (self.pt_pos(center), self.pt_pos(edge)) else { return };
+    fn draw_diameter(
+        &self,
+        center: cadkernel_sketch::PointId,
+        edge: cadkernel_sketch::PointId,
+        d: f64,
+        color: egui::Color32,
+    ) {
+        let (Some(cp), Some(ep)) = (self.pt_pos(center), self.pt_pos(edge)) else {
+            return;
+        };
         let dx = ep.0 - cp.0;
         let dy = ep.1 - cp.1;
         let opp = (cp.0 - dx, cp.1 - dy);
-        let (Some(se), Some(so)) = (self.proj(ep.0, ep.1), self.proj(opp.0, opp.1)) else { return };
+        let (Some(se), Some(so)) = (self.proj(ep.0, ep.1), self.proj(opp.0, opp.1)) else {
+            return;
+        };
         let stroke = egui::Stroke::new(1.0, color);
         self.painter.line_segment([so, se], stroke);
         let dir = (se - so).normalized();
         draw_arrowhead(self.painter, se, dir, color);
         draw_arrowhead(self.painter, so, -dir, color);
         let mid = egui::pos2((so.x + se.x) * 0.5, (so.y + se.y) * 0.5);
-        self.painter.text(mid + egui::vec2(0.0, -9.0), egui::Align2::CENTER_BOTTOM, format!("\u{2300} {d:.1}"), self.dim_font.clone(), color);
+        self.painter.text(
+            mid + egui::vec2(0.0, -9.0),
+            egui::Align2::CENTER_BOTTOM,
+            format!("\u{2300} {d:.1}"),
+            self.dim_font.clone(),
+            color,
+        );
     }
 
-    fn draw_angle(&self, l0: cadkernel_sketch::LineId, l1: cadkernel_sketch::LineId, a: f64, color: egui::Color32) {
-        let (Some((s0, e0)), Some((s1, e1))) = (self.line_ends(l0), self.line_ends(l1)) else { return };
+    fn draw_angle(
+        &self,
+        l0: cadkernel_sketch::LineId,
+        l1: cadkernel_sketch::LineId,
+        a: f64,
+        color: egui::Color32,
+    ) {
+        let (Some((s0, e0)), Some((s1, e1))) = (self.line_ends(l0), self.line_ends(l1)) else {
+            return;
+        };
         let cx = s0.0;
         let cy = s0.1;
         let ang0 = (e0.1 - s0.1).atan2(e0.0 - s0.0);
@@ -2206,24 +2526,45 @@ impl ConstraintCtx<'_> {
             let t = start + span * (i as f64 / segs as f64);
             let px = cx + arc_r * t.cos();
             let py = cy + arc_r * t.sin();
-            if let Some(sp) = self.proj(px, py) { pts.push(sp); }
+            if let Some(sp) = self.proj(px, py) {
+                pts.push(sp);
+            }
         }
         if pts.len() >= 2 {
-            self.painter.add(egui::Shape::line(pts, egui::Stroke::new(1.0, color)));
+            self.painter
+                .add(egui::Shape::line(pts, egui::Stroke::new(1.0, color)));
         }
         let mid_t = start + span * 0.5;
         let label_r = arc_r * 1.4;
         if let Some(mp) = self.proj(cx + label_r * mid_t.cos(), cy + label_r * mid_t.sin()) {
             let _ = ang1;
-            self.painter.text(mp, egui::Align2::CENTER_CENTER, format!("{:.0}\u{00B0}", a.to_degrees()), self.dim_font.clone(), color);
+            self.painter.text(
+                mp,
+                egui::Align2::CENTER_CENTER,
+                format!("{:.0}\u{00B0}", a.to_degrees()),
+                self.dim_font.clone(),
+                color,
+            );
         }
     }
 
-    fn draw_h_distance(&self, p0: cadkernel_sketch::PointId, p1: cadkernel_sketch::PointId, d: f64, color: egui::Color32) {
-        let (Some(a), Some(b)) = (self.pt_pos(p0), self.pt_pos(p1)) else { return };
+    fn draw_h_distance(
+        &self,
+        p0: cadkernel_sketch::PointId,
+        p1: cadkernel_sketch::PointId,
+        d: f64,
+        color: egui::Color32,
+    ) {
+        let (Some(a), Some(b)) = (self.pt_pos(p0), self.pt_pos(p1)) else {
+            return;
+        };
         let y = (a.1 + b.1) * 0.5;
-        let (Some(sa), Some(sb)) = (self.proj(a.0, y), self.proj(b.0, y)) else { return };
-        let (Some(pa), Some(pb)) = (self.proj(a.0, a.1), self.proj(b.0, b.1)) else { return };
+        let (Some(sa), Some(sb)) = (self.proj(a.0, y), self.proj(b.0, y)) else {
+            return;
+        };
+        let (Some(pa), Some(pb)) = (self.proj(a.0, a.1), self.proj(b.0, b.1)) else {
+            return;
+        };
         let stroke = egui::Stroke::new(1.0, color);
         self.painter.line_segment([pa, sa], stroke);
         self.painter.line_segment([pb, sb], stroke);
@@ -2232,14 +2573,32 @@ impl ConstraintCtx<'_> {
         draw_arrowhead(self.painter, sa, dir, color);
         draw_arrowhead(self.painter, sb, -dir, color);
         let mid = egui::pos2((sa.x + sb.x) * 0.5, (sa.y + sb.y) * 0.5);
-        self.painter.text(mid + egui::vec2(0.0, -9.0), egui::Align2::CENTER_BOTTOM, format!("{d:.1}"), self.dim_font.clone(), color);
+        self.painter.text(
+            mid + egui::vec2(0.0, -9.0),
+            egui::Align2::CENTER_BOTTOM,
+            format!("{d:.1}"),
+            self.dim_font.clone(),
+            color,
+        );
     }
 
-    fn draw_v_distance(&self, p0: cadkernel_sketch::PointId, p1: cadkernel_sketch::PointId, d: f64, color: egui::Color32) {
-        let (Some(a), Some(b)) = (self.pt_pos(p0), self.pt_pos(p1)) else { return };
+    fn draw_v_distance(
+        &self,
+        p0: cadkernel_sketch::PointId,
+        p1: cadkernel_sketch::PointId,
+        d: f64,
+        color: egui::Color32,
+    ) {
+        let (Some(a), Some(b)) = (self.pt_pos(p0), self.pt_pos(p1)) else {
+            return;
+        };
         let x = (a.0 + b.0) * 0.5;
-        let (Some(sa), Some(sb)) = (self.proj(x, a.1), self.proj(x, b.1)) else { return };
-        let (Some(pa), Some(pb)) = (self.proj(a.0, a.1), self.proj(b.0, b.1)) else { return };
+        let (Some(sa), Some(sb)) = (self.proj(x, a.1), self.proj(x, b.1)) else {
+            return;
+        };
+        let (Some(pa), Some(pb)) = (self.proj(a.0, a.1), self.proj(b.0, b.1)) else {
+            return;
+        };
         let stroke = egui::Stroke::new(1.0, color);
         self.painter.line_segment([pa, sa], stroke);
         self.painter.line_segment([pb, sb], stroke);
@@ -2248,45 +2607,92 @@ impl ConstraintCtx<'_> {
         draw_arrowhead(self.painter, sa, dir, color);
         draw_arrowhead(self.painter, sb, -dir, color);
         let mid = egui::pos2((sa.x + sb.x) * 0.5, (sa.y + sb.y) * 0.5);
-        self.painter.text(mid + egui::vec2(8.0, 0.0), egui::Align2::LEFT_CENTER, format!("{d:.1}"), self.dim_font.clone(), color);
+        self.painter.text(
+            mid + egui::vec2(8.0, 0.0),
+            egui::Align2::LEFT_CENTER,
+            format!("{d:.1}"),
+            self.dim_font.clone(),
+            color,
+        );
     }
 
-
-    fn draw_perp(&self, l0: cadkernel_sketch::LineId, _l1: cadkernel_sketch::LineId, color: egui::Color32) {
-        let Some((s0, e0)) = self.line_ends(l0) else { return };
+    fn draw_perp(
+        &self,
+        l0: cadkernel_sketch::LineId,
+        _l1: cadkernel_sketch::LineId,
+        color: egui::Color32,
+    ) {
+        let Some((s0, e0)) = self.line_ends(l0) else {
+            return;
+        };
         let mx = (s0.0 + e0.0) * 0.5;
         let my = (s0.1 + e0.1) * 0.5;
         if let Some(mp) = self.proj(mx, my) {
             let h = 6.0_f32;
             let stroke = egui::Stroke::new(1.2, color);
-            self.painter.line_segment([egui::pos2(mp.x, mp.y), egui::pos2(mp.x + h, mp.y)], stroke);
-            self.painter.line_segment([egui::pos2(mp.x + h, mp.y), egui::pos2(mp.x + h, mp.y - h)], stroke);
+            self.painter
+                .line_segment([egui::pos2(mp.x, mp.y), egui::pos2(mp.x + h, mp.y)], stroke);
+            self.painter.line_segment(
+                [egui::pos2(mp.x + h, mp.y), egui::pos2(mp.x + h, mp.y - h)],
+                stroke,
+            );
         }
     }
 
-    fn draw_tangent(&self, lid: cadkernel_sketch::LineId, _center: cadkernel_sketch::PointId, color: egui::Color32) {
-        let Some((s, e)) = self.line_ends(lid) else { return };
+    fn draw_tangent(
+        &self,
+        lid: cadkernel_sketch::LineId,
+        _center: cadkernel_sketch::PointId,
+        color: egui::Color32,
+    ) {
+        let Some((s, e)) = self.line_ends(lid) else {
+            return;
+        };
         let mx = (s.0 + e.0) * 0.5;
         let my = (s.1 + e.1) * 0.5;
         if let Some(mp) = self.proj(mx, my) {
-            self.painter.text(mp + egui::vec2(0.0, -14.0), egui::Align2::CENTER_CENTER, "T", self.sym_font.clone(), color);
+            self.painter.text(
+                mp + egui::vec2(0.0, -14.0),
+                egui::Align2::CENTER_CENTER,
+                "T",
+                self.sym_font.clone(),
+                color,
+            );
         }
     }
 
-    fn draw_midpoint(&self, pid: cadkernel_sketch::PointId, _lid: cadkernel_sketch::LineId, color: egui::Color32) {
+    fn draw_midpoint(
+        &self,
+        pid: cadkernel_sketch::PointId,
+        _lid: cadkernel_sketch::LineId,
+        color: egui::Color32,
+    ) {
         if let Some(p) = self.pt_pos(pid) {
             if let Some(sp) = self.proj(p.0, p.1) {
                 let h = 5.0_f32;
                 self.painter.add(egui::Shape::convex_polygon(
-                    vec![egui::pos2(sp.x, sp.y - h), egui::pos2(sp.x + h, sp.y), egui::pos2(sp.x, sp.y + h), egui::pos2(sp.x - h, sp.y)],
-                    color, egui::Stroke::NONE,
+                    vec![
+                        egui::pos2(sp.x, sp.y - h),
+                        egui::pos2(sp.x + h, sp.y),
+                        egui::pos2(sp.x, sp.y + h),
+                        egui::pos2(sp.x - h, sp.y),
+                    ],
+                    color,
+                    egui::Stroke::NONE,
                 ));
             }
         }
     }
 
-    fn draw_collinear(&self, l0: cadkernel_sketch::LineId, l1: cadkernel_sketch::LineId, color: egui::Color32) {
-        let (Some((s0, e0)), Some((s1, e1))) = (self.line_ends(l0), self.line_ends(l1)) else { return };
+    fn draw_collinear(
+        &self,
+        l0: cadkernel_sketch::LineId,
+        l1: cadkernel_sketch::LineId,
+        color: egui::Color32,
+    ) {
+        let (Some((s0, e0)), Some((s1, e1))) = (self.line_ends(l0), self.line_ends(l1)) else {
+            return;
+        };
         let m0 = ((s0.0 + e0.0) * 0.5, (s0.1 + e0.1) * 0.5);
         let m1 = ((s1.0 + e1.0) * 0.5, (s1.1 + e1.1) * 0.5);
         if let (Some(sp0), Some(sp1)) = (self.proj(m0.0, m0.1), self.proj(m1.0, m1.1)) {
@@ -2294,7 +2700,12 @@ impl ConstraintCtx<'_> {
         }
     }
 
-    fn draw_concentric(&self, p0: cadkernel_sketch::PointId, _p1: cadkernel_sketch::PointId, color: egui::Color32) {
+    fn draw_concentric(
+        &self,
+        p0: cadkernel_sketch::PointId,
+        _p1: cadkernel_sketch::PointId,
+        color: egui::Color32,
+    ) {
         if let Some(p) = self.pt_pos(p0) {
             if let Some(sp) = self.proj(p.0, p.1) {
                 let stroke = egui::Stroke::new(1.2, color);
@@ -2304,11 +2715,25 @@ impl ConstraintCtx<'_> {
         }
     }
 
-    fn draw_symmetric(&self, p0: cadkernel_sketch::PointId, p1: cadkernel_sketch::PointId, _lid: cadkernel_sketch::LineId, color: egui::Color32) {
-        let (Some(a), Some(b)) = (self.pt_pos(p0), self.pt_pos(p1)) else { return };
+    fn draw_symmetric(
+        &self,
+        p0: cadkernel_sketch::PointId,
+        p1: cadkernel_sketch::PointId,
+        _lid: cadkernel_sketch::LineId,
+        color: egui::Color32,
+    ) {
+        let (Some(a), Some(b)) = (self.pt_pos(p0), self.pt_pos(p1)) else {
+            return;
+        };
         let mid = ((a.0 + b.0) * 0.5, (a.1 + b.1) * 0.5);
         if let Some(sp) = self.proj(mid.0, mid.1) {
-            self.painter.text(sp + egui::vec2(0.0, -10.0), egui::Align2::CENTER_CENTER, "S", self.sym_font.clone(), color);
+            self.painter.text(
+                sp + egui::vec2(0.0, -10.0),
+                egui::Align2::CENTER_CENTER,
+                "S",
+                self.sym_font.clone(),
+                color,
+            );
             if let (Some(sa), Some(sb)) = (self.proj(a.0, a.1), self.proj(b.0, b.1)) {
                 draw_dashed_line(self.painter, sa, sb, color, 0.8, 3.0, 3.0);
             }
@@ -2355,71 +2780,11 @@ fn draw_dashed_line(
 /// Find closed loops of lines in a sketch. Returns list of loops,
 /// each loop being a Vec of PointId indices in order.
 fn find_closed_loops(sketch: &cadkernel_sketch::Sketch) -> Vec<Vec<usize>> {
-    use std::collections::HashMap;
-
-    if sketch.lines.is_empty() {
-        return Vec::new();
-    }
-
-    // Build adjacency: point → list of (line_index, other_point)
-    let mut adj: HashMap<usize, Vec<(usize, usize)>> = HashMap::new();
-    for (li, line) in sketch.lines.iter().enumerate() {
-        let s = line.start.0;
-        let e = line.end.0;
-        adj.entry(s).or_default().push((li, e));
-        adj.entry(e).or_default().push((li, s));
-    }
-
-    let mut used_lines = vec![false; sketch.lines.len()];
-    let mut loops = Vec::new();
-
-    for start_li in 0..sketch.lines.len() {
-        if used_lines[start_li] {
-            continue;
-        }
-        let start_pt = sketch.lines[start_li].start.0;
-        // Try to trace a loop from this line
-        let mut path = vec![start_pt];
-        let mut path_lines = vec![start_li];
-        let mut cur = sketch.lines[start_li].end.0;
-        let mut local_used = vec![false; sketch.lines.len()];
-        local_used[start_li] = true;
-
-        let found = loop {
-            if cur == start_pt && path.len() >= 3 {
-                break true;
-            }
-            if path.len() > 50 {
-                break false;
-            }
-            // Find next unused line from cur
-            let neighbors = match adj.get(&cur) {
-                Some(n) => n,
-                None => break false,
-            };
-            let next = neighbors
-                .iter()
-                .find(|(li, _)| !local_used[*li] && !used_lines[*li]);
-            match next {
-                Some(&(li, other)) => {
-                    local_used[li] = true;
-                    path_lines.push(li);
-                    path.push(cur);
-                    cur = other;
-                }
-                None => break false,
-            }
-        };
-
-        if found {
-            for &li in &path_lines {
-                used_lines[li] = true;
-            }
-            loops.push(path);
-        }
-    }
-
-    loops
+    cadkernel_sketch::analyze_profiles(sketch)
+        .loops
+        .into_iter()
+        .map(|lp| lp.into_iter().map(|pid| pid.0).collect())
+        .collect()
 }
 
 // ---------------------------------------------------------------------------

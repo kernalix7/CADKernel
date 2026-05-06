@@ -129,10 +129,7 @@ pub fn measure_angle(
 }
 
 /// Returns the length of an edge (Euclidean distance from start to end vertex).
-pub fn measure_edge_length(
-    model: &BRepModel,
-    edge: Handle<EdgeData>,
-) -> KernelResult<f64> {
+pub fn measure_edge_length(model: &BRepModel, edge: Handle<EdgeData>) -> KernelResult<f64> {
     let ed = model
         .edges
         .get(edge)
@@ -153,10 +150,7 @@ pub fn measure_edge_length(
 
 /// Returns the approximate area of a face by tessellating it and summing
 /// triangle areas.
-pub fn measure_face_area(
-    model: &BRepModel,
-    face: Handle<FaceData>,
-) -> KernelResult<f64> {
+pub fn measure_face_area(model: &BRepModel, face: Handle<FaceData>) -> KernelResult<f64> {
     let triangles = cadkernel_io::tessellate_face(model, face);
     if triangles.is_empty() {
         return Err(KernelError::InvalidArgument(
@@ -182,10 +176,7 @@ pub fn measure_face_area(
 
 /// Returns the approximate volume of a solid using the divergence theorem
 /// on its tessellated mesh.
-pub fn measure_solid_volume(
-    model: &BRepModel,
-    solid: Handle<SolidData>,
-) -> KernelResult<f64> {
+pub fn measure_solid_volume(model: &BRepModel, solid: Handle<SolidData>) -> KernelResult<f64> {
     let props = solid_mass_properties(model, solid)?;
     Ok(props.volume)
 }
@@ -270,9 +261,8 @@ mod tests {
         let (model, b) = make_test_box();
         // A 2×3×4 box has faces with areas: 2×3=6, 2×4=8, 3×4=12
         let area = measure_face_area(&model, b.faces[0]).unwrap();
-        let valid = (area - 6.0).abs() < 0.5
-            || (area - 8.0).abs() < 0.5
-            || (area - 12.0).abs() < 0.5;
+        let valid =
+            (area - 6.0).abs() < 0.5 || (area - 8.0).abs() < 0.5 || (area - 12.0).abs() < 0.5;
         assert!(valid, "face area {area} should be 6, 8, or 12");
     }
 
@@ -314,7 +304,10 @@ mod tests {
         let b = crate::make_box(&mut model, Point3::ORIGIN, 1.0, 1.0, 1.0).unwrap();
         let edges = model.edges_of_face(b.faces[0]).unwrap();
         let len = measure_edge_length(&model, edges[0]).unwrap();
-        assert!((len - 1.0).abs() < 0.01, "unit cube edge should be 1.0, got {len}");
+        assert!(
+            (len - 1.0).abs() < 0.01,
+            "unit cube edge should be 1.0, got {len}"
+        );
     }
 
     #[test]
@@ -328,7 +321,8 @@ mod tests {
     #[test]
     fn test_measure_volume_cylinder() {
         let mut model = BRepModel::new();
-        let cyl = crate::primitives::make_cylinder(&mut model, Point3::ORIGIN, 1.0, 1.0, 64).unwrap();
+        let cyl =
+            crate::primitives::make_cylinder(&mut model, Point3::ORIGIN, 1.0, 1.0, 64).unwrap();
         let vol = measure_solid_volume(&model, cyl.solid).unwrap();
         let expected = std::f64::consts::PI * 1.0 * 1.0 * 1.0;
         assert!((vol - expected).abs() < 0.1, "cylinder vol ~PI, got {vol}");
@@ -337,7 +331,11 @@ mod tests {
     #[test]
     fn test_compute_mass_properties_empty() {
         use cadkernel_io::tessellate::Mesh;
-        let mesh = Mesh { vertices: vec![], normals: vec![], indices: vec![] };
+        let mesh = Mesh {
+            vertices: vec![],
+            normals: vec![],
+            indices: vec![],
+        };
         let props = compute_mass_properties(&mesh);
         assert!(props.volume.abs() < 1e-12);
     }
@@ -367,6 +365,9 @@ mod tests {
         // Adjacent edges on a rectangular face are perpendicular
         let angle = measure_angle(&model, face_edges[0], face_edges[1]).unwrap();
         let diff = (angle - std::f64::consts::FRAC_PI_2).abs();
-        assert!(diff < 0.1, "adjacent box edges should be ~90deg, got {angle}");
+        assert!(
+            diff < 0.1,
+            "adjacent box edges should be ~90deg, got {angle}"
+        );
     }
 }

@@ -129,8 +129,12 @@ pub fn make_torus(
     let solid = model.make_solid_tagged(&[shell], solid_tag);
 
     // --- Geometry binding ---
-    let tor_surf: Arc<dyn cadkernel_geometry::Surface + Send + Sync> =
-        Arc::new(TorSurface::new(center, Vec3::Z, major_radius, minor_radius)?);
+    let tor_surf: Arc<dyn cadkernel_geometry::Surface + Send + Sync> = Arc::new(TorSurface::new(
+        center,
+        Vec3::Z,
+        major_radius,
+        minor_radius,
+    )?);
     for &face_h in &all_faces {
         model.bind_face_surface(face_h, tor_surf.clone(), Orientation::Forward);
     }

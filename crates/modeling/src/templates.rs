@@ -128,8 +128,13 @@ pub fn template_mechanical_part() -> KernelResult<BRepModel> {
     )?;
 
     // Boolean subtract to create the hole
-    let result =
-        boolean_op(&block_model, block.solid, &tool_model, tool.solid, BooleanOp::Difference)?;
+    let result = boolean_op(
+        &block_model,
+        block.solid,
+        &tool_model,
+        tool.solid,
+        BooleanOp::Difference,
+    )?;
     Ok(result)
 }
 
@@ -163,7 +168,10 @@ mod tests {
         let (solid_h, _) = model.solids.iter().next().unwrap();
         let check = check_geometry(&model, solid_h);
         assert!(check.is_valid, "box should be valid: {:?}", check.issues);
-        assert!(check_watertight(&model, solid_h), "box should be watertight");
+        assert!(
+            check_watertight(&model, solid_h),
+            "box should be watertight"
+        );
     }
 
     #[test]
@@ -172,7 +180,10 @@ mod tests {
         assert!(result.is_err());
         let msg = result.err().unwrap().to_string();
         assert!(msg.contains("width"), "error should mention width: {msg}");
-        assert!(msg.contains("-1"), "error should include the bad value: {msg}");
+        assert!(
+            msg.contains("-1"),
+            "error should include the bad value: {msg}"
+        );
     }
 
     #[test]
@@ -255,7 +266,11 @@ mod tests {
     fn test_template_list_descriptions_nonempty() {
         let list = template_list();
         for t in &list {
-            assert!(!t.description.is_empty(), "template {} has empty description", t.name);
+            assert!(
+                !t.description.is_empty(),
+                "template {} has empty description",
+                t.name
+            );
         }
     }
 }

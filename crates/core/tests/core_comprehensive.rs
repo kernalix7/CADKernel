@@ -135,7 +135,10 @@ fn with_context_prepends_to_invalid_argument() {
     let wrapped = err.with_context("make_cylinder");
     let msg = wrapped.to_string();
     assert!(msg.contains("make_cylinder"), "context missing: {msg}");
-    assert!(msg.contains("radius must be > 0"), "original missing: {msg}");
+    assert!(
+        msg.contains("radius must be > 0"),
+        "original missing: {msg}"
+    );
 }
 
 #[test]
@@ -162,7 +165,10 @@ fn with_context_prepends_to_geometry_error() {
     let wrapped = err.with_context("nurbs_eval");
     let msg = wrapped.to_string();
     assert!(msg.contains("nurbs_eval"), "context missing: {msg}");
-    assert!(msg.contains("degenerate surface"), "original missing: {msg}");
+    assert!(
+        msg.contains("degenerate surface"),
+        "original missing: {msg}"
+    );
 }
 
 #[test]

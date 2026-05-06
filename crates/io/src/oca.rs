@@ -95,7 +95,10 @@ pub fn import_oca(content: &str) -> KernelResult<Mesh> {
         let c = mesh.vertices[tri[2] as usize];
         let ab = b - a;
         let ac = c - a;
-        let n = ab.cross(ac).normalized().unwrap_or(cadkernel_math::Vec3::ZERO);
+        let n = ab
+            .cross(ac)
+            .normalized()
+            .unwrap_or(cadkernel_math::Vec3::ZERO);
         mesh.normals.push(n);
     }
 
@@ -160,7 +163,8 @@ mod tests {
 
     #[test]
     fn test_import_oca_ignores_comments() {
-        let content = "# comment\nPOINT 0 0 0\n# another comment\nPOINT 1 0 0\nPOINT 0 1 0\nFACE 0 1 2\n";
+        let content =
+            "# comment\nPOINT 0 0 0\n# another comment\nPOINT 1 0 0\nPOINT 0 1 0\nFACE 0 1 2\n";
         let mesh = import_oca(content).unwrap();
         assert_eq!(mesh.vertices.len(), 3);
     }

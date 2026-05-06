@@ -779,24 +779,9 @@ mod tests {
         let p1 = s.point_at(0.5 + dt, 0.5);
         let fd = (p1 - p0) / (2.0 * dt);
 
-        assert!(
-            (du.x - fd.x).abs() < 1e-4,
-            "du.x={} vs fd.x={}",
-            du.x,
-            fd.x
-        );
-        assert!(
-            (du.y - fd.y).abs() < 1e-4,
-            "du.y={} vs fd.y={}",
-            du.y,
-            fd.y
-        );
-        assert!(
-            (du.z - fd.z).abs() < 1e-4,
-            "du.z={} vs fd.z={}",
-            du.z,
-            fd.z
-        );
+        assert!((du.x - fd.x).abs() < 1e-4, "du.x={} vs fd.x={}", du.x, fd.x);
+        assert!((du.y - fd.y).abs() < 1e-4, "du.y={} vs fd.y={}", du.y, fd.y);
+        assert!((du.z - fd.z).abs() < 1e-4, "du.z={} vs fd.z={}", du.z, fd.z);
     }
 
     #[test]
@@ -936,14 +921,8 @@ mod tests {
         // Point directly above (0.3, 0.7, 0)
         let test_pt = Point3::new(0.3, 0.7, 5.0);
         let (u, v, closest) = s.project_point(test_pt);
-        assert!(
-            (u - 0.3).abs() < 1e-6,
-            "projected u={u}, expected 0.3"
-        );
-        assert!(
-            (v - 0.7).abs() < 1e-6,
-            "projected v={v}, expected 0.7"
-        );
+        assert!((u - 0.3).abs() < 1e-6, "projected u={u}, expected 0.3");
+        assert!((v - 0.7).abs() < 1e-6, "projected v={v}, expected 0.7");
         assert!(
             closest.distance_to(Point3::new(0.3, 0.7, 0.0)) < 1e-6,
             "closest point mismatch: {closest:?}"

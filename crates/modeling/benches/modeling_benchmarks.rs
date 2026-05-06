@@ -349,8 +349,16 @@ fn bench_boolean_chain_5(c: &mut Criterion) {
 
             for i in 1..5 {
                 let mut next = BRepModel::new();
-                let nb = make_box(&mut next, Point3::new(i as f64 * 8.0, 0.0, 0.0), 10.0, 10.0, 10.0).unwrap();
-                let result = boolean_op(&cur_model, cur_solid, &next, nb.solid, BooleanOp::Union).unwrap();
+                let nb = make_box(
+                    &mut next,
+                    Point3::new(i as f64 * 8.0, 0.0, 0.0),
+                    10.0,
+                    10.0,
+                    10.0,
+                )
+                .unwrap();
+                let result =
+                    boolean_op(&cur_model, cur_solid, &next, nb.solid, BooleanOp::Union).unwrap();
                 let s = result.solids.iter().next().map(|(h, _)| h).unwrap();
                 cur_solid = s;
                 cur_model = result;
@@ -378,7 +386,8 @@ fn bench_circular_pattern_36(c: &mut Criterion) {
         b.iter(|| {
             let mut m = BRepModel::new();
             let r = make_box(&mut m, Point3::new(10.0, 0.0, 0.0), 2.0, 2.0, 2.0).unwrap();
-            cadkernel_modeling::circular_pattern(&mut m, r.solid, Point3::ORIGIN, Vec3::Z, 36).unwrap();
+            cadkernel_modeling::circular_pattern(&mut m, r.solid, Point3::ORIGIN, Vec3::Z, 36)
+                .unwrap();
         });
     });
 }
@@ -417,10 +426,10 @@ fn bench_bvh_nearest_1000(c: &mut Criterion) {
         .map(|i| {
             let x = (i % 50) as f64 * 3.0;
             let y = (i / 50) as f64 * 3.0;
-            (Aabb::new(
-                Point3::new(x, y, 0.0),
-                Point3::new(x + 1.0, y + 1.0, 1.0),
-            ), i)
+            (
+                Aabb::new(Point3::new(x, y, 0.0), Point3::new(x + 1.0, y + 1.0, 1.0)),
+                i,
+            )
         })
         .collect();
     let bvh = Bvh::build(&items);

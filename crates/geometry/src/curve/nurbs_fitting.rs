@@ -62,9 +62,7 @@ pub fn interpolate(points: &[Point3], degree: usize) -> KernelResult<NurbsCurve>
     let cy = solve_linear_system(&mat, &ys)?;
     let cz = solve_linear_system(&mat, &zs)?;
 
-    let control_points: Vec<Point3> = (0..n)
-        .map(|i| Point3::new(cx[i], cy[i], cz[i]))
-        .collect();
+    let control_points: Vec<Point3> = (0..n).map(|i| Point3::new(cx[i], cy[i], cz[i])).collect();
     let weights = vec![1.0; n];
 
     NurbsCurve::new(p, control_points, weights, knots)
@@ -326,8 +324,8 @@ fn solve_linear_system(a: &[Vec<f64>], b: &[f64]) -> KernelResult<Vec<f64>> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::Curve;
+    use super::*;
 
     #[test]
     fn test_interpolate_collinear() {
@@ -421,10 +419,7 @@ mod tests {
 
     #[test]
     fn test_approximate_too_few_data() {
-        let points = vec![
-            Point3::new(0.0, 0.0, 0.0),
-            Point3::new(1.0, 0.0, 0.0),
-        ];
+        let points = vec![Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 0.0, 0.0)];
         assert!(approximate(&points, 3, 5, 0.01).is_err());
     }
 }

@@ -1,5 +1,7 @@
-use super::{GizmoMode, GuiAction, GuiState, SelectionMode, SelectedEntity, SnapHighlight, ToastLevel};
 use super::theme;
+use super::{
+    GizmoMode, GuiAction, GuiState, SelectedEntity, SelectionMode, SnapHighlight, ToastLevel,
+};
 use crate::render::{Camera, cross3, dot3, normalize3};
 use crate::scene::Scene;
 
@@ -16,9 +18,27 @@ pub(crate) fn draw_axes_overlay(ctx: &egui::Context, camera: &Camera, gui: &mut 
 
     // Axis data: direction, color, label, positive-click view, negative-click view
     let axes: [([f32; 3], egui::Color32, &str, StandardView, StandardView); 3] = [
-        ([1.0, 0.0, 0.0], egui::Color32::from_rgb(220, 60, 60), "X", StandardView::Right, StandardView::Left),
-        ([0.0, 1.0, 0.0], egui::Color32::from_rgb(60, 200, 60), "Y", StandardView::Front, StandardView::Back),
-        ([0.0, 0.0, 1.0], egui::Color32::from_rgb(70, 100, 240), "Z", StandardView::Top, StandardView::Bottom),
+        (
+            [1.0, 0.0, 0.0],
+            egui::Color32::from_rgb(220, 60, 60),
+            "X",
+            StandardView::Right,
+            StandardView::Left,
+        ),
+        (
+            [0.0, 1.0, 0.0],
+            egui::Color32::from_rgb(60, 200, 60),
+            "Y",
+            StandardView::Front,
+            StandardView::Back,
+        ),
+        (
+            [0.0, 0.0, 1.0],
+            egui::Color32::from_rgb(70, 100, 240),
+            "Z",
+            StandardView::Top,
+            StandardView::Bottom,
+        ),
     ];
 
     let painter = ctx.layer_painter(egui::LayerId::new(
@@ -27,13 +47,32 @@ pub(crate) fn draw_axes_overlay(ctx: &egui::Context, camera: &Camera, gui: &mut 
     ));
 
     // Background: subtle gradient ring
-    painter.circle_filled(center, size + 10.0, egui::Color32::from_rgba_premultiplied(15, 15, 20, 100));
-    painter.circle_filled(center, size + 6.0, egui::Color32::from_rgba_premultiplied(20, 22, 28, 140));
-    painter.circle_stroke(center, size + 6.0, egui::Stroke::new(0.5, egui::Color32::from_rgba_premultiplied(100, 100, 120, 60)));
+    painter.circle_filled(
+        center,
+        size + 10.0,
+        egui::Color32::from_rgba_premultiplied(15, 15, 20, 100),
+    );
+    painter.circle_filled(
+        center,
+        size + 6.0,
+        egui::Color32::from_rgba_premultiplied(20, 22, 28, 140),
+    );
+    painter.circle_stroke(
+        center,
+        size + 6.0,
+        egui::Stroke::new(
+            0.5,
+            egui::Color32::from_rgba_premultiplied(100, 100, 120, 60),
+        ),
+    );
 
     // Center sphere (dark with highlight)
     painter.circle_filled(center, 4.0, egui::Color32::from_rgb(60, 62, 68));
-    painter.circle_filled(egui::pos2(center.x - 1.0, center.y - 1.0), 1.5, egui::Color32::from_rgb(120, 125, 135));
+    painter.circle_filled(
+        egui::pos2(center.x - 1.0, center.y - 1.0),
+        1.5,
+        egui::Color32::from_rgb(120, 125, 135),
+    );
 
     // Depth-sort axes (back-to-front)
     let mut depth_order: [(usize, f32); 3] = [
@@ -91,17 +130,26 @@ pub(crate) fn draw_axes_overlay(ctx: &egui::Context, camera: &Camera, gui: &mut 
         // Depth-based opacity: axes pointing away are dimmer
         let facing = (1.0 - depth * 0.6).clamp(0.4, 1.0);
         let alpha = (255.0 * facing) as u8;
-        let line_color = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha);
+        let line_color =
+            egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), alpha);
         let faded_alpha = (80.0 * facing) as u8;
         let faded = egui::Color32::from_rgba_unmultiplied(
-            color.r() / 3, color.g() / 3, color.b() / 3, faded_alpha,
+            color.r() / 3,
+            color.g() / 3,
+            color.b() / 3,
+            faded_alpha,
         );
 
         // Negative axis stub (dashed feel — shorter, dimmer)
         painter.line_segment([center, neg_end], egui::Stroke::new(1.0, faded));
 
         // Positive axis — glow + core line for anti-aliased look
-        let glow_color = egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), (40.0 * facing) as u8);
+        let glow_color = egui::Color32::from_rgba_unmultiplied(
+            color.r(),
+            color.g(),
+            color.b(),
+            (40.0 * facing) as u8,
+        );
         painter.line_segment([center, pos_end], egui::Stroke::new(5.0, glow_color));
         painter.line_segment([center, pos_end], egui::Stroke::new(2.5, line_color));
 
@@ -125,11 +173,19 @@ pub(crate) fn draw_axes_overlay(ctx: &egui::Context, camera: &Camera, gui: &mut 
         let is_neg_hovered = matches!(hovered_axis, Some((hi, false)) if hi == *idx);
 
         if is_pos_hovered {
-            painter.circle_filled(pos_end, 8.0, egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 40));
+            painter.circle_filled(
+                pos_end,
+                8.0,
+                egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 40),
+            );
             painter.circle_stroke(pos_end, 8.0, egui::Stroke::new(1.5, *color));
         }
         if is_neg_hovered {
-            painter.circle_filled(neg_end, 6.0, egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 40));
+            painter.circle_filled(
+                neg_end,
+                6.0,
+                egui::Color32::from_rgba_unmultiplied(color.r(), color.g(), color.b(), 40),
+            );
             painter.circle_stroke(neg_end, 6.0, egui::Stroke::new(1.0, faded));
         }
 
@@ -208,7 +264,11 @@ pub(crate) fn draw_techdraw_overlay(ctx: &egui::Context, gui: &GuiState) {
     let visible_color = egui::Color32::from_rgb(0, 0, 0);
     let hidden_color = egui::Color32::from_rgb(160, 160, 160);
 
-    painter.rect_filled(screen, 0.0, egui::Color32::from_rgba_premultiplied(240, 240, 240, 220));
+    painter.rect_filled(
+        screen,
+        0.0,
+        egui::Color32::from_rgba_premultiplied(240, 240, 240, 220),
+    );
 
     for view in &sheet.views {
         for e in &view.edges {
@@ -217,7 +277,11 @@ pub(crate) fn draw_techdraw_overlay(ctx: &egui::Context, gui: &GuiState) {
             let sx2 = screen_cx + ((e.x2 - cx_model) * scale) as f32;
             let sy2 = screen_cy - ((e.y2 - cy_model) * scale) as f32;
 
-            let color = if e.visible { visible_color } else { hidden_color };
+            let color = if e.visible {
+                visible_color
+            } else {
+                hidden_color
+            };
             let width = if e.visible { 1.5 } else { 0.8 };
 
             if e.visible {
@@ -238,8 +302,7 @@ pub(crate) fn draw_techdraw_overlay(ctx: &egui::Context, gui: &GuiState) {
         }
 
         let label_x = screen_cx + ((view.center_x - cx_model) * scale) as f32;
-        let label_y = screen_cy
-            - ((view.center_y - cy_model) * scale) as f32
+        let label_y = screen_cy - ((view.center_y - cy_model) * scale) as f32
             + td_view_radius(view, scale) as f32
             + 16.0;
         painter.text(
@@ -317,7 +380,6 @@ fn world_to_screen(camera: &Camera, screen: egui::Rect, p: [f32; 3]) -> Option<e
     let sy = screen.min.y + (1.0 - ndc_y) * 0.5 * screen.height();
     Some(egui::pos2(sx, sy))
 }
-
 
 // ---------------------------------------------------------------------------
 // 3D ground grid (XZ plane)
@@ -405,9 +467,7 @@ pub(crate) fn draw_measurement_overlay(
 
     let unit = nav.unit_system.label();
     let dp = nav.decimal_places as usize;
-    let fmt = |v: f32| -> String {
-        format!("{:.prec$}", v, prec = dp)
-    };
+    let fmt = |v: f32| -> String { format!("{:.prec$}", v, prec = dp) };
     let accent = egui::Color32::from_rgb(255, 200, 50);
     let accent_dim = egui::Color32::from_rgba_premultiplied(255, 200, 50, 140);
     let text_color = egui::Color32::WHITE;
@@ -422,11 +482,8 @@ pub(crate) fn draw_measurement_overlay(
         2 => "Measure: click 3rd for angle | C clear | Esc exit".to_string(),
         n => format!("Measure: {n} points | C clear | Esc exit"),
     };
-    let mode_galley = painter.layout_no_wrap(
-        mode_label,
-        egui::FontId::proportional(11.0),
-        accent_dim,
-    );
+    let mode_galley =
+        painter.layout_no_wrap(mode_label, egui::FontId::proportional(11.0), accent_dim);
     let mode_rect = egui::Rect::from_min_size(
         egui::pos2(
             screen.max.x - mode_galley.size().x - 16.0,
@@ -435,7 +492,12 @@ pub(crate) fn draw_measurement_overlay(
         egui::vec2(mode_galley.size().x + 12.0, mode_galley.size().y + 6.0),
     );
     painter.rect_filled(mode_rect, 4.0, bg_color);
-    painter.rect_stroke(mode_rect, 4.0, egui::Stroke::new(0.5, outline_color), egui::StrokeKind::Middle);
+    painter.rect_stroke(
+        mode_rect,
+        4.0,
+        egui::Stroke::new(0.5, outline_color),
+        egui::StrokeKind::Middle,
+    );
     painter.galley(
         egui::pos2(
             screen.max.x - mode_galley.size().x - 10.0,
@@ -473,16 +535,15 @@ pub(crate) fn draw_measurement_overlay(
 
             // Coordinate tooltip near first point
             if i == 0 && pts.len() == 1 {
-                let coord = format!(
-                    "({}, {}, {}) {unit}",
-                    fmt(p[0]), fmt(p[1]), fmt(p[2]),
-                );
+                let coord = format!("({}, {}, {}) {unit}", fmt(p[0]), fmt(p[1]), fmt(p[2]),);
                 draw_label_with_bg(
-                    &painter, &coord,
+                    &painter,
+                    &coord,
                     egui::pos2(sp.x, sp.y + 16.0),
                     egui::FontId::proportional(10.0),
                     egui::Color32::from_rgb(180, 190, 200),
-                    bg_color, outline_color,
+                    bg_color,
+                    outline_color,
                 );
             }
         }
@@ -508,24 +569,31 @@ pub(crate) fn draw_measurement_overlay(
             let mid = egui::pos2((sa.x + sb.x) * 0.5, (sa.y + sb.y) * 0.5);
             let dist_label = format!("{} {unit}", fmt(dist));
             draw_label_with_bg(
-                &painter, &dist_label,
+                &painter,
+                &dist_label,
                 egui::pos2(mid.x, mid.y - 10.0),
                 egui::FontId::proportional(13.0),
-                text_color, bg_color, outline_color,
+                text_color,
+                bg_color,
+                outline_color,
             );
 
             // Component distances (only for first segment to avoid clutter)
             if i == 0 {
                 let comp_label = format!(
                     "\u{0394}X:{}  \u{0394}Y:{}  \u{0394}Z:{}",
-                    fmt(dx.abs()), fmt(dy.abs()), fmt(dz.abs()),
+                    fmt(dx.abs()),
+                    fmt(dy.abs()),
+                    fmt(dz.abs()),
                 );
                 draw_label_with_bg(
-                    &painter, &comp_label,
+                    &painter,
+                    &comp_label,
                     egui::pos2(mid.x, mid.y + 6.0),
                     egui::FontId::proportional(10.0),
                     egui::Color32::from_rgb(180, 190, 200),
-                    bg_color, outline_color,
+                    bg_color,
+                    outline_color,
                 );
             }
         }
@@ -537,10 +605,13 @@ pub(crate) fn draw_measurement_overlay(
         if let Some(sp) = last_sp {
             let total_label = format!("Total: {} {unit}", fmt(total_path));
             draw_label_with_bg(
-                &painter, &total_label,
+                &painter,
+                &total_label,
                 egui::pos2(sp.x, sp.y + 18.0),
                 egui::FontId::proportional(11.0),
-                accent, bg_color, outline_color,
+                accent,
+                bg_color,
+                outline_color,
             );
         }
     }
@@ -595,9 +666,13 @@ pub(crate) fn draw_measurement_overlay(
                 );
                 let label = format!("{angle_deg:.1}\u{00B0}");
                 draw_label_with_bg(
-                    &painter, &label, text_pos,
+                    &painter,
+                    &label,
+                    text_pos,
                     egui::FontId::proportional(12.0),
-                    text_color, bg_color, outline_color,
+                    text_color,
+                    bg_color,
+                    outline_color,
                 );
             }
         }
@@ -627,7 +702,12 @@ fn draw_label_with_bg(
         egui::vec2(gw + pad_x * 2.0, gh + pad_y * 2.0),
     );
     painter.rect_filled(rect, 3.0, bg_color);
-    painter.rect_stroke(rect, 3.0, egui::Stroke::new(0.5, outline_color), egui::StrokeKind::Middle);
+    painter.rect_stroke(
+        rect,
+        3.0,
+        egui::Stroke::new(0.5, outline_color),
+        egui::StrokeKind::Middle,
+    );
     painter.galley(egui::pos2(text_x, text_y), galley, text_color);
 }
 
@@ -692,18 +772,46 @@ pub(crate) fn draw_sketch_plane_preview(ctx: &egui::Context, camera: &Camera, gu
 
     // Draw a semi-transparent rectangle at the sketch work plane
     let plane = &sketch.plane;
-    let o = [plane.origin.x as f32, plane.origin.y as f32, plane.origin.z as f32];
-    let u = [plane.x_axis.x as f32, plane.x_axis.y as f32, plane.x_axis.z as f32];
-    let v = [plane.y_axis.x as f32, plane.y_axis.y as f32, plane.y_axis.z as f32];
+    let o = [
+        plane.origin.x as f32,
+        plane.origin.y as f32,
+        plane.origin.z as f32,
+    ];
+    let u = [
+        plane.x_axis.x as f32,
+        plane.x_axis.y as f32,
+        plane.x_axis.z as f32,
+    ];
+    let v = [
+        plane.y_axis.x as f32,
+        plane.y_axis.y as f32,
+        plane.y_axis.z as f32,
+    ];
 
     let extent = camera.distance * 0.5;
 
     // Four corners of the plane quad
     let corners = [
-        [o[0] - u[0] * extent - v[0] * extent, o[1] - u[1] * extent - v[1] * extent, o[2] - u[2] * extent - v[2] * extent],
-        [o[0] + u[0] * extent - v[0] * extent, o[1] + u[1] * extent - v[1] * extent, o[2] + u[2] * extent - v[2] * extent],
-        [o[0] + u[0] * extent + v[0] * extent, o[1] + u[1] * extent + v[1] * extent, o[2] + u[2] * extent + v[2] * extent],
-        [o[0] - u[0] * extent + v[0] * extent, o[1] - u[1] * extent + v[1] * extent, o[2] - u[2] * extent + v[2] * extent],
+        [
+            o[0] - u[0] * extent - v[0] * extent,
+            o[1] - u[1] * extent - v[1] * extent,
+            o[2] - u[2] * extent - v[2] * extent,
+        ],
+        [
+            o[0] + u[0] * extent - v[0] * extent,
+            o[1] + u[1] * extent - v[1] * extent,
+            o[2] + u[2] * extent - v[2] * extent,
+        ],
+        [
+            o[0] + u[0] * extent + v[0] * extent,
+            o[1] + u[1] * extent + v[1] * extent,
+            o[2] + u[2] * extent + v[2] * extent,
+        ],
+        [
+            o[0] - u[0] * extent + v[0] * extent,
+            o[1] - u[1] * extent + v[1] * extent,
+            o[2] - u[2] * extent + v[2] * extent,
+        ],
     ];
 
     let screen_corners: Vec<egui::Pos2> = corners
@@ -732,15 +840,29 @@ pub(crate) fn draw_sketch_plane_preview(ctx: &egui::Context, camera: &Camera, gu
 
     // U axis (red) and V axis (green) on the plane
     let axis_len = extent * 0.3;
-    let u_tip = [o[0] + u[0] * axis_len, o[1] + u[1] * axis_len, o[2] + u[2] * axis_len];
-    let v_tip = [o[0] + v[0] * axis_len, o[1] + v[1] * axis_len, o[2] + v[2] * axis_len];
+    let u_tip = [
+        o[0] + u[0] * axis_len,
+        o[1] + u[1] * axis_len,
+        o[2] + u[2] * axis_len,
+    ];
+    let v_tip = [
+        o[0] + v[0] * axis_len,
+        o[1] + v[1] * axis_len,
+        o[2] + v[2] * axis_len,
+    ];
 
     if let Some(so) = world_to_screen(camera, screen, o) {
         if let Some(su) = world_to_screen(camera, screen, u_tip) {
-            painter.line_segment([so, su], egui::Stroke::new(2.0, egui::Color32::from_rgb(220, 60, 60)));
+            painter.line_segment(
+                [so, su],
+                egui::Stroke::new(2.0, egui::Color32::from_rgb(220, 60, 60)),
+            );
         }
         if let Some(sv) = world_to_screen(camera, screen, v_tip) {
-            painter.line_segment([so, sv], egui::Stroke::new(2.0, egui::Color32::from_rgb(60, 200, 60)));
+            painter.line_segment(
+                [so, sv],
+                egui::Stroke::new(2.0, egui::Color32::from_rgb(60, 200, 60)),
+            );
         }
     }
 }
@@ -774,25 +896,35 @@ pub(crate) fn draw_rubber_band(ctx: &egui::Context, gui: &GuiState) {
         )
     };
 
-    let rect = egui::Rect::from_two_pos(
-        egui::pos2(start.0, start.1),
-        egui::pos2(end.0, end.1),
-    );
+    let rect = egui::Rect::from_two_pos(egui::pos2(start.0, start.1), egui::pos2(end.0, end.1));
     painter.rect_filled(rect, 0.0, fill);
 
     if is_window {
         painter.rect_stroke(
-            rect, 0.0,
+            rect,
+            0.0,
             egui::Stroke::new(1.0, stroke_color),
             egui::StrokeKind::Middle,
         );
     } else {
         // Dashed border for crossing selection
-        let corners = [rect.left_top(), rect.right_top(), rect.right_bottom(), rect.left_bottom()];
+        let corners = [
+            rect.left_top(),
+            rect.right_top(),
+            rect.right_bottom(),
+            rect.left_bottom(),
+        ];
         for i in 0..4 {
             let a = corners[i];
             let b = corners[(i + 1) % 4];
-            draw_dashed_line_2d(&painter, a, b, 6.0, 3.0, egui::Stroke::new(1.0, stroke_color));
+            draw_dashed_line_2d(
+                &painter,
+                a,
+                b,
+                6.0,
+                3.0,
+                egui::Stroke::new(1.0, stroke_color),
+            );
         }
     }
 }
@@ -807,7 +939,9 @@ fn draw_dashed_line_2d(
 ) {
     let d = b - a;
     let len = d.length();
-    if len < 1.0 { return; }
+    if len < 1.0 {
+        return;
+    }
     let dir = d / len;
     let mut t = 0.0;
     while t < len {
@@ -825,9 +959,9 @@ fn draw_dashed_line_2d(
 
 /// Axis color palette: X = red, Y = green, Z = blue.
 const GIZMO_AXIS_COLORS: [[u8; 3]; 3] = [
-    [220, 60, 60],   // X
-    [60, 200, 60],   // Y
-    [60, 100, 220],  // Z
+    [220, 60, 60],  // X
+    [60, 200, 60],  // Y
+    [60, 100, 220], // Z
 ];
 
 /// Brighter version of axis colors for hover highlight.
@@ -868,7 +1002,11 @@ fn axis_color(axis: usize, hover_axis: Option<u8>) -> egui::Color32 {
 
 /// Return stroke width: thicker when the axis is hovered.
 fn axis_width(axis: usize, hover_axis: Option<u8>) -> f32 {
-    if hover_axis == Some(axis as u8) { 3.0 } else { 1.5 }
+    if hover_axis == Some(axis as u8) {
+        3.0
+    } else {
+        1.5
+    }
 }
 
 /// Compute the three screen-space direction vectors for the gizmo axes.
@@ -893,9 +1031,9 @@ fn gizmo_screen_dirs(camera: &Camera) -> [[f32; 2]; 3] {
         (-inv, -inv)
     };
     [
-        [1.0, 0.0],   // X: rightward on screen
-        [0.0, -1.0],  // Y: upward on screen (egui Y is down)
-        [zx, zy],     // Z: into-screen hint
+        [1.0, 0.0],  // X: rightward on screen
+        [0.0, -1.0], // Y: upward on screen (egui Y is down)
+        [zx, zy],    // Z: into-screen hint
     ]
 }
 
@@ -936,10 +1074,7 @@ fn draw_translate_gizmo(
     for (i, dir) in dirs.iter().enumerate() {
         let scale = if i == 2 { z_scale } else { 1.0 };
         let len = arrow_len * scale;
-        let end = egui::pos2(
-            origin.x + dir[0] * len,
-            origin.y + dir[1] * len,
-        );
+        let end = egui::pos2(origin.x + dir[0] * len, origin.y + dir[1] * len);
         let color = axis_color(i, hover_axis);
         let width = axis_width(i, hover_axis);
         painter.line_segment([origin, end], egui::Stroke::new(width, color));
@@ -1004,15 +1139,13 @@ fn draw_scale_gizmo(
     for (i, dir) in dirs.iter().enumerate() {
         let scale = if i == 2 { z_scale } else { 1.0 };
         let len = line_len * scale;
-        let end = egui::pos2(
-            origin.x + dir[0] * len,
-            origin.y + dir[1] * len,
-        );
+        let end = egui::pos2(origin.x + dir[0] * len, origin.y + dir[1] * len);
         let color = axis_color(i, hover_axis);
         let width = axis_width(i, hover_axis);
         painter.line_segment([origin, end], egui::Stroke::new(width, color));
         // Small filled square at the tip
-        let sq = egui::Rect::from_center_size(end, egui::vec2(square_half * 2.0, square_half * 2.0));
+        let sq =
+            egui::Rect::from_center_size(end, egui::vec2(square_half * 2.0, square_half * 2.0));
         painter.rect_filled(sq, 0.0, color);
     }
 }
@@ -1079,48 +1212,70 @@ pub(crate) fn draw_transform_gizmo(
     // Drag interaction: when clicking on a hovered axis and dragging
     if let Some(hovered_axis) = gui.gizmo_hover_axis {
         if primary_down {
-        let axis = hovered_axis as usize;
-        let dx = drag_delta.x;
-        let dy = drag_delta.y;
-        if dx.abs() > 0.5 || dy.abs() > 0.5 {
-            let dir = dirs[axis];
-            let proj = dx * dir[0] + dy * dir[1];
-            let speed = camera.distance * 0.003;
-            let precision = precision_multiplier(shift_held);
-            let amount = proj as f64 * speed as f64 * precision;
-            if amount.abs() > 1e-6 {
-                use super::GuiAction;
-                match gui.gizmo_mode {
-                    GizmoMode::Translate => {
-                        let stepped = if ctrl_held { snap_to_step(amount, 1.0) } else { amount };
-                        let (mx, my, mz) = match axis {
-                            0 => (stepped, 0.0, 0.0),
-                            1 => (0.0, stepped, 0.0),
-                            _ => (0.0, 0.0, stepped),
-                        };
-                        if stepped.abs() > 1e-6 {
-                            gui.actions.push(GuiAction::MoveObject { id: obj_id, dx: mx, dy: my, dz: mz });
+            let axis = hovered_axis as usize;
+            let dx = drag_delta.x;
+            let dy = drag_delta.y;
+            if dx.abs() > 0.5 || dy.abs() > 0.5 {
+                let dir = dirs[axis];
+                let proj = dx * dir[0] + dy * dir[1];
+                let speed = camera.distance * 0.003;
+                let precision = precision_multiplier(shift_held);
+                let amount = proj as f64 * speed as f64 * precision;
+                if amount.abs() > 1e-6 {
+                    use super::GuiAction;
+                    match gui.gizmo_mode {
+                        GizmoMode::Translate => {
+                            let stepped = if ctrl_held {
+                                snap_to_step(amount, 1.0)
+                            } else {
+                                amount
+                            };
+                            let (mx, my, mz) = match axis {
+                                0 => (stepped, 0.0, 0.0),
+                                1 => (0.0, stepped, 0.0),
+                                _ => (0.0, 0.0, stepped),
+                            };
+                            if stepped.abs() > 1e-6 {
+                                gui.actions.push(GuiAction::MoveObject {
+                                    id: obj_id,
+                                    dx: mx,
+                                    dy: my,
+                                    dz: mz,
+                                });
+                            }
                         }
-                    }
-                    GizmoMode::Rotate => {
-                        let angle = proj as f64 * 0.5 * precision;
-                        let stepped = if ctrl_held { snap_to_step(angle, 1.0) } else { angle };
-                        if stepped.abs() > 1e-6 {
-                            gui.actions.push(GuiAction::RotateObject { id: obj_id, axis: axis as u8, angle_deg: stepped });
+                        GizmoMode::Rotate => {
+                            let angle = proj as f64 * 0.5 * precision;
+                            let stepped = if ctrl_held {
+                                snap_to_step(angle, 1.0)
+                            } else {
+                                angle
+                            };
+                            if stepped.abs() > 1e-6 {
+                                gui.actions.push(GuiAction::RotateObject {
+                                    id: obj_id,
+                                    axis: axis as u8,
+                                    angle_deg: stepped,
+                                });
+                            }
                         }
-                    }
-                    GizmoMode::Scale => {
-                        let raw = proj as f64 * 0.005 * precision;
-                        let stepped = if ctrl_held { snap_to_step(raw, 0.1) } else { raw };
-                        let factor = 1.0 + stepped;
-                        if (factor - 1.0).abs() > 1e-6 {
-                            gui.actions.push(GuiAction::ScaleObjectUniform { id: obj_id, factor });
+                        GizmoMode::Scale => {
+                            let raw = proj as f64 * 0.005 * precision;
+                            let stepped = if ctrl_held {
+                                snap_to_step(raw, 0.1)
+                            } else {
+                                raw
+                            };
+                            let factor = 1.0 + stepped;
+                            if (factor - 1.0).abs() > 1e-6 {
+                                gui.actions
+                                    .push(GuiAction::ScaleObjectUniform { id: obj_id, factor });
+                            }
                         }
+                        GizmoMode::None => {}
                     }
-                    GizmoMode::None => {}
                 }
             }
-        }
         } // if primary_down
     } // if let Some(hovered_axis)
     if primary_released {
@@ -1143,7 +1298,11 @@ pub(crate) fn draw_transform_gizmo(
 
     // Center dot
     painter.circle_filled(origin, 5.0, egui::Color32::WHITE);
-    painter.circle_stroke(origin, 5.0, egui::Stroke::new(1.0, egui::Color32::from_gray(60)));
+    painter.circle_stroke(
+        origin,
+        5.0,
+        egui::Stroke::new(1.0, egui::Color32::from_gray(60)),
+    );
 
     // Mode label below the gizmo center; suffix shows active precision modifier.
     let base_label = match gui.gizmo_mode {
@@ -1193,7 +1352,7 @@ pub(crate) fn snap_to_step(value: f64, step: f64) -> f64 {
 /// precision modifiers are currently active.
 pub(crate) fn gizmo_modifier_suffix(shift_held: bool, ctrl_held: bool) -> &'static str {
     match (shift_held, ctrl_held) {
-        (true, true)  => "[Shift+Ctrl: fine+snap]",
+        (true, true) => "[Shift+Ctrl: fine+snap]",
         (true, false) => "[Shift: fine]",
         (false, true) => "[Ctrl: snap]",
         (false, false) => "",
@@ -1240,7 +1399,8 @@ pub(crate) fn draw_selection_overlay(
     if let Some(pre) = &gui.preselected_entity {
         let skip = gui.selected_entities.contains(pre);
         if !skip {
-            let pre_obj = gui.preselected_object_id
+            let pre_obj = gui
+                .preselected_object_id
                 .and_then(|id| scene.get_object(id));
             if let Some(obj) = pre_obj {
                 let [pr, pg, pb] = nav.preselection_color;
@@ -1301,10 +1461,8 @@ fn draw_entity_highlight(
 ) {
     match entity {
         SelectedEntity::Face(face_h) => {
-            if let Some((_fh, start, count)) = obj
-                .face_tri_map
-                .iter()
-                .find(|(fh, _, _)| fh == face_h)
+            if let Some((_fh, start, count)) =
+                obj.face_tri_map.iter().find(|(fh, _, _)| fh == face_h)
             {
                 let base = start * 3;
                 let end = base + count * 3;
@@ -1340,7 +1498,10 @@ fn draw_entity_highlight(
                     if let (Some(a), Some(b)) = (s0, s1) {
                         // Glow (wider, semi-transparent)
                         let glow = egui::Color32::from_rgba_unmultiplied(
-                            color.r(), color.g(), color.b(), 50,
+                            color.r(),
+                            color.g(),
+                            color.b(),
+                            50,
                         );
                         painter.line_segment([a, b], egui::Stroke::new(8.0, glow));
                         // Core line
@@ -1362,12 +1523,19 @@ fn draw_entity_highlight(
                     if let Some(sp) = world_to_screen(camera, screen, pos) {
                         // Glow ring
                         let glow = egui::Color32::from_rgba_unmultiplied(
-                            color.r(), color.g(), color.b(), 60,
+                            color.r(),
+                            color.g(),
+                            color.b(),
+                            60,
                         );
                         painter.circle_filled(sp, 10.0, glow);
                         // Filled marker
                         painter.circle_filled(sp, 6.0, color);
-                        painter.circle_stroke(sp, 6.0, egui::Stroke::new(1.5, egui::Color32::BLACK));
+                        painter.circle_stroke(
+                            sp,
+                            6.0,
+                            egui::Stroke::new(1.5, egui::Color32::BLACK),
+                        );
                         // Bright center
                         painter.circle_filled(sp, 2.0, egui::Color32::WHITE);
                     }
@@ -1392,22 +1560,19 @@ fn representative_point(
     entity: &SelectedEntity,
 ) -> Option<[f32; 3]> {
     match entity {
-        SelectedEntity::Vertex(vh) => {
-            obj.vertex_handles
-                .iter()
-                .position(|h| h == vh)
-                .map(|idx| obj.vertex_positions[idx])
-        }
-        SelectedEntity::Edge(eh) => {
-            obj.edge_handles.iter().position(|h| h == eh).map(|idx| {
-                let (s, e) = obj.edge_positions[idx];
-                [
-                    (s[0] + e[0]) * 0.5,
-                    (s[1] + e[1]) * 0.5,
-                    (s[2] + e[2]) * 0.5,
-                ]
-            })
-        }
+        SelectedEntity::Vertex(vh) => obj
+            .vertex_handles
+            .iter()
+            .position(|h| h == vh)
+            .map(|idx| obj.vertex_positions[idx]),
+        SelectedEntity::Edge(eh) => obj.edge_handles.iter().position(|h| h == eh).map(|idx| {
+            let (s, e) = obj.edge_positions[idx];
+            [
+                (s[0] + e[0]) * 0.5,
+                (s[1] + e[1]) * 0.5,
+                (s[2] + e[2]) * 0.5,
+            ]
+        }),
         SelectedEntity::Face(fh) => {
             let (_, start, count) = obj.face_tri_map.iter().find(|(f, _, _)| f == fh)?;
             let base = start * 3;
@@ -1578,7 +1743,10 @@ pub(crate) fn draw_welcome_screen(ctx: &egui::Context, gui: &mut GuiState) {
             match action_id {
                 "box" => {
                     gui.active_task = Some(super::task_panel::ActiveTask::Box {
-                        width: 10.0, height: 10.0, depth: 10.0, preview_id: None,
+                        width: 10.0,
+                        height: 10.0,
+                        depth: 10.0,
+                        preview_id: None,
                     });
                 }
                 "import" => {
@@ -1629,11 +1797,7 @@ pub(crate) fn draw_welcome_screen(ctx: &egui::Context, gui: &mut GuiState) {
 // Breadcrumb navigation bar
 // ---------------------------------------------------------------------------
 
-pub(crate) fn draw_breadcrumb_bar(
-    ctx: &egui::Context,
-    gui: &mut GuiState,
-    scene: &Scene,
-) {
+pub(crate) fn draw_breadcrumb_bar(ctx: &egui::Context, gui: &mut GuiState, scene: &Scene) {
     egui::TopBottomPanel::top("breadcrumb_bar")
         .exact_height(20.0)
         .frame(egui::Frame {
@@ -1658,8 +1822,24 @@ pub(crate) fn draw_breadcrumb_bar(
 
                 // Scene root
                 let scene_active = !has_selection && !in_sketch;
-                let scene_color = if scene_active { active_color } else { dim_color };
-                if ui.add(egui::Label::new(egui::RichText::new("Scene").font(font.clone()).color(scene_color)).selectable(false).sense(egui::Sense::click())).clicked() && !scene_active {
+                let scene_color = if scene_active {
+                    active_color
+                } else {
+                    dim_color
+                };
+                if ui
+                    .add(
+                        egui::Label::new(
+                            egui::RichText::new("Scene")
+                                .font(font.clone())
+                                .color(scene_color),
+                        )
+                        .selectable(false)
+                        .sense(egui::Sense::click()),
+                    )
+                    .clicked()
+                    && !scene_active
+                {
                     gui.actions.push(GuiAction::DeselectAll);
                 }
 
@@ -1667,7 +1847,14 @@ pub(crate) fn draw_breadcrumb_bar(
                     ui.label(egui::RichText::new("\u{203A}").size(12.0).color(sep_color));
                     let obj_active = !has_entities && !in_sketch;
                     let obj_color = if obj_active { active_color } else { dim_color };
-                    ui.add(egui::Label::new(egui::RichText::new(&obj.name).font(font.clone()).color(obj_color)).selectable(false));
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(&obj.name)
+                                .font(font.clone())
+                                .color(obj_color),
+                        )
+                        .selectable(false),
+                    );
 
                     if has_entities {
                         ui.label(egui::RichText::new("\u{203A}").size(12.0).color(sep_color));
@@ -1677,19 +1864,41 @@ pub(crate) fn draw_breadcrumb_bar(
                             SelectionMode::Vertex => "Vertex",
                             SelectionMode::Solid => "Solid",
                         };
-                        ui.add(egui::Label::new(egui::RichText::new(mode_str).font(font.clone()).color(active_color)).selectable(false));
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(mode_str)
+                                    .font(font.clone())
+                                    .color(active_color),
+                            )
+                            .selectable(false),
+                        );
 
                         if gui.selected_entities.len() > 1 {
-                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                ui.label(egui::RichText::new(format!("{} selected", gui.selected_entities.len())).size(10.0).color(theme::COLOR_ACCENT));
-                            });
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    ui.label(
+                                        egui::RichText::new(format!(
+                                            "{} selected",
+                                            gui.selected_entities.len()
+                                        ))
+                                        .size(10.0)
+                                        .color(theme::COLOR_ACCENT),
+                                    );
+                                },
+                            );
                         }
                     }
                 }
 
                 if in_sketch {
                     ui.label(egui::RichText::new("\u{203A}").size(12.0).color(sep_color));
-                    ui.add(egui::Label::new(egui::RichText::new("Sketch").font(font).color(active_color)).selectable(false));
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new("Sketch").font(font).color(active_color),
+                        )
+                        .selectable(false),
+                    );
                 }
             });
         });
@@ -1706,9 +1915,8 @@ pub(crate) fn draw_toast_overlay(ctx: &egui::Context, gui: &mut GuiState) {
     let now = std::time::Instant::now();
 
     // Remove expired toasts
-    gui.toasts.retain(|t| {
-        now.duration_since(t.created_at).as_secs_f32() < TOAST_DURATION_SECS
-    });
+    gui.toasts
+        .retain(|t| now.duration_since(t.created_at).as_secs_f32() < TOAST_DURATION_SECS);
 
     if gui.toasts.is_empty() {
         return;
@@ -1773,19 +1981,34 @@ pub(crate) fn draw_toast_overlay(ctx: &egui::Context, gui: &mut GuiState) {
         painter.rect_stroke(
             rect,
             4.0,
-            egui::Stroke::new(0.5, egui::Color32::from_rgba_premultiplied(accent.r(), accent.g(), accent.b(), alpha / 2)),
+            egui::Stroke::new(
+                0.5,
+                egui::Color32::from_rgba_premultiplied(
+                    accent.r(),
+                    accent.g(),
+                    accent.b(),
+                    alpha / 2,
+                ),
+            ),
             egui::StrokeKind::Outside,
         );
 
         // Left accent bar
-        let accent_bar = egui::Rect::from_min_size(
-            rect.left_top(),
-            egui::vec2(3.0, toast_h),
+        let accent_bar = egui::Rect::from_min_size(rect.left_top(), egui::vec2(3.0, toast_h));
+        painter.rect_filled(
+            accent_bar,
+            egui::CornerRadius {
+                nw: 4,
+                sw: 4,
+                ne: 0,
+                se: 0,
+            },
+            accent,
         );
-        painter.rect_filled(accent_bar, egui::CornerRadius { nw: 4, sw: 4, ne: 0, se: 0 }, accent);
 
         // Icon
-        let text_alpha = egui::Color32::from_rgba_premultiplied(accent.r(), accent.g(), accent.b(), alpha);
+        let text_alpha =
+            egui::Color32::from_rgba_premultiplied(accent.r(), accent.g(), accent.b(), alpha);
         painter.text(
             egui::pos2(rect.left() + 12.0, rect.center().y),
             egui::Align2::LEFT_CENTER,
@@ -1827,7 +2050,10 @@ pub(crate) fn draw_toast_overlay(ctx: &egui::Context, gui: &mut GuiState) {
         };
         if !clipped {
             painter.galley(
-                egui::pos2(rect.left() + 26.0, rect.center().y - msg_galley.size().y * 0.5),
+                egui::pos2(
+                    rect.left() + 26.0,
+                    rect.center().y - msg_galley.size().y * 0.5,
+                ),
                 msg_galley,
                 msg_color,
             );
@@ -1849,7 +2075,10 @@ mod gizmo_precision_tests {
     #[test]
     fn precision_multiplier_is_one_tenth_when_shift_held() {
         let p = precision_multiplier(true);
-        assert!((p - 0.1).abs() < 1e-12, "shift should give 0.1× speed, got {p}");
+        assert!(
+            (p - 0.1).abs() < 1e-12,
+            "shift should give 0.1× speed, got {p}"
+        );
     }
 
     #[test]

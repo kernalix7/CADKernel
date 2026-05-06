@@ -249,25 +249,19 @@ impl CadTheme {
         visuals.selection.stroke = egui::Stroke::new(1.0, self.accent);
 
         visuals.widgets.inactive.bg_fill = self.bg_tertiary;
-        visuals.widgets.inactive.fg_stroke =
-            egui::Stroke::new(1.0, self.text_secondary);
+        visuals.widgets.inactive.fg_stroke = egui::Stroke::new(1.0, self.text_secondary);
 
         visuals.widgets.hovered.bg_fill = self.accent_hover;
-        visuals.widgets.hovered.fg_stroke =
-            egui::Stroke::new(1.0, self.text_primary);
+        visuals.widgets.hovered.fg_stroke = egui::Stroke::new(1.0, self.text_primary);
 
         visuals.widgets.active.bg_fill = self.accent_pressed;
-        visuals.widgets.active.fg_stroke =
-            egui::Stroke::new(1.0, self.selection_text);
+        visuals.widgets.active.fg_stroke = egui::Stroke::new(1.0, self.selection_text);
 
-        visuals.widgets.noninteractive.fg_stroke =
-            egui::Stroke::new(1.0, self.text_primary);
+        visuals.widgets.noninteractive.fg_stroke = egui::Stroke::new(1.0, self.text_primary);
         visuals.widgets.noninteractive.bg_fill = self.bg_secondary;
-        visuals.widgets.noninteractive.bg_stroke =
-            egui::Stroke::new(1.0, self.border);
+        visuals.widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, self.border);
 
-        visuals.window_corner_radius =
-            egui::CornerRadius::same(self.rounding as u8);
+        visuals.window_corner_radius = egui::CornerRadius::same(self.rounding as u8);
         visuals.window_shadow = egui::epaint::Shadow::NONE;
 
         visuals.hyperlink_color = self.info;
@@ -277,10 +271,8 @@ impl CadTheme {
         ctx.set_visuals(visuals);
 
         let mut style = (*ctx.style()).clone();
-        style.spacing.item_spacing =
-            egui::vec2(self.item_spacing, self.item_spacing);
-        style.spacing.button_padding =
-            egui::vec2(self.padding_inner, self.padding_inner * 0.75);
+        style.spacing.item_spacing = egui::vec2(self.item_spacing, self.item_spacing);
+        style.spacing.button_padding = egui::vec2(self.padding_inner, self.padding_inner * 0.75);
         style.spacing.window_margin = egui::Margin::same(self.padding_outer as i8);
         style.spacing.indent = 18.0;
         style.spacing.scroll.bar_width = 8.0;
@@ -303,10 +295,7 @@ impl CadTheme {
         );
         style.text_styles.insert(
             egui::TextStyle::Monospace,
-            egui::FontId::new(
-                self.font_size_normal - 0.5,
-                egui::FontFamily::Monospace,
-            ),
+            egui::FontId::new(self.font_size_normal - 0.5, egui::FontFamily::Monospace),
         );
 
         ctx.set_style(style);
@@ -374,39 +363,39 @@ pub fn apply_cad_theme(ctx: &egui::Context) {
 pub fn object_type_icon(params: Option<&crate::scene::CreationParams>) -> &'static str {
     use crate::scene::CreationParams;
     match params {
-        Some(CreationParams::Box { .. }) => "\u{25A3}",       // filled square
-        Some(CreationParams::Cylinder { .. }) => "\u{25CD}",  // circle with stroke
-        Some(CreationParams::Sphere { .. }) => "\u{25CF}",    // filled circle
-        Some(CreationParams::Cone { .. }) => "\u{25B2}",      // up triangle
-        Some(CreationParams::Torus { .. }) => "\u{25CE}",     // bullseye
-        Some(CreationParams::Tube { .. }) => "\u{25C9}",      // fisheye
-        Some(CreationParams::Prism { .. }) => "\u{2B23}",     // hexagon
-        Some(CreationParams::Wedge { .. }) => "\u{25C7}",     // diamond
+        Some(CreationParams::Box { .. }) => "\u{25A3}", // filled square
+        Some(CreationParams::Cylinder { .. }) => "\u{25CD}", // circle with stroke
+        Some(CreationParams::Sphere { .. }) => "\u{25CF}", // filled circle
+        Some(CreationParams::Cone { .. }) => "\u{25B2}", // up triangle
+        Some(CreationParams::Torus { .. }) => "\u{25CE}", // bullseye
+        Some(CreationParams::Tube { .. }) => "\u{25C9}", // fisheye
+        Some(CreationParams::Prism { .. }) => "\u{2B23}", // hexagon
+        Some(CreationParams::Wedge { .. }) => "\u{25C7}", // diamond
         Some(CreationParams::Ellipsoid { .. }) => "\u{2B2D}", // horizontal ellipse
-        Some(CreationParams::Helix { .. }) => "\u{223F}",     // sine wave
+        Some(CreationParams::Helix { .. }) => "\u{223F}", // sine wave
         Some(CreationParams::Imported { .. }) => "\u{1F4C2}", // folder
-        Some(CreationParams::Extruded) => "\u{2B06}",         // up arrow
-        Some(CreationParams::Revolved) => "\u{21BB}",         // clockwise arrow
-        Some(CreationParams::Boolean { .. }) => "\u{222A}",   // union
-        Some(CreationParams::Fillet { .. }) => "\u{25D5}",     // circle with right half
-        Some(CreationParams::Chamfer { .. }) => "\u{25C8}",    // diamond in diamond
-        Some(CreationParams::Shell { .. }) => "\u{25A2}",      // square with orthog
-        Some(CreationParams::Mirror { .. }) => "\u{21C6}",     // left right arrows
-        Some(CreationParams::Pattern { .. }) => "\u{2237}",    // proportion
-        Some(CreationParams::Groove { .. }) => "\u{21BB}",     // clockwise arrow
-        Some(CreationParams::Sprocket { .. }) => "\u{2699}",   // gear
+        Some(CreationParams::Extruded) => "\u{2B06}",   // up arrow
+        Some(CreationParams::Revolved) => "\u{21BB}",   // clockwise arrow
+        Some(CreationParams::Boolean { .. }) => "\u{222A}", // union
+        Some(CreationParams::Fillet { .. }) => "\u{25D5}", // circle with right half
+        Some(CreationParams::Chamfer { .. }) => "\u{25C8}", // diamond in diamond
+        Some(CreationParams::Shell { .. }) => "\u{25A2}", // square with orthog
+        Some(CreationParams::Mirror { .. }) => "\u{21C6}", // left right arrows
+        Some(CreationParams::Pattern { .. }) => "\u{2237}", // proportion
+        Some(CreationParams::Groove { .. }) => "\u{21BB}", // clockwise arrow
+        Some(CreationParams::Sprocket { .. }) => "\u{2699}", // gear
         Some(CreationParams::InvoluteGear { .. }) => "\u{2699}", // gear
-        Some(CreationParams::DraftLine { .. }) => "\u{2571}",  // diagonal
+        Some(CreationParams::DraftLine { .. }) => "\u{2571}", // diagonal
         Some(CreationParams::DraftCircle { .. }) => "\u{25CB}", // white circle
         Some(CreationParams::DraftRectangle { .. }) => "\u{25A1}", // white square
         Some(CreationParams::DraftPolygon { .. }) => "\u{2B23}", // hexagon
-        Some(CreationParams::DraftArc { .. }) => "\u{25DC}",   // upper left quad arc
+        Some(CreationParams::DraftArc { .. }) => "\u{25DC}", // upper left quad arc
         Some(CreationParams::DraftEllipse { .. }) => "\u{2B2D}", // horizontal ellipse
         Some(CreationParams::SurfacePipe { .. }) => "\u{2234}", // therefore
         Some(CreationParams::SurfaceRuled { .. }) => "\u{2225}", // parallel
-        Some(CreationParams::BooleanOp { .. }) => "\u{222A}",  // union
-        Some(CreationParams::ScaleOp { .. }) => "\u{2922}",    // ne arrow
-        None => "\u{25A1}",                                    // empty square
+        Some(CreationParams::BooleanOp { .. }) => "\u{222A}", // union
+        Some(CreationParams::ScaleOp { .. }) => "\u{2922}", // ne arrow
+        None => "\u{25A1}",                             // empty square
     }
 }
 
@@ -475,7 +464,10 @@ pub fn draw_panel_header(ui: &mut egui::Ui, title: &str, closeable: bool) -> boo
     painter.rect_filled(rect, 0.0, theme.panel_header_bg);
     // Bottom edge highlight
     painter.line_segment(
-        [egui::pos2(rect.left(), rect.bottom()), egui::pos2(rect.right(), rect.bottom())],
+        [
+            egui::pos2(rect.left(), rect.bottom()),
+            egui::pos2(rect.right(), rect.bottom()),
+        ],
         egui::Stroke::new(1.0, theme.panel_separator),
     );
 
@@ -630,7 +622,8 @@ pub fn draw_task_buttons(ui: &mut egui::Ui) -> (bool, bool) {
     // Separator
     let avail_w = ui.available_width();
     let (sep_rect, _) = ui.allocate_exact_size(egui::vec2(avail_w, 1.0), egui::Sense::hover());
-    ui.painter().rect_filled(sep_rect, 0.0, Color32::from_gray(50));
+    ui.painter()
+        .rect_filled(sep_rect, 0.0, Color32::from_gray(50));
     ui.add_space(6.0);
 
     let mut ok = false;
@@ -648,10 +641,7 @@ pub fn draw_task_buttons(ui: &mut egui::Ui) -> (bool, bool) {
             )
             .clicked();
         cancel = ui
-            .add(
-                egui::Button::new("\u{2716} Cancel")
-                    .min_size(egui::vec2(60.0, 24.0)),
-            )
+            .add(egui::Button::new("\u{2716} Cancel").min_size(egui::vec2(60.0, 24.0)))
             .clicked();
     });
     (ok, cancel)

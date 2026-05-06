@@ -9,6 +9,182 @@
 
 ## [Unreleased]
 
+### 추가됨
+
+#### A2 Phase 2A — SessionSnapshot 메타데이터 필드 (2026-05-07)
+- `crates/api/src/session.rs` — `SessionSnapshot`에 A2 스펙 메타데이터 필드 4개 추가: `document_hash` (커서까지 직렬화된 명령 prefix의 FNV-1a-64 hex 다이제스트), `log_position` (커서 미러), `timestamp` (저장 시 유닉스 epoch 초), `label` (선택 사용자 레이블). 모두 `#[serde(default)]` 사용 → A2 이전 스키마 v1 스냅샷도 그대로 로드 가능.
+- `Session::save_to_json_with_label(label: Option<String>)` — 스냅샷에 사람 친화적 레이블을 붙이는 신규 메서드 ("before boolean", "release-v0.5-tag" 등). 기존 `save_to_json()`도 그대로 동작하며 메타데이터 필드는 `label = None`으로 자동 채워짐.
+- `crates/api/tests/api_integration.rs` 통합 테스트 17 → 19개로 증가: `snapshot_metadata_fields_populate_on_save`, `old_schema_v1_snapshot_without_metadata_still_loads` (전진 호환 round-trip).
+- A2 deliverable #8 (확장된 SessionSnapshot) — 완료. A2의 9개 항목 중 1개 게이트 클로즈.
+
+#### 상용 CAD 로드맵 v3.5 — 코퍼스 + ADR 심화 + 첫 실행 가능 시드 (2026-05-06)
+- `docs/adr/` 10개 → 15개로 확장:
+  - 0011 automerge CRDT 실시간 협업 (Kleppmann POPL 2017 형식 수렴 보증 인용; vs OT/Yjs/custom/RGA/LSEQ/state-based).
+  - 0012 wasmtime + WASI Preview 2 컴포넌트 모델 기반 wasm-first 플러그인 샌드박스 (vs native-only/Lua-only/JS/process-IPC/seccomp/wasmer; capability-token 선언적 매니페스트).
+  - 0013 CBOR RFC 8949 메타데이터 (vs JSON/msgpack/BSON/protobuf/FlatBuffers/Cap'n Proto/YAML/TOML; self-describing tag + 결정성 인코딩 규칙).
+  - 0014 zstd RFC 8878 섹션 압축 (vs gzip/xz/brotli/LZ4/snappy; 기본 level 3 ~3.5×, archive level 19 ~5×, 사전 훈련 dictionary 계획).
+  - 0015 스케치 LM 선형 스텝용 sparse Cholesky (vs dense LU/dense Cholesky/CG/MINRES/GPU/Eigen; nalgebra-sparse 기본 + 1k 변수 초과 시 CHOLMOD opt-in).
+- `docs/perf/memory-profile.md` — 모든 위상·기하 타입 힙 비용표, R12 산업 파트 1 GB peak-RSS 예산 분해 (테셀레이션이 최대 비용원), dhat 측정 코드, OS별 RSS 측정, 할당자 선택 근거, 핫스팟 arena 정책, 5/15/50 % 회귀 게이트.
+- `tests/corpus/` 골든 6개 추가: 스케치 003 슬롯 / 004 육각형 / 005 원에 내접 삼각형 (UnderDetermined + 잔여 DoF 명시) / 006 평행선-중복 접선 (OverDetermined + 중복 제약 ID 명시), 불리언 003 박스∩박스 / 004 구∩박스 (sphere face kind 보존) / 006 박스∪박스 idempotent (`Union(A,A)==A`).
+- Lua 레퍼런스 파트 빌드 스크립트 2개: `r1_box.lua` (V=8/E=12/F=6 + Euler-Poincaré + 부피/면적/중심/태그/content-hash), `r2_extrude.lua` (구멍 추출, π·r²·h 부피, sketch imprint 태그 생존).
+- **첫 컴파일 가능 Rust 시드** `examples/build_reference_parts.rs` — `cargo run --release --example build_reference_parts -- --output tests/corpus/reference_parts/`. quick_box/cadk::write API 들어오면 R1-R12 빌드, 아니면 NotImplemented 깔끔히 보고.
+- 5-기둥은 이제 **ADR 15 + perf 4 + algorithms 13 + 골든 TOML 11 + Lua 2 + Rust 시드 1** 로 받쳐짐. 문서+코퍼스 9,299 줄 (로드맵 EN 3,169 + KO 287 + algorithms 2,717 + ADR 1,005 + perf 709 + corpus 1,309 + Rust 시드 103).
+
+#### 상용 CAD 로드맵 v3.4 — ADR + 성능 방법론 + 코퍼스 시드 (2026-05-06)
+- `docs/adr/` — Michael Nygard 표준 포맷(Status/Context/Decision/Alternatives/Consequences/References)의 아키텍처 결정 기록 10개: 0001 half-edge B-Rep, 0002 BLAKE3 캐시 키 (충돌 확률 $10^9$ 엔트리에서 $1.5 \times 10^{-21}$ 계산), 0003 nalgebra(커널)+glam(뷰어) 분리, 0004 egui+wgpu+winit, 0005 mlua Lua 5.4, 0006 PyO3 별도 크레이트, 0007 태그 기반 영구 명명, 0008 Rust edition 2024 + MSRV 1.85, 0009 커스텀 `.cadk`, 0010 Rayon 전용 (비동기 커널 거부). 각 ADR은 거부된 대안 최소 2개를 구체적 이유와 함께 나열.
+- `docs/perf/` — 3개 성능 명세: methodology.md (R1-R5 HW 티어, Criterion 설정, cold-vs-warm, RNG 시드, CPU 격리, dhat 힙 프로파일, 16.67ms 프레임 예산 분해, 5/15/50 % 회귀 정책, PGO, perf 카운터, flame graph, 크로스-아키텍처), dispatch-matrix.md (SSI 18행, 불리언 coplanar, 필렛 5-티어, LM↔dogleg, 정밀도 에스컬레이션, STEP 9행), condition-numbers.md (알고리즘별 $\kappa$ 안전 한계, Hager 1-norm 검출, 2개 worked example, `EPSILON_*` 명명된 톨러런스, 크로스-아키 결정성).
+- `tests/corpus/` — 골든 테스트 코퍼스 골격: README + sketch/golden (12개 스케치 매니페스트 + 3 worked TOML: 001 사각형, 002 동심원, 007 모순 정사각형 + 최소충돌집합 검증) + boolean/golden (10개 명세 + 2 worked TOML: 박스 용합, 상자 - 내부 박스 genus-0 캐비티) + reference_parts (R1-R12 빌드 스크립트 + 타이밍 예산).
+- 로드맵 헤더 + §17 검증 크로스-레퍼런스 5-기둥 구조로 재구성: 로드맵(계약) / algorithms(어떻게) / adr(왜 다른 것이 아닌가) / perf(얼마나 빠른가) / corpus(계약 충족 증명). 전체 문서 ~5,900 → ~8,000 줄.
+
+#### 상용 CAD 로드맵 Phase 1 — `cadkernel-api` 안정 API 크레이트 (2026-05-06)
+
+상용 등급 CAD 로 방향 전환. `docs/COMMERCIAL_CAD_ROADMAP.md` (영문 정본, 한글 사본 포함) 에 8 단계 장기 플랜이 문서화되어, "안정 API + AI/테스트 통합" 부터 "1.0 릴리스 준비" 까지 단조 진행. Phase 1 은 그 기반인 새 전용 공개 API 크레이트를 출하.
+
+- 신규 크레이트 `crates/api/` (`cadkernel-api`) — 3 주 타입:
+  - `Document` — 최상위 모델 컨테이너 (Phase 2 에서 스케치·도면·어셈블리·FEM 흡수 예정).
+  - `Command` — 모든 상태 변경 액션의 직렬화 enum. 시작 변형 14 개: `CreateBox/Cylinder/Sphere/Cone/Torus`, `BooleanUnion/Subtract/Intersect`, `Translate`, `Scale`, `Rename`, `DeleteSolid`, `NewDocument`, `Noop`. `serde` 기반 JSON 스키마.
+  - `Session` — 실행/재현 엔진. `Command` 적용·로그 기록·타입화된 `Outcome` 반환. `Session::replay(commands)`, `log_to_json()`, `replay_from_json()` 으로 결정적 회귀 테스트 및 AI 평가 지원.
+- `command_schemas()` — 사용 가능한 명령 표면(op 이름+설명+파라미터별 문서)을 AI 도구에 노출 (Rust 타입 임포트 불필요).
+- `ApiError` 분류: `UnknownSolid` / `InvalidArgument` / `Kernel` / `Codec` — JSON-RPC 에러 코드로 깔끔히 매핑되는 평탄한 형태.
+- 통합 테스트 17 개 (`crates/api/tests/api_integration.rs`): 생성·삭제·불리언(consume-and-create 의미), 평행이동(부피 보존), 무게중심 기준 스케일(부피 × factor³), 이름 변경(SolidId 안정), 모든 변형의 JSON 라운드트립, 결정적 5-명령 재현, 스키마 커버리지, 4 단계 시나리오 도큐먼트 검증. lib 레벨 doc test 2 개 추가.
+- 통합 후 워크스페이스 합계: **2,865 / 0 / 0** (기존 2,844 / 0 / 0 대비 +21).
+- 신규 문서:
+  - `docs/COMMERCIAL_CAD_ROADMAP.md` (영문 정본, 8 단계 플랜, AI/테스트 아키텍처 섹션, 범위상 `UI_COMPLETION_ROADMAP.md` 를 흡수).
+  - `docs/COMMERCIAL_CAD_ROADMAP.ko.md` (한글 사본).
+- MCP 서버·Lua 스크립팅·Python 바인딩·GUI 디스패처는 **본 커밋에서 변경하지 않음** — Phase 1 의 계약은 "비-GUI 소비자에게 API 가 작동함을 시스템 나머지를 건드리지 않고 증명". Phase 5 에서 GUI 를 `Session::execute(Command)` 로 라우팅하고 맞춤 디스패처를 제거할 예정.
+
+#### UI 완성 Phase K-sketch-refs — Sketcher external reference and reuse UX (2026-05-05)
+
+Sketcher external projection이 선택된 scene object를 우선 사용하고, 없으면 현재 model을 사용해 vertex와 edge를 active sketch의 construction reference geometry로 투영합니다. Carbon Copy는 복사된 reusable entity 수를 보고하며, Sketcher banner/status bar는 `Refs: ...` / `Reuse: ...` 상태를 표시합니다. selected-object projection, construction reference count, carbon-copy reuse reporting 회귀 테스트를 추가했습니다. 전체 검증 **2,844 / 0 / 0**.
+
+---
+
+#### UI 완성 Phase K-sketch-constraints — Sketcher constraint diagnostics UX (2026-05-05)
+
+Sketcher validation이 duplicate constraint, 같은 대상의 conflicting dimensional value, invalid dimensional value를 감지합니다. `SketchValidation::status_label()` / `diagnostic_issue_count()`로 compact diagnostic을 제공하고, Sketcher banner/status bar/overlay warning pill이 첫 actionable constraint issue를 표시합니다. duplicate, conflicting distance, invalid length, `SketchMode` 상태 전파 회귀 테스트를 추가했습니다. 전체 검증 **2,841 / 0 / 0**.
+
+---
+
+#### UI 완성 Phase K-sketch-profile — Sketcher profile validation UX (2026-05-05)
+
+Sketcher에 feature command용 profile diagnostics를 추가했습니다. `analyze_profiles` / `extract_profile_checked`가 construction line을 제외하고 open endpoint, branch point, invalid line reference, multiple loop를 감지하며, 단일 regular closed loop일 때만 profile을 반환합니다. Sketcher banner는 `Profile ready` 또는 open/branch/invalid 이유를 표시하고, Pad/Pocket/Groove/Close sketch 경로는 열린 chain을 부분 extrude하지 않고 거부합니다. construction diagonal이 있는 square는 정상 profile로 허용됩니다. 전체 검증 **2,837 / 0 / 0**.
+
+---
+
+#### UI 완성 Phase J-fem-bc — FEM multi-node boundary-condition UX (2026-05-05)
+
+FEM boundary-condition editor가 모든 kernel-side `BoundaryCondition` variant를 지원합니다. `SectionPrint`, `TieConstraint`, `RigidBody`, `ContactConstraint`를 메뉴와 stateful BC dialog에 노출했고, section plane normal/point와 Set A/Set B inclusive node range, contact penalty 입력을 추가했습니다. FEM toolbar constraint 버튼도 log-only 경로 대신 같은 BC editor를 열도록 전환했습니다. 전체 검증 **2,831 / 0 / 0**.
+
+---
+
+#### UI 완성 Phase I-fem-results — FEM result interpretation UX (2026-05-05)
+
+FEM post-processing에 기존 7단계 colormap scene object 위의 결과 해석 UX를 추가했습니다. Stress/Displacement/Von Mises 표시가 field/unit/range/color band와 마지막 probe 정보를 보존하는 legend overlay를 갱신합니다. FEM Results 메뉴와 toolbar에는 `Probe Node...`와 `Result Table...`을 추가했으며, probe dialog는 node/element 선택과 위치, displacement/stress/temperature 값을 기록하고 result table dialog는 node/element 결과 row를 표시합니다. 전체 검증 **2,825 / 0 / 0**.
+
+---
+
+#### UI 완성 Phase H-view — TechDraw view placement setup command UX (2026-05-05)
+
+TechDraw view 명령에 front/top/right/isometric projection, 3-view layout, section/detail/broken view의 sheet X/Y 위치, 수동 sheet scale, 3-view 간격, view별 parameter를 편집하는 stateful View Setup dialog를 추가했습니다. Views 메뉴와 toolbar 버튼은 이제 이 dialog를 열고, 기존 view dispatcher는 headless 회귀 테스트용 빠른 경로로 유지됩니다. `DrawingView`는 선택적 `sheet_x` / `sheet_y` / `sheet_scale` metadata를 저장하며, SVG 렌더링은 수동 배치가 있을 때 이를 우선 적용합니다. 전체 검증 **2,822 / 0 / 0**.
+
+---
+
+#### UI 완성 Phase H-center — TechDraw centerline setup command UX (2026-05-05)
+
+TechDraw 중심선 명령에 face centerline, parallel line centerline, center mark, bolt-circle centerline parameter를 편집하는 stateful Centerline Setup dialog를 추가했습니다. Centerlines 메뉴와 toolbar 버튼은 이제 이 dialog를 열고, 적용 시 선택한 centerline 저장소가 active `DrawingSheet`에 추가됩니다. 기존 centerline dispatcher는 headless 회귀 테스트용 빠른 경로로 유지됩니다. 전체 검증 **2,816 / 0 / 0**.
+
+---
+
+#### UI 완성 Phase H-anno — TechDraw annotation setup command UX (2026-05-05)
+
+TechDraw 주석 명령에 text/rich text/balloon/leader/weld/surface finish parameter를 편집하는 stateful Annotation Setup dialog를 추가했습니다. Annotations 메뉴와 toolbar 주석 버튼은 이제 이 dialog를 열고, 적용 시 선택한 sheet-level annotation이 active `DrawingSheet`에 추가됩니다. 기존 annotation dispatcher는 headless 회귀 테스트용 빠른 경로로 유지됩니다. 전체 검증 **2,811 / 0 / 0**.
+
+---
+
+#### UI 완성 Phase H-dim — TechDraw dimension setup command UX (2026-05-05)
+
+TechDraw 치수 명령에 선형/반지름/지름/각도/호 길이/면적 parameter를 편집하는 stateful Dimension Setup dialog를 추가했습니다. Dimensions 메뉴와 toolbar 치수 버튼은 이제 이 dialog를 열고, 적용 시 선택한 치수/확장 치수/호 길이/면적 annotation이 active `DrawingSheet`에 추가됩니다. 기존 `Dim*` dispatcher는 headless 회귀 테스트용 빠른 경로로 유지됩니다. 전체 검증 **2,806 / 0 / 0**.
+
+---
+
+#### UI 완성 Phase H-page — TechDraw page setup command UX (2026-05-05)
+
+TechDraw에 template, title, page size를 편집하는 stateful Page Setup dialog를 추가했습니다. `From Template...` 메뉴와 toolbar template 버튼은 이제 이 dialog를 열고, 적용 시 A4/A3/custom 크기와 title-block 텍스트가 반영된 `DrawingSheet`를 생성합니다. dialog open/custom/A3 preset 회귀 테스트와 상태 모델 유닛 테스트를 추가했습니다. 전체 검증 **2,801 / 0 / 0**.
+
+---
+
+#### UI 완성 Phase F-rest — TechDraw centerline / bolt circle (2026-05-04)
+
+TechDraw `CenterFace`, `CenterLines`, `CenterPoints`, `BoltCircle` dispatcher가 log-only에서 실제 drawing sheet 중심선/중심 마크/볼트 원 출력으로 전환됨. 세 저장소는 `drawing_to_svg`에 렌더링되므로 PDF 출력도 동일 경로를 사용합니다. 4개 dispatcher 회귀 테스트와 SVG 출력 검증을 추가했습니다. 전체 검증 **2,796 / 0 / 0**.
+
+---
+
+#### UI 완성 Phase F-anno — TechDraw drawing annotation (2026-05-04)
+
+TechDraw `Text`, `RichText`, `Balloon`, `Leader`, `Weld`, `SurfFinish` dispatcher가 log-only에서 실제 drawing sheet annotation 출력으로 전환됨. 텍스트/서식 텍스트/풍선/리더/용접 기호/표면 거칠기 기호는 SVG/PDF 렌더링 가능한 sheet-level 저장소를 사용함. 6개 dispatcher 회귀 테스트와 SVG 출력 검증을 추가했습니다. 전체 검증 **2,792 / 0 / 0**.
+
+---
+
+#### UI 완성 Phase F-dim — TechDraw drawing dimension (2026-05-04)
+
+TechDraw `DimLinear`, `DimRadius`, `DimDiameter`, `DimAngle`, `DimArcLen`, `DimArea` dispatcher가 log-only에서 실제 drawing sheet 출력으로 전환됨. 선형/반지름은 기존 sheet dimension에 추가되고, 지름/각도/호 길이/면적은 SVG/PDF 렌더링 가능한 확장 치수·호 길이·면적 annotation 저장소를 사용함. 6개 dispatcher 회귀 테스트와 SVG 출력 검증을 추가했습니다. 전체 검증 **2,786 / 0 / 0**.
+
+---
+
+#### UI 완성 Phase F-view — TechDraw section/detail/broken view (2026-05-04)
+
+TechDraw `SectionView`, `DetailView`, `BrokenView` dispatcher가 log-only에서 실제 drawing sheet 변경으로 전환됨. `SectionView`는 선택 솔리드를 중간 평면으로 절단해 투영 view를 추가하고, `DetailView`는 첫 view를 확대 복사하며, `BrokenView`는 기존 broken-view helper로 첫 view를 압축함. 세 dispatcher 회귀 테스트를 추가했고, 장기 플랜은 TechDraw 치수/주석 → 명령 UX → Sketcher → PartDesign history → Assembly → FEM UX → I/O → 성능 → 릴리스 순서로 진행합니다. 전체 검증 **2,780 / 0 / 0**.
+
+---
+
+#### UI 완성 Phase E-render — FEM 결과 colormap (2026-05-04)
+
+`FemAction::ShowStress`, `ShowDisplacement`, `ShowVonMises`가 log-only에서 실제 뷰포트 colormap 메시 생성으로 전환됨. 활성 tetrahedral FEM mesh의 boundary surface를 7단계 blue→green→red band scene object로 생성하며, 결과 필드 전환 시 이전 FEM colormap을 교체함. displacement는 nodal displacement 크기, stress/Von Mises는 element Von Mises 값을 boundary node 평균으로 표시. 테스트 3개 추가, 전체 검증 **2,777 / 0 / 0**.
+
+---
+
+#### UI 완성 HARD-tier 배치 — Annotation overlay, FEM solver, TechDraw export, ShapeBinder (2026-05-04)
+
+Phase A-C3 이후 첫 HARD-tier 배치. `gui::scene_overlay`로 Draft/Part 와이어·포인트·라벨 출력이 실제 뷰포트 오버레이로 표시되고, `D::Dimension` / `D::Label`이 log-only에서 가시 주석으로 전환됨. FEM은 열전도/비선형 정적 solver를 `AnalysisContainer`에 연결. TechDraw는 NewPage/FromTemplate/Redraw와 DXF/PDF exporter를 dispatcher에 연결. PartDesign `ShapeBinder`는 선택 형상의 face를 새 binder solid로 복사. 검증: build, clippy `-D warnings`, 전체 테스트 **2,774 / 0 / 0**.
+
+---
+
+#### UI 완성 Phase C3 — Surface 연산 + PartDesign Loft/Pipe (2026-05-01) `94396bb`
+
+Phase C3 종료. Surface: `S::Sections`(스키닝), `S::Extend`(두께 증가), `S::Blend`(쿼드 시트). PartDesign: `Pd::AdditiveLoft/Pipe`(솔리드 추가), `Pd::SubtractiveLoft/Pipe`(boolean 절삭). 7개 피처 + 8개 테스트. 전체 내용은 [영어 항목](../CHANGELOG.md#ui-completion-phase-c3) 참조.
+
+---
+
+#### UI 완성 Phase C2 — Draft 수정 + ProjectCurvesOnSurface (2026-05-01) `0808d9a`
+
+Phase C2 종료. `D::Offset`, `D::Trim`, `D::Stretch`, `D::Facebinder`, `P::ProjectCurvesOnSurface` 5개 피처 연결. 전체 내용은 [영어 항목](../CHANGELOG.md) 참조.
+
+---
+
+#### UI 완성 Phase C1 — Draft 변환 + EASY 잔여 (2026-05-01) `c2d3006`
+
+Phase C1 종료. Draft 변환 4개(`D::Move/Rotate/Scale/Mirror`) + EASY 잔여 3개(`S::Coons`, `FemAction::Summary/Report`). 7개 피처 + 8개 테스트. 전체 내용은 [영어 항목](../CHANGELOG.md) 참조.
+
+---
+
+#### UI 완성 Phase B-cont — Part 워크벤치 EASY 티어 (2026-05-01) `4e16eba`
+
+Phase B-cont 종료. Part 워크벤치 13개 EASY 스텁 연결(FaceFromWires, ConnectShapes, EmbedShapes, CutoutShapes, ExplodeCompound, CompoundFilter, BooleanFragments, SliceToCompound, PointsFromShape, ConvertToSolid, AutoDefeaturing, TransformedCopy, CoonsPatch). 전체 내용은 [영어 항목](../CHANGELOG.md) 참조.
+
+---
+
+#### UI 완성 Phase B — Draft EASY 티어 (2026-05-01) `75d7705`
+
+Phase B 종료. Draft EASY 스텁 14개(Wire, BSpline, Bezier, Hatch, Text, Upgrade, Downgrade, WireToBSpline, ToSketch, Clone, ArrayRect, ArrayPolar, ArrayPath, ArrayPoint) 연결. 전체 내용은 [영어 항목](../CHANGELOG.md) 참조.
+
+---
+
+#### UI 완성 Phase A — 핵심 CAD 워크플로우 (2026-04-29) `abbfbda`
+
+Phase A 종료. log_info 스텁으로 아무 형상도 생성하지 않던 10개 핵심 피처 연결: Pad/Pocket/Groove/Hole/CountersunkHole(PartDesign 5개), Circle/Arc/Ellipse/Line/Point(Draft 2D 5개). 새 통합 테스트 12개. 2,662 → 2,674 / 0 / 0. 전체 내용은 [영어 항목](../CHANGELOG.md) 참조.
+
+---
+
 ### 문서
 
 #### 이중 언어 문서 단일 소스 정책 — 영어 정본 + DEVELOPER_WIKI 섹션 3 역이식 (2026-04-29)

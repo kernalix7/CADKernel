@@ -1,6 +1,6 @@
 use super::{GuiAction, GuiState, SelectedEntity, SelectionMode, task_panel};
-use cadkernel_sketch::WorkPlane;
 use crate::scene::ObjectId;
+use cadkernel_sketch::WorkPlane;
 
 /// Dim section header label for context menus — matches FreeCAD style.
 fn menu_section(ui: &mut egui::Ui, label: &str) {
@@ -21,7 +21,6 @@ fn menu_item(ui: &mut egui::Ui, icon: &str, label: &str, shortcut: &str) -> bool
     };
     ui.button(text).clicked()
 }
-
 
 /// Context menu for a scene object (right-click in model tree or 3D viewport).
 pub(crate) fn object_context_menu(
@@ -53,7 +52,11 @@ pub(crate) fn object_context_menu(
     ui.separator();
 
     menu_section(ui, "Appearance");
-    let (vis_icon, vis_label) = if obj_visible { ("\u{1F441}", "Hide") } else { ("\u{25CB}", "Show") };
+    let (vis_icon, vis_label) = if obj_visible {
+        ("\u{1F441}", "Hide")
+    } else {
+        ("\u{25CB}", "Show")
+    };
     if menu_item(ui, vis_icon, vis_label, "H") {
         gui.actions.push(GuiAction::ToggleVisibility(id));
         ui.close_menu();
@@ -73,7 +76,8 @@ pub(crate) fn object_context_menu(
         ];
         for (name, color) in presets {
             if ui.button(*name).clicked() {
-                gui.actions.push(GuiAction::SetObjectColor { id, color: *color });
+                gui.actions
+                    .push(GuiAction::SetObjectColor { id, color: *color });
                 ui.close_menu();
             }
         }
@@ -84,37 +88,66 @@ pub(crate) fn object_context_menu(
     // Transform submenu
     ui.menu_button("Transform", |ui| {
         if ui.button("Move +X (10)").clicked() {
-            gui.actions.push(GuiAction::MoveObject { id, dx: 10.0, dy: 0.0, dz: 0.0 });
+            gui.actions.push(GuiAction::MoveObject {
+                id,
+                dx: 10.0,
+                dy: 0.0,
+                dz: 0.0,
+            });
             ui.close_menu();
         }
         if ui.button("Move +Y (10)").clicked() {
-            gui.actions.push(GuiAction::MoveObject { id, dx: 0.0, dy: 10.0, dz: 0.0 });
+            gui.actions.push(GuiAction::MoveObject {
+                id,
+                dx: 0.0,
+                dy: 10.0,
+                dz: 0.0,
+            });
             ui.close_menu();
         }
         if ui.button("Move +Z (10)").clicked() {
-            gui.actions.push(GuiAction::MoveObject { id, dx: 0.0, dy: 0.0, dz: 10.0 });
+            gui.actions.push(GuiAction::MoveObject {
+                id,
+                dx: 0.0,
+                dy: 0.0,
+                dz: 10.0,
+            });
             ui.close_menu();
         }
         ui.separator();
         if ui.button("Rotate X 90").clicked() {
-            gui.actions.push(GuiAction::RotateObject { id, axis: 0, angle_deg: 90.0 });
+            gui.actions.push(GuiAction::RotateObject {
+                id,
+                axis: 0,
+                angle_deg: 90.0,
+            });
             ui.close_menu();
         }
         if ui.button("Rotate Y 90").clicked() {
-            gui.actions.push(GuiAction::RotateObject { id, axis: 1, angle_deg: 90.0 });
+            gui.actions.push(GuiAction::RotateObject {
+                id,
+                axis: 1,
+                angle_deg: 90.0,
+            });
             ui.close_menu();
         }
         if ui.button("Rotate Z 90").clicked() {
-            gui.actions.push(GuiAction::RotateObject { id, axis: 2, angle_deg: 90.0 });
+            gui.actions.push(GuiAction::RotateObject {
+                id,
+                axis: 2,
+                angle_deg: 90.0,
+            });
             ui.close_menu();
         }
         ui.separator();
         if ui.button("Scale 2x").clicked() {
-            gui.actions.push(GuiAction::ScaleObjectUniform { id, factor: 2.0 });
+            gui.actions
+                .push(GuiAction::ScaleObjectUniform { id, factor: 2.0 });
             ui.close_menu();
         }
         if ui.button("Scale 0.5x").clicked() {
-            gui.actions.push(GuiAction::ScaleObjectUniform { id, factor: 0.5 });
+            gui.actions
+                .push(GuiAction::ScaleObjectUniform { id, factor: 0.5 });
             ui.close_menu();
         }
     });
@@ -137,7 +170,8 @@ pub(crate) fn object_context_menu(
     ui.menu_button("Operations", |ui| {
         if ui.button("Mirror (YZ)").clicked() {
             gui.actions.push(GuiAction::SelectObject(id));
-            gui.actions.push(GuiAction::MirrorSolid(super::MirrorPlane::YZ));
+            gui.actions
+                .push(GuiAction::MirrorSolid(super::MirrorPlane::YZ));
             ui.close_menu();
         }
         if ui.button("Shell (1mm)").clicked() {
@@ -146,16 +180,27 @@ pub(crate) fn object_context_menu(
             ui.close_menu();
         }
         if ui.button("Fillet Edges").clicked() {
-            gui.active_task = Some(task_panel::ActiveTask::Fillet { radius: 1.0, preview_id: None });
+            gui.active_task = Some(task_panel::ActiveTask::Fillet {
+                radius: 1.0,
+                preview_id: None,
+            });
             ui.close_menu();
         }
         if ui.button("Chamfer Edges").clicked() {
-            gui.active_task = Some(task_panel::ActiveTask::Chamfer { distance: 1.0, preview_id: None });
+            gui.active_task = Some(task_panel::ActiveTask::Chamfer {
+                distance: 1.0,
+                preview_id: None,
+            });
             ui.close_menu();
         }
         ui.separator();
         if ui.button("Linear Pattern").clicked() {
-            gui.active_task = Some(task_panel::ActiveTask::Pattern { count: 3, spacing: 15.0, axis: 0, preview_id: None });
+            gui.active_task = Some(task_panel::ActiveTask::Pattern {
+                count: 3,
+                spacing: 15.0,
+                axis: 0,
+                preview_id: None,
+            });
             ui.close_menu();
         }
     });
@@ -207,10 +252,7 @@ pub(crate) fn object_context_menu(
     }
 }
 
-pub(crate) fn viewport_context_menu(
-    ui: &mut egui::Ui,
-    gui: &mut GuiState,
-) {
+pub(crate) fn viewport_context_menu(ui: &mut egui::Ui, gui: &mut GuiState) {
     use crate::render::{DisplayMode, StandardView};
 
     let has_objects = gui.tb_has_objects;
@@ -257,9 +299,9 @@ pub(crate) fn viewport_context_menu(
     ui.menu_button("Navigation Style", |ui| {
         for &style in &["CAD", "Blender", "Maya", "OpenInventor"] {
             if ui.button(style).clicked() {
-                gui.actions.push(GuiAction::StatusMessage(
-                    format!("Navigation style: {style}"),
-                ));
+                gui.actions.push(GuiAction::StatusMessage(format!(
+                    "Navigation style: {style}"
+                )));
                 ui.close_menu();
             }
         }
@@ -296,22 +338,19 @@ pub(crate) fn viewport_context_menu(
     // -- Clip Plane submenu --
     ui.menu_button("Clip Plane", |ui| {
         if ui.button("Enable").clicked() {
-            gui.actions.push(GuiAction::StatusMessage(
-                "Clip plane enabled".into(),
-            ));
+            gui.actions
+                .push(GuiAction::StatusMessage("Clip plane enabled".into()));
             ui.close_menu();
         }
         if ui.button("Disable").clicked() {
-            gui.actions.push(GuiAction::StatusMessage(
-                "Clip plane disabled".into(),
-            ));
+            gui.actions
+                .push(GuiAction::StatusMessage("Clip plane disabled".into()));
             ui.close_menu();
         }
         ui.separator();
         if ui.button("Flip Direction").clicked() {
-            gui.actions.push(GuiAction::StatusMessage(
-                "Clip plane flipped".into(),
-            ));
+            gui.actions
+                .push(GuiAction::StatusMessage("Clip plane flipped".into()));
             ui.close_menu();
         }
         ui.add_enabled_ui(gui.tb_has_selection, |ui| {
@@ -344,40 +383,70 @@ pub(crate) fn viewport_context_menu(
     // -- Quick create primitives --
     ui.menu_button("Create", |ui| {
         if ui.button("Box").clicked() {
-            gui.active_task = Some(task_panel::ActiveTask::Box { width: 10.0, height: 10.0, depth: 10.0, preview_id: None });
+            gui.active_task = Some(task_panel::ActiveTask::Box {
+                width: 10.0,
+                height: 10.0,
+                depth: 10.0,
+                preview_id: None,
+            });
             ui.close_menu();
         }
         if ui.button("Cylinder").clicked() {
-            gui.active_task = Some(task_panel::ActiveTask::Cylinder { radius: 5.0, height: 10.0, preview_id: None });
+            gui.active_task = Some(task_panel::ActiveTask::Cylinder {
+                radius: 5.0,
+                height: 10.0,
+                preview_id: None,
+            });
             ui.close_menu();
         }
         if ui.button("Sphere").clicked() {
-            gui.active_task = Some(task_panel::ActiveTask::Sphere { radius: 5.0, preview_id: None });
+            gui.active_task = Some(task_panel::ActiveTask::Sphere {
+                radius: 5.0,
+                preview_id: None,
+            });
             ui.close_menu();
         }
         if ui.button("Cone").clicked() {
-            gui.active_task = Some(task_panel::ActiveTask::Cone { base_radius: 5.0, top_radius: 0.0, height: 10.0, preview_id: None });
+            gui.active_task = Some(task_panel::ActiveTask::Cone {
+                base_radius: 5.0,
+                top_radius: 0.0,
+                height: 10.0,
+                preview_id: None,
+            });
             ui.close_menu();
         }
         if ui.button("Torus").clicked() {
-            gui.active_task = Some(task_panel::ActiveTask::Torus { major_radius: 5.0, minor_radius: 1.5, preview_id: None });
+            gui.active_task = Some(task_panel::ActiveTask::Torus {
+                major_radius: 5.0,
+                minor_radius: 1.5,
+                preview_id: None,
+            });
             ui.close_menu();
         }
         ui.separator();
         if ui.button("Sketch on XY").clicked() {
-            gui.actions.push(GuiAction::Sketcher(super::SketcherAction::Enter(WorkPlane::xy())));
+            gui.actions
+                .push(GuiAction::Sketcher(super::SketcherAction::Enter(
+                    WorkPlane::xy(),
+                )));
             ui.close_menu();
         }
         if ui.button("Sketch on XZ").clicked() {
-            gui.actions.push(GuiAction::Sketcher(super::SketcherAction::Enter(WorkPlane::xz())));
+            gui.actions
+                .push(GuiAction::Sketcher(super::SketcherAction::Enter(
+                    WorkPlane::xz(),
+                )));
             ui.close_menu();
         }
         if ui.button("Sketch on YZ").clicked() {
-            gui.actions.push(GuiAction::Sketcher(super::SketcherAction::Enter(WorkPlane::new(
-                cadkernel_math::Point3::ORIGIN,
-                cadkernel_math::Vec3::X,
-                cadkernel_math::Vec3::Y,
-            ))));
+            gui.actions
+                .push(GuiAction::Sketcher(super::SketcherAction::Enter(
+                    WorkPlane::new(
+                        cadkernel_math::Point3::ORIGIN,
+                        cadkernel_math::Vec3::X,
+                        cadkernel_math::Vec3::Y,
+                    ),
+                )));
             ui.close_menu();
         }
     });
@@ -437,16 +506,22 @@ pub(crate) fn tree_context_menu(
 ///
 /// The menu adapts its contents based on the actual selected entity types,
 /// not the selection mode — auto-pick means any element type can be selected.
-pub(crate) fn face_edge_context_menu(
-    ui: &mut egui::Ui,
-    gui: &mut GuiState,
-) {
+pub(crate) fn face_edge_context_menu(ui: &mut egui::Ui, gui: &mut GuiState) {
     let has_sel = gui.tb_has_selection;
 
     // Determine context menu type from actually selected entities
-    let has_face = gui.selected_entities.iter().any(|e| matches!(e, SelectedEntity::Face(_)));
-    let has_edge = gui.selected_entities.iter().any(|e| matches!(e, SelectedEntity::Edge(_)));
-    let has_vertex = gui.selected_entities.iter().any(|e| matches!(e, SelectedEntity::Vertex(_)));
+    let has_face = gui
+        .selected_entities
+        .iter()
+        .any(|e| matches!(e, SelectedEntity::Face(_)));
+    let has_edge = gui
+        .selected_entities
+        .iter()
+        .any(|e| matches!(e, SelectedEntity::Edge(_)));
+    let has_vertex = gui
+        .selected_entities
+        .iter()
+        .any(|e| matches!(e, SelectedEntity::Vertex(_)));
 
     if has_vertex {
         vertex_context_menu(ui, gui, has_sel);
@@ -472,7 +547,10 @@ pub(crate) fn face_edge_context_menu(
 // ---------------------------------------------------------------------------
 
 fn face_context_menu(ui: &mut egui::Ui, gui: &mut GuiState, has_sel: bool) {
-    let has_face = gui.selected_entities.iter().any(|e| matches!(e, SelectedEntity::Face(_)));
+    let has_face = gui
+        .selected_entities
+        .iter()
+        .any(|e| matches!(e, SelectedEntity::Face(_)));
 
     ui.add_enabled_ui(has_face, |ui| {
         if ui.button("Select Face Loop").clicked() {
@@ -485,7 +563,9 @@ fn face_context_menu(ui: &mut egui::Ui, gui: &mut GuiState, has_sel: bool) {
 
     ui.add_enabled_ui(has_face, |ui| {
         if ui.button("Create Sketch on Face").clicked() {
-            gui.actions.push(GuiAction::Sketcher(super::SketcherAction::EnterOnSelectedFace));
+            gui.actions.push(GuiAction::Sketcher(
+                super::SketcherAction::EnterOnSelectedFace,
+            ));
             ui.close_menu();
         }
     });
@@ -498,7 +578,8 @@ fn face_context_menu(ui: &mut egui::Ui, gui: &mut GuiState, has_sel: bool) {
             ui.close_menu();
         }
         if ui.button("Chamfer Adjacent Edges").clicked() {
-            gui.actions.push(GuiAction::ChamferAllEdges { distance: 1.0 });
+            gui.actions
+                .push(GuiAction::ChamferAllEdges { distance: 1.0 });
             ui.close_menu();
         }
         if ui.button("Shell (remove this face)").clicked() {
@@ -514,9 +595,8 @@ fn face_context_menu(ui: &mut egui::Ui, gui: &mut GuiState, has_sel: bool) {
 
     ui.add_enabled_ui(has_sel, |ui| {
         if ui.button("Set Face Color").clicked() {
-            gui.actions.push(GuiAction::StatusMessage(
-                "Set face color".into(),
-            ));
+            gui.actions
+                .push(GuiAction::StatusMessage("Set face color".into()));
             ui.close_menu();
         }
         if ui.button("Measure Face Area").clicked() {
@@ -541,7 +621,10 @@ fn face_context_menu(ui: &mut egui::Ui, gui: &mut GuiState, has_sel: bool) {
 // ---------------------------------------------------------------------------
 
 fn edge_context_menu(ui: &mut egui::Ui, gui: &mut GuiState, has_sel: bool) {
-    let has_edge = gui.selected_entities.iter().any(|e| matches!(e, SelectedEntity::Edge(_)));
+    let has_edge = gui
+        .selected_entities
+        .iter()
+        .any(|e| matches!(e, SelectedEntity::Edge(_)));
 
     ui.add_enabled_ui(has_edge, |ui| {
         if ui.button("Select Edge Loop").clicked() {

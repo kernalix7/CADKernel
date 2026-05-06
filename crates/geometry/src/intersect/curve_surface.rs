@@ -134,12 +134,7 @@ fn newton_refine(
         let dist = (diff.x * diff.x + diff.y * diff.y + diff.z * diff.z).sqrt();
 
         if dist < tolerance * 0.01 {
-            return Some(CurveSurfaceHit {
-                t,
-                u,
-                v,
-                point: c,
-            });
+            return Some(CurveSurfaceHit { t, u, v, point: c });
         }
 
         let ct = curve.tangent_at(t);
@@ -161,11 +156,7 @@ fn newton_refine(
         let b3 = -diff_v.dot(sv);
 
         // Solve 3x3 by Cramer's rule
-        let mat = [
-            [a11, a12, a13],
-            [a12, a22, a23],
-            [a13, a23, a33],
-        ];
+        let mat = [[a11, a12, a13], [a12, a22, a23], [a13, a23, a33]];
         let det = mat[0][0] * (mat[1][1] * mat[2][2] - mat[1][2] * mat[2][1])
             - mat[0][1] * (mat[1][0] * mat[2][2] - mat[1][2] * mat[2][0])
             + mat[0][2] * (mat[1][0] * mat[2][1] - mat[1][1] * mat[2][0]);
@@ -196,12 +187,7 @@ fn newton_refine(
     let c = curve.point_at(t);
     let s = surface.point_at(u, v);
     if c.distance_to(s) < tolerance {
-        Some(CurveSurfaceHit {
-            t,
-            u,
-            v,
-            point: c,
-        })
+        Some(CurveSurfaceHit { t, u, v, point: c })
     } else {
         None
     }
@@ -223,10 +209,7 @@ mod tests {
 
     #[test]
     fn test_line_plane_intersection() {
-        let line = LineSegment::new(
-            Point3::new(0.0, 0.0, -1.0),
-            Point3::new(0.0, 0.0, 1.0),
-        );
+        let line = LineSegment::new(Point3::new(0.0, 0.0, -1.0), Point3::new(0.0, 0.0, 1.0));
         let plane = Plane::xy().unwrap();
         let hits = intersect_curve_surface(&line, &plane, 1e-6);
         assert_eq!(hits.len(), 1, "line should intersect plane once");
@@ -239,10 +222,7 @@ mod tests {
 
     #[test]
     fn test_line_sphere_two_hits() {
-        let line = LineSegment::new(
-            Point3::new(-5.0, 0.0, 0.0),
-            Point3::new(5.0, 0.0, 0.0),
-        );
+        let line = LineSegment::new(Point3::new(-5.0, 0.0, 0.0), Point3::new(5.0, 0.0, 0.0));
         let sphere = Sphere::new(Point3::ORIGIN, 1.0).unwrap();
         let hits = intersect_curve_surface(&line, &sphere, 1e-4);
         assert!(
@@ -254,10 +234,7 @@ mod tests {
 
     #[test]
     fn test_line_sphere_miss() {
-        let line = LineSegment::new(
-            Point3::new(-5.0, 5.0, 0.0),
-            Point3::new(5.0, 5.0, 0.0),
-        );
+        let line = LineSegment::new(Point3::new(-5.0, 5.0, 0.0), Point3::new(5.0, 5.0, 0.0));
         let sphere = Sphere::new(Point3::ORIGIN, 1.0).unwrap();
         let hits = intersect_curve_surface(&line, &sphere, 1e-4);
         assert_eq!(hits.len(), 0, "line above sphere should miss");

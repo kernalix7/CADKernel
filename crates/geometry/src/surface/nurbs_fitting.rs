@@ -75,10 +75,7 @@ pub fn interpolate(
 
     // Gather column points from row curves' control points
     for ui in 0..count_u {
-        let col_pts: Vec<Point3> = row_curves
-            .iter()
-            .map(|c| c.control_points[ui])
-            .collect();
+        let col_pts: Vec<Point3> = row_curves.iter().map(|c| c.control_points[ui]).collect();
         let col_curve = curve_fit::interpolate(&col_pts, degree_v)?;
 
         if ui == 0 {
@@ -106,14 +103,7 @@ pub fn interpolate(
     }
 
     NurbsSurface::new(
-        degree_u,
-        degree_v,
-        count_u,
-        count_v,
-        final_cps,
-        final_wts,
-        knots_u,
-        knots_v,
+        degree_u, degree_v, count_u, count_v, final_cps, final_wts, knots_u, knots_v,
     )
 }
 
@@ -128,9 +118,7 @@ mod tests {
         let grid: Vec<Vec<Point3>> = (0..4)
             .map(|vi| {
                 (0..4)
-                    .map(|ui| {
-                        Point3::new(ui as f64 / 3.0, vi as f64 / 3.0, 0.0)
-                    })
+                    .map(|ui| Point3::new(ui as f64 / 3.0, vi as f64 / 3.0, 0.0))
                     .collect()
             })
             .collect();
@@ -186,9 +174,7 @@ mod tests {
 
     #[test]
     fn test_surface_interpolate_too_few_rows() {
-        let grid = vec![
-            vec![Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 0.0, 0.0)],
-        ];
+        let grid = vec![vec![Point3::new(0.0, 0.0, 0.0), Point3::new(1.0, 0.0, 0.0)]];
         assert!(interpolate(&grid, 1, 3).is_err());
     }
 

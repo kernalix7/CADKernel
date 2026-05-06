@@ -1177,7 +1177,10 @@ fn pdf_export_has_multiple_lines() {
     let pdf_bytes = export_pdf(svg, 100.0, 100.0).unwrap();
     let text = String::from_utf8_lossy(&pdf_bytes);
     let line_count = text.lines().count();
-    assert!(line_count > 10, "PDF should have multiple lines, got {line_count}");
+    assert!(
+        line_count > 10,
+        "PDF should have multiple lines, got {line_count}"
+    );
 }
 
 // ===========================================================================
@@ -1302,11 +1305,7 @@ fn json_write_and_read_roundtrip_single_primitive() {
 fn techdraw_project_solid_empty_model_returns_empty_view() {
     let model = BRepModel::new();
     // Use a bogus handle — project_solid should gracefully return an empty view
-    let any_handle = model
-        .solids
-        .iter()
-        .next()
-        .map(|(h, _)| h);
+    let any_handle = model.solids.iter().next().map(|(h, _)| h);
     if let Some(handle) = any_handle {
         let view = techdraw::project_solid(&model, handle, techdraw::ProjectionDir::Front);
         assert!(view.edges.is_empty());

@@ -18,18 +18,25 @@ fn scenario_box_with_hole() {
     assert_eq!(box_model.faces.len(), 6);
 
     let mut cyl_model = BRepModel::new();
-    let cyl_r = make_cylinder(&mut cyl_model, Point3::new(10.0, 10.0, -1.0), 3.0, 12.0, 32).unwrap();
+    let cyl_r =
+        make_cylinder(&mut cyl_model, Point3::new(10.0, 10.0, -1.0), 3.0, 12.0, 32).unwrap();
 
     // Boolean subtract: drill hole through box
     let result = boolean_op(
-        &box_model, box_r.solid,
-        &cyl_model, cyl_r.solid,
+        &box_model,
+        box_r.solid,
+        &cyl_model,
+        cyl_r.solid,
         BooleanOp::Difference,
     );
     assert!(result.is_ok(), "Boolean subtract should not error");
     let result = result.unwrap();
     // Result should have at least the original 6 faces (some may be split)
-    assert!(result.faces.len() >= 6, "Drilled box should have ≥6 faces, got {}", result.faces.len());
+    assert!(
+        result.faces.len() >= 6,
+        "Drilled box should have ≥6 faces, got {}",
+        result.faces.len()
+    );
     assert_eq!(result.solids.len(), 1, "Should produce exactly 1 solid");
 }
 
@@ -79,7 +86,11 @@ fn scenario_sketch_extrude() {
 
     // Verify geometry check passes
     let check = check_geometry(&model, ext.solid);
-    assert!(check.is_valid, "Extruded solid should be valid: {:?}", check.issues);
+    assert!(
+        check.is_valid,
+        "Extruded solid should be valid: {:?}",
+        check.issues
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -99,7 +110,11 @@ fn scenario_boolean_union_two_boxes() {
     let result = result.unwrap();
     assert_eq!(result.solids.len(), 1, "Union should produce 1 solid");
     // Overlapping boxes union: some faces inside each other get removed
-    assert!(result.faces.len() >= 6, "Union should have ≥6 faces, got {}", result.faces.len());
+    assert!(
+        result.faces.len() >= 6,
+        "Union should have ≥6 faces, got {}",
+        result.faces.len()
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -122,12 +137,15 @@ fn scenario_fillet_box_edge() {
             assert!(
                 model.faces.len() >= initial_faces,
                 "Fillet should not reduce face count: {} → {}",
-                initial_faces, model.faces.len()
+                initial_faces,
+                model.faces.len()
             );
             let check = check_geometry(&model, fr.solid);
             // Fillet result should pass basic validation
-            assert!(check.is_valid || !check.issues.is_empty(),
-                "Fillet result should have valid topology");
+            assert!(
+                check.is_valid || !check.issues.is_empty(),
+                "Fillet result should have valid topology"
+            );
         }
     }
 }
@@ -156,9 +174,18 @@ fn scenario_mass_properties_box() {
         props.surface_area
     );
     // Centroid at (5, 5, 5)
-    assert!((props.centroid.x - 5.0).abs() < 0.5, "Centroid X should be ~5");
-    assert!((props.centroid.y - 5.0).abs() < 0.5, "Centroid Y should be ~5");
-    assert!((props.centroid.z - 5.0).abs() < 0.5, "Centroid Z should be ~5");
+    assert!(
+        (props.centroid.x - 5.0).abs() < 0.5,
+        "Centroid X should be ~5"
+    );
+    assert!(
+        (props.centroid.y - 5.0).abs() < 0.5,
+        "Centroid Y should be ~5"
+    );
+    assert!(
+        (props.centroid.z - 5.0).abs() < 0.5,
+        "Centroid Z should be ~5"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -201,7 +228,11 @@ fn scenario_sphere_normals_outward() {
         total += 1;
     }
     let ratio = outward_count as f64 / total as f64;
-    assert!(ratio > 0.8, "At least 80% of normals should point outward, got {:.1}%", ratio * 100.0);
+    assert!(
+        ratio > 0.8,
+        "At least 80% of normals should point outward, got {:.1}%",
+        ratio * 100.0
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -240,7 +271,8 @@ fn scenario_stl_roundtrip() {
     let stl_str = cadkernel_io::write_stl_ascii(&mesh, "test_sphere");
     let imported = cadkernel_io::read_stl_ascii(&stl_str).unwrap();
     assert_eq!(
-        imported.triangle_count(), original_tris,
+        imported.triangle_count(),
+        original_tris,
         "STL roundtrip should preserve triangle count"
     );
 }
@@ -264,7 +296,10 @@ fn scenario_sketch_dof() {
     assert!(result.converged);
     // p0 fixed (0 DOF) + p1 has distance constraint (1 DOF remaining for angle)
     if let Some(dof) = result.remaining_dof {
-        assert!(dof >= 1, "Under-constrained system should have DOF ≥ 1, got {dof}");
+        assert!(
+            dof >= 1,
+            "Under-constrained system should have DOF ≥ 1, got {dof}"
+        );
     }
 }
 
@@ -278,7 +313,11 @@ fn scenario_geometry_validation() {
     let r = make_box(&mut model, Point3::ORIGIN, 10.0, 10.0, 10.0).unwrap();
 
     let check = check_geometry(&model, r.solid);
-    assert!(check.is_valid, "Box should pass geometry check: {:?}", check.issues);
+    assert!(
+        check.is_valid,
+        "Box should pass geometry check: {:?}",
+        check.issues
+    );
 
     let wt = check_watertight(&model, r.solid);
     assert!(wt, "Box should be watertight");

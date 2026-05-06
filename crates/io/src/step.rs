@@ -54,7 +54,9 @@ pub fn tokenize(input: &str) -> KernelResult<Vec<Token>> {
     const MAX_STEP_SIZE: usize = 512 * 1024 * 1024; // 512 MB
     if input.len() > MAX_STEP_SIZE {
         return Err(KernelError::IoError(format!(
-            "STEP input too large ({} bytes, max {})", input.len(), MAX_STEP_SIZE
+            "STEP input too large ({} bytes, max {})",
+            input.len(),
+            MAX_STEP_SIZE
         )));
     }
     let mut tokens = Vec::new();
@@ -114,7 +116,9 @@ pub fn tokenize(input: &str) -> KernelResult<Vec<Token>> {
                     i += 1;
                 }
                 if i >= chars.len() {
-                    return Err(KernelError::IoError("unterminated enumeration literal".into()));
+                    return Err(KernelError::IoError(
+                        "unterminated enumeration literal".into(),
+                    ));
                 }
                 let s: String = chars[start..i].iter().collect();
                 i += 1;
@@ -749,16 +753,15 @@ pub fn parse_step(content: &str) -> KernelResult<StepFile> {
     let raw = parser.parse_entities()?;
     let mut entities = HashMap::new();
     for e in &raw {
-        let resolved = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            resolve_entity(e)
-        }));
+        let resolved = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| resolve_entity(e)));
         match resolved {
-            Ok(entity) => { entities.insert(e.id, entity); }
+            Ok(entity) => {
+                entities.insert(e.id, entity);
+            }
             Err(_) => {
                 return Err(KernelError::IoError(format!(
                     "failed to resolve STEP entity #{} ({})",
-                    e.id,
-                    e.entity_type
+                    e.id, e.entity_type
                 )));
             }
         }
@@ -830,9 +833,8 @@ pub fn import_step(content: &str) -> KernelResult<BRepModel> {
                                         if let Some(StepEntity::OrientedEdge { edge, .. }) =
                                             file.entities.get(&oe_id)
                                         {
-                                            if let Some(StepEntity::EdgeCurve {
-                                                start, ..
-                                            }) = file.entities.get(edge)
+                                            if let Some(StepEntity::EdgeCurve { start, .. }) =
+                                                file.entities.get(edge)
                                             {
                                                 if let Some(&vh) = vertex_map.get(start) {
                                                     if !face_verts.contains(&vh) {
@@ -916,7 +918,9 @@ impl StepWriter {
         out.push_str("ISO-10303-21;\n");
         out.push_str("HEADER;\n");
         out.push_str("FILE_DESCRIPTION(('CADKernel STEP Export'),'2;1');\n");
-        out.push_str("FILE_NAME('output.stp','2026-01-01',(''),(''),'CADKernel','CADKernel','');\n");
+        out.push_str(
+            "FILE_NAME('output.stp','2026-01-01',(''),(''),'CADKernel','CADKernel','');\n",
+        );
         out.push_str("FILE_SCHEMA(('AUTOMOTIVE_DESIGN'));\n");
         out.push_str("ENDSEC;\n");
         out.push_str("DATA;\n");
@@ -962,16 +966,32 @@ pub fn export_step(model: &BRepModel) -> KernelResult<String> {
     // Export edges as LINE geometry + EDGE_CURVE
     let mut edge_step_ids: HashMap<u32, u64> = HashMap::new();
     for (eh, ed) in model.edges.iter() {
-        let start_vp = vert_step_ids.get(&ed.start.index()).copied().ok_or_else(|| {
-            KernelError::IoError(format!("missing STEP vertex export mapping for edge {} start", eh.index()))
-        })?;
+        let start_vp = vert_step_ids
+            .get(&ed.start.index())
+            .copied()
+            .ok_or_else(|| {
+                KernelError::IoError(format!(
+                    "missing STEP vertex export mapping for edge {} start",
+                    eh.index()
+                ))
+            })?;
         let end_vp = vert_step_ids.get(&ed.end.index()).copied().ok_or_else(|| {
-            KernelError::IoError(format!("missing STEP vertex export mapping for edge {} end", eh.index()))
+            KernelError::IoError(format!(
+                "missing STEP vertex export mapping for edge {} end",
+                eh.index()
+            ))
         })?;
 
-        let p1 = model.vertices.get(ed.start).map(|v| v.point).ok_or_else(|| {
-            KernelError::IoError(format!("edge {} start vertex handle is invalid", eh.index()))
-        })?;
+        let p1 = model
+            .vertices
+            .get(ed.start)
+            .map(|v| v.point)
+            .ok_or_else(|| {
+                KernelError::IoError(format!(
+                    "edge {} start vertex handle is invalid",
+                    eh.index()
+                ))
+            })?;
         let p2 = model.vertices.get(ed.end).map(|v| v.point).ok_or_else(|| {
             KernelError::IoError(format!("edge {} end vertex handle is invalid", eh.index()))
         })?;
@@ -1059,8 +1079,7 @@ pub fn export_step(model: &BRepModel) -> KernelResult<String> {
 pub fn export_step_mesh(_mesh: &super::Mesh, path: &str) -> KernelResult<()> {
     // For mesh export, create a simple faceted BREP
     let content = "ISO-10303-21;\nHEADER;\nFILE_DESCRIPTION(('CADKernel Mesh'),'2;1');\nFILE_NAME('mesh.stp','2026-01-01',(''),(''),'CADKernel','CADKernel','');\nFILE_SCHEMA(('AUTOMOTIVE_DESIGN'));\nENDSEC;\nDATA;\nENDSEC;\nEND-ISO-10303-21;\n";
-    std::fs::write(path, content)
-        .map_err(|e| KernelError::IoError(format!("write error: {e}")))?;
+    std::fs::write(path, content).map_err(|e| KernelError::IoError(format!("write error: {e}")))?;
     Ok(())
 }
 
@@ -1195,13 +1214,9 @@ fn classify_surface(surface: &dyn cadkernel_geometry::Surface) -> Option<Surface
     // Cone: normals all lie on lines passing through a common apex, with
     // constant angle to the axis. Defer detection by sampling and checking
     // that (point - apex) . axis / |point - apex| is constant across samples.
-    if let Some((apex, axis, semi_angle, ref_radius)) = fit_cone(&[
-        (p00, n00),
-        (p01, n01),
-        (p10, n10),
-        (p11, n11),
-        (pmm, nmm),
-    ]) {
+    if let Some((apex, axis, semi_angle, ref_radius)) =
+        fit_cone(&[(p00, n00), (p01, n01), (p10, n10), (p11, n11), (pmm, nmm)])
+    {
         let x_dir = arbitrary_perp(axis);
         return Some(SurfaceClass::Cone {
             apex,
@@ -1214,13 +1229,9 @@ fn classify_surface(surface: &dyn cadkernel_geometry::Surface) -> Option<Surface
 
     // Torus: ring of revolution. Check that the minor-circle center (point +
     // r_minor * inward_normal) lies on a common circle of a common plane.
-    if let Some((center, axis, major_r, minor_r)) = fit_torus(&[
-        (p00, n00),
-        (p01, n01),
-        (p10, n10),
-        (p11, n11),
-        (pmm, nmm),
-    ]) {
+    if let Some((center, axis, major_r, minor_r)) =
+        fit_torus(&[(p00, n00), (p01, n01), (p10, n10), (p11, n11), (pmm, nmm)])
+    {
         let x_dir = arbitrary_perp(axis);
         return Some(SurfaceClass::Torus {
             center,
@@ -1554,9 +1565,10 @@ fn fit_torus(samples: &[(Point3, Vec3)]) -> Option<(Point3, Vec3, f64, f64)> {
     }
     // Try a few candidate minor radii via a search: for each candidate,
     // compute c_i and check if they lie on a common plane with a circle fit.
-    let mean_point = samples.iter().fold(Vec3::ZERO, |acc, (p, _)| {
-        acc + Vec3::new(p.x, p.y, p.z)
-    }) * (1.0 / samples.len() as f64);
+    let mean_point = samples
+        .iter()
+        .fold(Vec3::ZERO, |acc, (p, _)| acc + Vec3::new(p.x, p.y, p.z))
+        * (1.0 / samples.len() as f64);
     let _ = mean_point;
     // Binary search minor radius in range [0, diameter of bounding box].
     let mut bb_min = Point3::new(f64::INFINITY, f64::INFINITY, f64::INFINITY);
@@ -1907,13 +1919,9 @@ fn entity_to_step(entity: &StepEntity) -> String {
         }
         StepEntity::EdgeLoop { edges } => {
             let es: Vec<String> = edges.iter().map(|id| format!("#{id}")).collect();
-            format!("EDGE_LOOP('',({}),{})", es.join(","), "")
-                .replace(",)", ")")
+            format!("EDGE_LOOP('',({}),{})", es.join(","), "").replace(",)", ")")
         }
-        StepEntity::FaceBound {
-            bound,
-            orientation,
-        } => {
+        StepEntity::FaceBound { bound, orientation } => {
             let o = if *orientation { ".T." } else { ".F." };
             format!("FACE_OUTER_BOUND('',#{bound},{o})")
         }
@@ -1928,8 +1936,7 @@ fn entity_to_step(entity: &StepEntity) -> String {
         }
         StepEntity::ClosedShell { faces } => {
             let fs: Vec<String> = faces.iter().map(|id| format!("#{id}")).collect();
-            format!("CLOSED_SHELL('',({}),{})", fs.join(","), "")
-                .replace(",)", ")")
+            format!("CLOSED_SHELL('',({}),{})", fs.join(","), "").replace(",)", ")")
         }
         StepEntity::ManifoldSolidBrep { shell } => {
             format!("MANIFOLD_SOLID_BREP('',#{shell})")

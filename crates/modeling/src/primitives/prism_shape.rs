@@ -6,7 +6,9 @@ use std::sync::Arc;
 use cadkernel_core::{KernelError, KernelResult};
 use cadkernel_geometry::Plane;
 use cadkernel_math::{Point3, Vec3};
-use cadkernel_topology::{BRepModel, EntityKind, FaceData, Handle, Orientation, SolidData, Tag, VertexData};
+use cadkernel_topology::{
+    BRepModel, EntityKind, FaceData, Handle, Orientation, SolidData, Tag, VertexData,
+};
 
 use super::{EdgeCache, bind_edge_line_segments, next_edge_tag};
 
@@ -122,10 +124,30 @@ pub fn make_prism(
     for i in 0..n {
         let j = (i + 1) % n;
         let hes = [
-            ec.get_or_create(model, bot_verts[i], bot_verts[j], next_edge_tag(op, &mut edge_idx)),
-            ec.get_or_create(model, bot_verts[j], top_verts[j], next_edge_tag(op, &mut edge_idx)),
-            ec.get_or_create(model, top_verts[j], top_verts[i], next_edge_tag(op, &mut edge_idx)),
-            ec.get_or_create(model, top_verts[i], bot_verts[i], next_edge_tag(op, &mut edge_idx)),
+            ec.get_or_create(
+                model,
+                bot_verts[i],
+                bot_verts[j],
+                next_edge_tag(op, &mut edge_idx),
+            ),
+            ec.get_or_create(
+                model,
+                bot_verts[j],
+                top_verts[j],
+                next_edge_tag(op, &mut edge_idx),
+            ),
+            ec.get_or_create(
+                model,
+                top_verts[j],
+                top_verts[i],
+                next_edge_tag(op, &mut edge_idx),
+            ),
+            ec.get_or_create(
+                model,
+                top_verts[i],
+                bot_verts[i],
+                next_edge_tag(op, &mut edge_idx),
+            ),
         ];
         let loop_h = model.make_loop(&hes)?;
         let tag = Tag::generated(EntityKind::Face, op, face_idx);

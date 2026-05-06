@@ -59,14 +59,18 @@ impl ScriptEngine {
         let lua = Lua::new();
 
         // Sandbox: remove dangerous standard library globals
-        lua.load(r#"
+        lua.load(
+            r#"
             os = nil
             io = nil
             require = nil
             dofile = nil
             loadfile = nil
             package = nil
-        "#).exec().map_err(|e| KernelError::InvalidArgument(format!("lua sandbox: {e}")))?;
+        "#,
+        )
+        .exec()
+        .map_err(|e| KernelError::InvalidArgument(format!("lua sandbox: {e}")))?;
 
         let store: SolidStore = Arc::new(Mutex::new(Vec::new()));
 
@@ -106,7 +110,12 @@ impl ScriptEngine {
 
     /// Returns the number of live solids.
     pub fn solid_count(&self) -> usize {
-        self.store.lock().unwrap().iter().filter(|e| e.is_some()).count()
+        self.store
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|e| e.is_some())
+            .count()
     }
 }
 
@@ -166,9 +175,27 @@ fn register_cad_table(lua: &Lua, store: SolidStore) -> LuaResult<()> {
 
     // ---- Booleans ---------------------------------------------------------
 
-    register_boolean(lua, &cad, Arc::clone(&store), "union", cadkernel_modeling::BooleanOp::Union)?;
-    register_boolean(lua, &cad, Arc::clone(&store), "subtract", cadkernel_modeling::BooleanOp::Difference)?;
-    register_boolean(lua, &cad, Arc::clone(&store), "intersect", cadkernel_modeling::BooleanOp::Intersection)?;
+    register_boolean(
+        lua,
+        &cad,
+        Arc::clone(&store),
+        "union",
+        cadkernel_modeling::BooleanOp::Union,
+    )?;
+    register_boolean(
+        lua,
+        &cad,
+        Arc::clone(&store),
+        "subtract",
+        cadkernel_modeling::BooleanOp::Difference,
+    )?;
+    register_boolean(
+        lua,
+        &cad,
+        Arc::clone(&store),
+        "intersect",
+        cadkernel_modeling::BooleanOp::Intersection,
+    )?;
 
     // ---- Transforms -------------------------------------------------------
 
@@ -254,8 +281,9 @@ fn register_cone(lua: &Lua, cad: &Table, store: SolidStore) -> LuaResult<()> {
 fn register_torus(lua: &Lua, cad: &Table, store: SolidStore) -> LuaResult<()> {
     let f = lua.create_function(move |_lua, (major, minor): (f64, f64)| {
         let mut model = BRepModel::new();
-        let result = cadkernel_modeling::make_torus(&mut model, Point3::ORIGIN, major, minor, 64, 32)
-            .map_err(|e| mlua::Error::external(e.to_string()))?;
+        let result =
+            cadkernel_modeling::make_torus(&mut model, Point3::ORIGIN, major, minor, 64, 32)
+                .map_err(|e| mlua::Error::external(e.to_string()))?;
         let id = store_insert(&store, model, result.solid);
         Ok(id as i64)
     })?;
@@ -285,9 +313,8 @@ fn register_boolean(
             (ea.model.clone(), ea.solid, eb.model.clone(), eb.solid)
         };
 
-        let result_model =
-            cadkernel_modeling::boolean_op(&model_a, solid_a, &model_b, solid_b, op)
-                .map_err(|e| mlua::Error::external(e.to_string()))?;
+        let result_model = cadkernel_modeling::boolean_op(&model_a, solid_a, &model_b, solid_b, op)
+            .map_err(|e| mlua::Error::external(e.to_string()))?;
 
         // Find the first solid in the result model.
         let result_solid = result_model
@@ -317,7 +344,9 @@ fn register_translate(lua: &Lua, cad: &Table, store: SolidStore) -> LuaResult<()
             (e.model.clone(), e.solid)
         };
 
-        let transforms = [cadkernel_modeling::Transform::Translation(Vec3::new(x, y, z))];
+        let transforms = [cadkernel_modeling::Transform::Translation(Vec3::new(
+            x, y, z,
+        ))];
         let result = cadkernel_modeling::multi_transform(&mut model, solid, &transforms)
             .map_err(|e| mlua::Error::external(e.to_string()))?;
 
@@ -328,8 +357,8 @@ fn register_translate(lua: &Lua, cad: &Table, store: SolidStore) -> LuaResult<()
 }
 
 fn register_rotate(lua: &Lua, cad: &Table, store: SolidStore) -> LuaResult<()> {
-    let f =
-        lua.create_function(move |_lua, (id, ax, ay, az, angle): (usize, f64, f64, f64, f64)| {
+    let f = lua.create_function(
+        move |_lua, (id, ax, ay, az, angle): (usize, f64, f64, f64, f64)| {
             store_get_err(&store, id)?;
 
             let (mut model, solid) = {
@@ -348,7 +377,8 @@ fn register_rotate(lua: &Lua, cad: &Table, store: SolidStore) -> LuaResult<()> {
 
             let new_id = store_insert(&store, model, result.solid);
             Ok(new_id as i64)
-        })?;
+        },
+    )?;
     cad.set("rotate", f)
 }
 
@@ -423,14 +453,10 @@ fn register_fillet(lua: &Lua, cad: &Table, store: SolidStore) -> LuaResult<()> {
         };
 
         // Fillet the first edge found in the solid.
-        let edge = model
-            .edges
-            .iter()
-            .next()
-            .map(|(_, e)| (e.start, e.end));
+        let edge = model.edges.iter().next().map(|(_, e)| (e.start, e.end));
 
-        let (v1, v2) = edge
-            .ok_or_else(|| mlua::Error::external("solid has no edges for fillet"))?;
+        let (v1, v2) =
+            edge.ok_or_else(|| mlua::Error::external("solid has no edges for fillet"))?;
 
         let result = cadkernel_modeling::fillet_edge(&mut model, solid, v1, v2, radius)
             .map_err(|e| mlua::Error::external(e.to_string()))?;
@@ -451,14 +477,10 @@ fn register_chamfer(lua: &Lua, cad: &Table, store: SolidStore) -> LuaResult<()> 
             (e.model.clone(), e.solid)
         };
 
-        let edge = model
-            .edges
-            .iter()
-            .next()
-            .map(|(_, e)| (e.start, e.end));
+        let edge = model.edges.iter().next().map(|(_, e)| (e.start, e.end));
 
-        let (v1, v2) = edge
-            .ok_or_else(|| mlua::Error::external("solid has no edges for chamfer"))?;
+        let (v1, v2) =
+            edge.ok_or_else(|| mlua::Error::external("solid has no edges for chamfer"))?;
 
         let result = cadkernel_modeling::chamfer_edge(&mut model, solid, v1, v2, dist)
             .map_err(|e| mlua::Error::external(e.to_string()))?;
@@ -555,8 +577,8 @@ fn register_export_obj(lua: &Lua, cad: &Table, store: SolidStore) -> LuaResult<(
 
 fn register_import_stl(lua: &Lua, cad: &Table, store: SolidStore) -> LuaResult<()> {
     let f = lua.create_function(move |_lua, path: String| {
-        let mesh = cadkernel_io::import_stl(&path)
-            .map_err(|e| mlua::Error::external(e.to_string()))?;
+        let mesh =
+            cadkernel_io::import_stl(&path).map_err(|e| mlua::Error::external(e.to_string()))?;
 
         // Build a trivial BRepModel containing the mesh as a single solid.
         let mut model = BRepModel::new();

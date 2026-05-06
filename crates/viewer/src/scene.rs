@@ -5,7 +5,7 @@
 //! toggling visibility, and iterating visible objects for rendering.
 
 use cadkernel_io::{Mesh, tessellate_solid_with_face_map};
-use cadkernel_topology::{BRepModel, Handle, SolidData, FaceData, EdgeData, VertexData};
+use cadkernel_topology::{BRepModel, EdgeData, FaceData, Handle, SolidData, VertexData};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 
@@ -18,43 +18,144 @@ pub type ObjectId = u32;
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub enum CreationParams {
     // Primitives
-    Box { width: f64, height: f64, depth: f64 },
-    Cylinder { radius: f64, height: f64 },
-    Sphere { radius: f64 },
-    Cone { base_radius: f64, top_radius: f64, height: f64 },
-    Torus { major_radius: f64, minor_radius: f64 },
-    Tube { outer_radius: f64, inner_radius: f64, height: f64 },
-    Prism { radius: f64, height: f64, sides: usize },
-    Wedge { dx: f64, dy: f64, dz: f64, dx2: f64, dy2: f64 },
-    Ellipsoid { rx: f64, ry: f64, rz: f64 },
-    Helix { radius: f64, pitch: f64, turns: f64, tube_radius: f64 },
-    Imported { path: String },
+    Box {
+        width: f64,
+        height: f64,
+        depth: f64,
+    },
+    Cylinder {
+        radius: f64,
+        height: f64,
+    },
+    Sphere {
+        radius: f64,
+    },
+    Cone {
+        base_radius: f64,
+        top_radius: f64,
+        height: f64,
+    },
+    Torus {
+        major_radius: f64,
+        minor_radius: f64,
+    },
+    Tube {
+        outer_radius: f64,
+        inner_radius: f64,
+        height: f64,
+    },
+    Prism {
+        radius: f64,
+        height: f64,
+        sides: usize,
+    },
+    Wedge {
+        dx: f64,
+        dy: f64,
+        dz: f64,
+        dx2: f64,
+        dy2: f64,
+    },
+    Ellipsoid {
+        rx: f64,
+        ry: f64,
+        rz: f64,
+    },
+    Helix {
+        radius: f64,
+        pitch: f64,
+        turns: f64,
+        tube_radius: f64,
+    },
+    Imported {
+        path: String,
+    },
     Extruded,
     Revolved,
-    Boolean { op: String },
+    Boolean {
+        op: String,
+    },
     // PartDesign features
-    Fillet { radius: f64 },
-    Chamfer { distance: f64 },
-    Shell { thickness: f64 },
-    Mirror { plane: u8 },
-    Pattern { count: usize, spacing: f64, axis: u8 },
-    Groove { angle: f64 },
-    Sprocket { teeth: u32, roller_diameter: f64, pitch: f64, bore: f64 },
-    InvoluteGear { teeth: u32, module_val: f64, pressure_angle: f64 },
+    Fillet {
+        radius: f64,
+    },
+    Chamfer {
+        distance: f64,
+    },
+    Shell {
+        thickness: f64,
+    },
+    Mirror {
+        plane: u8,
+    },
+    Pattern {
+        count: usize,
+        spacing: f64,
+        axis: u8,
+    },
+    Groove {
+        angle: f64,
+    },
+    Sprocket {
+        teeth: u32,
+        roller_diameter: f64,
+        pitch: f64,
+        bore: f64,
+    },
+    InvoluteGear {
+        teeth: u32,
+        module_val: f64,
+        pressure_angle: f64,
+    },
     // Draft
-    DraftLine { length: f64, angle: f64 },
-    DraftCircle { radius: f64 },
-    DraftRectangle { width: f64, height: f64 },
-    DraftPolygon { radius: f64, sides: usize },
-    DraftArc { radius: f64, start_angle: f64, end_angle: f64 },
-    DraftEllipse { rx: f64, ry: f64 },
+    DraftLine {
+        length: f64,
+        angle: f64,
+    },
+    DraftCircle {
+        radius: f64,
+    },
+    DraftRectangle {
+        width: f64,
+        height: f64,
+    },
+    DraftPolygon {
+        radius: f64,
+        sides: usize,
+    },
+    DraftArc {
+        radius: f64,
+        start_angle: f64,
+        end_angle: f64,
+    },
+    DraftEllipse {
+        rx: f64,
+        ry: f64,
+    },
     // Surface
-    SurfacePipe { radius: f64, length: f64 },
-    SurfaceRuled { width: f64, depth: f64, offset: f64 },
+    SurfacePipe {
+        radius: f64,
+        length: f64,
+    },
+    SurfaceRuled {
+        width: f64,
+        depth: f64,
+        offset: f64,
+    },
     // Boolean with tool
-    BooleanOp { op_type: u8, width: f64, height: f64, depth: f64, offset_x: f64, offset_y: f64, offset_z: f64 },
+    BooleanOp {
+        op_type: u8,
+        width: f64,
+        height: f64,
+        depth: f64,
+        offset_x: f64,
+        offset_y: f64,
+        offset_z: f64,
+    },
     // Scale
-    ScaleOp { factor: f64 },
+    ScaleOp {
+        factor: f64,
+    },
 }
 
 /// A single object in the 3D scene.
@@ -335,7 +436,11 @@ impl Scene {
 
     /// Get selected object ids.
     pub fn selected_ids(&self) -> Vec<ObjectId> {
-        self.objects.iter().filter(|o| o.selected).map(|o| o.id).collect()
+        self.objects
+            .iter()
+            .filter(|o| o.selected)
+            .map(|o| o.id)
+            .collect()
     }
 
     /// Get an object by its ID.
@@ -381,7 +486,10 @@ impl Scene {
 
     /// Get root objects (no parent).
     pub fn root_objects(&self) -> Vec<&SceneObject> {
-        self.objects.iter().filter(|o| o.parent_id.is_none()).collect()
+        self.objects
+            .iter()
+            .filter(|o| o.parent_id.is_none())
+            .collect()
     }
 
     /// Set the active body. Pass `None` to deactivate.
@@ -444,7 +552,11 @@ impl Scene {
 
     /// Get objects belonging to a group.
     pub fn group_members(&self, group_id: u32) -> Vec<ObjectId> {
-        self.objects.iter().filter(|o| o.group_id == group_id).map(|o| o.id).collect()
+        self.objects
+            .iter()
+            .filter(|o| o.group_id == group_id)
+            .map(|o| o.id)
+            .collect()
     }
 }
 
@@ -462,21 +574,37 @@ fn collect_edge_data(
         return (positions, handles);
     };
     for &sh in &sd.shells {
-        let Some(shell) = model.shells.get(sh) else { continue };
+        let Some(shell) = model.shells.get(sh) else {
+            continue;
+        };
         for &fh in &shell.faces {
-            let Some(face) = model.faces.get(fh) else { continue };
+            let Some(face) = model.faces.get(fh) else {
+                continue;
+            };
             for loop_h in std::iter::once(face.outer_loop).chain(face.inner_loops.iter().copied()) {
-                let hes = model.loop_half_edges(model.loops.get(loop_h).map_or(
-                    Handle::from_raw_parts(0, 0),
-                    |l| l.half_edge,
-                ));
+                let hes = model.loop_half_edges(
+                    model
+                        .loops
+                        .get(loop_h)
+                        .map_or(Handle::from_raw_parts(0, 0), |l| l.half_edge),
+                );
                 for heh in hes {
-                    let Some(he) = model.half_edges.get(heh) else { continue };
+                    let Some(he) = model.half_edges.get(heh) else {
+                        continue;
+                    };
                     let Some(eh) = he.edge else { continue };
-                    if !seen.insert(eh) { continue; }
-                    let Some(ed) = model.edges.get(eh) else { continue };
-                    let Some(sv) = model.vertices.get(ed.start) else { continue };
-                    let Some(ev) = model.vertices.get(ed.end) else { continue };
+                    if !seen.insert(eh) {
+                        continue;
+                    }
+                    let Some(ed) = model.edges.get(eh) else {
+                        continue;
+                    };
+                    let Some(sv) = model.vertices.get(ed.start) else {
+                        continue;
+                    };
+                    let Some(ev) = model.vertices.get(ed.end) else {
+                        continue;
+                    };
                     let sp = [sv.point.x as f32, sv.point.y as f32, sv.point.z as f32];
                     let ep = [ev.point.x as f32, ev.point.y as f32, ev.point.z as f32];
                     positions.push((sp, ep));
@@ -501,18 +629,30 @@ fn collect_vertex_data(
         return (positions, handles);
     };
     for &sh in &sd.shells {
-        let Some(shell) = model.shells.get(sh) else { continue };
+        let Some(shell) = model.shells.get(sh) else {
+            continue;
+        };
         for &fh in &shell.faces {
-            let Some(face) = model.faces.get(fh) else { continue };
+            let Some(face) = model.faces.get(fh) else {
+                continue;
+            };
             for loop_h in std::iter::once(face.outer_loop).chain(face.inner_loops.iter().copied()) {
-                let hes = model.loop_half_edges(model.loops.get(loop_h).map_or(
-                    Handle::from_raw_parts(0, 0),
-                    |l| l.half_edge,
-                ));
+                let hes = model.loop_half_edges(
+                    model
+                        .loops
+                        .get(loop_h)
+                        .map_or(Handle::from_raw_parts(0, 0), |l| l.half_edge),
+                );
                 for heh in hes {
-                    let Some(he) = model.half_edges.get(heh) else { continue };
-                    if !seen.insert(he.origin) { continue; }
-                    let Some(vd) = model.vertices.get(he.origin) else { continue };
+                    let Some(he) = model.half_edges.get(heh) else {
+                        continue;
+                    };
+                    if !seen.insert(he.origin) {
+                        continue;
+                    }
+                    let Some(vd) = model.vertices.get(he.origin) else {
+                        continue;
+                    };
                     positions.push([vd.point.x as f32, vd.point.y as f32, vd.point.z as f32]);
                     handles.push(he.origin);
                 }
@@ -585,7 +725,14 @@ mod tests {
         let mut scene = Scene::new();
         for i in 0..10 {
             let mut model = BRepModel::new();
-            let r = make_box(&mut model, Point3::new(i as f64 * 3.0, 0.0, 0.0), 1.0, 1.0, 1.0).unwrap();
+            let r = make_box(
+                &mut model,
+                Point3::new(i as f64 * 3.0, 0.0, 0.0),
+                1.0,
+                1.0,
+                1.0,
+            )
+            .unwrap();
             scene.add_object(format!("Box{i}"), model, r.solid, None);
         }
         // Colors should rotate through the palette

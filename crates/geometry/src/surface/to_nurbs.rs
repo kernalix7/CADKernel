@@ -111,7 +111,9 @@ impl Cylinder {
         }
 
         // Knot vectors
-        let knots_u = vec![0.0, 0.0, 0.0, 0.25, 0.25, 0.5, 0.5, 0.75, 0.75, 1.0, 1.0, 1.0];
+        let knots_u = vec![
+            0.0, 0.0, 0.0, 0.25, 0.25, 0.5, 0.5, 0.75, 0.75, 1.0, 1.0, 1.0,
+        ];
         let knots_v = vec![0.0, 0.0, 1.0, 1.0];
 
         NurbsSurface::new(2, 1, count_u, count_v, cps, wts, knots_u, knots_v)
@@ -194,8 +196,7 @@ impl Sphere {
             let mut angle = 0.0;
 
             // First CP
-            let p = self.center
-                + Vec3::new(r_actual * 1.0, r_actual * 0.0, z_actual);
+            let p = self.center + Vec3::new(r_actual * 1.0, r_actual * 0.0, z_actual);
             cps.push(p);
             wts.push(1.0 * wv);
 

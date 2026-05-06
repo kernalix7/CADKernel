@@ -25,7 +25,13 @@ pub fn offset_polygon_2d(polygon: &[Point2], distance: f64) -> Vec<Point2> {
         let curr = polygon[i];
         let next = polygon[(i + 1) % n];
         // For CCW polygon: outward = right normal of edge direction.
-        result.push(miter_offset_with(prev, curr, next, distance, edge_right_normal));
+        result.push(miter_offset_with(
+            prev,
+            curr,
+            next,
+            distance,
+            edge_right_normal,
+        ));
     }
 
     result
@@ -58,8 +64,8 @@ pub fn offset_polygon_2d_checked(polygon: &[Point2], distance: f64) -> KernelRes
                 let prev = result[(i + n - 1) % n];
                 let curr = result[i];
                 let next = result[(i + 1) % n];
-                let cross = (curr.x - prev.x) * (next.y - prev.y)
-                    - (curr.y - prev.y) * (next.x - prev.x);
+                let cross =
+                    (curr.x - prev.x) * (next.y - prev.y) - (curr.y - prev.y) * (next.x - prev.x);
                 // Keep vertex only if it preserves the original winding direction
                 if cross * orig_sign >= -1e-14 {
                     cleaned.push(curr);
@@ -115,7 +121,13 @@ pub fn offset_polyline_2d(polyline: &[Point2], distance: f64) -> Vec<Point2> {
             let prev = polyline[i - 1];
             let curr = polyline[i];
             let next = polyline[i + 1];
-            result.push(miter_offset_with(prev, curr, next, distance, edge_left_normal));
+            result.push(miter_offset_with(
+                prev,
+                curr,
+                next,
+                distance,
+                edge_left_normal,
+            ));
         }
     }
 

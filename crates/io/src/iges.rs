@@ -157,10 +157,7 @@ impl IgesWriter {
                 };
                 let formatted = format!(
                     "{:<64}{:>8}{:>1}{:>7}\n",
-                    content,
-                    current_de,
-                    'P',
-                    pd_seq_out
+                    content, current_de, 'P', pd_seq_out
                 );
                 out.push_str(&formatted);
                 pd_seq_out += 1;
@@ -250,17 +247,7 @@ fn format_de_line1(
 ) -> String {
     format!(
         "{:>8}{:>8}{:>8}{:>8}{:>8}{:>8}{:>8}{:>8}{:>8}{:>1}{:>7}\n",
-        entity_type,
-        pd_pointer,
-        0,
-        0,
-        0,
-        0,
-        0,
-        0,
-        "00000000",
-        'D',
-        seq
+        entity_type, pd_pointer, 0, 0, 0, 0, 0, 0, "00000000", 'D', seq
     )
 }
 
@@ -273,23 +260,17 @@ fn format_de_line2(
 ) -> String {
     format!(
         "{:>8}{:>8}{:>8}{:>8}{:>8}{:>8}{:>8}{:>8}{:>8}{:>1}{:>7}\n",
-        entity_type,
-        0,
-        0,
-        param_line_count,
-        0,
-        " ",
-        " ",
-        " ",
-        " ",
-        'D',
-        seq
+        entity_type, 0, 0, param_line_count, 0, " ", " ", " ", " ", 'D', seq
     )
 }
 
 fn build_param_string(entity: &IgesEntity) -> String {
     let etype = entity.entity_type.to_code();
-    let params_str: Vec<String> = entity.params.iter().map(|v| format_iges_float(*v)).collect();
+    let params_str: Vec<String> = entity
+        .params
+        .iter()
+        .map(|v| format_iges_float(*v))
+        .collect();
     if params_str.is_empty() {
         format!("{etype};")
     } else {
@@ -431,14 +412,13 @@ pub fn import_iges(content: &str) -> KernelResult<BRepModel> {
     let mut point_idx = 0usize;
     for entity in &entities {
         match entity.entity_type {
-            IgesEntityType::Line
-                if entity.params.len() >= 6 => {
-                    let p1 = Point3::new(entity.params[0], entity.params[1], entity.params[2]);
-                    let p2 = Point3::new(entity.params[3], entity.params[4], entity.params[5]);
-                    let v1 = model.add_vertex(p1);
-                    let v2 = model.add_vertex(p2);
-                    model.add_edge(v1, v2);
-                }
+            IgesEntityType::Line if entity.params.len() >= 6 => {
+                let p1 = Point3::new(entity.params[0], entity.params[1], entity.params[2]);
+                let p2 = Point3::new(entity.params[3], entity.params[4], entity.params[5]);
+                let v1 = model.add_vertex(p1);
+                let v2 = model.add_vertex(p2);
+                model.add_edge(v1, v2);
+            }
             IgesEntityType::Point => {
                 point_idx += 1;
             }

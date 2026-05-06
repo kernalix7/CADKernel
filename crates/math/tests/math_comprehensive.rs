@@ -81,7 +81,11 @@ fn vec2_assign_ops() {
 
 #[test]
 fn vec2_sum_iter() {
-    let vs = [Vec2::new(1.0, 2.0), Vec2::new(3.0, 4.0), Vec2::new(5.0, 6.0)];
+    let vs = [
+        Vec2::new(1.0, 2.0),
+        Vec2::new(3.0, 4.0),
+        Vec2::new(5.0, 6.0),
+    ];
     let sum: Vec2 = vs.iter().copied().sum();
     assert_eq!(sum, Vec2::new(9.0, 12.0));
 }

@@ -1,5 +1,5 @@
-use super::{GuiState, ReportLevel};
 use super::theme;
+use super::{GuiState, ReportLevel};
 
 /// Bottom panel tab state.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -19,27 +19,32 @@ pub(crate) fn draw_report_panel(ctx: &egui::Context, gui: &mut GuiState) {
         .default_height(140.0)
         .resizable(true)
         .min_height(60.0)
-        .frame(
-            egui::Frame {
-                fill: egui::Color32::from_rgb(32, 35, 42),
-                inner_margin: egui::Margin::ZERO,
-                stroke: egui::Stroke::new(1.0, egui::Color32::from_rgb(22, 24, 30)),
-                ..egui::Frame::NONE
-            },
-        )
+        .frame(egui::Frame {
+            fill: egui::Color32::from_rgb(32, 35, 42),
+            inner_margin: egui::Margin::ZERO,
+            stroke: egui::Stroke::new(1.0, egui::Color32::from_rgb(22, 24, 30)),
+            ..egui::Frame::NONE
+        })
         .show(ctx, |ui| {
             // Tab bar with underline-style active indicator
             let tab_bar_rect = ui.available_rect_before_wrap();
             let tab_h = 26.0;
-            let tab_bar = egui::Rect::from_min_size(tab_bar_rect.min, egui::vec2(tab_bar_rect.width(), tab_h));
-            ui.painter().rect_filled(tab_bar, 0.0, egui::Color32::from_rgb(26, 28, 32));
+            let tab_bar = egui::Rect::from_min_size(
+                tab_bar_rect.min,
+                egui::vec2(tab_bar_rect.width(), tab_h),
+            );
+            ui.painter()
+                .rect_filled(tab_bar, 0.0, egui::Color32::from_rgb(26, 28, 32));
             // Top edge line
             ui.painter().line_segment(
                 [tab_bar.left_top(), tab_bar.right_top()],
                 egui::Stroke::new(1.0, egui::Color32::from_rgb(56, 60, 70)),
             );
 
-            let (tab_rect, _) = ui.allocate_exact_size(egui::vec2(tab_bar_rect.width(), tab_h), egui::Sense::hover());
+            let (tab_rect, _) = ui.allocate_exact_size(
+                egui::vec2(tab_bar_rect.width(), tab_h),
+                egui::Sense::hover(),
+            );
             let tabs = [
                 (BottomTab::Report, "Report"),
                 (BottomTab::Console, "Python Console"),
@@ -59,7 +64,9 @@ pub(crate) fn draw_report_panel(ctx: &egui::Context, gui: &mut GuiState) {
                     egui::Color32::from_rgb(120, 125, 135)
                 };
 
-                let galley = ui.painter().layout_no_wrap(label.to_string(), tab_font.clone(), text_color);
+                let galley =
+                    ui.painter()
+                        .layout_no_wrap(label.to_string(), tab_font.clone(), text_color);
                 let tw = galley.size().x;
                 let tab_w = tw + 16.0;
                 let tab_area = egui::Rect::from_min_size(
@@ -73,7 +80,8 @@ pub(crate) fn draw_report_panel(ctx: &egui::Context, gui: &mut GuiState) {
 
                 // Hover bg
                 if resp.hovered() && !is_active {
-                    ui.painter().rect_filled(tab_area, 0.0, egui::Color32::from_rgb(40, 43, 50));
+                    ui.painter()
+                        .rect_filled(tab_area, 0.0, egui::Color32::from_rgb(40, 43, 50));
                 }
 
                 ui.painter().galley(
@@ -85,7 +93,10 @@ pub(crate) fn draw_report_panel(ctx: &egui::Context, gui: &mut GuiState) {
                 // Active underline
                 if is_active {
                     ui.painter().line_segment(
-                        [egui::pos2(x, tab_rect.bottom() - 2.0), egui::pos2(x + tab_w, tab_rect.bottom() - 2.0)],
+                        [
+                            egui::pos2(x, tab_rect.bottom() - 2.0),
+                            egui::pos2(x + tab_w, tab_rect.bottom() - 2.0),
+                        ],
                         egui::Stroke::new(2.0, accent),
                     );
                 }
@@ -98,9 +109,21 @@ pub(crate) fn draw_report_panel(ctx: &egui::Context, gui: &mut GuiState) {
             let cy = tab_rect.center().y;
             match gui.bottom_tab {
                 BottomTab::Report => {
-                    let info_count = gui.report_lines.iter().filter(|(l, _)| *l == ReportLevel::Info).count();
-                    let warn_count = gui.report_lines.iter().filter(|(l, _)| *l == ReportLevel::Warning).count();
-                    let err_count = gui.report_lines.iter().filter(|(l, _)| *l == ReportLevel::Error).count();
+                    let info_count = gui
+                        .report_lines
+                        .iter()
+                        .filter(|(l, _)| *l == ReportLevel::Info)
+                        .count();
+                    let warn_count = gui
+                        .report_lines
+                        .iter()
+                        .filter(|(l, _)| *l == ReportLevel::Warning)
+                        .count();
+                    let err_count = gui
+                        .report_lines
+                        .iter()
+                        .filter(|(l, _)| *l == ReportLevel::Error)
+                        .count();
 
                     let summary = if err_count > 0 {
                         format!("{info_count}  \u{26A0}{warn_count}  \u{2716}{err_count}")
@@ -142,7 +165,10 @@ pub(crate) fn draw_report_panel(ctx: &egui::Context, gui: &mut GuiState) {
 
             // Bottom line under tab bar
             ui.painter().line_segment(
-                [egui::pos2(tab_rect.left(), tab_rect.bottom()), egui::pos2(tab_rect.right(), tab_rect.bottom())],
+                [
+                    egui::pos2(tab_rect.left(), tab_rect.bottom()),
+                    egui::pos2(tab_rect.right(), tab_rect.bottom()),
+                ],
                 egui::Stroke::new(1.0, egui::Color32::from_rgb(40, 43, 50)),
             );
 
@@ -150,13 +176,11 @@ pub(crate) fn draw_report_panel(ctx: &egui::Context, gui: &mut GuiState) {
             ui.add_space(2.0);
             egui::Frame::NONE
                 .inner_margin(egui::Margin::symmetric(6, 2))
-                .show(ui, |ui| {
-                    match gui.bottom_tab {
-                        BottomTab::Report => draw_report_content(ui, gui),
-                        BottomTab::Console => draw_console_content(ui, gui),
-                        BottomTab::History => draw_history_content(ui, gui),
-                        BottomTab::Lua => draw_lua_content(ui, gui),
-                    }
+                .show(ui, |ui| match gui.bottom_tab {
+                    BottomTab::Report => draw_report_content(ui, gui),
+                    BottomTab::Console => draw_console_content(ui, gui),
+                    BottomTab::History => draw_history_content(ui, gui),
+                    BottomTab::Lua => draw_lua_content(ui, gui),
                 });
         });
 }
@@ -164,9 +188,8 @@ pub(crate) fn draw_report_panel(ctx: &egui::Context, gui: &mut GuiState) {
 fn draw_report_content(ui: &mut egui::Ui, gui: &GuiState) {
     // Severity filter toggles (using temp data for filter state)
     let filter_id = egui::Id::new("report_filters");
-    let (show_info, show_warn, show_err) = ui.data_mut(|d| {
-        *d.get_temp_mut_or(filter_id, (true, true, true))
-    });
+    let (show_info, show_warn, show_err) =
+        ui.data_mut(|d| *d.get_temp_mut_or(filter_id, (true, true, true)));
 
     ui.horizontal(|ui| {
         let mut si = show_info;
@@ -220,9 +243,8 @@ fn draw_report_content(ui: &mut egui::Ui, gui: &GuiState) {
         });
     });
 
-    let (show_info, show_warn, show_err) = ui.data_mut(|d| {
-        *d.get_temp_mut_or(filter_id, (true, true, true))
-    });
+    let (show_info, show_warn, show_err) =
+        ui.data_mut(|d| *d.get_temp_mut_or(filter_id, (true, true, true)));
 
     ui.add_space(2.0);
 
@@ -278,17 +300,33 @@ fn draw_report_content(ui: &mut egui::Ui, gui: &GuiState) {
                     let display_msg = if expanded { msg.as_str() } else { short };
                     let suffix = if expanded { "" } else { "..." };
 
-                    let resp = ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(&timestamp).size(10.0).color(theme::COLOR_DIM).monospace());
-                        ui.label(egui::RichText::new(icon).size(10.0).color(color));
-                        ui.label(egui::RichText::new(format!("{display_msg}{suffix}")).size(11.0).color(color));
-                    }).response;
+                    let resp = ui
+                        .horizontal(|ui| {
+                            ui.label(
+                                egui::RichText::new(&timestamp)
+                                    .size(10.0)
+                                    .color(theme::COLOR_DIM)
+                                    .monospace(),
+                            );
+                            ui.label(egui::RichText::new(icon).size(10.0).color(color));
+                            ui.label(
+                                egui::RichText::new(format!("{display_msg}{suffix}"))
+                                    .size(11.0)
+                                    .color(color),
+                            );
+                        })
+                        .response;
                     if resp.interact(egui::Sense::click()).clicked() {
                         ui.data_mut(|d| d.insert_temp(expand_id, !expanded));
                     }
                 } else {
                     ui.horizontal(|ui| {
-                        ui.label(egui::RichText::new(&timestamp).size(10.0).color(theme::COLOR_DIM).monospace());
+                        ui.label(
+                            egui::RichText::new(&timestamp)
+                                .size(10.0)
+                                .color(theme::COLOR_DIM)
+                                .monospace(),
+                        );
                         ui.label(egui::RichText::new(icon).size(10.0).color(color));
                         ui.label(egui::RichText::new(msg).size(11.0).color(color));
                     });
@@ -316,7 +354,12 @@ fn draw_console_content(ui: &mut egui::Ui, gui: &mut GuiState) {
                 } else {
                     ui.visuals().text_color()
                 };
-                ui.label(egui::RichText::new(line).color(color).monospace().size(11.0));
+                ui.label(
+                    egui::RichText::new(line)
+                        .color(color)
+                        .monospace()
+                        .size(11.0),
+                );
             }
         });
 
@@ -332,8 +375,7 @@ fn draw_console_content(ui: &mut egui::Ui, gui: &mut GuiState) {
             let cmd = gui.console_input.trim().to_string();
             if !cmd.is_empty() {
                 gui.console_history.push(format!(">>> {cmd}"));
-                gui.console_history
-                    .push(format!("(not connected) {cmd}"));
+                gui.console_history.push(format!("(not connected) {cmd}"));
                 gui.console_input.clear();
             }
             response.request_focus();
@@ -358,16 +400,33 @@ fn draw_history_content(ui: &mut egui::Ui, gui: &mut GuiState) {
                 let idx = i + 1;
                 let icon = history_icon(desc);
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(format!("{idx:>3}.")).size(10.0).color(theme::COLOR_DIM).monospace());
-                    ui.label(egui::RichText::new(icon).size(10.0).color(theme::COLOR_ACCENT));
-                    ui.label(egui::RichText::new(desc).size(11.0).color(egui::Color32::from_rgb(170, 175, 185)));
+                    ui.label(
+                        egui::RichText::new(format!("{idx:>3}."))
+                            .size(10.0)
+                            .color(theme::COLOR_DIM)
+                            .monospace(),
+                    );
+                    ui.label(
+                        egui::RichText::new(icon)
+                            .size(10.0)
+                            .color(theme::COLOR_ACCENT),
+                    );
+                    ui.label(
+                        egui::RichText::new(desc)
+                            .size(11.0)
+                            .color(egui::Color32::from_rgb(170, 175, 185)),
+                    );
                 });
             }
 
             // Current position marker
             let current_idx = gui.history_entries.len();
             ui.horizontal(|ui| {
-                ui.label(egui::RichText::new("  \u{25B6}").size(11.0).color(egui::Color32::from_rgb(50, 200, 100)));
+                ui.label(
+                    egui::RichText::new("  \u{25B6}")
+                        .size(11.0)
+                        .color(egui::Color32::from_rgb(50, 200, 100)),
+                );
                 ui.label(
                     egui::RichText::new(format!("Current state ({current_idx} operations)"))
                         .size(11.0)
@@ -381,9 +440,22 @@ fn draw_history_content(ui: &mut egui::Ui, gui: &mut GuiState) {
                 let idx = current_idx + i + 1;
                 let icon = history_icon(desc);
                 ui.horizontal(|ui| {
-                    ui.label(egui::RichText::new(format!("{idx:>3}.")).size(10.0).color(egui::Color32::from_gray(60)).monospace());
-                    ui.label(egui::RichText::new(icon).size(10.0).color(egui::Color32::from_gray(70)));
-                    ui.label(egui::RichText::new(format!("{desc} (undone)")).size(11.0).color(theme::COLOR_DIM));
+                    ui.label(
+                        egui::RichText::new(format!("{idx:>3}."))
+                            .size(10.0)
+                            .color(egui::Color32::from_gray(60))
+                            .monospace(),
+                    );
+                    ui.label(
+                        egui::RichText::new(icon)
+                            .size(10.0)
+                            .color(egui::Color32::from_gray(70)),
+                    );
+                    ui.label(
+                        egui::RichText::new(format!("{desc} (undone)"))
+                            .size(11.0)
+                            .color(theme::COLOR_DIM),
+                    );
                 });
             }
         });
@@ -392,10 +464,16 @@ fn draw_history_content(ui: &mut egui::Ui, gui: &mut GuiState) {
     ui.horizontal(|ui| {
         let can_undo = !gui.history_entries.is_empty();
         let can_redo = !gui.future_entries.is_empty();
-        if ui.add_enabled(can_undo, egui::Button::new("Undo")).clicked() {
+        if ui
+            .add_enabled(can_undo, egui::Button::new("Undo"))
+            .clicked()
+        {
             gui.actions.push(GuiAction::Undo);
         }
-        if ui.add_enabled(can_redo, egui::Button::new("Redo")).clicked() {
+        if ui
+            .add_enabled(can_redo, egui::Button::new("Redo"))
+            .clicked()
+        {
             gui.actions.push(GuiAction::Redo);
         }
     });
@@ -404,31 +482,31 @@ fn draw_history_content(ui: &mut egui::Ui, gui: &mut GuiState) {
 fn history_icon(desc: &str) -> &'static str {
     let lower = desc.to_lowercase();
     if lower.contains("create") || lower.contains("add") || lower.contains("make") {
-        "\u{2795}"  // plus
+        "\u{2795}" // plus
     } else if lower.contains("delete") || lower.contains("remove") {
-        "\u{2796}"  // minus
+        "\u{2796}" // minus
     } else if lower.contains("move") || lower.contains("translate") {
-        "\u{2192}"  // right arrow
+        "\u{2192}" // right arrow
     } else if lower.contains("rotate") {
-        "\u{21BB}"  // clockwise arrow
+        "\u{21BB}" // clockwise arrow
     } else if lower.contains("scale") {
-        "\u{2922}"  // NE arrow
+        "\u{2922}" // NE arrow
     } else if lower.contains("boolean") || lower.contains("union") || lower.contains("subtract") {
-        "\u{222A}"  // union
+        "\u{222A}" // union
     } else if lower.contains("fillet") || lower.contains("chamfer") {
-        "\u{25D5}"  // circle segment
+        "\u{25D5}" // circle segment
     } else if lower.contains("extrude") || lower.contains("pad") {
-        "\u{2B06}"  // up arrow
+        "\u{2B06}" // up arrow
     } else if lower.contains("revolve") {
-        "\u{21BB}"  // clockwise arrow
+        "\u{21BB}" // clockwise arrow
     } else if lower.contains("color") || lower.contains("appearance") {
-        "\u{25CF}"  // filled circle
+        "\u{25CF}" // filled circle
     } else if lower.contains("import") {
-        "\u{1F4C2}"  // folder
+        "\u{1F4C2}" // folder
     } else if lower.contains("rename") {
-        "\u{270E}"  // pencil
+        "\u{270E}" // pencil
     } else {
-        "\u{25CB}"  // empty circle
+        "\u{25CB}" // empty circle
     }
 }
 
@@ -482,8 +560,7 @@ fn draw_lua_content(ui: &mut egui::Ui, gui: &mut GuiState) {
                 .font(egui::TextStyle::Monospace)
                 .desired_width(ui.available_width() - 50.0),
         );
-        let enter_pressed = response.lost_focus()
-            && ui.input(|i| i.key_pressed(egui::Key::Enter));
+        let enter_pressed = response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
         let run_clicked = ui.button("Run").clicked();
         if enter_pressed || run_clicked {
             let cmd = gui.lua_input.trim().to_string();

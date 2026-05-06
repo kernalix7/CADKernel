@@ -178,7 +178,13 @@ where
 }
 
 /// Estimates recursion depth from the interval's relative size.
-fn depth_from_spacing(t0: f64, t1: f64, t_start: f64, t_end: f64, opts: &TessellationOptions) -> usize {
+fn depth_from_spacing(
+    t0: f64,
+    t1: f64,
+    t_start: f64,
+    t_end: f64,
+    opts: &TessellationOptions,
+) -> usize {
     let full = t_end - t_start;
     if full < 1e-14 {
         return opts.max_depth;
@@ -294,17 +300,63 @@ fn tessellate_quad_adaptive<F, G>(
             pairs.iter().any(|(a, b)| {
                 let la = (a.x * a.x + a.y * a.y + a.z * a.z).sqrt();
                 let lb = (b.x * b.x + b.y * b.y + b.z * b.z).sqrt();
-                if la < 1e-14 || lb < 1e-14 { return false; }
+                if la < 1e-14 || lb < 1e-14 {
+                    return false;
+                }
                 let dot = (a.x * b.x + a.y * b.y + a.z * b.z) / (la * lb);
                 dot < cos_tol
             })
         };
 
         if needs_split {
-            tessellate_quad_adaptive(eval, normal_fn, u0, u_mid, v0, v_mid, opts, depth + 1, mesh, cache);
-            tessellate_quad_adaptive(eval, normal_fn, u_mid, u1, v0, v_mid, opts, depth + 1, mesh, cache);
-            tessellate_quad_adaptive(eval, normal_fn, u0, u_mid, v_mid, v1, opts, depth + 1, mesh, cache);
-            tessellate_quad_adaptive(eval, normal_fn, u_mid, u1, v_mid, v1, opts, depth + 1, mesh, cache);
+            tessellate_quad_adaptive(
+                eval,
+                normal_fn,
+                u0,
+                u_mid,
+                v0,
+                v_mid,
+                opts,
+                depth + 1,
+                mesh,
+                cache,
+            );
+            tessellate_quad_adaptive(
+                eval,
+                normal_fn,
+                u_mid,
+                u1,
+                v0,
+                v_mid,
+                opts,
+                depth + 1,
+                mesh,
+                cache,
+            );
+            tessellate_quad_adaptive(
+                eval,
+                normal_fn,
+                u0,
+                u_mid,
+                v_mid,
+                v1,
+                opts,
+                depth + 1,
+                mesh,
+                cache,
+            );
+            tessellate_quad_adaptive(
+                eval,
+                normal_fn,
+                u_mid,
+                u1,
+                v_mid,
+                v1,
+                opts,
+                depth + 1,
+                mesh,
+                cache,
+            );
             return;
         }
     }
@@ -410,7 +462,11 @@ mod tests {
                 max_depth: 10,
             },
         );
-        assert!(pts.len() > 4, "circle needs adaptive refinement: got {} points", pts.len());
+        assert!(
+            pts.len() > 4,
+            "circle needs adaptive refinement: got {} points",
+            pts.len()
+        );
         // First point should be (1, 0), last should be (0, 1).
         assert!((pts[0].x - 1.0).abs() < 1e-10);
         let last = pts.last().unwrap();
@@ -512,7 +568,7 @@ mod tests {
             (0.0, 1.0),
             (0.0, 1.0),
             &TessellationOptions {
-                chord_tolerance: 1.0, // very loose chord
+                chord_tolerance: 1.0,                  // very loose chord
                 angle_tolerance: 5.0_f64.to_radians(), // tight angle
                 min_segments: 2,
                 max_depth: 6,
@@ -524,7 +580,7 @@ mod tests {
             (0.0, std::f64::consts::FRAC_PI_2),
             (0.0, std::f64::consts::FRAC_PI_2),
             &TessellationOptions {
-                chord_tolerance: 1.0, // very loose chord
+                chord_tolerance: 1.0,                  // very loose chord
                 angle_tolerance: 5.0_f64.to_radians(), // tight angle triggers normal-based split
                 min_segments: 2,
                 max_depth: 6,

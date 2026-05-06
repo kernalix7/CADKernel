@@ -233,15 +233,11 @@ fn stl_binary_roundtrip() {
     );
 
     let imp_bbox = Bbox::of_mesh(&reimported);
-    assert!(
-        orig_bbox.near(&imp_bbox, 0.01),
-        "binary STL bbox drifted"
-    );
+    assert!(orig_bbox.near(&imp_bbox, 0.01), "binary STL bbox drifted");
 
     // Vertices may dedup more aggressively; allow ±5%.
-    let vr =
-        (reimported.vertices.len() as f64 - mesh.vertices.len() as f64).abs()
-            / (mesh.vertices.len() as f64).max(1.0);
+    let vr = (reimported.vertices.len() as f64 - mesh.vertices.len() as f64).abs()
+        / (mesh.vertices.len() as f64).max(1.0);
     assert!(
         vr <= 0.05,
         "binary STL vertex count drifted >5%: orig={}, imp={}",
@@ -703,10 +699,7 @@ fn native_cadk_roundtrip_multi_solid() {
     let orig_verts = model.vertices.iter().count();
     let orig_bbox = Bbox::of_model(&model);
 
-    let path = std::env::temp_dir().join(format!(
-        "cadk_audit_multi_{}.cadk",
-        std::process::id()
-    ));
+    let path = std::env::temp_dir().join(format!("cadk_audit_multi_{}.cadk", std::process::id()));
     let path_str = path.to_str().unwrap();
     save_project(&model, path_str).expect("save_project");
     let loaded = load_project(path_str).expect("load_project");

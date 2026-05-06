@@ -41,9 +41,7 @@ pub fn fillet_edge_segments(
         ));
     }
     if segments < 1 {
-        return Err(KernelError::InvalidArgument(
-            "segments must be >= 1".into(),
-        ));
+        return Err(KernelError::InvalidArgument("segments must be >= 1".into()));
     }
 
     let p1 = vertex_point(model, edge_v1)?;
@@ -81,8 +79,7 @@ pub fn fillet_edge_segments(
     // Sequential feature ops rebuild topology (new vertex handles), so the
     // caller may pass stale handles whose coordinates still exist somewhere
     // in the model. Resolving by position makes operations composable.
-    let (edge_v1, edge_v2) =
-        resolve_edge_in_faces(model, edge_v1, edge_v2, &face_vert_lists)?;
+    let (edge_v1, edge_v2) = resolve_edge_in_faces(model, edge_v1, edge_v2, &face_vert_lists)?;
 
     let mut adj_faces: Vec<Handle<FaceData>> = Vec::new();
     for &(fh, ref verts) in &face_vert_lists {
@@ -277,14 +274,13 @@ pub fn fillet_edges_segments(
     for &(v1_in, v2_in) in edges {
         let p1 = vertex_point(model, v1_in)?;
         let p2 = vertex_point(model, v2_in)?;
-        let (v1, v2) = resolve_edge_by_position(&face_vert_lists, model, p1, p2).ok_or_else(
-            || {
+        let (v1, v2) =
+            resolve_edge_by_position(&face_vert_lists, model, p1, p2).ok_or_else(|| {
                 KernelError::InvalidArgument(format!(
                     "fillet_edges: edge ({:?},{:?}) not on any face of the solid",
                     p1, p2
                 ))
-            },
-        )?;
+            })?;
         let edge_len = (p2 - p1).length();
         if radius >= edge_len * 0.5 {
             return Err(KernelError::InvalidArgument(
@@ -303,7 +299,11 @@ pub fn fillet_edges_segments(
                 adj.len()
             )));
         }
-        resolved.push(ResolvedFilletEdge { v1, v2, adj_faces: [adj[0], adj[1]] });
+        resolved.push(ResolvedFilletEdge {
+            v1,
+            v2,
+            adj_faces: [adj[0], adj[1]],
+        });
     }
 
     let op = model.history.next_operation("fillet_edges");
@@ -337,7 +337,9 @@ pub fn fillet_edges_segments(
             let off2 = p2 + da * (radius * angle.cos()) + db * (radius * angle.sin());
             layers.push([off1, off2]);
         }
-        all_edge_offsets.push(EdgeOffsets { layer_points: layers });
+        all_edge_offsets.push(EdgeOffsets {
+            layer_points: layers,
+        });
     }
 
     let mut new_vert_cache: HashMap<VertKey, Handle<VertexData>> = HashMap::new();
@@ -395,7 +397,11 @@ pub fn fillet_edges_segments(
             let offset_for_edge = |edge_idx: usize, vertex: Handle<VertexData>| -> Point3 {
                 let re = &resolved[edge_idx];
                 let eo = &all_edge_offsets[edge_idx];
-                let layer = if re.adj_faces[0] == orig_fh { 0 } else { segments };
+                let layer = if re.adj_faces[0] == orig_fh {
+                    0
+                } else {
+                    segments
+                };
                 let endpoint = if vertex == re.v1 { 0 } else { 1 };
                 eo.layer_points[layer][endpoint]
             };
@@ -490,15 +496,16 @@ fn resolve_edge_by_position(
     p1: Point3,
     p2: Point3,
 ) -> Option<(Handle<VertexData>, Handle<VertexData>)> {
-    let find_by_pos = |verts: &[Handle<VertexData>], target: Point3| -> Option<Handle<VertexData>> {
-        verts.iter().copied().find(|&vh| {
-            if let Some(vd) = model.vertices.get(vh) {
-                (vd.point - target).length() < 1e-9
-            } else {
-                false
-            }
-        })
-    };
+    let find_by_pos =
+        |verts: &[Handle<VertexData>], target: Point3| -> Option<Handle<VertexData>> {
+            verts.iter().copied().find(|&vh| {
+                if let Some(vd) = model.vertices.get(vh) {
+                    (vd.point - target).length() < 1e-9
+                } else {
+                    false
+                }
+            })
+        };
     for (_, verts) in face_vert_lists {
         let r1 = find_by_pos(verts, p1);
         let r2 = find_by_pos(verts, p2);
@@ -530,15 +537,16 @@ fn resolve_edge_in_faces(
     let p1 = vertex_point(model, v1)?;
     let p2 = vertex_point(model, v2)?;
 
-    let find_by_pos = |verts: &[Handle<VertexData>], target: Point3| -> Option<Handle<VertexData>> {
-        verts.iter().copied().find(|&vh| {
-            if let Some(vd) = model.vertices.get(vh) {
-                (vd.point - target).length() < 1e-9
-            } else {
-                false
-            }
-        })
-    };
+    let find_by_pos =
+        |verts: &[Handle<VertexData>], target: Point3| -> Option<Handle<VertexData>> {
+            verts.iter().copied().find(|&vh| {
+                if let Some(vd) = model.vertices.get(vh) {
+                    (vd.point - target).length() < 1e-9
+                } else {
+                    false
+                }
+            })
+        };
 
     for (_, verts) in face_vert_lists {
         let r1 = find_by_pos(verts, p1);
@@ -615,7 +623,10 @@ fn compute_inward(
     }
 }
 
-fn face_normal(model: &BRepModel, verts: &[Handle<VertexData>]) -> KernelResult<cadkernel_math::Vec3> {
+fn face_normal(
+    model: &BRepModel,
+    verts: &[Handle<VertexData>],
+) -> KernelResult<cadkernel_math::Vec3> {
     if verts.len() < 3 {
         return Ok(cadkernel_math::Vec3::Z);
     }

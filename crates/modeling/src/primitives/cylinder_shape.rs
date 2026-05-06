@@ -188,7 +188,10 @@ mod tests {
         assert!(model.face_has_surface(r.bottom_face));
         assert!(model.face_has_surface(r.top_face));
         for &lat in &r.lateral_faces {
-            assert!(model.face_has_surface(lat), "lateral face should have surface");
+            assert!(
+                model.face_has_surface(lat),
+                "lateral face should have surface"
+            );
         }
         for (edge_h, _) in model.edges.iter() {
             assert!(model.edge_has_curve(edge_h), "edge should have curve");

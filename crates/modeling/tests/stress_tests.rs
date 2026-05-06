@@ -31,13 +31,24 @@ fn test_body_multi_feature_pad_pocket_chamfer() {
         Point3::new(30.0, 30.0, 10.0),
         Point3::new(10.0, 30.0, 10.0),
     ];
-    let pk = pocket(&model, base.solid, &pocket_profile, Vec3::new(0.0, 0.0, -1.0), 5.0).unwrap();
+    let pk = pocket(
+        &model,
+        base.solid,
+        &pocket_profile,
+        Vec3::new(0.0, 0.0, -1.0),
+        5.0,
+    )
+    .unwrap();
     body.add_feature("CenterPocket", FeatureKind::Pocket, pk.solid);
     assert_eq!(body.feature_count(), 2);
     assert_eq!(body.tip_solid(), Some(pk.solid));
 
     let check = check_geometry(&pk.model, pk.solid);
-    assert!(check.is_valid, "PartDesign body tip should be valid: {:?}", check.issues);
+    assert!(
+        check.is_valid,
+        "PartDesign body tip should be valid: {:?}",
+        check.issues
+    );
 }
 
 #[test]
@@ -51,7 +62,14 @@ fn test_body_five_pad_features_sequential() {
     for i in 1..5usize {
         let step_model = BRepModel::new();
         let _ = step_model;
-        let dummy = make_box(&mut model, Point3::new(i as f64 * 10.0, 0.0, 0.0), 5.0, 5.0, 5.0 + i as f64).unwrap();
+        let dummy = make_box(
+            &mut model,
+            Point3::new(i as f64 * 10.0, 0.0, 0.0),
+            5.0,
+            5.0,
+            5.0 + i as f64,
+        )
+        .unwrap();
         body.add_feature(&format!("Step{i}"), FeatureKind::Pad, dummy.solid);
     }
 
@@ -170,7 +188,11 @@ fn test_body_mirror_feature() {
 
     let mir = mirror_solid(&mut model, r.solid, Point3::ORIGIN, Vec3::X).unwrap();
     let check = check_geometry(&model, mir.solid);
-    assert!(check.is_valid, "Mirrored solid should be valid: {:?}", check.issues);
+    assert!(
+        check.is_valid,
+        "Mirrored solid should be valid: {:?}",
+        check.issues
+    );
 
     let mut body = Body::new("MirrorBody");
     body.add_feature("Original", FeatureKind::Pad, r.solid);
@@ -184,7 +206,11 @@ fn test_body_linear_pattern_feature() {
     let r = make_box(&mut model, Point3::ORIGIN, 3.0, 3.0, 3.0).unwrap();
 
     let pat = linear_pattern(&mut model, r.solid, Vec3::X, 5.0, 5).unwrap();
-    assert_eq!(pat.solids.len(), 5, "Linear pattern should produce 5 solids");
+    assert_eq!(
+        pat.solids.len(),
+        5,
+        "Linear pattern should produce 5 solids"
+    );
 
     let mut body = Body::new("LinPattern");
     body.add_feature("Base", FeatureKind::Pad, r.solid);
@@ -202,7 +228,14 @@ fn test_assembly_ten_boxes() {
     let mut assembly = Assembly::new("TenBoxes");
 
     for i in 0..10usize {
-        let r = make_box(&mut model, Point3::new(i as f64 * 15.0, 0.0, 0.0), 10.0, 10.0, 10.0).unwrap();
+        let r = make_box(
+            &mut model,
+            Point3::new(i as f64 * 15.0, 0.0, 0.0),
+            10.0,
+            10.0,
+            10.0,
+        )
+        .unwrap();
         assembly.add_component(&format!("Box{i}"), r.solid);
     }
 
@@ -215,11 +248,25 @@ fn test_assembly_twelve_parts_bom() {
     let mut assembly = Assembly::new("BOM12");
 
     for i in 0..6usize {
-        let r = make_box(&mut model, Point3::new(i as f64 * 5.0, 0.0, 0.0), 3.0, 3.0, 3.0).unwrap();
+        let r = make_box(
+            &mut model,
+            Point3::new(i as f64 * 5.0, 0.0, 0.0),
+            3.0,
+            3.0,
+            3.0,
+        )
+        .unwrap();
         assembly.add_component("SmallBox", r.solid);
     }
     for i in 0..6usize {
-        let r = make_cylinder(&mut model, Point3::new(i as f64 * 5.0, 10.0, 0.0), 1.5, 8.0, 16).unwrap();
+        let r = make_cylinder(
+            &mut model,
+            Point3::new(i as f64 * 5.0, 10.0, 0.0),
+            1.5,
+            8.0,
+            16,
+        )
+        .unwrap();
         assembly.add_component("Cylinder", r.solid);
     }
 
@@ -321,9 +368,13 @@ fn test_assembly_transform_point() {
 
     let r = make_box(&mut model, Point3::ORIGIN, 5.0, 5.0, 5.0).unwrap();
     let id = assembly.add_component("P", r.solid);
-    assembly.set_placement(id, Mat4::translation(Vec3::new(10.0, 20.0, 30.0))).unwrap();
+    assembly
+        .set_placement(id, Mat4::translation(Vec3::new(10.0, 20.0, 30.0)))
+        .unwrap();
 
-    let pt = assembly.transform_point(id, Point3::new(1.0, 2.0, 3.0)).unwrap();
+    let pt = assembly
+        .transform_point(id, Point3::new(1.0, 2.0, 3.0))
+        .unwrap();
     assert!((pt.x - 11.0).abs() < 1e-10, "Transformed X should be 11");
     assert!((pt.y - 22.0).abs() < 1e-10, "Transformed Y should be 22");
     assert!((pt.z - 33.0).abs() < 1e-10, "Transformed Z should be 33");
@@ -335,15 +386,30 @@ fn test_assembly_exploded_view() {
     let mut assembly = Assembly::new("Explode");
 
     for i in 0..6usize {
-        let r = make_box(&mut model, Point3::new(i as f64 * 5.0, 0.0, 0.0), 4.0, 4.0, 4.0).unwrap();
+        let r = make_box(
+            &mut model,
+            Point3::new(i as f64 * 5.0, 0.0, 0.0),
+            4.0,
+            4.0,
+            4.0,
+        )
+        .unwrap();
         let id = assembly.add_component(&format!("P{i}"), r.solid);
         let tx = Mat4::translation(Vec3::new(i as f64 * 5.0, 0.0, 0.0));
         assembly.set_placement(id, tx).unwrap();
     }
 
-    let before: Vec<f64> = assembly.components.iter().map(|c| c.placement.0[(0, 3)]).collect();
+    let before: Vec<f64> = assembly
+        .components
+        .iter()
+        .map(|c| c.placement.0[(0, 3)])
+        .collect();
     assembly.exploded_view(1.5);
-    let after: Vec<f64> = assembly.components.iter().map(|c| c.placement.0[(0, 3)]).collect();
+    let after: Vec<f64> = assembly
+        .components
+        .iter()
+        .map(|c| c.placement.0[(0, 3)])
+        .collect();
 
     // After exploded view, spread should increase (or at least not all be the same)
     let spread_before = before.iter().cloned().fold(f64::NEG_INFINITY, f64::max)
@@ -363,7 +429,14 @@ fn test_assembly_bvh_interference_large() {
 
     // 10 boxes in a line, no overlap
     for i in 0..10usize {
-        let r = make_box(&mut model, Point3::new(i as f64 * 20.0, 0.0, 0.0), 5.0, 5.0, 5.0).unwrap();
+        let r = make_box(
+            &mut model,
+            Point3::new(i as f64 * 20.0, 0.0, 0.0),
+            5.0,
+            5.0,
+            5.0,
+        )
+        .unwrap();
         let id = assembly.add_component(&format!("P{i}"), r.solid);
         let tx = Mat4::translation(Vec3::new(i as f64 * 20.0, 0.0, 0.0));
         assembly.set_placement(id, tx).unwrap();
@@ -427,10 +500,17 @@ fn test_sketch_20_constraints_rectangular_grid() {
     sketch.add_constraint(Constraint::Perpendicular(l4, l5));
     sketch.add_constraint(Constraint::Perpendicular(l5, l0));
 
-    assert!(sketch.constraints.len() >= 19, "L-shape sketch should have ≥19 constraints, got {}", sketch.constraints.len());
+    assert!(
+        sketch.constraints.len() >= 19,
+        "L-shape sketch should have ≥19 constraints, got {}",
+        sketch.constraints.len()
+    );
 
     let result = solve(&mut sketch, 500, 1e-8);
-    assert!(result.converged, "20-constraint L-shape sketch must converge");
+    assert!(
+        result.converged,
+        "20-constraint L-shape sketch must converge"
+    );
 
     let wp = WorkPlane::xy();
     let profile = extract_profile(&sketch, &wp);
@@ -439,7 +519,11 @@ fn test_sketch_20_constraints_rectangular_grid() {
     let mut model = BRepModel::new();
     let ext = extrude(&mut model, &profile, Vec3::Z, 5.0).unwrap();
     let check = check_geometry(&model, ext.solid);
-    assert!(check.is_valid, "L-shape extrusion should be valid: {:?}", check.issues);
+    assert!(
+        check.is_valid,
+        "L-shape extrusion should be valid: {:?}",
+        check.issues
+    );
 }
 
 #[test]
@@ -468,7 +552,10 @@ fn test_sketch_symmetry_constraints() {
     assert!(
         (pr_pos.x + pl_pos.x).abs() < 1.0 || result.converged,
         "Symmetry constraint should produce symmetric points or converge: pr=({:.2},{:.2}), pl=({:.2},{:.2})",
-        pr_pos.x, pr_pos.y, pl_pos.x, pl_pos.y
+        pr_pos.x,
+        pr_pos.y,
+        pl_pos.x,
+        pl_pos.y
     );
 }
 
@@ -487,13 +574,19 @@ fn test_sketch_concentric_circles_constraints() {
     sketch.add_constraint(Constraint::Coincident(c1, c2));
 
     let result = solve(&mut sketch, 200, 1e-8);
-    assert!(result.converged, "Concentric circles sketch should converge");
+    assert!(
+        result.converged,
+        "Concentric circles sketch should converge"
+    );
     let dist = {
         let p1 = &sketch.points[c1.0].position;
         let p2 = &sketch.points[c2.0].position;
         ((p1.x - p2.x).powi(2) + (p1.y - p2.y).powi(2)).sqrt()
     };
-    assert!(dist < 0.01, "Concentric centers should coincide after solve, dist={dist:.6}");
+    assert!(
+        dist < 0.01,
+        "Concentric centers should coincide after solve, dist={dist:.6}"
+    );
 }
 
 #[test]
@@ -513,8 +606,16 @@ fn test_sketch_horizontal_distance_constraint() {
     assert!(result.converged, "H/V distance sketch should converge");
 
     let p1_pos = &sketch.points[p1.0].position;
-    assert!((p1_pos.x - 12.0).abs() < 0.01, "p1.x should be ~12, got {:.4}", p1_pos.x);
-    assert!((p1_pos.y - 4.0).abs() < 0.01, "p1.y should be ~4, got {:.4}", p1_pos.y);
+    assert!(
+        (p1_pos.x - 12.0).abs() < 0.01,
+        "p1.x should be ~12, got {:.4}",
+        p1_pos.x
+    );
+    assert!(
+        (p1_pos.y - 4.0).abs() < 0.01,
+        "p1.y should be ~4, got {:.4}",
+        p1_pos.y
+    );
 }
 
 #[test]
@@ -538,7 +639,11 @@ fn test_sketch_validate_fully_constrained() {
     sketch.add_constraint(Constraint::Fixed(p3, 0.0, 10.0));
 
     let v = validate_sketch(&sketch, 0.001);
-    assert!(v.valid, "Fully-constrained square should validate: {:?}", v.issues);
+    assert!(
+        v.valid,
+        "Fully-constrained square should validate: {:?}",
+        v.issues
+    );
     let _ = (l0, l1, l2, l3);
 }
 
@@ -558,10 +663,17 @@ fn test_sketch_midpoint_constraint() {
     sketch.add_constraint(Constraint::Midpoint(pmid, line));
 
     let result = solve(&mut sketch, 200, 1e-8);
-    assert!(result.converged, "Midpoint constraint sketch should converge");
+    assert!(
+        result.converged,
+        "Midpoint constraint sketch should converge"
+    );
 
     let mid_pos = &sketch.points[pmid.0].position;
-    assert!((mid_pos.x - 5.0).abs() < 0.1, "Midpoint X should be ~5, got {:.4}", mid_pos.x);
+    assert!(
+        (mid_pos.x - 5.0).abs() < 0.1,
+        "Midpoint X should be ~5, got {:.4}",
+        mid_pos.x
+    );
 }
 
 #[test]
@@ -674,22 +786,36 @@ fn test_boolean_chain_subtract_five_cylinders() {
     for (hx, hy) in holes {
         let mut cyl = BRepModel::new();
         let cr = make_cylinder(&mut cyl, Point3::new(hx, hy, -1.0), 3.0, 12.0, 16).unwrap();
-        let result = boolean_op(&current, current_solid, &cyl, cr.solid, BooleanOp::Difference).unwrap();
+        let result = boolean_op(
+            &current,
+            current_solid,
+            &cyl,
+            cr.solid,
+            BooleanOp::Difference,
+        )
+        .unwrap();
         current_solid = result.solids.iter().next().map(|(h, _)| h).unwrap();
         current = result;
     }
 
-    assert!(current.solids.is_alive(current_solid), "Plate with 5 holes should produce valid solid");
+    assert!(
+        current.solids.is_alive(current_solid),
+        "Plate with 5 holes should produce valid solid"
+    );
     let check = check_geometry(&current, current_solid);
-    assert!(check.is_valid, "5-hole plate should pass geometry check: {:?}", check.issues);
+    assert!(
+        check.is_valid,
+        "5-hole plate should pass geometry check: {:?}",
+        check.issues
+    );
 }
 
 #[test]
 fn test_boolean_chain_union_five_boxes() {
     // Build a cross shape from 5 boxes via union
     let boxes = [
-        (Point3::new(10.0, 0.0, 0.0),  5.0, 30.0, 5.0),
-        (Point3::new(0.0,  10.0, 0.0), 30.0, 5.0, 5.0),
+        (Point3::new(10.0, 0.0, 0.0), 5.0, 30.0, 5.0),
+        (Point3::new(0.0, 10.0, 0.0), 30.0, 5.0, 5.0),
     ];
 
     let mut ma = BRepModel::new();
@@ -723,8 +849,10 @@ fn test_boolean_chain_intersection_chain() {
     let inter1 = boolean_op(&ma, ra.solid, &mb, rb.solid, BooleanOp::Intersection).unwrap();
     // Disjoint in x dimension overlap check: 0→10 ∩ 5→15 = 5→10
     // Since they DO overlap, intersection should produce faces
-    assert!(!inter1.faces.is_empty() || inter1.faces.is_empty(),
-        "Intersection chain should not panic");
+    assert!(
+        !inter1.faces.is_empty() || inter1.faces.is_empty(),
+        "Intersection chain should not panic"
+    );
 }
 
 #[test]
@@ -743,7 +871,10 @@ fn test_boolean_chain_xor_followed_by_subtract() {
 
     let result = boolean_op(&xor, xs, &mc, rc.solid, BooleanOp::Difference).unwrap();
     let rs = result.solids.iter().next().map(|(h, _)| h).unwrap();
-    assert!(result.solids.is_alive(rs), "XOR + difference chain should produce valid solid");
+    assert!(
+        result.solids.is_alive(rs),
+        "XOR + difference chain should produce valid solid"
+    );
 }
 
 #[test]
@@ -767,14 +898,21 @@ fn test_boolean_chain_alternating_union_subtract() {
     for (pt, is_union) in operations {
         let mut tool_model = BRepModel::new();
         let tr = make_box(&mut tool_model, pt, 10.0, 10.0, 10.0).unwrap();
-        let op = if is_union { BooleanOp::Union } else { BooleanOp::Difference };
+        let op = if is_union {
+            BooleanOp::Union
+        } else {
+            BooleanOp::Difference
+        };
         let result = boolean_op(&current, current_solid, &tool_model, tr.solid, op).unwrap();
         current_solid = result.solids.iter().next().map(|(h, _)| h).unwrap();
         current = result;
     }
 
     assert!(current.solids.is_alive(current_solid));
-    assert!(current.faces.len() >= 6, "Alternating boolean chain should produce faces");
+    assert!(
+        current.faces.len() >= 6,
+        "Alternating boolean chain should produce faces"
+    );
 }
 
 #[test]
@@ -788,13 +926,32 @@ fn test_boolean_exact_disjoint_union_chain() {
 
     for i in 1..5usize {
         let mut mb = BRepModel::new();
-        let rb = make_box(&mut mb, Point3::new(i as f64 * 20.0, 0.0, 0.0), 5.0, 5.0, 5.0).unwrap();
-        let result = boolean_op_exact(&current, current_solid, &mb, rb.solid, BooleanOp::Union, 0.001).unwrap();
+        let rb = make_box(
+            &mut mb,
+            Point3::new(i as f64 * 20.0, 0.0, 0.0),
+            5.0,
+            5.0,
+            5.0,
+        )
+        .unwrap();
+        let result = boolean_op_exact(
+            &current,
+            current_solid,
+            &mb,
+            rb.solid,
+            BooleanOp::Union,
+            0.001,
+        )
+        .unwrap();
         current_solid = result.solids.iter().next().map(|(h, _)| h).unwrap();
         current = result;
     }
 
-    assert!(current.faces.len() >= 30, "5-box exact union should have ≥30 faces, got {}", current.faces.len());
+    assert!(
+        current.faces.len() >= 30,
+        "5-box exact union should have ≥30 faces, got {}",
+        current.faces.len()
+    );
 }
 
 // ============================================================================
@@ -812,8 +969,16 @@ fn test_io_roundtrip_json_box() {
     assert!(!json.is_empty(), "JSON export should not be empty");
 
     let imported = cadkernel_io::model_from_json(&json).unwrap();
-    assert_eq!(imported.vertices.len(), v_count, "JSON roundtrip should preserve vertex count");
-    assert_eq!(imported.faces.len(), f_count, "JSON roundtrip should preserve face count");
+    assert_eq!(
+        imported.vertices.len(),
+        v_count,
+        "JSON roundtrip should preserve vertex count"
+    );
+    assert_eq!(
+        imported.faces.len(),
+        f_count,
+        "JSON roundtrip should preserve face count"
+    );
     let _ = r;
 }
 
@@ -839,7 +1004,11 @@ fn test_io_roundtrip_stl_ascii_box() {
 
     let stl = cadkernel_io::write_stl_ascii(&mesh, "test");
     let imported = cadkernel_io::read_stl_ascii(&stl).unwrap();
-    assert_eq!(imported.triangle_count(), original_tris, "ASCII STL roundtrip should preserve triangle count");
+    assert_eq!(
+        imported.triangle_count(),
+        original_tris,
+        "ASCII STL roundtrip should preserve triangle count"
+    );
 }
 
 #[test]
@@ -853,7 +1022,11 @@ fn test_io_roundtrip_stl_binary_cylinder() {
     assert!(!bytes.is_empty());
 
     let imported = cadkernel_io::read_stl_binary(&bytes).unwrap();
-    assert_eq!(imported.triangle_count(), original_tris, "Binary STL roundtrip should preserve triangle count");
+    assert_eq!(
+        imported.triangle_count(),
+        original_tris,
+        "Binary STL roundtrip should preserve triangle count"
+    );
 }
 
 #[test]
@@ -862,11 +1035,20 @@ fn test_io_roundtrip_step_box() {
     let _r = make_box(&mut model, Point3::ORIGIN, 10.0, 10.0, 10.0).unwrap();
 
     let step_str = cadkernel_io::export_step(&model).unwrap();
-    assert!(step_str.contains("MANIFOLD_SOLID_BREP"), "STEP should contain MANIFOLD_SOLID_BREP");
-    assert!(step_str.contains("ADVANCED_FACE"), "STEP should contain ADVANCED_FACE");
+    assert!(
+        step_str.contains("MANIFOLD_SOLID_BREP"),
+        "STEP should contain MANIFOLD_SOLID_BREP"
+    );
+    assert!(
+        step_str.contains("ADVANCED_FACE"),
+        "STEP should contain ADVANCED_FACE"
+    );
 
     let imported = cadkernel_io::import_step(&step_str).unwrap();
-    assert!(imported.vertices.len() >= 4, "STEP import should have ≥4 vertices");
+    assert!(
+        imported.vertices.len() >= 4,
+        "STEP import should have ≥4 vertices"
+    );
 }
 
 #[test]
@@ -878,7 +1060,10 @@ fn test_io_roundtrip_obj_sphere() {
 
     let obj_str = cadkernel_io::write_obj(&mesh);
     let imported = cadkernel_io::read_obj(&obj_str).unwrap();
-    assert!(imported.triangle_count() >= original_tris / 2, "OBJ import should recover triangles");
+    assert!(
+        imported.triangle_count() >= original_tris / 2,
+        "OBJ import should recover triangles"
+    );
 }
 
 #[test]
@@ -891,7 +1076,10 @@ fn test_io_roundtrip_gltf_box() {
     assert!(!gltf_str.is_empty(), "glTF output should not be empty");
 
     let imported = cadkernel_io::import_gltf(&gltf_str).unwrap();
-    assert!(imported.triangle_count() > 0, "glTF import should produce triangles");
+    assert!(
+        imported.triangle_count() > 0,
+        "glTF import should produce triangles"
+    );
 }
 
 #[test]
@@ -903,7 +1091,11 @@ fn test_io_roundtrip_ply_torus() {
 
     let ply = cadkernel_io::export_ply(&mesh).unwrap();
     let imported = cadkernel_io::import_ply(&ply).unwrap();
-    assert_eq!(imported.triangle_count(), original_tris, "PLY roundtrip should preserve triangle count");
+    assert_eq!(
+        imported.triangle_count(),
+        original_tris,
+        "PLY roundtrip should preserve triangle count"
+    );
 }
 
 #[test]
@@ -914,7 +1106,11 @@ fn test_io_roundtrip_brep_box() {
 
     let brep = cadkernel_io::export_brep(&model).unwrap();
     let imported = cadkernel_io::import_brep(&brep).unwrap();
-    assert_eq!(imported.vertices.len(), v_count, "BREP roundtrip should preserve vertex count");
+    assert_eq!(
+        imported.vertices.len(),
+        v_count,
+        "BREP roundtrip should preserve vertex count"
+    );
 }
 
 #[test]
@@ -925,8 +1121,14 @@ fn test_io_tessellate_solid_parallel_produces_triangles() {
     let serial = cadkernel_io::tessellate_solid(&model, r.solid);
     let parallel = cadkernel_io::tessellate_solid_parallel(&model, r.solid);
 
-    assert!(serial.triangle_count() > 0, "Serial tessellation should produce triangles");
-    assert!(parallel.triangle_count() > 0, "Parallel tessellation should produce triangles");
+    assert!(
+        serial.triangle_count() > 0,
+        "Serial tessellation should produce triangles"
+    );
+    assert!(
+        parallel.triangle_count() > 0,
+        "Parallel tessellation should produce triangles"
+    );
 }
 
 // ============================================================================
@@ -967,7 +1169,11 @@ fn test_full_workflow_sketch_extrude_tessellate_stl() {
 
     // 4. Geometry check
     let check = check_geometry(&model, ext.solid);
-    assert!(check.is_valid, "Full workflow solid should be valid: {:?}", check.issues);
+    assert!(
+        check.is_valid,
+        "Full workflow solid should be valid: {:?}",
+        check.issues
+    );
 
     // 5. Tessellate
     let mesh = cadkernel_io::tessellate_solid(&model, ext.solid);
@@ -1021,14 +1227,20 @@ fn test_full_workflow_assembly_bom_export() {
     for i in 0..4usize {
         let offset = Vec3::new(i as f64 * 12.0, 0.0, 0.0);
         let id_bolt = assembly.add_component("M3_Bolt", bolt.solid);
-        assembly.set_placement(id_bolt, Mat4::translation(offset)).unwrap();
+        assembly
+            .set_placement(id_bolt, Mat4::translation(offset))
+            .unwrap();
 
         let id_nut = assembly.add_component("M3_Nut", nut.solid);
-        assembly.set_placement(id_nut, Mat4::translation(offset)).unwrap();
+        assembly
+            .set_placement(id_nut, Mat4::translation(offset))
+            .unwrap();
 
         for _ in 0..2usize {
             let id_ws = assembly.add_component("Washer", washer.solid);
-            assembly.set_placement(id_ws, Mat4::translation(offset)).unwrap();
+            assembly
+                .set_placement(id_ws, Mat4::translation(offset))
+                .unwrap();
         }
     }
     assembly.add_component("BasePlate", plate.solid);
@@ -1052,31 +1264,51 @@ fn test_full_workflow_primitives_check_watertight() {
         let mut model = BRepModel::new();
         let r = make_box(&mut model, Point3::ORIGIN, 5.0, 5.0, 5.0).unwrap();
         let check = check_geometry(&model, r.solid);
-        assert!(check.is_valid, "box should pass geometry check: {:?}", check.issues);
+        assert!(
+            check.is_valid,
+            "box should pass geometry check: {:?}",
+            check.issues
+        );
     }
     {
         let mut model = BRepModel::new();
         let r = make_cylinder(&mut model, Point3::ORIGIN, 2.0, 8.0, 16).unwrap();
         let check = check_geometry(&model, r.solid);
-        assert!(check.is_valid, "cylinder should pass geometry check: {:?}", check.issues);
+        assert!(
+            check.is_valid,
+            "cylinder should pass geometry check: {:?}",
+            check.issues
+        );
     }
     {
         let mut model = BRepModel::new();
         let r = make_sphere(&mut model, Point3::ORIGIN, 3.0, 16, 8).unwrap();
         let check = check_geometry(&model, r.solid);
-        assert!(check.is_valid, "sphere should pass geometry check: {:?}", check.issues);
+        assert!(
+            check.is_valid,
+            "sphere should pass geometry check: {:?}",
+            check.issues
+        );
     }
     {
         let mut model = BRepModel::new();
         let r = make_cone(&mut model, Point3::ORIGIN, 2.0, 1.0, 6.0, 16).unwrap();
         let check = check_geometry(&model, r.solid);
-        assert!(check.is_valid, "cone should pass geometry check: {:?}", check.issues);
+        assert!(
+            check.is_valid,
+            "cone should pass geometry check: {:?}",
+            check.issues
+        );
     }
     {
         let mut model = BRepModel::new();
         let r = make_torus(&mut model, Point3::ORIGIN, 5.0, 1.5, 16, 8).unwrap();
         let check = check_geometry(&model, r.solid);
-        assert!(check.is_valid, "torus should pass geometry check: {:?}", check.issues);
+        assert!(
+            check.is_valid,
+            "torus should pass geometry check: {:?}",
+            check.issues
+        );
     }
 }
 
@@ -1099,6 +1331,10 @@ fn test_full_workflow_scale_mirror_pattern_chain() {
 
     for s in &pat.solids {
         let check = check_geometry(&model, *s);
-        assert!(check.is_valid, "Pattern solid should be valid: {:?}", check.issues);
+        assert!(
+            check.is_valid,
+            "Pattern solid should be valid: {:?}",
+            check.issues
+        );
     }
 }

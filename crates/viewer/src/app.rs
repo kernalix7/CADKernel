@@ -2,12 +2,12 @@
 //! viewport.
 
 use crate::gui::{
-    self, AssemblyAction, DraftAction, FemAction, GizmoMode, GuiAction, GuiState, MeshAction,
-    MirrorPlane, PartAction, PartDesignAction, ReportLevel, SelectedEntity, SelectionMode,
-    SketchEntityRef, SketchMode, SketchTool, SketcherAction, SurfaceAction, TechDrawAction,
-    ViewportInfo,
+    self, AssemblyAction, DraftAction, FemAction, FemElementResultRow, FemNodeResultRow,
+    FemProbeRecord, FemResultField, FemResultLegendState, FemResultTableState, GizmoMode,
+    GuiAction, GuiState, MeshAction, MirrorPlane, PartAction, PartDesignAction, ReportLevel,
+    SelectedEntity, SelectionMode, SketchEntityRef, SketchMode, SketchTool, SketcherAction,
+    SurfaceAction, TechDrawAction, ViewportInfo,
 };
-use crate::scripting::ScriptEngine;
 use crate::nav::{NavAction, NavConfig};
 use crate::render::{
     AXIS_X_COLOR, AXIS_Y_COLOR, AXIS_Z_COLOR, CLIP_DISABLED, Camera, DisplayMode,
@@ -16,32 +16,35 @@ use crate::render::{
     StandardView, TRANSPARENT_COLOR, Uniforms, Vertex, WIRE_COLOR, aabb_in_frustum, compute_bounds,
     cross3, dot3, extract_frustum_planes, mesh_to_vertices, normalize3, sub3,
 };
+use crate::scripting::ScriptEngine;
+use cadkernel_geometry::{Curve, LineSegment};
 use cadkernel_io::{
     Mesh, export_3mf, export_brep, export_dxf, export_gltf, export_iges, export_ply, export_step,
     import_obj, import_stl, tessellate_solid, write_3mf, write_brep, write_dxf, write_obj,
     write_ply, write_stl_ascii,
 };
-use cadkernel_math::{Point3, Vec3};
+use cadkernel_math::{Point2, Point3, Vec3};
 use cadkernel_modeling::{
-    BooleanOp, Compound, HatchPattern, Transform as MultiTransformStep, auto_defeaturing,
-    boolean_fragments, boolean_op, boolean_op_exact, chamfer_edge, check_geometry, clone_solid,
-    compound_filter, compute_mass_properties, connect_shapes, coons_patch, countersunk_hole,
-    cutout_shapes, downgrade_solid_faces, draft_hatch, draft_to_sketch, embed_shapes,
-    explode_compound, extend_surface, extrude, face_from_wires, filling, fillet_edge, groove,
-    hole, linear_pattern, loft, make_arc_wire, make_bezier_wire, make_box, make_bspline_wire,
-    make_circle_wire, make_cone, make_cylinder, make_ellipse_wire, make_ellipsoid,
-    make_facebinder, make_helix, make_line_draft, make_point, make_polygon_wire, make_prism,
-    make_rectangle_wire, make_sphere, make_torus, make_tube, make_wedge, make_wire, mirror_solid,
-    mirror_solid_draft, move_solid, multi_transform, offset_wire, pad, path_array, pipe_surface,
-    pocket, point_array, points_from_shape, polar_array, project_curve_on_solid,
-    rectangular_array, rotate_solid, scale_solid, scale_solid_draft, sections, shape_from_mesh,
-    shape_from_text, shell_solid, slice_to_compound, stretch_wire, surface_from_curves, sweep,
-    trimex_draft, upgrade_wire_model, wire_to_bspline, wire_to_bspline_convert,
+    AnnotationStyle, BooleanOp, Compound, DraftDimensionType, HatchPattern,
+    Transform as MultiTransformStep, auto_defeaturing, boolean_fragments, boolean_op,
+    boolean_op_exact, chamfer_edge, check_geometry, clone_solid, compound_filter,
+    compute_mass_properties, connect_shapes, coons_patch, countersunk_hole, cutout_shapes,
+    downgrade_solid_faces, draft_hatch, draft_to_sketch, embed_shapes, explode_compound,
+    extend_surface, extrude, face_from_wires, fillet_edge, filling, groove, hole, linear_pattern,
+    loft, make_arc_wire, make_bezier_wire, make_box, make_bspline_wire, make_circle_wire,
+    make_cone, make_cylinder, make_draft_dimension_full, make_ellipse_wire, make_ellipsoid,
+    make_facebinder, make_helix, make_label_full, make_line_draft, make_point, make_polygon_wire,
+    make_prism, make_rectangle_wire, make_sphere, make_torus, make_tube, make_wedge, make_wire,
+    mirror_solid, mirror_solid_draft, move_solid, multi_transform, offset_wire, pad, path_array,
+    pipe_surface, pocket, point_array, points_from_shape, polar_array, project_curve_on_solid,
+    rectangular_array, rotate_solid, scale_solid, scale_solid_draft, sections, shape_binder,
+    shape_from_mesh, shape_from_text, shell_solid, slice_to_compound, stretch_wire,
+    surface_from_curves, sweep, trimex_draft, upgrade_wire_model, wire_to_bspline,
+    wire_to_bspline_convert,
 };
-use cadkernel_geometry::LineSegment;
 use cadkernel_sketch::{
-    Constraint, WorkPlane, carbon_copy, decrease_bspline_degree, drag_solve,
-    external_projection, extract_profile, geometry_to_bspline, increase_bspline_degree,
+    Constraint, WorkPlane, carbon_copy, decrease_bspline_degree, drag_solve, external_projection,
+    extract_profile, extract_profile_checked, geometry_to_bspline, increase_bspline_degree,
     insert_knot, solve,
 };
 use cadkernel_topology::{BRepModel, EdgeData, FaceData, Handle, SolidData, VertexData};
@@ -55,6 +58,29 @@ use winit::{
     keyboard::{KeyCode, PhysicalKey},
     window::{Window, WindowId},
 };
+
+/// Phase D — scene-overlay color/size defaults for wire/curve dispatcher
+/// output. Hardcoded in app.rs (not theme-driven) because Phase D's goal is
+/// "make prior tree-only features visible," not configurable styling — that
+/// belongs in a later UX pass.
+const OVERLAY_WIRE_COLOR: [u8; 4] = [255, 220, 80, 230];
+const OVERLAY_POINT_COLOR: [u8; 4] = [255, 90, 90, 230];
+const OVERLAY_LABEL_COLOR: [u8; 4] = [240, 240, 240, 240];
+const OVERLAY_DIM_COLOR: [u8; 4] = [120, 200, 255, 230];
+const OVERLAY_LINE_WIDTH: f32 = 1.6;
+const OVERLAY_POINT_RADIUS: f32 = 3.5;
+const OVERLAY_LABEL_FONT: f32 = 13.0;
+const FEM_COLORMAP_BANDS: usize = 7;
+
+#[doc(hidden)]
+pub type FemProbeSummary = (usize, Option<usize>, Option<f64>, Option<f64>, Option<f64>);
+
+#[derive(Debug, Clone)]
+struct SketchProjectionSource {
+    label: String,
+    points: Vec<Point3>,
+    edges: Vec<(usize, usize)>,
+}
 
 // ---------------------------------------------------------------------------
 // Runtime state initialised on `resumed`
@@ -254,12 +280,15 @@ impl CadApp {
         self.scene.refresh_picking_data();
         let (combined, ranges) = self.scene.build_combined_vertices();
         // Store per-object ranges with color and selection state
-        self.object_ranges = ranges.iter().map(|&(id, start, count)| {
-            let obj = self.scene.get(id);
-            let color = obj.map_or([0.7, 0.75, 0.8, 1.0], |o| o.color);
-            let selected = obj.is_some_and(|o| o.selected);
-            (id, start, count, color, selected)
-        }).collect();
+        self.object_ranges = ranges
+            .iter()
+            .map(|&(id, start, count)| {
+                let obj = self.scene.get(id);
+                let color = obj.map_or([0.7, 0.75, 0.8, 1.0], |o| o.color);
+                let selected = obj.is_some_and(|o| o.selected);
+                (id, start, count, color, selected)
+            })
+            .collect();
         if !combined.is_empty() {
             let (min, max) = compute_bounds(&combined);
             let dx = max[0] - min[0];
@@ -328,9 +357,7 @@ impl CadApp {
                                     for he_h in &hes {
                                         if let Some(he) = self.model.half_edges.get(*he_h) {
                                             if let Some(edge_h) = he.edge {
-                                                if let Some(edge) =
-                                                    self.model.edges.get(edge_h)
-                                                {
+                                                if let Some(edge) = self.model.edges.get(edge_h) {
                                                     edge_pairs.push((edge.start, edge.end));
                                                 }
                                             }
@@ -543,32 +570,74 @@ impl CadApp {
         for (ci, c) in sm.sketch.constraints.iter().enumerate() {
             let found: Option<(DimensionKind, f64)> = match c {
                 Constraint::Distance(p0, p1, d) => {
-                    let has_p = sel.iter().any(|e| matches!(e, SketchEntityRef::Point(i) if *i == p0.0 || *i == p1.0));
-                    if has_p { Some((DimensionKind::Distance, *d)) } else { None }
+                    let has_p = sel.iter().any(
+                        |e| matches!(e, SketchEntityRef::Point(i) if *i == p0.0 || *i == p1.0),
+                    );
+                    if has_p {
+                        Some((DimensionKind::Distance, *d))
+                    } else {
+                        None
+                    }
                 }
                 Constraint::Length(lid, val) => {
-                    let has_l = sel.iter().any(|e| matches!(e, SketchEntityRef::Line(i) if *i == lid.0));
-                    if has_l { Some((DimensionKind::Length, *val)) } else { None }
+                    let has_l = sel
+                        .iter()
+                        .any(|e| matches!(e, SketchEntityRef::Line(i) if *i == lid.0));
+                    if has_l {
+                        Some((DimensionKind::Length, *val))
+                    } else {
+                        None
+                    }
                 }
                 Constraint::Radius(_, _, r) => {
-                    let has_c = sel.iter().any(|e| matches!(e, SketchEntityRef::Circle(_) | SketchEntityRef::Arc(_)));
-                    if has_c { Some((DimensionKind::Radius, *r)) } else { None }
+                    let has_c = sel
+                        .iter()
+                        .any(|e| matches!(e, SketchEntityRef::Circle(_) | SketchEntityRef::Arc(_)));
+                    if has_c {
+                        Some((DimensionKind::Radius, *r))
+                    } else {
+                        None
+                    }
                 }
                 Constraint::Diameter(_, _, d) => {
-                    let has_c = sel.iter().any(|e| matches!(e, SketchEntityRef::Circle(_) | SketchEntityRef::Arc(_)));
-                    if has_c { Some((DimensionKind::Diameter, *d)) } else { None }
+                    let has_c = sel
+                        .iter()
+                        .any(|e| matches!(e, SketchEntityRef::Circle(_) | SketchEntityRef::Arc(_)));
+                    if has_c {
+                        Some((DimensionKind::Diameter, *d))
+                    } else {
+                        None
+                    }
                 }
                 Constraint::Angle(l0, l1, a) => {
-                    let has_l = sel.iter().any(|e| matches!(e, SketchEntityRef::Line(i) if *i == l0.0 || *i == l1.0));
-                    if has_l { Some((DimensionKind::Angle, a.to_degrees())) } else { None }
+                    let has_l = sel
+                        .iter()
+                        .any(|e| matches!(e, SketchEntityRef::Line(i) if *i == l0.0 || *i == l1.0));
+                    if has_l {
+                        Some((DimensionKind::Angle, a.to_degrees()))
+                    } else {
+                        None
+                    }
                 }
                 Constraint::HorizontalDistance(p0, p1, d) => {
-                    let has_p = sel.iter().any(|e| matches!(e, SketchEntityRef::Point(i) if *i == p0.0 || *i == p1.0));
-                    if has_p { Some((DimensionKind::HDistance, *d)) } else { None }
+                    let has_p = sel.iter().any(
+                        |e| matches!(e, SketchEntityRef::Point(i) if *i == p0.0 || *i == p1.0),
+                    );
+                    if has_p {
+                        Some((DimensionKind::HDistance, *d))
+                    } else {
+                        None
+                    }
                 }
                 Constraint::VerticalDistance(p0, p1, d) => {
-                    let has_p = sel.iter().any(|e| matches!(e, SketchEntityRef::Point(i) if *i == p0.0 || *i == p1.0));
-                    if has_p { Some((DimensionKind::VDistance, *d)) } else { None }
+                    let has_p = sel.iter().any(
+                        |e| matches!(e, SketchEntityRef::Point(i) if *i == p0.0 || *i == p1.0),
+                    );
+                    if has_p {
+                        Some((DimensionKind::VDistance, *d))
+                    } else {
+                        None
+                    }
                 }
                 _ => None,
             };
@@ -626,20 +695,28 @@ impl CadApp {
         let size = rt.gpu.window.inner_size();
         let w = size.width as f32;
         let h = size.height as f32;
-        if w < 1.0 || h < 1.0 { return None; }
-        let (sx, sy) = self.gui.pointer_physical
+        if w < 1.0 || h < 1.0 {
+            return None;
+        }
+        let (sx, sy) = self
+            .gui
+            .pointer_physical
             .or(self.mouse.last_pos.map(|(x, y)| (x as f32, y as f32)))?;
         let inv_vp = self.camera.inv_view_proj();
         let (origin, dir) = crate::picking::screen_to_ray(sx, sy, w, h, inv_vp);
         // Check vertex snap first, then triangle surface
         let vert_threshold = self.camera.distance * 0.012;
         for obj in self.scene.visible_objects() {
-            if let Some((idx, _t)) = crate::picking::pick_vertex(origin, dir, &obj.vertex_positions, vert_threshold) {
+            if let Some((idx, _t)) =
+                crate::picking::pick_vertex(origin, dir, &obj.vertex_positions, vert_threshold)
+            {
                 return Some(obj.vertex_positions[idx]);
             }
         }
         for obj in self.scene.visible_objects() {
-            if let Some(hit) = crate::picking::pick_triangle(origin, dir, &obj.mesh.vertices, &obj.mesh.indices) {
+            if let Some(hit) =
+                crate::picking::pick_triangle(origin, dir, &obj.mesh.vertices, &obj.mesh.indices)
+            {
                 return Some(hit.hit_point);
             }
         }
@@ -651,13 +728,13 @@ impl CadApp {
         let size = rt.gpu.window.inner_size();
         let w = size.width as f32;
         let h = size.height as f32;
-        if w < 1.0 || h < 1.0 { return; }
+        if w < 1.0 || h < 1.0 {
+            return;
+        }
 
         let winit_pos = self.mouse.last_pos.map(|(x, y)| (x as f32, y as f32));
         let egui_pos = self.gui.pointer_physical;
-        let (sx, sy) = egui_pos
-            .or(winit_pos)
-            .unwrap_or_default();
+        let (sx, sy) = egui_pos.or(winit_pos).unwrap_or_default();
 
         let inv_vp = self.camera.inv_view_proj();
         let (origin, dir) = crate::picking::screen_to_ray(sx, sy, w, h, inv_vp);
@@ -684,36 +761,49 @@ impl CadApp {
         vert_threshold: f32,
     ) {
         // Gather pick results without borrowing self mutably
-        let mut vert_hit: Option<(crate::scene::ObjectId, Handle<VertexData>, usize, f32, String)> = None;
-        let mut edge_hit: Option<(crate::scene::ObjectId, Handle<EdgeData>, usize, f32, String)> = None;
+        let mut vert_hit: Option<(
+            crate::scene::ObjectId,
+            Handle<VertexData>,
+            usize,
+            f32,
+            String,
+        )> = None;
+        let mut edge_hit: Option<(crate::scene::ObjectId, Handle<EdgeData>, usize, f32, String)> =
+            None;
         let mut face_hit: Option<(crate::scene::ObjectId, Handle<FaceData>, f32, String)> = None;
 
         for obj in self.scene.visible_objects() {
-            if let Some((idx, t)) = crate::picking::pick_vertex(
-                origin, dir, &obj.vertex_positions, vert_threshold,
-            ) {
+            if let Some((idx, t)) =
+                crate::picking::pick_vertex(origin, dir, &obj.vertex_positions, vert_threshold)
+            {
                 if let Some(&vh) = obj.vertex_handles.get(idx) {
-                    let is_closer = vert_hit.as_ref().is_none_or(|(_, _, _, best_t, _)| t < *best_t);
+                    let is_closer = vert_hit
+                        .as_ref()
+                        .is_none_or(|(_, _, _, best_t, _)| t < *best_t);
                     if is_closer {
                         vert_hit = Some((obj.id, vh, idx, t, obj.name.clone()));
                     }
                 }
             }
-            if let Some((idx, t)) = crate::picking::pick_edge(
-                origin, dir, &obj.edge_positions, edge_threshold,
-            ) {
+            if let Some((idx, t)) =
+                crate::picking::pick_edge(origin, dir, &obj.edge_positions, edge_threshold)
+            {
                 if let Some(&eh) = obj.edge_handles.get(idx) {
-                    let is_closer = edge_hit.as_ref().is_none_or(|(_, _, _, best_t, _)| t < *best_t);
+                    let is_closer = edge_hit
+                        .as_ref()
+                        .is_none_or(|(_, _, _, best_t, _)| t < *best_t);
                     if is_closer {
                         edge_hit = Some((obj.id, eh, idx, t, obj.name.clone()));
                     }
                 }
             }
-            if let Some(hit) = crate::picking::pick_triangle(
-                origin, dir, &obj.mesh.vertices, &obj.mesh.indices,
-            ) {
+            if let Some(hit) =
+                crate::picking::pick_triangle(origin, dir, &obj.mesh.vertices, &obj.mesh.indices)
+            {
                 if let Some(fh) = lookup_face(hit.triangle_index, &obj.face_tri_map) {
-                    let is_closer = face_hit.as_ref().is_none_or(|(_, _, best_t, _)| hit.distance < *best_t);
+                    let is_closer = face_hit
+                        .as_ref()
+                        .is_none_or(|(_, _, best_t, _)| hit.distance < *best_t);
                     if is_closer {
                         face_hit = Some((obj.id, fh, hit.distance, obj.name.clone()));
                     }
@@ -770,9 +860,9 @@ impl CadApp {
     fn pick_solid(&mut self, origin: [f32; 3], dir: [f32; 3]) {
         let mut best_hit: Option<(crate::scene::ObjectId, f32)> = None;
         for obj in self.scene.visible_objects() {
-            if let Some(hit) = crate::picking::pick_triangle(
-                origin, dir, &obj.mesh.vertices, &obj.mesh.indices,
-            ) {
+            if let Some(hit) =
+                crate::picking::pick_triangle(origin, dir, &obj.mesh.vertices, &obj.mesh.indices)
+            {
                 let is_closer = best_hit.as_ref().is_none_or(|(_, d)| hit.distance < *d);
                 if is_closer {
                     best_hit = Some((obj.id, hit.distance));
@@ -806,7 +896,6 @@ impl CadApp {
         }
     }
 
-
     // -- recent files ---------------------------------------------------------
 
     fn add_recent_file(&mut self, path: &str) {
@@ -820,14 +909,18 @@ impl CadApp {
     // -- preselection (hover) ------------------------------------------------
 
     fn update_preselection(&mut self) {
-        let (sx, sy) = self.gui.pointer_physical
+        let (sx, sy) = self
+            .gui
+            .pointer_physical
             .or(self.mouse.last_pos.map(|(x, y)| (x as f32, y as f32)))
             .unwrap_or_default();
         let Some(rt) = &self.runtime else { return };
         let size = rt.gpu.window.inner_size();
         let w = size.width as f32;
         let h = size.height as f32;
-        if w < 1.0 || h < 1.0 { return; }
+        if w < 1.0 || h < 1.0 {
+            return;
+        }
 
         let inv_vp = self.camera.inv_view_proj();
         let (origin, dir) = crate::picking::screen_to_ray(sx, sy, w, h, inv_vp);
@@ -844,15 +937,21 @@ impl CadApp {
 
         // Auto-preselection: vertex > edge > face > solid (same as auto-pick)
         for obj in self.scene.visible_objects() {
-            if let Some((idx, t)) = crate::picking::pick_vertex(origin, dir, &obj.vertex_positions, vert_threshold) {
+            if let Some((idx, t)) =
+                crate::picking::pick_vertex(origin, dir, &obj.vertex_positions, vert_threshold)
+            {
                 if let Some(&vh) = obj.vertex_handles.get(idx) {
-                    let is_closer = best_vertex.as_ref().is_none_or(|(_, _, best_t)| t < *best_t);
+                    let is_closer = best_vertex
+                        .as_ref()
+                        .is_none_or(|(_, _, best_t)| t < *best_t);
                     if is_closer {
                         best_vertex = Some((obj.id, SelectedEntity::Vertex(vh), t));
                     }
                 }
             }
-            if let Some((idx, t)) = crate::picking::pick_edge(origin, dir, &obj.edge_positions, edge_threshold) {
+            if let Some((idx, t)) =
+                crate::picking::pick_edge(origin, dir, &obj.edge_positions, edge_threshold)
+            {
                 if let Some(&eh) = obj.edge_handles.get(idx) {
                     let is_closer = best_edge.as_ref().is_none_or(|(_, _, best_t)| t < *best_t);
                     if is_closer {
@@ -860,14 +959,20 @@ impl CadApp {
                     }
                 }
             }
-            if let Some(hit) = crate::picking::pick_triangle(origin, dir, &obj.mesh.vertices, &obj.mesh.indices) {
+            if let Some(hit) =
+                crate::picking::pick_triangle(origin, dir, &obj.mesh.vertices, &obj.mesh.indices)
+            {
                 if let Some(fh) = lookup_face(hit.triangle_index, &obj.face_tri_map) {
-                    let is_closer = best_face.as_ref().is_none_or(|(_, _, best_t)| hit.distance < *best_t);
+                    let is_closer = best_face
+                        .as_ref()
+                        .is_none_or(|(_, _, best_t)| hit.distance < *best_t);
                     if is_closer {
                         best_face = Some((obj.id, SelectedEntity::Face(fh), hit.distance));
                     }
                 } else {
-                    let is_closer = best_solid.as_ref().is_none_or(|(_, best_t)| hit.distance < *best_t);
+                    let is_closer = best_solid
+                        .as_ref()
+                        .is_none_or(|(_, best_t)| hit.distance < *best_t);
                     if is_closer {
                         best_solid = Some((obj.id, hit.distance));
                     }
@@ -931,33 +1036,21 @@ impl CadApp {
         let s: String = msg.into();
         self.gui.status_message = s.clone();
         self.gui.log(ReportLevel::Info, s.clone());
-        self.gui.toasts.push(gui::Toast {
-            level: gui::ToastLevel::Success,
-            message: s,
-            created_at: std::time::Instant::now(),
-        });
+        self.gui.toast_success(s);
     }
 
     fn log_warning(&mut self, msg: impl Into<String>) {
         let s: String = msg.into();
         self.gui.status_message = s.clone();
         self.gui.log(ReportLevel::Warning, s.clone());
-        self.gui.toasts.push(gui::Toast {
-            level: gui::ToastLevel::Warning,
-            message: s,
-            created_at: std::time::Instant::now(),
-        });
+        self.gui.toast_warning(s);
     }
 
     fn log_error(&mut self, msg: impl Into<String>) {
         let s: String = msg.into();
         self.gui.status_message = s.clone();
         self.gui.log(ReportLevel::Error, s.clone());
-        self.gui.toasts.push(gui::Toast {
-            level: gui::ToastLevel::Error,
-            message: s,
-            created_at: std::time::Instant::now(),
-        });
+        self.gui.toast_error(s);
     }
 
     /// Lazily initialize the Lua script engine on first use.
@@ -977,15 +1070,12 @@ impl CadApp {
     /// Register built-in plugins if the registry is empty.
     fn register_builtin_plugins(&mut self) {
         if self.plugin_registry.is_empty() {
-            self.plugin_registry.register(
-                Box::new(cadkernel_modeling::ValidationPlugin::new()),
-            );
-            self.plugin_registry.register(
-                Box::new(cadkernel_modeling::AutoNamingPlugin::new()),
-            );
-            self.plugin_registry.register(
-                Box::new(cadkernel_modeling::StatisticsPlugin::new()),
-            );
+            self.plugin_registry
+                .register(Box::new(cadkernel_modeling::ValidationPlugin::new()));
+            self.plugin_registry
+                .register(Box::new(cadkernel_modeling::AutoNamingPlugin::new()));
+            self.plugin_registry
+                .register(Box::new(cadkernel_modeling::StatisticsPlugin::new()));
         }
     }
 
@@ -1003,7 +1093,12 @@ impl CadApp {
                     cadkernel_modeling::PluginState::Active => "Active".to_string(),
                     cadkernel_modeling::PluginState::Error(e) => format!("Error: {e}"),
                 };
-                (ps.id, ps.info.name.clone(), ps.info.version.clone(), state_str)
+                (
+                    ps.id,
+                    ps.info.name.clone(),
+                    ps.info.version.clone(),
+                    state_str,
+                )
             })
             .collect();
 
@@ -1042,12 +1137,14 @@ impl CadApp {
                     }
                     self.gui.invalidate_cache();
                     self.gui.selected_entities.clear();
+                    self.gui.scene_overlay.clear();
                     self.gui.current_file = None;
                     self.log_info("New model created");
                 }
 
                 GuiAction::OpenFile(path) | GuiAction::ImportFile(path) => {
-                    let ext = path.extension()
+                    let ext = path
+                        .extension()
                         .and_then(|e| e.to_str())
                         .unwrap_or("")
                         .to_lowercase();
@@ -1070,7 +1167,8 @@ impl CadApp {
                 }
 
                 GuiAction::SaveFile(path) => {
-                    let ext = path.extension()
+                    let ext = path
+                        .extension()
                         .and_then(|e| e.to_str())
                         .unwrap_or("")
                         .to_lowercase();
@@ -1084,7 +1182,11 @@ impl CadApp {
                 GuiAction::ExportStl(path) => {
                     self.export_mesh_to(&path);
                 }
-                GuiAction::ExportStlWithOptions { path, binary, scale } => {
+                GuiAction::ExportStlWithOptions {
+                    path,
+                    binary,
+                    scale,
+                } => {
                     if let Some(obj) = self.scene.selected_object() {
                         let mut mesh = obj.mesh.clone();
                         if (scale - 1.0).abs() > 1e-9 {
@@ -1097,12 +1199,16 @@ impl CadApp {
                         let result: Result<(), Box<dyn std::error::Error>> = if binary {
                             cadkernel_io::export_stl_binary(&mesh, &path).map_err(|e| e.into())
                         } else {
-                            cadkernel_io::export_stl_ascii(&mesh, &path, &obj.name).map_err(|e| e.into())
+                            cadkernel_io::export_stl_ascii(&mesh, &path, &obj.name)
+                                .map_err(|e| e.into())
                         };
                         match result {
                             Ok(()) => {
                                 let fmt = if binary { "Binary" } else { "ASCII" };
-                                self.log_info(format!("Exported {fmt} STL → {} (scale: {scale:.2}x)", path.display()));
+                                self.log_info(format!(
+                                    "Exported {fmt} STL → {} (scale: {scale:.2}x)",
+                                    path.display()
+                                ));
                             }
                             Err(e) => self.log_error(format!("STL export error: {e}")),
                         }
@@ -1139,8 +1245,13 @@ impl CadApp {
                         Ok(r) => {
                             self.add_to_scene(
                                 &format!("Box ({width}×{height}×{depth})"),
-                                model, r.solid,
-                                Some(crate::scene::CreationParams::Box { width, height, depth }),
+                                model,
+                                r.solid,
+                                Some(crate::scene::CreationParams::Box {
+                                    width,
+                                    height,
+                                    depth,
+                                }),
                             );
                             self.log_info(format!("Created box ({width} × {height} × {depth})"));
                         }
@@ -1157,7 +1268,8 @@ impl CadApp {
                         Ok(r) => {
                             self.add_to_scene(
                                 &format!("Cylinder (r={radius}, h={height})"),
-                                model, r.solid,
+                                model,
+                                r.solid,
                                 Some(crate::scene::CreationParams::Cylinder { radius, height }),
                             );
                             self.log_info(format!("Created cylinder (r={radius}, h={height})"));
@@ -1175,7 +1287,8 @@ impl CadApp {
                         Ok(r) => {
                             self.add_to_scene(
                                 &format!("Sphere (r={radius})"),
-                                model, r.solid,
+                                model,
+                                r.solid,
                                 Some(crate::scene::CreationParams::Sphere { radius }),
                             );
                             self.log_info(format!("Created sphere (r={radius})"));
@@ -1209,8 +1322,13 @@ impl CadApp {
                             };
                             self.add_to_scene(
                                 &format!("Cone (r1={base_radius}, r2={top_radius}, h={height})"),
-                                model, r.solid,
-                                Some(crate::scene::CreationParams::Cone { base_radius, top_radius, height }),
+                                model,
+                                r.solid,
+                                Some(crate::scene::CreationParams::Cone {
+                                    base_radius,
+                                    top_radius,
+                                    height,
+                                }),
                             );
                             self.log_info(format!(
                                 "Created {kind} (r1={base_radius}, r2={top_radius}, h={height})"
@@ -1239,10 +1357,16 @@ impl CadApp {
                         Ok(r) => {
                             self.add_to_scene(
                                 &format!("Torus (R={major_radius}, r={minor_radius})"),
-                                model, r.solid,
-                                Some(crate::scene::CreationParams::Torus { major_radius, minor_radius }),
+                                model,
+                                r.solid,
+                                Some(crate::scene::CreationParams::Torus {
+                                    major_radius,
+                                    minor_radius,
+                                }),
                             );
-                            self.log_info(format!("Created torus (R={major_radius}, r={minor_radius})"));
+                            self.log_info(format!(
+                                "Created torus (R={major_radius}, r={minor_radius})"
+                            ));
                         }
                         Err(e) => {
                             self.log_error(format!("CreateTorus error: {e}"));
@@ -1268,8 +1392,13 @@ impl CadApp {
                         Ok(r) => {
                             self.add_to_scene(
                                 &format!("Tube (R={outer_radius}, r={inner_radius}, h={height})"),
-                                model, r.solid,
-                                Some(crate::scene::CreationParams::Tube { outer_radius, inner_radius, height }),
+                                model,
+                                r.solid,
+                                Some(crate::scene::CreationParams::Tube {
+                                    outer_radius,
+                                    inner_radius,
+                                    height,
+                                }),
                             );
                             self.log_info(format!(
                                 "Created tube (R={outer_radius}, r={inner_radius}, h={height})"
@@ -1292,10 +1421,17 @@ impl CadApp {
                         Ok(r) => {
                             self.add_to_scene(
                                 &format!("{sides}-sided Prism"),
-                                model, r.solid,
-                                Some(crate::scene::CreationParams::Prism { radius, height, sides }),
+                                model,
+                                r.solid,
+                                Some(crate::scene::CreationParams::Prism {
+                                    radius,
+                                    height,
+                                    sides,
+                                }),
                             );
-                            self.log_info(format!("Created {sides}-sided prism (r={radius}, h={height})"));
+                            self.log_info(format!(
+                                "Created {sides}-sided prism (r={radius}, h={height})"
+                            ));
                         }
                         Err(e) => {
                             self.log_error(format!("CreatePrism error: {e}"));
@@ -1316,10 +1452,19 @@ impl CadApp {
                         Ok(r) => {
                             self.add_to_scene(
                                 &format!("Wedge ({dx}×{dy}×{dz})"),
-                                model, r.solid,
-                                Some(crate::scene::CreationParams::Wedge { dx, dy, dz, dx2, dy2 }),
+                                model,
+                                r.solid,
+                                Some(crate::scene::CreationParams::Wedge {
+                                    dx,
+                                    dy,
+                                    dz,
+                                    dx2,
+                                    dy2,
+                                }),
                             );
-                            self.log_info(format!("Created wedge ({dx}×{dy}×{dz}, top {dx2}×{dy2})"));
+                            self.log_info(format!(
+                                "Created wedge ({dx}×{dy}×{dz}, top {dx2}×{dy2})"
+                            ));
                         }
                         Err(e) => {
                             self.log_error(format!("CreateWedge error: {e}"));
@@ -1334,7 +1479,8 @@ impl CadApp {
                         Ok(r) => {
                             self.add_to_scene(
                                 &format!("Ellipsoid ({rx}×{ry}×{rz})"),
-                                model, r.solid,
+                                model,
+                                r.solid,
                                 Some(crate::scene::CreationParams::Ellipsoid { rx, ry, rz }),
                             );
                             self.log_info(format!("Created ellipsoid ({rx}×{ry}×{rz})"));
@@ -1366,8 +1512,14 @@ impl CadApp {
                         Ok(r) => {
                             self.add_to_scene(
                                 &format!("Helix (R={radius})"),
-                                model, r.solid,
-                                Some(crate::scene::CreationParams::Helix { radius, pitch, turns, tube_radius }),
+                                model,
+                                r.solid,
+                                Some(crate::scene::CreationParams::Helix {
+                                    radius,
+                                    pitch,
+                                    turns,
+                                    tube_radius,
+                                }),
                             );
                             self.log_info(format!(
                                 "Created helix (R={radius}, pitch={pitch}, turns={turns})"
@@ -1533,8 +1685,11 @@ impl CadApp {
                     let current = self.take_snapshot();
                     if let Some(snap) = self.command_stack.undo(current) {
                         self.restore_snapshot(snap);
-                        let desc = self.command_stack.redo_description()
-                            .unwrap_or("action").to_string();
+                        let desc = self
+                            .command_stack
+                            .redo_description()
+                            .unwrap_or("action")
+                            .to_string();
                         self.log_info(format!("Undo: {desc}"));
                     } else {
                         self.gui.status_message = "Nothing to undo".into();
@@ -1544,8 +1699,11 @@ impl CadApp {
                     let current = self.take_snapshot();
                     if let Some(snap) = self.command_stack.redo(current) {
                         self.restore_snapshot(snap);
-                        let desc = self.command_stack.undo_description()
-                            .unwrap_or("action").to_string();
+                        let desc = self
+                            .command_stack
+                            .undo_description()
+                            .unwrap_or("action")
+                            .to_string();
                         self.log_info(format!("Redo: {desc}"));
                     } else {
                         self.gui.status_message = "Nothing to redo".into();
@@ -1553,11 +1711,7 @@ impl CadApp {
                 }
                 GuiAction::StatusMessage(msg) => {
                     self.gui.status_message = msg.clone();
-                    self.gui.toasts.push(gui::Toast {
-                        level: gui::ToastLevel::Info,
-                        message: msg,
-                        created_at: std::time::Instant::now(),
-                    });
+                    self.gui.toast_info(msg);
                 }
 
                 // -- Sketcher workbench --
@@ -1570,36 +1724,32 @@ impl CadApp {
                 GuiAction::Mesh(action) => self.process_mesh_action(action),
 
                 // -- Export formats --
-                GuiAction::ExportStep(path) => {
-                    match export_step(&self.model) {
-                        Ok(content) => match std::fs::write(&path, &content) {
-                            Ok(()) => {
-                                self.log_info(format!("Exported STEP → {}", path.display()));
-                            }
-                            Err(e) => {
-                                self.log_error(format!("Write error: {e}"));
-                            }
-                        },
-                        Err(e) => {
-                            self.log_error(format!("STEP export error: {e}"));
+                GuiAction::ExportStep(path) => match export_step(&self.model) {
+                    Ok(content) => match std::fs::write(&path, &content) {
+                        Ok(()) => {
+                            self.log_info(format!("Exported STEP → {}", path.display()));
                         }
-                    }
-                }
-                GuiAction::ExportIges(path) => {
-                    match export_iges(&self.model) {
-                        Ok(content) => match std::fs::write(&path, &content) {
-                            Ok(()) => {
-                                self.log_info(format!("Exported IGES → {}", path.display()));
-                            }
-                            Err(e) => {
-                                self.log_error(format!("Write error: {e}"));
-                            }
-                        },
                         Err(e) => {
-                            self.log_error(format!("IGES export error: {e}"));
+                            self.log_error(format!("Write error: {e}"));
                         }
+                    },
+                    Err(e) => {
+                        self.log_error(format!("STEP export error: {e}"));
                     }
-                }
+                },
+                GuiAction::ExportIges(path) => match export_iges(&self.model) {
+                    Ok(content) => match std::fs::write(&path, &content) {
+                        Ok(()) => {
+                            self.log_info(format!("Exported IGES → {}", path.display()));
+                        }
+                        Err(e) => {
+                            self.log_error(format!("Write error: {e}"));
+                        }
+                    },
+                    Err(e) => {
+                        self.log_error(format!("IGES export error: {e}"));
+                    }
+                },
                 GuiAction::ExportDxf(path) => {
                     if let Some(mesh) = &self.current_mesh {
                         match export_dxf(mesh) {
@@ -1666,24 +1816,22 @@ impl CadApp {
                         self.gui.status_message = "No mesh to export".into();
                     }
                 }
-                GuiAction::ExportBrep(path) => {
-                    match export_brep(&self.model) {
-                        Ok(content) => {
-                            let path_str = path.to_str().unwrap_or("");
-                            match write_brep(path_str, &content) {
-                                Ok(()) => {
-                                    self.log_info(format!("Exported BREP → {}", path.display()));
-                                }
-                                Err(e) => {
-                                    self.log_error(format!("Write error: {e}"));
-                                }
+                GuiAction::ExportBrep(path) => match export_brep(&self.model) {
+                    Ok(content) => {
+                        let path_str = path.to_str().unwrap_or("");
+                        match write_brep(path_str, &content) {
+                            Ok(()) => {
+                                self.log_info(format!("Exported BREP → {}", path.display()));
+                            }
+                            Err(e) => {
+                                self.log_error(format!("Write error: {e}"));
                             }
                         }
-                        Err(e) => {
-                            self.log_error(format!("BREP export error: {e}"));
-                        }
                     }
-                }
+                    Err(e) => {
+                        self.log_error(format!("BREP export error: {e}"));
+                    }
+                },
 
                 // -- Boolean operations with second primitive --
                 GuiAction::BooleanUnionWith {
@@ -1771,12 +1919,7 @@ impl CadApp {
                                 vec![]
                             }
                         };
-                        match shell_solid(
-                            &mut self.model,
-                            solid,
-                            &faces_to_remove,
-                            thickness,
-                        ) {
+                        match shell_solid(&mut self.model, solid, &faces_to_remove, thickness) {
                             Ok(r) => {
                                 let mesh = tessellate_solid(&self.model, r.solid);
                                 self.current_solid = Some(r.solid);
@@ -1794,11 +1937,12 @@ impl CadApp {
 
                 GuiAction::FilletAllEdges { radius } => {
                     if let Some(solid) = self.current_solid {
-                        let edge_pairs = selected_edge_pairs(&self.gui.selected_entities, &self.model)
-                            .unwrap_or_else(|| {
-                                let pairs = self.collect_edge_pairs(solid);
-                                pairs.first().copied().into_iter().collect()
-                            });
+                        let edge_pairs =
+                            selected_edge_pairs(&self.gui.selected_entities, &self.model)
+                                .unwrap_or_else(|| {
+                                    let pairs = self.collect_edge_pairs(solid);
+                                    pairs.first().copied().into_iter().collect()
+                                });
                         if edge_pairs.is_empty() {
                             self.gui.status_message = "No edges found for fillet".into();
                         } else {
@@ -1806,14 +1950,21 @@ impl CadApp {
                             let mut ok_count = 0usize;
                             for (v1, v2) in &edge_pairs {
                                 match fillet_edge(&mut self.model, current, *v1, *v2, radius) {
-                                    Ok(r) => { current = r.solid; ok_count += 1; }
-                                    Err(e) => { self.log_error(format!("Fillet error: {e}")); }
+                                    Ok(r) => {
+                                        current = r.solid;
+                                        ok_count += 1;
+                                    }
+                                    Err(e) => {
+                                        self.log_error(format!("Fillet error: {e}"));
+                                    }
                                 }
                             }
                             if ok_count > 0 {
                                 let mesh = tessellate_solid(&self.model, current);
                                 self.current_solid = Some(current);
-                                self.log_info(format!("Fillet: r={radius:.2} ({ok_count} edge(s))"));
+                                self.log_info(format!(
+                                    "Fillet: r={radius:.2} ({ok_count} edge(s))"
+                                ));
                                 self.set_mesh(mesh);
                                 self.gui.selected_entities.clear();
                             }
@@ -1825,11 +1976,12 @@ impl CadApp {
 
                 GuiAction::ChamferAllEdges { distance } => {
                     if let Some(solid) = self.current_solid {
-                        let edge_pairs = selected_edge_pairs(&self.gui.selected_entities, &self.model)
-                            .unwrap_or_else(|| {
-                                let pairs = self.collect_edge_pairs(solid);
-                                pairs.first().copied().into_iter().collect()
-                            });
+                        let edge_pairs =
+                            selected_edge_pairs(&self.gui.selected_entities, &self.model)
+                                .unwrap_or_else(|| {
+                                    let pairs = self.collect_edge_pairs(solid);
+                                    pairs.first().copied().into_iter().collect()
+                                });
                         if edge_pairs.is_empty() {
                             self.gui.status_message = "No edges found for chamfer".into();
                         } else {
@@ -1837,14 +1989,21 @@ impl CadApp {
                             let mut ok_count = 0usize;
                             for (v1, v2) in &edge_pairs {
                                 match chamfer_edge(&mut self.model, current, *v1, *v2, distance) {
-                                    Ok(r) => { current = r.solid; ok_count += 1; }
-                                    Err(e) => { self.log_error(format!("Chamfer error: {e}")); }
+                                    Ok(r) => {
+                                        current = r.solid;
+                                        ok_count += 1;
+                                    }
+                                    Err(e) => {
+                                        self.log_error(format!("Chamfer error: {e}"));
+                                    }
                                 }
                             }
                             if ok_count > 0 {
                                 let mesh = tessellate_solid(&self.model, current);
                                 self.current_solid = Some(current);
-                                self.log_info(format!("Chamfer: d={distance:.2} ({ok_count} edge(s))"));
+                                self.log_info(format!(
+                                    "Chamfer: d={distance:.2} ({ok_count} edge(s))"
+                                ));
                                 self.set_mesh(mesh);
                                 self.gui.selected_entities.clear();
                             }
@@ -1947,10 +2106,8 @@ impl CadApp {
                         self.gui.status_message = "No edge loop found".into();
                     } else {
                         let count = loop_edges.len();
-                        self.gui.selected_entities = loop_edges
-                            .into_iter()
-                            .map(SelectedEntity::Edge)
-                            .collect();
+                        self.gui.selected_entities =
+                            loop_edges.into_iter().map(SelectedEntity::Edge).collect();
                         self.gui.status_message = format!("Edge loop: {count} edges");
                     }
                 }
@@ -1960,10 +2117,8 @@ impl CadApp {
                         self.gui.status_message = "No edge ring found".into();
                     } else {
                         let count = ring_edges.len();
-                        self.gui.selected_entities = ring_edges
-                            .into_iter()
-                            .map(SelectedEntity::Edge)
-                            .collect();
+                        self.gui.selected_entities =
+                            ring_edges.into_iter().map(SelectedEntity::Edge).collect();
                         self.gui.status_message = format!("Edge ring: {count} edges");
                     }
                 }
@@ -1973,10 +2128,8 @@ impl CadApp {
                         self.gui.status_message = "No face loop found".into();
                     } else {
                         let count = loop_faces.len();
-                        self.gui.selected_entities = loop_faces
-                            .into_iter()
-                            .map(SelectedEntity::Face)
-                            .collect();
+                        self.gui.selected_entities =
+                            loop_faces.into_iter().map(SelectedEntity::Face).collect();
                         self.gui.status_message = format!("Face loop: {count} faces");
                     }
                 }
@@ -2019,12 +2172,8 @@ impl CadApp {
                     self.snapshot_before("Duplicate object");
                     if let Some(obj) = self.scene.get(id).cloned() {
                         let new_name = format!("{} (copy)", obj.name);
-                        self.scene.add_object(
-                            new_name,
-                            obj.model,
-                            obj.solid,
-                            obj.params,
-                        );
+                        self.scene
+                            .add_object(new_name, obj.model, obj.solid, obj.params);
                         self.rebuild_scene_gpu();
                         self.log_info("Object duplicated");
                     }
@@ -2049,60 +2198,215 @@ impl CadApp {
                     use crate::scene::CreationParams;
                     // Convert ActiveTask to CreationParams
                     let params = match &task {
-                        gui::task_panel::ActiveTask::Box { width, height, depth, .. } =>
-                            Some(CreationParams::Box { width: *width, height: *height, depth: *depth }),
-                        gui::task_panel::ActiveTask::Cylinder { radius, height, .. } =>
-                            Some(CreationParams::Cylinder { radius: *radius, height: *height }),
-                        gui::task_panel::ActiveTask::Sphere { radius, .. } =>
-                            Some(CreationParams::Sphere { radius: *radius }),
-                        gui::task_panel::ActiveTask::Cone { base_radius, top_radius, height, .. } =>
-                            Some(CreationParams::Cone { base_radius: *base_radius, top_radius: *top_radius, height: *height }),
-                        gui::task_panel::ActiveTask::Torus { major_radius, minor_radius, .. } =>
-                            Some(CreationParams::Torus { major_radius: *major_radius, minor_radius: *minor_radius }),
-                        gui::task_panel::ActiveTask::Tube { outer_radius, inner_radius, height, .. } =>
-                            Some(CreationParams::Tube { outer_radius: *outer_radius, inner_radius: *inner_radius, height: *height }),
-                        gui::task_panel::ActiveTask::Prism { radius, height, sides, .. } =>
-                            Some(CreationParams::Prism { radius: *radius, height: *height, sides: *sides }),
-                        gui::task_panel::ActiveTask::Wedge { dx, dy, dz, dx2, dy2, .. } =>
-                            Some(CreationParams::Wedge { dx: *dx, dy: *dy, dz: *dz, dx2: *dx2, dy2: *dy2 }),
-                        gui::task_panel::ActiveTask::Ellipsoid { rx, ry, rz, .. } =>
-                            Some(CreationParams::Ellipsoid { rx: *rx, ry: *ry, rz: *rz }),
-                        gui::task_panel::ActiveTask::Helix { radius, pitch, turns, tube_radius, .. } =>
-                            Some(CreationParams::Helix { radius: *radius, pitch: *pitch, turns: *turns, tube_radius: *tube_radius }),
-                        gui::task_panel::ActiveTask::Fillet { radius, .. } =>
-                            Some(CreationParams::Fillet { radius: *radius }),
-                        gui::task_panel::ActiveTask::Chamfer { distance, .. } =>
-                            Some(CreationParams::Chamfer { distance: *distance }),
-                        gui::task_panel::ActiveTask::Shell { thickness, .. } =>
-                            Some(CreationParams::Shell { thickness: *thickness }),
-                        gui::task_panel::ActiveTask::MirrorOp { plane, .. } =>
-                            Some(CreationParams::Mirror { plane: *plane }),
-                        gui::task_panel::ActiveTask::Pattern { count, spacing, axis, .. } =>
-                            Some(CreationParams::Pattern { count: *count, spacing: *spacing, axis: *axis }),
-                        gui::task_panel::ActiveTask::Sprocket { teeth, roller_diameter, pitch, bore, .. } =>
-                            Some(CreationParams::Sprocket { teeth: *teeth, roller_diameter: *roller_diameter, pitch: *pitch, bore: *bore }),
-                        gui::task_panel::ActiveTask::InvoluteGear { teeth, module_val, pressure_angle, .. } =>
-                            Some(CreationParams::InvoluteGear { teeth: *teeth, module_val: *module_val, pressure_angle: *pressure_angle }),
-                        gui::task_panel::ActiveTask::DraftLine { length, angle, .. } =>
-                            Some(CreationParams::DraftLine { length: *length, angle: *angle }),
-                        gui::task_panel::ActiveTask::DraftCircle { radius, .. } =>
-                            Some(CreationParams::DraftCircle { radius: *radius }),
-                        gui::task_panel::ActiveTask::DraftRectangle { width, height, .. } =>
-                            Some(CreationParams::DraftRectangle { width: *width, height: *height }),
-                        gui::task_panel::ActiveTask::DraftPolygon { radius, sides, .. } =>
-                            Some(CreationParams::DraftPolygon { radius: *radius, sides: *sides }),
-                        gui::task_panel::ActiveTask::DraftArc { radius, start_angle, end_angle, .. } =>
-                            Some(CreationParams::DraftArc { radius: *radius, start_angle: *start_angle, end_angle: *end_angle }),
-                        gui::task_panel::ActiveTask::DraftEllipse { rx, ry, .. } =>
-                            Some(CreationParams::DraftEllipse { rx: *rx, ry: *ry }),
-                        gui::task_panel::ActiveTask::SurfacePipe { radius, length, .. } =>
-                            Some(CreationParams::SurfacePipe { radius: *radius, length: *length }),
-                        gui::task_panel::ActiveTask::SurfaceRuled { width, depth, offset, .. } =>
-                            Some(CreationParams::SurfaceRuled { width: *width, depth: *depth, offset: *offset }),
-                        gui::task_panel::ActiveTask::BooleanOp { op_type, width, height, depth, offset_x, offset_y, offset_z, .. } =>
-                            Some(CreationParams::BooleanOp { op_type: *op_type, width: *width, height: *height, depth: *depth, offset_x: *offset_x, offset_y: *offset_y, offset_z: *offset_z }),
-                        gui::task_panel::ActiveTask::ScaleOp { factor, .. } =>
-                            Some(CreationParams::ScaleOp { factor: *factor }),
+                        gui::task_panel::ActiveTask::Box {
+                            width,
+                            height,
+                            depth,
+                            ..
+                        } => Some(CreationParams::Box {
+                            width: *width,
+                            height: *height,
+                            depth: *depth,
+                        }),
+                        gui::task_panel::ActiveTask::Cylinder { radius, height, .. } => {
+                            Some(CreationParams::Cylinder {
+                                radius: *radius,
+                                height: *height,
+                            })
+                        }
+                        gui::task_panel::ActiveTask::Sphere { radius, .. } => {
+                            Some(CreationParams::Sphere { radius: *radius })
+                        }
+                        gui::task_panel::ActiveTask::Cone {
+                            base_radius,
+                            top_radius,
+                            height,
+                            ..
+                        } => Some(CreationParams::Cone {
+                            base_radius: *base_radius,
+                            top_radius: *top_radius,
+                            height: *height,
+                        }),
+                        gui::task_panel::ActiveTask::Torus {
+                            major_radius,
+                            minor_radius,
+                            ..
+                        } => Some(CreationParams::Torus {
+                            major_radius: *major_radius,
+                            minor_radius: *minor_radius,
+                        }),
+                        gui::task_panel::ActiveTask::Tube {
+                            outer_radius,
+                            inner_radius,
+                            height,
+                            ..
+                        } => Some(CreationParams::Tube {
+                            outer_radius: *outer_radius,
+                            inner_radius: *inner_radius,
+                            height: *height,
+                        }),
+                        gui::task_panel::ActiveTask::Prism {
+                            radius,
+                            height,
+                            sides,
+                            ..
+                        } => Some(CreationParams::Prism {
+                            radius: *radius,
+                            height: *height,
+                            sides: *sides,
+                        }),
+                        gui::task_panel::ActiveTask::Wedge {
+                            dx,
+                            dy,
+                            dz,
+                            dx2,
+                            dy2,
+                            ..
+                        } => Some(CreationParams::Wedge {
+                            dx: *dx,
+                            dy: *dy,
+                            dz: *dz,
+                            dx2: *dx2,
+                            dy2: *dy2,
+                        }),
+                        gui::task_panel::ActiveTask::Ellipsoid { rx, ry, rz, .. } => {
+                            Some(CreationParams::Ellipsoid {
+                                rx: *rx,
+                                ry: *ry,
+                                rz: *rz,
+                            })
+                        }
+                        gui::task_panel::ActiveTask::Helix {
+                            radius,
+                            pitch,
+                            turns,
+                            tube_radius,
+                            ..
+                        } => Some(CreationParams::Helix {
+                            radius: *radius,
+                            pitch: *pitch,
+                            turns: *turns,
+                            tube_radius: *tube_radius,
+                        }),
+                        gui::task_panel::ActiveTask::Fillet { radius, .. } => {
+                            Some(CreationParams::Fillet { radius: *radius })
+                        }
+                        gui::task_panel::ActiveTask::Chamfer { distance, .. } => {
+                            Some(CreationParams::Chamfer {
+                                distance: *distance,
+                            })
+                        }
+                        gui::task_panel::ActiveTask::Shell { thickness, .. } => {
+                            Some(CreationParams::Shell {
+                                thickness: *thickness,
+                            })
+                        }
+                        gui::task_panel::ActiveTask::MirrorOp { plane, .. } => {
+                            Some(CreationParams::Mirror { plane: *plane })
+                        }
+                        gui::task_panel::ActiveTask::Pattern {
+                            count,
+                            spacing,
+                            axis,
+                            ..
+                        } => Some(CreationParams::Pattern {
+                            count: *count,
+                            spacing: *spacing,
+                            axis: *axis,
+                        }),
+                        gui::task_panel::ActiveTask::Sprocket {
+                            teeth,
+                            roller_diameter,
+                            pitch,
+                            bore,
+                            ..
+                        } => Some(CreationParams::Sprocket {
+                            teeth: *teeth,
+                            roller_diameter: *roller_diameter,
+                            pitch: *pitch,
+                            bore: *bore,
+                        }),
+                        gui::task_panel::ActiveTask::InvoluteGear {
+                            teeth,
+                            module_val,
+                            pressure_angle,
+                            ..
+                        } => Some(CreationParams::InvoluteGear {
+                            teeth: *teeth,
+                            module_val: *module_val,
+                            pressure_angle: *pressure_angle,
+                        }),
+                        gui::task_panel::ActiveTask::DraftLine { length, angle, .. } => {
+                            Some(CreationParams::DraftLine {
+                                length: *length,
+                                angle: *angle,
+                            })
+                        }
+                        gui::task_panel::ActiveTask::DraftCircle { radius, .. } => {
+                            Some(CreationParams::DraftCircle { radius: *radius })
+                        }
+                        gui::task_panel::ActiveTask::DraftRectangle { width, height, .. } => {
+                            Some(CreationParams::DraftRectangle {
+                                width: *width,
+                                height: *height,
+                            })
+                        }
+                        gui::task_panel::ActiveTask::DraftPolygon { radius, sides, .. } => {
+                            Some(CreationParams::DraftPolygon {
+                                radius: *radius,
+                                sides: *sides,
+                            })
+                        }
+                        gui::task_panel::ActiveTask::DraftArc {
+                            radius,
+                            start_angle,
+                            end_angle,
+                            ..
+                        } => Some(CreationParams::DraftArc {
+                            radius: *radius,
+                            start_angle: *start_angle,
+                            end_angle: *end_angle,
+                        }),
+                        gui::task_panel::ActiveTask::DraftEllipse { rx, ry, .. } => {
+                            Some(CreationParams::DraftEllipse { rx: *rx, ry: *ry })
+                        }
+                        gui::task_panel::ActiveTask::SurfacePipe { radius, length, .. } => {
+                            Some(CreationParams::SurfacePipe {
+                                radius: *radius,
+                                length: *length,
+                            })
+                        }
+                        gui::task_panel::ActiveTask::SurfaceRuled {
+                            width,
+                            depth,
+                            offset,
+                            ..
+                        } => Some(CreationParams::SurfaceRuled {
+                            width: *width,
+                            depth: *depth,
+                            offset: *offset,
+                        }),
+                        gui::task_panel::ActiveTask::BooleanOp {
+                            op_type,
+                            width,
+                            height,
+                            depth,
+                            offset_x,
+                            offset_y,
+                            offset_z,
+                            ..
+                        } => Some(CreationParams::BooleanOp {
+                            op_type: *op_type,
+                            width: *width,
+                            height: *height,
+                            depth: *depth,
+                            offset_x: *offset_x,
+                            offset_y: *offset_y,
+                            offset_z: *offset_z,
+                        }),
+                        gui::task_panel::ActiveTask::ScaleOp { factor, .. } => {
+                            Some(CreationParams::ScaleOp { factor: *factor })
+                        }
                         // Feature operations don't have direct primitive rebuilds
                         gui::task_panel::ActiveTask::Pad { .. }
                         | gui::task_panel::ActiveTask::Pocket { .. }
@@ -2182,23 +2486,51 @@ impl CadApp {
                         self.log_info(format!("Moved {name} by ({dx:.1}, {dy:.1}, {dz:.1})"));
                     }
                 }
-                GuiAction::RotateObject { id, axis, angle_deg } => {
+                GuiAction::RotateObject {
+                    id,
+                    axis,
+                    angle_deg,
+                } => {
                     self.snapshot_before("Rotate object");
                     if let Some(obj) = self.scene.get_mut(id) {
                         let angle = angle_deg.to_radians();
                         let (ca, sa) = (angle.cos(), angle.sin());
                         let rotate_pt = |p: cadkernel_math::Point3| -> cadkernel_math::Point3 {
                             match axis {
-                                0 => cadkernel_math::Point3::new(p.x, p.y * ca - p.z * sa, p.y * sa + p.z * ca),
-                                1 => cadkernel_math::Point3::new(p.x * ca + p.z * sa, p.y, -p.x * sa + p.z * ca),
-                                _ => cadkernel_math::Point3::new(p.x * ca - p.y * sa, p.x * sa + p.y * ca, p.z),
+                                0 => cadkernel_math::Point3::new(
+                                    p.x,
+                                    p.y * ca - p.z * sa,
+                                    p.y * sa + p.z * ca,
+                                ),
+                                1 => cadkernel_math::Point3::new(
+                                    p.x * ca + p.z * sa,
+                                    p.y,
+                                    -p.x * sa + p.z * ca,
+                                ),
+                                _ => cadkernel_math::Point3::new(
+                                    p.x * ca - p.y * sa,
+                                    p.x * sa + p.y * ca,
+                                    p.z,
+                                ),
                             }
                         };
                         let rotate_vec = |v: cadkernel_math::Vec3| -> cadkernel_math::Vec3 {
                             match axis {
-                                0 => cadkernel_math::Vec3::new(v.x, v.y * ca - v.z * sa, v.y * sa + v.z * ca),
-                                1 => cadkernel_math::Vec3::new(v.x * ca + v.z * sa, v.y, -v.x * sa + v.z * ca),
-                                _ => cadkernel_math::Vec3::new(v.x * ca - v.y * sa, v.x * sa + v.y * ca, v.z),
+                                0 => cadkernel_math::Vec3::new(
+                                    v.x,
+                                    v.y * ca - v.z * sa,
+                                    v.y * sa + v.z * ca,
+                                ),
+                                1 => cadkernel_math::Vec3::new(
+                                    v.x * ca + v.z * sa,
+                                    v.y,
+                                    -v.x * sa + v.z * ca,
+                                ),
+                                _ => cadkernel_math::Vec3::new(
+                                    v.x * ca - v.y * sa,
+                                    v.x * sa + v.y * ca,
+                                    v.z,
+                                ),
                             }
                         };
                         for v in &mut obj.mesh.vertices {
@@ -2221,11 +2553,19 @@ impl CadApp {
                     self.snapshot_before("Scale object");
                     if let Some(obj) = self.scene.get_mut(id) {
                         for v in &mut obj.mesh.vertices {
-                            *v = cadkernel_math::Point3::new(v.x * factor, v.y * factor, v.z * factor);
+                            *v = cadkernel_math::Point3::new(
+                                v.x * factor,
+                                v.y * factor,
+                                v.z * factor,
+                            );
                         }
                         for v in obj.model.vertices.iter_mut() {
                             let p = &mut v.1.point;
-                            *p = cadkernel_math::Point3::new(p.x * factor, p.y * factor, p.z * factor);
+                            *p = cadkernel_math::Point3::new(
+                                p.x * factor,
+                                p.y * factor,
+                                p.z * factor,
+                            );
                         }
                         obj.vertices = crate::render::mesh_to_vertices(&obj.mesh);
                         let name = obj.name.clone();
@@ -2241,7 +2581,9 @@ impl CadApp {
                 }
 
                 // -- Scene boolean operations --
-                GuiAction::BooleanSceneUnion | GuiAction::BooleanSceneSubtract | GuiAction::BooleanSceneIntersect => {
+                GuiAction::BooleanSceneUnion
+                | GuiAction::BooleanSceneSubtract
+                | GuiAction::BooleanSceneIntersect => {
                     let ids = self.scene.selected_ids();
                     if ids.len() >= 2 {
                         let op = match action {
@@ -2255,7 +2597,8 @@ impl CadApp {
                             self.snapshot_before("Boolean operation");
                             match boolean_op(&a.model, a.solid, &b.model, b.solid, op) {
                                 Ok(result_model) => {
-                                    let first_solid = result_model.solids.iter().next().map(|(h, _)| h);
+                                    let first_solid =
+                                        result_model.solids.iter().next().map(|(h, _)| h);
                                     if let Some(sh) = first_solid {
                                         let op_name = match op {
                                             BooleanOp::Union => "Union",
@@ -2266,8 +2609,11 @@ impl CadApp {
                                         self.scene.remove_object(ids[1]);
                                         self.add_to_scene(
                                             &format!("{op_name}({}, {})", a.name, b.name),
-                                            result_model, sh,
-                                            Some(crate::scene::CreationParams::Boolean { op: op_name.into() }),
+                                            result_model,
+                                            sh,
+                                            Some(crate::scene::CreationParams::Boolean {
+                                                op: op_name.into(),
+                                            }),
                                         );
                                         self.log_info(format!("Boolean {op_name} completed"));
                                     }
@@ -2370,7 +2716,9 @@ impl CadApp {
                 GuiAction::SaveBookmark(name) => {
                     use crate::nav::ViewBookmark;
                     // Overwrite if name exists
-                    if let Some(existing) = self.nav.view_bookmarks.iter_mut().find(|b| b.name == name) {
+                    if let Some(existing) =
+                        self.nav.view_bookmarks.iter_mut().find(|b| b.name == name)
+                    {
                         existing.yaw = self.camera.yaw;
                         existing.pitch = self.camera.pitch;
                         existing.roll = self.camera.roll;
@@ -2388,9 +2736,19 @@ impl CadApp {
                     } else {
                         self.log_warning("Maximum 20 bookmarks reached");
                     }
-                    self.gui.nav_bookmarks = self.nav.view_bookmarks.iter().map(|b| {
-                        (b.name.clone(), b.yaw.to_degrees(), b.pitch.to_degrees(), b.distance)
-                    }).collect();
+                    self.gui.nav_bookmarks = self
+                        .nav
+                        .view_bookmarks
+                        .iter()
+                        .map(|b| {
+                            (
+                                b.name.clone(),
+                                b.yaw.to_degrees(),
+                                b.pitch.to_degrees(),
+                                b.distance,
+                            )
+                        })
+                        .collect();
                     self.log_info(format!("Bookmark saved: {name}"));
                 }
                 GuiAction::RestoreBookmark(idx) => {
@@ -2404,9 +2762,19 @@ impl CadApp {
                 GuiAction::DeleteBookmark(idx) => {
                     if idx < self.nav.view_bookmarks.len() {
                         let name = self.nav.view_bookmarks.remove(idx).name;
-                        self.gui.nav_bookmarks = self.nav.view_bookmarks.iter().map(|b| {
-                            (b.name.clone(), b.yaw.to_degrees(), b.pitch.to_degrees(), b.distance)
-                        }).collect();
+                        self.gui.nav_bookmarks = self
+                            .nav
+                            .view_bookmarks
+                            .iter()
+                            .map(|b| {
+                                (
+                                    b.name.clone(),
+                                    b.yaw.to_degrees(),
+                                    b.pitch.to_degrees(),
+                                    b.distance,
+                                )
+                            })
+                            .collect();
                         self.log_info(format!("Bookmark deleted: {name}"));
                     }
                 }
@@ -2435,7 +2803,13 @@ impl CadApp {
                     }
                 }
                 GuiAction::DeleteGroup(gid) => {
-                    if let Some(name) = self.scene.groups.iter().find(|g| g.id == gid).map(|g| g.name.clone()) {
+                    if let Some(name) = self
+                        .scene
+                        .groups
+                        .iter()
+                        .find(|g| g.id == gid)
+                        .map(|g| g.name.clone())
+                    {
                         self.scene.delete_group(gid);
                         self.log_info(format!("Group deleted: {name}"));
                     }
@@ -2445,7 +2819,11 @@ impl CadApp {
                     if !self.gui.measurement_mode {
                         self.gui.measurement_points.clear();
                     }
-                    let state = if self.gui.measurement_mode { "ON" } else { "OFF" };
+                    let state = if self.gui.measurement_mode {
+                        "ON"
+                    } else {
+                        "OFF"
+                    };
                     self.log_info(format!("Measurement mode: {state}"));
                 }
                 GuiAction::AddMeasurementPoint(pt) => {
@@ -2495,7 +2873,8 @@ impl CadApp {
                             Err(e) => {
                                 let msg = e.to_string();
                                 self.gui.lua_history.push((code.clone(), msg.clone(), true));
-                                self.gui.log(ReportLevel::Error, format!("Lua error: {msg}"));
+                                self.gui
+                                    .log(ReportLevel::Error, format!("Lua error: {msg}"));
                             }
                         }
                     }
@@ -2580,9 +2959,10 @@ impl CadApp {
             AssemblyAction::InsertComponent => {
                 let solid = self.current_solid;
                 let msg = {
-                    let assembly = self.gui.assembly.get_or_insert_with(|| {
-                        cadkernel_modeling::Assembly::new("New Assembly")
-                    });
+                    let assembly = self
+                        .gui
+                        .assembly
+                        .get_or_insert_with(|| cadkernel_modeling::Assembly::new("New Assembly"));
                     if let Some(s) = solid {
                         let n = assembly.num_components();
                         let id = assembly.add_component(&format!("Component {}", n + 1), s);
@@ -2627,8 +3007,7 @@ impl CadApp {
                     SolveMsg::Warn(m) => self.log_warning(m),
                     SolveMsg::Err(m) => self.log_error(m),
                     SolveMsg::NoAssembly => {
-                        self.gui.status_message =
-                            "Assembly: no assembly — create one first".into();
+                        self.gui.status_message = "Assembly: no assembly — create one first".into();
                     }
                 }
             }
@@ -2636,7 +3015,10 @@ impl CadApp {
                 self.log_info(format!("Assembly: exploded view factor={factor:.1}"));
             }
             AssemblyAction::BillOfMaterials => {
-                enum Msg { Ok(String), NoAssembly }
+                enum Msg {
+                    Ok(String),
+                    NoAssembly,
+                }
                 let msg = if self.gui.populate_bom_entries() {
                     // populate_bom_entries() opened ActiveDialog::Bom(entries).
                     let entries = match &self.gui.active_dialog {
@@ -2654,14 +3036,16 @@ impl CadApp {
                 match msg {
                     Msg::Ok(m) => self.log_info(m),
                     Msg::NoAssembly => {
-                        self.gui.status_message =
-                            "Assembly: no assembly — create one first".into();
+                        self.gui.status_message = "Assembly: no assembly — create one first".into();
                         self.log_warning("Assembly: no assembly for BOM");
                     }
                 }
             }
             AssemblyAction::DofAnalysis => {
-                enum Msg { Ok(String), NoAssembly }
+                enum Msg {
+                    Ok(String),
+                    NoAssembly,
+                }
                 let msg = if let Some(asm) = self.gui.assembly.as_ref() {
                     let n = asm.num_components();
                     let c = asm.num_constraints();
@@ -2679,7 +3063,10 @@ impl CadApp {
                 }
             }
             AssemblyAction::AddJoint(joint) => {
-                enum Msg { Ok(String), TooFew }
+                enum Msg {
+                    Ok(String),
+                    TooFew,
+                }
                 let msg = if self.gui.open_joint_editor(joint) {
                     Msg::Ok(format!("Assembly: edit joint {}", joint.label()))
                 } else {
@@ -2687,13 +3074,16 @@ impl CadApp {
                 };
                 match msg {
                     Msg::Ok(m) => self.log_info(m),
-                    Msg::TooFew => self.log_warning(
-                        "Assembly: need at least 2 components to add a joint",
-                    ),
+                    Msg::TooFew => {
+                        self.log_warning("Assembly: need at least 2 components to add a joint")
+                    }
                 }
             }
             AssemblyAction::ToggleComponentVisibility(idx) => {
-                enum Msg { Ok(String), Fail }
+                enum Msg {
+                    Ok(String),
+                    Fail,
+                }
                 let msg = if self.gui.toggle_assembly_component_visibility(idx) {
                     Msg::Ok(format!("Assembly: toggled component {idx} visibility"))
                 } else {
@@ -2705,9 +3095,17 @@ impl CadApp {
                 }
             }
             AssemblyAction::CommitJoint => {
-                enum Msg { Ok(String), Fail }
+                enum Msg {
+                    Ok(String),
+                    Fail,
+                }
                 let msg = if self.gui.commit_assembly_joint() {
-                    let n = self.gui.assembly.as_ref().map(|a| a.joint_count()).unwrap_or(0);
+                    let n = self
+                        .gui
+                        .assembly
+                        .as_ref()
+                        .map(|a| a.joint_count())
+                        .unwrap_or(0);
                     Msg::Ok(format!("Assembly: joint added ({n} total)"))
                 } else {
                     Msg::Fail
@@ -2732,12 +3130,13 @@ impl CadApp {
                         Ok(mesh) => {
                             let n_nodes = mesh.nodes.len();
                             let n_elems = mesh.elements.len();
-                            self.gui.fem_analysis = Some(
-                                cadkernel_modeling::AnalysisContainer::new(
+                            self.gui.fem_analysis =
+                                Some(cadkernel_modeling::AnalysisContainer::new(
                                     mesh,
                                     self.gui.pending_fem_material.clone(),
-                                ),
-                            );
+                                ));
+                            self.gui.fem_result_legend = None;
+                            self.gui.fem_last_probe = None;
                             Ok(format!(
                                 "FEM: new analysis ({n_nodes} nodes, {n_elems} elements)"
                             ))
@@ -2764,7 +3163,11 @@ impl CadApp {
                     self.gui.active_dialog.take()
                 {
                     self.gui.pending_fem_material = crate::gui::material_from_preset(
-                        s.selected, s.youngs_modulus, s.poisson_ratio, s.density);
+                        s.selected,
+                        s.youngs_modulus,
+                        s.poisson_ratio,
+                        s.density,
+                    );
                     self.log_info(format!("FEM: material set to '{}'", s.selected.label()));
                 }
             }
@@ -2776,19 +3179,21 @@ impl CadApp {
                 }
             }
             FemAction::CommitBcEditor => {
-                if let Some(crate::gui::ActiveDialog::BcEditor(s)) =
-                    self.gui.active_dialog.take()
-                {
+                if let Some(crate::gui::ActiveDialog::BcEditor(s)) = self.gui.active_dialog.take() {
+                    let bc_label = s.bc_kind.label();
+                    let selection = s.selection_label();
                     let total = self.gui.fem_analysis.as_mut().map(|c| {
                         c.add_bc(s.to_boundary_condition());
                         c.boundary_conditions.len()
                     });
                     match total {
                         Some(n) => self.log_info(format!(
-                            "FEM: BC added ({}, node {}) \u{2014} total {n}",
-                            s.bc_kind.label(), s.node_index)),
-                        None => self.gui.status_message =
-                            "FEM: no analysis \u{2014} create one first".into(),
+                            "FEM: BC added ({bc_label}, {selection}) \u{2014} total {n}"
+                        )),
+                        None => {
+                            self.gui.status_message =
+                                "FEM: no analysis \u{2014} create one first".into()
+                        }
                     }
                 }
             }
@@ -2802,7 +3207,11 @@ impl CadApp {
                 self.log_info(format!("FEM: constraint {ctype:?}"));
             }
             FemAction::SolveStatic => {
-                enum Msg { Ok(String), Err(String), NoAnalysis }
+                enum Msg {
+                    Ok(String),
+                    Err(String),
+                    NoAnalysis,
+                }
                 let msg = if let Some(container) = self.gui.fem_analysis.as_mut() {
                     let n_bc = container.boundary_conditions.len();
                     match container.run_static() {
@@ -2825,22 +3234,102 @@ impl CadApp {
                     Msg::Ok(m) => self.log_info(m),
                     Msg::Err(m) => self.log_warning(m),
                     Msg::NoAnalysis => {
-                        self.gui.status_message =
-                            "FEM: no analysis — create one first".into();
+                        self.gui.status_message = "FEM: no analysis — create one first".into();
                     }
                 }
             }
             FemAction::SolveModal { modes } => {
                 self.log_info(format!("FEM: modal solve ({modes} modes)"));
             }
-            FemAction::SolveThermal => self.log_info("FEM: thermal solve"),
+            FemAction::SolveThermal => {
+                enum Msg {
+                    Ok(String),
+                    Err(String),
+                    NoAnalysis,
+                }
+                let msg = if let Some(container) = self.gui.fem_analysis.as_mut() {
+                    let n_bc = container.boundary_conditions.len();
+                    match container.run_thermal_static() {
+                        Ok(()) => {
+                            let (tmin, tmax) = container
+                                .temperature_field
+                                .as_ref()
+                                .map(|v| {
+                                    let mn = v.iter().cloned().fold(f64::INFINITY, f64::min);
+                                    let mx = v.iter().cloned().fold(f64::NEG_INFINITY, f64::max);
+                                    (mn, mx)
+                                })
+                                .unwrap_or((0.0, 0.0));
+                            Msg::Ok(format!(
+                                "FEM: thermal solved ({n_bc} BCs, T\u{2208}[{tmin:.2}, {tmax:.2}])"
+                            ))
+                        }
+                        Err(e) => Msg::Err(format!("FEM thermal error: {e}")),
+                    }
+                } else {
+                    Msg::NoAnalysis
+                };
+                match msg {
+                    Msg::Ok(m) => self.log_info(m),
+                    Msg::Err(m) => self.log_warning(m),
+                    Msg::NoAnalysis => {
+                        self.gui.status_message = "FEM: no analysis — create one first".into();
+                    }
+                }
+            }
             FemAction::SolveBuckling { modes } => {
                 self.log_info(format!("FEM: buckling solve ({modes} modes)"));
             }
-            FemAction::SolveNonlinear => self.log_info("FEM: nonlinear solve"),
-            FemAction::ShowStress => self.log_info("FEM: show stress"),
-            FemAction::ShowDisplacement => self.log_info("FEM: show displacement"),
-            FemAction::ShowVonMises => self.log_info("FEM: show von Mises"),
+            FemAction::SolveNonlinear => {
+                enum Msg {
+                    Ok(String),
+                    Err(String),
+                    NoAnalysis,
+                }
+                let msg = if let Some(container) = self.gui.fem_analysis.as_mut() {
+                    let n_bc = container.boundary_conditions.len();
+                    match container.run_nonlinear() {
+                        Ok(()) => {
+                            let max_disp = container
+                                .result
+                                .as_ref()
+                                .map(|r| r.max_displacement)
+                                .unwrap_or(0.0);
+                            Msg::Ok(format!(
+                                "FEM: nonlinear solved ({n_bc} BCs, max |u|={max_disp:.4e})"
+                            ))
+                        }
+                        Err(e) => Msg::Err(format!("FEM nonlinear error: {e}")),
+                    }
+                } else {
+                    Msg::NoAnalysis
+                };
+                match msg {
+                    Msg::Ok(m) => self.log_info(m),
+                    Msg::Err(m) => self.log_warning(m),
+                    Msg::NoAnalysis => {
+                        self.gui.status_message = "FEM: no analysis — create one first".into();
+                    }
+                }
+            }
+            FemAction::ShowStress => self.run_fem_colormap(FemResultField::Stress),
+            FemAction::ShowDisplacement => self.run_fem_colormap(FemResultField::Displacement),
+            FemAction::ShowVonMises => self.run_fem_colormap(FemResultField::VonMises),
+            FemAction::OpenResultProbe => {
+                if self.gui.fem_analysis.is_none() {
+                    self.log_warning("FEM Probe: no analysis (run CreateFemAnalysis first)");
+                } else {
+                    self.gui.open_fem_result_probe();
+                }
+            }
+            FemAction::CommitResultProbe => {
+                if let Some(crate::gui::ActiveDialog::FemResultProbe(state)) =
+                    self.gui.active_dialog.take()
+                {
+                    self.run_fem_result_probe(state);
+                }
+            }
+            FemAction::OpenResultTable => self.run_fem_result_table(),
             FemAction::Summary => self.run_fem_summary(),
             FemAction::Report => self.run_fem_report(),
         }
@@ -2921,7 +3410,8 @@ impl CadApp {
                         if let SketchEntityRef::Line(i) = *e {
                             if i < sm.sketch.lines.len() {
                                 sm.sketch.add_constraint(Constraint::Length(
-                                    cadkernel_sketch::LineId(i), len,
+                                    cadkernel_sketch::LineId(i),
+                                    len,
                                 ));
                                 applied = true;
                             }
@@ -2939,9 +3429,17 @@ impl CadApp {
             }
             S::ConstrainCoincident => {
                 if let Some(sm) = &mut self.gui.sketch_mode {
-                    let pts: Vec<usize> = sm.selected_entities.iter().filter_map(|e| {
-                        if let SketchEntityRef::Point(i) = e { Some(*i) } else { None }
-                    }).collect();
+                    let pts: Vec<usize> = sm
+                        .selected_entities
+                        .iter()
+                        .filter_map(|e| {
+                            if let SketchEntityRef::Point(i) = e {
+                                Some(*i)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
                     if pts.len() >= 2 {
                         sm.sketch.add_constraint(Constraint::Coincident(
                             cadkernel_sketch::PointId(pts[0]),
@@ -2955,9 +3453,17 @@ impl CadApp {
             }
             S::ConstrainParallel => {
                 if let Some(sm) = &mut self.gui.sketch_mode {
-                    let lines: Vec<usize> = sm.selected_entities.iter().filter_map(|e| {
-                        if let SketchEntityRef::Line(i) = e { Some(*i) } else { None }
-                    }).collect();
+                    let lines: Vec<usize> = sm
+                        .selected_entities
+                        .iter()
+                        .filter_map(|e| {
+                            if let SketchEntityRef::Line(i) = e {
+                                Some(*i)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
                     if lines.len() >= 2 {
                         sm.sketch.add_constraint(Constraint::Parallel(
                             cadkernel_sketch::LineId(lines[0]),
@@ -2971,9 +3477,17 @@ impl CadApp {
             }
             S::ConstrainPerpendicular => {
                 if let Some(sm) = &mut self.gui.sketch_mode {
-                    let lines: Vec<usize> = sm.selected_entities.iter().filter_map(|e| {
-                        if let SketchEntityRef::Line(i) = e { Some(*i) } else { None }
-                    }).collect();
+                    let lines: Vec<usize> = sm
+                        .selected_entities
+                        .iter()
+                        .filter_map(|e| {
+                            if let SketchEntityRef::Line(i) = e {
+                                Some(*i)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
                     if lines.len() >= 2 {
                         sm.sketch.add_constraint(Constraint::Perpendicular(
                             cadkernel_sketch::LineId(lines[0]),
@@ -2990,9 +3504,17 @@ impl CadApp {
             }
             S::ConstrainEqual => {
                 if let Some(sm) = &mut self.gui.sketch_mode {
-                    let lines: Vec<usize> = sm.selected_entities.iter().filter_map(|e| {
-                        if let SketchEntityRef::Line(i) = e { Some(*i) } else { None }
-                    }).collect();
+                    let lines: Vec<usize> = sm
+                        .selected_entities
+                        .iter()
+                        .filter_map(|e| {
+                            if let SketchEntityRef::Line(i) = e {
+                                Some(*i)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
                     if lines.len() >= 2 {
                         sm.sketch.add_constraint(Constraint::EqualLength(
                             cadkernel_sketch::LineId(lines[0]),
@@ -3016,7 +3538,8 @@ impl CadApp {
                                 let pt = &sm.sketch.points[i];
                                 sm.sketch.add_constraint(Constraint::Fixed(
                                     cadkernel_sketch::PointId(i),
-                                    pt.position.x, pt.position.y,
+                                    pt.position.x,
+                                    pt.position.y,
                                 ));
                                 applied += 1;
                             }
@@ -3038,7 +3561,8 @@ impl CadApp {
                                 let pt = &sm.sketch.points[i];
                                 sm.sketch.add_constraint(Constraint::Block(
                                     cadkernel_sketch::PointId(i),
-                                    pt.position.x, pt.position.y,
+                                    pt.position.x,
+                                    pt.position.y,
                                 ));
                                 applied += 1;
                             }
@@ -3053,9 +3577,17 @@ impl CadApp {
             }
             S::ConstrainDistance(val) => {
                 if let Some(sm) = &mut self.gui.sketch_mode {
-                    let pts: Vec<usize> = sm.selected_entities.iter().filter_map(|e| {
-                        if let SketchEntityRef::Point(i) = e { Some(*i) } else { None }
-                    }).collect();
+                    let pts: Vec<usize> = sm
+                        .selected_entities
+                        .iter()
+                        .filter_map(|e| {
+                            if let SketchEntityRef::Point(i) = e {
+                                Some(*i)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
                     if pts.len() >= 2 {
                         sm.sketch.add_constraint(Constraint::Distance(
                             cadkernel_sketch::PointId(pts[0]),
@@ -3070,7 +3602,8 @@ impl CadApp {
                             if let SketchEntityRef::Line(i) = *e {
                                 if i < sm.sketch.lines.len() {
                                     sm.sketch.add_constraint(Constraint::Length(
-                                        cadkernel_sketch::LineId(i), val,
+                                        cadkernel_sketch::LineId(i),
+                                        val,
                                     ));
                                     applied = true;
                                     break;
@@ -3087,9 +3620,17 @@ impl CadApp {
             }
             S::ConstrainAngle(val) => {
                 if let Some(sm) = &mut self.gui.sketch_mode {
-                    let lines: Vec<usize> = sm.selected_entities.iter().filter_map(|e| {
-                        if let SketchEntityRef::Line(i) = e { Some(*i) } else { None }
-                    }).collect();
+                    let lines: Vec<usize> = sm
+                        .selected_entities
+                        .iter()
+                        .filter_map(|e| {
+                            if let SketchEntityRef::Line(i) = e {
+                                Some(*i)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
                     if lines.len() >= 2 {
                         sm.sketch.add_constraint(Constraint::Angle(
                             cadkernel_sketch::LineId(lines[0]),
@@ -3109,9 +3650,7 @@ impl CadApp {
                         if let SketchEntityRef::Circle(i) = *e {
                             if i < sm.sketch.circles.len() {
                                 let cid = sm.sketch.circles[i].center;
-                                sm.sketch.add_constraint(Constraint::Radius(
-                                    cid, cid, val,
-                                ));
+                                sm.sketch.add_constraint(Constraint::Radius(cid, cid, val));
                                 applied = true;
                             }
                         }
@@ -3128,9 +3667,17 @@ impl CadApp {
             }
             S::ConstrainHDistance(val) => {
                 if let Some(sm) = &mut self.gui.sketch_mode {
-                    let pts: Vec<usize> = sm.selected_entities.iter().filter_map(|e| {
-                        if let SketchEntityRef::Point(i) = e { Some(*i) } else { None }
-                    }).collect();
+                    let pts: Vec<usize> = sm
+                        .selected_entities
+                        .iter()
+                        .filter_map(|e| {
+                            if let SketchEntityRef::Point(i) = e {
+                                Some(*i)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
                     if pts.len() >= 2 {
                         sm.sketch.add_constraint(Constraint::HorizontalDistance(
                             cadkernel_sketch::PointId(pts[0]),
@@ -3145,9 +3692,17 @@ impl CadApp {
             }
             S::ConstrainVDistance(val) => {
                 if let Some(sm) = &mut self.gui.sketch_mode {
-                    let pts: Vec<usize> = sm.selected_entities.iter().filter_map(|e| {
-                        if let SketchEntityRef::Point(i) = e { Some(*i) } else { None }
-                    }).collect();
+                    let pts: Vec<usize> = sm
+                        .selected_entities
+                        .iter()
+                        .filter_map(|e| {
+                            if let SketchEntityRef::Point(i) = e {
+                                Some(*i)
+                            } else {
+                                None
+                            }
+                        })
+                        .collect();
                     if pts.len() >= 2 {
                         sm.sketch.add_constraint(Constraint::VerticalDistance(
                             cadkernel_sketch::PointId(pts[0]),
@@ -3165,7 +3720,9 @@ impl CadApp {
             S::FilletCorner { radius } => {
                 if let Some(sm) = &mut self.gui.sketch_mode {
                     use crate::gui::SketchEntityRef::Line;
-                    let lines: Vec<usize> = sm.selected_entities.iter()
+                    let lines: Vec<usize> = sm
+                        .selected_entities
+                        .iter()
                         .filter_map(|e| if let Line(i) = e { Some(*i) } else { None })
                         .collect();
                     if lines.len() == 2 {
@@ -3175,12 +3732,15 @@ impl CadApp {
                             cadkernel_sketch::LineId(lines[0]),
                             cadkernel_sketch::LineId(lines[1]),
                             radius,
-                        ).is_some() {
+                        )
+                        .is_some()
+                        {
                             sm.selected_entities.clear();
                             self.gui.status_message = format!("Corner filleted (r={radius:.1})");
                         } else {
                             sm.undo_stack.pop();
-                            self.gui.status_message = "Fillet failed: lines don't share a vertex".into();
+                            self.gui.status_message =
+                                "Fillet failed: lines don't share a vertex".into();
                         }
                     } else {
                         self.gui.status_message = "Select 2 lines to fillet".into();
@@ -3190,7 +3750,9 @@ impl CadApp {
             S::ChamferCorner { distance } => {
                 if let Some(sm) = &mut self.gui.sketch_mode {
                     use crate::gui::SketchEntityRef::Line;
-                    let lines: Vec<usize> = sm.selected_entities.iter()
+                    let lines: Vec<usize> = sm
+                        .selected_entities
+                        .iter()
                         .filter_map(|e| if let Line(i) = e { Some(*i) } else { None })
                         .collect();
                     if lines.len() == 2 {
@@ -3200,12 +3762,15 @@ impl CadApp {
                             cadkernel_sketch::LineId(lines[0]),
                             cadkernel_sketch::LineId(lines[1]),
                             distance,
-                        ).is_some() {
+                        )
+                        .is_some()
+                        {
                             sm.selected_entities.clear();
                             self.gui.status_message = format!("Corner chamfered (d={distance:.1})");
                         } else {
                             sm.undo_stack.pop();
-                            self.gui.status_message = "Chamfer failed: lines don't share a vertex".into();
+                            self.gui.status_message =
+                                "Chamfer failed: lines don't share a vertex".into();
                         }
                     } else {
                         self.gui.status_message = "Select 2 lines to chamfer".into();
@@ -3215,7 +3780,9 @@ impl CadApp {
             S::TrimEdge => {
                 if let Some(sm) = &mut self.gui.sketch_mode {
                     use crate::gui::SketchEntityRef::Line;
-                    let lines: Vec<usize> = sm.selected_entities.iter()
+                    let lines: Vec<usize> = sm
+                        .selected_entities
+                        .iter()
                         .filter_map(|e| if let Line(i) = e { Some(*i) } else { None })
                         .collect();
                     if lines.len() == 2 {
@@ -3240,12 +3807,16 @@ impl CadApp {
             S::SplitEdge => {
                 if let Some(sm) = &mut self.gui.sketch_mode {
                     use crate::gui::SketchEntityRef::Line;
-                    let line_idx = sm.selected_entities.iter()
+                    let line_idx = sm
+                        .selected_entities
+                        .iter()
                         .find_map(|e| if let Line(i) = e { Some(*i) } else { None });
                     if let Some(idx) = line_idx {
                         sm.save_snapshot();
                         let _result = cadkernel_sketch::split_edge(
-                            &mut sm.sketch, cadkernel_sketch::LineId(idx), 0.5,
+                            &mut sm.sketch,
+                            cadkernel_sketch::LineId(idx),
+                            0.5,
                         );
                         sm.selected_entities.clear();
                         self.gui.status_message = "Edge split at midpoint".into();
@@ -3257,7 +3828,9 @@ impl CadApp {
             S::ExtendEdge => {
                 if let Some(sm) = &mut self.gui.sketch_mode {
                     use crate::gui::SketchEntityRef::Line;
-                    let line_idx = sm.selected_entities.iter()
+                    let line_idx = sm
+                        .selected_entities
+                        .iter()
                         .find_map(|e| if let Line(i) = e { Some(*i) } else { None });
                     if let Some(idx) = line_idx {
                         // Extend by 50% of current length toward end direction
@@ -3268,7 +3841,10 @@ impl CadApp {
                         let ty = e.y + (e.y - s.y) * 0.5;
                         sm.save_snapshot();
                         cadkernel_sketch::extend_edge(
-                            &mut sm.sketch, cadkernel_sketch::LineId(idx), tx, ty,
+                            &mut sm.sketch,
+                            cadkernel_sketch::LineId(idx),
+                            tx,
+                            ty,
                         );
                         self.gui.status_message = "Edge extended".into();
                     } else {
@@ -3283,10 +3859,9 @@ impl CadApp {
                     let mut point_ids: Vec<cadkernel_sketch::PointId> = Vec::new();
                     for e in &sm.selected_entities {
                         match *e {
-                            SketchEntityRef::Line(i)
-                                if axis_line.is_none() => {
-                                    axis_line = Some(i);
-                                }
+                            SketchEntityRef::Line(i) if axis_line.is_none() => {
+                                axis_line = Some(i);
+                            }
                             SketchEntityRef::Point(i) => {
                                 point_ids.push(cadkernel_sketch::PointId(i));
                             }
@@ -3309,7 +3884,8 @@ impl CadApp {
                         let new_pts = sm.sketch.mirror_elements(&point_ids, mirror_lid);
                         self.gui.status_message = format!(
                             "Mirrored {} points → {} new points",
-                            point_ids.len(), new_pts.len()
+                            point_ids.len(),
+                            new_pts.len()
                         );
                     } else {
                         self.gui.status_message = "Mirror: select a line as mirror axis".into();
@@ -3317,30 +3893,79 @@ impl CadApp {
                 }
             }
             S::ExternalProjection => {
+                let source = self.sketch_projection_source();
                 if let Some(sm) = &mut self.gui.sketch_mode {
-                    // Project model vertices onto sketch plane
-                    let verts: Vec<Point3> = self.model.vertices.iter()
-                        .map(|(_, v)| v.point)
-                        .collect();
-                    if verts.is_empty() {
+                    if source.points.is_empty() {
                         self.gui.status_message = "No model vertices to project".into();
                     } else {
                         sm.save_snapshot();
-                        let ids = external_projection(
-                            &mut sm.sketch, &verts, &sm.plane,
-                        );
+                        let ids = external_projection(&mut sm.sketch, &source.points, &sm.plane);
+                        for &pid in &ids {
+                            sm.sketch.mark_construction_point(pid);
+                        }
+                        let mut projected_edges = 0usize;
+                        for &(start, end) in &source.edges {
+                            if start < ids.len() && end < ids.len() && start != end {
+                                let line = sm.sketch.add_line(ids[start], ids[end]);
+                                sm.sketch.mark_construction_line(line);
+                                projected_edges += 1;
+                            }
+                        }
+                        sm.update_constraint_status();
                         self.gui.status_message = format!(
-                            "Projected {} vertices onto sketch", ids.len()
+                            "Projected {} external refs from {} ({} points, {} edges)",
+                            ids.len() + projected_edges,
+                            source.label,
+                            ids.len(),
+                            projected_edges
                         );
                     }
                 }
             }
-            S::CarbonCopy => {
+            S::SelectReferences => {
                 if let Some(sm) = &mut self.gui.sketch_mode {
-                    if let Some((ref source, _)) = self.gui.last_sketch {
+                    let selected = Self::select_sketch_references(sm);
+                    if selected > 0 {
+                        self.gui.status_message = format!("Selected {selected} reference entities");
+                    } else {
+                        self.gui.status_message = "No sketch references to select".into();
+                    }
+                }
+            }
+            S::PromoteReferences => {
+                if let Some(sm) = &mut self.gui.sketch_mode {
+                    let available =
+                        sm.sketch.construction_points.len() + sm.sketch.construction_lines.len();
+                    if available == 0 {
+                        self.gui.status_message = "No sketch references to promote".into();
+                    } else {
                         sm.save_snapshot();
-                        if carbon_copy(source, &mut sm.sketch).is_ok() {
-                            self.gui.status_message = "Carbon copy applied".into();
+                        let promoted = Self::promote_sketch_references(sm);
+                        sm.update_constraint_status();
+                        if promoted > 0 {
+                            self.gui.status_message =
+                                format!("Promoted {promoted} references to regular geometry");
+                        } else {
+                            self.gui.status_message = "No selected references to promote".into();
+                        }
+                    }
+                }
+            }
+            S::CarbonCopy => {
+                let source = self
+                    .gui
+                    .last_sketch
+                    .as_ref()
+                    .map(|(sketch, _)| sketch.clone());
+                if let Some(sm) = &mut self.gui.sketch_mode {
+                    if let Some(source) = source {
+                        let copied = Self::sketch_entity_count(&source);
+                        sm.save_snapshot();
+                        if carbon_copy(&source, &mut sm.sketch).is_ok() {
+                            sm.reused_geometry_count += copied;
+                            sm.update_constraint_status();
+                            self.gui.status_message =
+                                format!("Carbon copy applied ({copied} reusable entities)");
                         } else {
                             self.gui.status_message = "Carbon copy failed".into();
                         }
@@ -3356,16 +3981,20 @@ impl CadApp {
                     let mut line_refs: Vec<(usize, usize)> = Vec::new();
                     for e in &sm.selected_entities {
                         match *e {
-                            SketchEntityRef::Point(i)
-                                if !pt_indices.contains(&i) => { pt_indices.push(i); }
-                            SketchEntityRef::Line(i)
-                                if i < sm.sketch.lines.len() => {
-                                    let s = sm.sketch.lines[i].start.0;
-                                    let e = sm.sketch.lines[i].end.0;
-                                    if !pt_indices.contains(&s) { pt_indices.push(s); }
-                                    if !pt_indices.contains(&e) { pt_indices.push(e); }
-                                    line_refs.push((s, e));
+                            SketchEntityRef::Point(i) if !pt_indices.contains(&i) => {
+                                pt_indices.push(i);
+                            }
+                            SketchEntityRef::Line(i) if i < sm.sketch.lines.len() => {
+                                let s = sm.sketch.lines[i].start.0;
+                                let e = sm.sketch.lines[i].end.0;
+                                if !pt_indices.contains(&s) {
+                                    pt_indices.push(s);
                                 }
+                                if !pt_indices.contains(&e) {
+                                    pt_indices.push(e);
+                                }
+                                line_refs.push((s, e));
+                            }
                             _ => {}
                         }
                     }
@@ -3389,7 +4018,8 @@ impl CadApp {
                         for (new_i, &pi) in pt_indices.iter().enumerate() {
                             if pi < sm.sketch.points.len() {
                                 let p = &sm.sketch.points[pi];
-                                sm.clipboard_points.push((p.position.x - cx, p.position.y - cy));
+                                sm.clipboard_points
+                                    .push((p.position.x - cx, p.position.y - cy));
                                 idx_map.insert(pi, new_i);
                             }
                         }
@@ -3400,7 +4030,8 @@ impl CadApp {
                         }
                         self.gui.status_message = format!(
                             "Copied {} points, {} lines",
-                            sm.clipboard_points.len(), sm.clipboard_lines.len()
+                            sm.clipboard_points.len(),
+                            sm.clipboard_lines.len()
                         );
                     }
                 }
@@ -3412,7 +4043,8 @@ impl CadApp {
                     } else {
                         sm.save_snapshot();
                         // Create points at paste position + offsets
-                        let new_pts: Vec<cadkernel_sketch::PointId> = sm.clipboard_points
+                        let new_pts: Vec<cadkernel_sketch::PointId> = sm
+                            .clipboard_points
                             .iter()
                             .map(|&(dx, dy)| sm.sketch.add_point(px + dx, py + dy))
                             .collect();
@@ -3422,10 +4054,8 @@ impl CadApp {
                                 sm.sketch.add_line(new_pts[si], new_pts[ei]);
                             }
                         }
-                        self.gui.status_message = format!(
-                            "Pasted {} points at ({px:.1}, {py:.1})",
-                            new_pts.len()
-                        );
+                        self.gui.status_message =
+                            format!("Pasted {} points at ({px:.1}, {py:.1})", new_pts.len());
                     }
                 }
             }
@@ -3438,8 +4068,10 @@ impl CadApp {
                     let mut merge_to: Vec<usize> = (0..n).collect();
                     for i in 0..n {
                         for j in (i + 1)..n {
-                            let dx = sm.sketch.points[i].position.x - sm.sketch.points[j].position.x;
-                            let dy = sm.sketch.points[i].position.y - sm.sketch.points[j].position.y;
+                            let dx =
+                                sm.sketch.points[i].position.x - sm.sketch.points[j].position.x;
+                            let dy =
+                                sm.sketch.points[i].position.y - sm.sketch.points[j].position.y;
                             if (dx * dx + dy * dy).sqrt() < eps {
                                 merge_to[j] = merge_to[i];
                             }
@@ -3450,7 +4082,9 @@ impl CadApp {
                     for line in &mut sm.sketch.lines {
                         let ns = merge_to[line.start.0];
                         let ne = merge_to[line.end.0];
-                        if ns != line.start.0 || ne != line.end.0 { merged += 1; }
+                        if ns != line.start.0 || ne != line.end.0 {
+                            merged += 1;
+                        }
                         line.start = cadkernel_sketch::PointId(ns);
                         line.end = cadkernel_sketch::PointId(ne);
                     }
@@ -3482,14 +4116,17 @@ impl CadApp {
                     let entity_id = sm.selected_entities.first().and_then(|e| match *e {
                         SketchEntityRef::Line(i) => Some(i),
                         SketchEntityRef::Arc(i) => Some(sm.sketch.lines.len() + i),
-                        SketchEntityRef::Circle(i) => Some(sm.sketch.lines.len() + sm.sketch.arcs.len() + i),
+                        SketchEntityRef::Circle(i) => {
+                            Some(sm.sketch.lines.len() + sm.sketch.arcs.len() + i)
+                        }
                         _ => None,
                     });
                     if let Some(eid) = entity_id {
                         sm.save_snapshot();
                         match geometry_to_bspline(&mut sm.sketch, eid) {
                             Ok(bid) => {
-                                self.gui.status_message = format!("Converted to B-Spline {}", bid.0);
+                                self.gui.status_message =
+                                    format!("Converted to B-Spline {}", bid.0);
                             }
                             Err(e) => {
                                 self.gui.status_message = format!("Convert failed: {e}");
@@ -3572,7 +4209,9 @@ impl CadApp {
                             match *e {
                                 SketchEntityRef::Point(i) => {
                                     let pid = cadkernel_sketch::PointId(i);
-                                    if let Some(pos) = sm.sketch.construction_points.iter().position(|p| *p == pid) {
+                                    if let Some(pos) =
+                                        sm.sketch.construction_points.iter().position(|p| *p == pid)
+                                    {
                                         sm.sketch.construction_points.remove(pos);
                                     } else {
                                         sm.sketch.mark_construction_point(pid);
@@ -3581,7 +4220,9 @@ impl CadApp {
                                 }
                                 SketchEntityRef::Line(i) => {
                                     let lid = cadkernel_sketch::LineId(i);
-                                    if let Some(pos) = sm.sketch.construction_lines.iter().position(|l| *l == lid) {
+                                    if let Some(pos) =
+                                        sm.sketch.construction_lines.iter().position(|l| *l == lid)
+                                    {
                                         sm.sketch.construction_lines.remove(pos);
                                     } else {
                                         sm.sketch.mark_construction_line(lid);
@@ -3592,7 +4233,9 @@ impl CadApp {
                             }
                         }
                         if toggled > 0 {
-                            self.gui.status_message = format!("Toggled {toggled} entities construction mode");
+                            self.gui.status_message =
+                                format!("Toggled {toggled} entities construction mode");
+                            sm.update_constraint_status();
                         }
                     } else {
                         // No selection: toggle global construction mode for new entities
@@ -3618,6 +4261,43 @@ impl CadApp {
                 }
             }
         }
+    }
+
+    fn sketch_projection_source(&self) -> SketchProjectionSource {
+        if let Some(obj) = self.scene.selected_object() {
+            Self::projection_source_from_model(format!("'{}'", obj.name), &obj.model)
+        } else {
+            Self::projection_source_from_model("current model".into(), &self.model)
+        }
+    }
+
+    fn projection_source_from_model(label: String, model: &BRepModel) -> SketchProjectionSource {
+        let vertices: Vec<_> = model.vertices.iter().map(|(h, v)| (h, v.point)).collect();
+        let points: Vec<Point3> = vertices.iter().map(|(_, point)| *point).collect();
+        let mut edges = Vec::new();
+        for (_, edge) in model.edges.iter() {
+            let start = vertices
+                .iter()
+                .position(|(handle, _)| *handle == edge.start);
+            let end = vertices.iter().position(|(handle, _)| *handle == edge.end);
+            if let (Some(start), Some(end)) = (start, end) {
+                edges.push((start, end));
+            }
+        }
+        SketchProjectionSource {
+            label,
+            points,
+            edges,
+        }
+    }
+
+    fn sketch_entity_count(sketch: &cadkernel_sketch::Sketch) -> usize {
+        sketch.points.len()
+            + sketch.lines.len()
+            + sketch.arcs.len()
+            + sketch.circles.len()
+            + sketch.ellipses.len()
+            + sketch.bsplines.len()
     }
 
     fn process_mesh_action(&mut self, action: MeshAction) {
@@ -3685,7 +4365,9 @@ impl CadApp {
                     let new_mesh = cadkernel_io::smooth_mesh(mesh, iterations, factor);
                     let count = new_mesh.vertices.len();
                     self.set_mesh(new_mesh);
-                    self.log_info(format!("Smoothed: {iterations} iters, factor={factor:.2} ({count} verts)"));
+                    self.log_info(format!(
+                        "Smoothed: {iterations} iters, factor={factor:.2} ({count} verts)"
+                    ));
                 } else {
                     self.gui.status_message = "No mesh to smooth".into();
                 }
@@ -3717,7 +4399,9 @@ impl CadApp {
                         Ok(new_mesh) => {
                             let count = new_mesh.indices.len();
                             self.set_mesh(new_mesh);
-                            self.log_info(format!("Remeshed: {count} triangles (edge\u{2264}{target_edge_len:.2})"));
+                            self.log_info(format!(
+                                "Remeshed: {count} triangles (edge\u{2264}{target_edge_len:.2})"
+                            ));
                         }
                         Err(e) => {
                             self.log_error(format!("Remesh error: {e}"));
@@ -3789,10 +4473,7 @@ impl CadApp {
             S::Pipe => {
                 self.snapshot_before("Surface Pipe");
                 let mut model = BRepModel::new();
-                let path = [
-                    Point3::new(0.0, 0.0, 0.0),
-                    Point3::new(0.0, 0.0, 2.0),
-                ];
+                let path = [Point3::new(0.0, 0.0, 0.0), Point3::new(0.0, 0.0, 2.0)];
                 match pipe_surface(&mut model, &path, 0.25, 16) {
                     Ok(r) => {
                         self.add_to_scene(
@@ -3848,32 +4529,52 @@ impl CadApp {
             Pd::HoleSketch { radius, depth } => {
                 self.run_hole_sketch(radius, depth);
             }
-            Pd::CountersunkHoleSketch { radius, depth, countersink_angle } => {
+            Pd::CountersunkHoleSketch {
+                radius,
+                depth,
+                countersink_angle,
+            } => {
                 self.run_countersunk_hole_sketch(radius, depth, countersink_angle);
             }
             Pd::AdditiveLoft => self.run_partdesign_additive_loft(),
             Pd::AdditivePipe => self.run_partdesign_additive_pipe(),
             Pd::SubtractiveLoft => self.run_partdesign_subtractive_loft(),
             Pd::SubtractivePipe => self.run_partdesign_subtractive_pipe(),
-            Pd::CreateSprocket { teeth, roller_diameter, pitch, bore } => {
+            Pd::CreateSprocket {
+                teeth,
+                roller_diameter,
+                pitch,
+                bore,
+            } => {
                 self.log_info(format!(
                     "PartDesign: Sprocket {teeth}T Dp={roller_diameter:.2} P={pitch:.2} bore={bore:.2}"
                 ));
             }
             Pd::CreateShaftDesign { segments } => {
-                self.log_info(format!("PartDesign: Shaft design ({} segments)", segments.len()));
+                self.log_info(format!(
+                    "PartDesign: Shaft design ({} segments)",
+                    segments.len()
+                ));
             }
-            Pd::CreateInvoluteGear { teeth, module_val, pressure_angle } => {
+            Pd::CreateInvoluteGear {
+                teeth,
+                module_val,
+                pressure_angle,
+            } => {
                 self.log_info(format!(
                     "PartDesign: Involute gear {teeth}T m={module_val:.2} PA={pressure_angle:.1}"
                 ));
             }
-            Pd::ShapeBinder => self.log_info("PartDesign: Shape binder"),
+            Pd::ShapeBinder => self.run_partdesign_shape_binder(),
             Pd::SuppressFeature => {
                 if let Some(id) = self.scene.selected_id() {
                     if let Some(obj) = self.scene.get_mut(id) {
                         obj.suppressed = !obj.suppressed;
-                        let state = if obj.suppressed { "suppressed" } else { "active" };
+                        let state = if obj.suppressed {
+                            "suppressed"
+                        } else {
+                            "active"
+                        };
                         let name = obj.name.clone();
                         self.log_info(format!("{name}: {state}"));
                     }
@@ -3974,8 +4675,8 @@ impl CadApp {
             D::ArrayPolar => self.run_draft_array_polar(),
             D::ArrayPath => self.run_draft_array_path(),
             D::ArrayPoint => self.run_draft_array_point(),
-            D::Dimension => self.log_info("Draft: dimension"),
-            D::Label => self.log_info("Draft: label"),
+            D::Dimension => self.run_draft_dimension(),
+            D::Label => self.run_draft_label(),
             D::Text => self.run_draft_text(),
             D::Upgrade => self.run_draft_upgrade(),
             D::Downgrade => self.run_draft_downgrade(),
@@ -3999,11 +4700,23 @@ impl CadApp {
                 let _ = solve(&mut sm.sketch, 200, 1e-10);
             }
             self.gui.last_sketch = Some((sm.sketch.clone(), sm.plane));
-            let profile = extract_profile(&sm.sketch, &sm.plane);
+            let profile = match extract_profile_checked(&sm.sketch, &sm.plane) {
+                Ok(profile) => profile,
+                Err(e) => {
+                    self.log_warning(format!("Sketch profile invalid: {e}"));
+                    return None;
+                }
+            };
             let dir = Vec3::new(sm.plane.normal.x, sm.plane.normal.y, sm.plane.normal.z);
             Some((profile, dir))
         } else if let Some((sketch, plane)) = self.gui.last_sketch.clone() {
-            let profile = extract_profile(&sketch, &plane);
+            let profile = match extract_profile_checked(&sketch, &plane) {
+                Ok(profile) => profile,
+                Err(e) => {
+                    self.log_warning(format!("Sketch profile invalid: {e}"));
+                    return None;
+                }
+            };
             let dir = Vec3::new(plane.normal.x, plane.normal.y, plane.normal.z);
             Some((profile, dir))
         } else {
@@ -4017,7 +4730,10 @@ impl CadApp {
             return;
         };
         if profile.len() < 3 {
-            self.log_warning(format!("Pad: sketch profile has {} points (need >= 3)", profile.len()));
+            self.log_warning(format!(
+                "Pad: sketch profile has {} points (need >= 3)",
+                profile.len()
+            ));
             return;
         }
         if depth <= 0.0 {
@@ -4030,7 +4746,13 @@ impl CadApp {
             let half = depth * 0.5;
             let shifted: Vec<Point3> = profile
                 .iter()
-                .map(|p| Point3::new(p.x - normal.x * half, p.y - normal.y * half, p.z - normal.z * half))
+                .map(|p| {
+                    Point3::new(
+                        p.x - normal.x * half,
+                        p.y - normal.y * half,
+                        p.z - normal.z * half,
+                    )
+                })
                 .collect();
             (shifted, depth)
         } else {
@@ -4038,7 +4760,13 @@ impl CadApp {
         };
 
         if let Some(base_solid) = self.current_solid {
-            match pad(&self.model, base_solid, &effective_profile, normal, distance) {
+            match pad(
+                &self.model,
+                base_solid,
+                &effective_profile,
+                normal,
+                distance,
+            ) {
                 Ok(r) => {
                     self.add_to_scene(
                         &format!("Pad (depth={depth:.2})"),
@@ -4046,7 +4774,9 @@ impl CadApp {
                         r.solid,
                         Some(crate::scene::CreationParams::Extruded),
                     );
-                    self.log_info(format!("Pad: added material (depth={depth:.2}, symmetric={symmetric})"));
+                    self.log_info(format!(
+                        "Pad: added material (depth={depth:.2}, symmetric={symmetric})"
+                    ));
                 }
                 Err(e) => self.log_error(format!("Pad error: {e}")),
             }
@@ -4074,7 +4804,10 @@ impl CadApp {
             return;
         };
         if profile.len() < 3 {
-            self.log_warning(format!("Pocket: sketch profile has {} points (need >= 3)", profile.len()));
+            self.log_warning(format!(
+                "Pocket: sketch profile has {} points (need >= 3)",
+                profile.len()
+            ));
             return;
         }
         let Some(base_solid) = self.current_solid else {
@@ -4083,7 +4816,9 @@ impl CadApp {
         };
         let actual_depth = if through_all { depth.max(1.0e6) } else { depth };
         if actual_depth <= 0.0 {
-            self.log_warning(format!("Pocket: depth must be positive (got {actual_depth:.3})"));
+            self.log_warning(format!(
+                "Pocket: depth must be positive (got {actual_depth:.3})"
+            ));
             return;
         }
         self.snapshot_before("Pocket");
@@ -4098,7 +4833,9 @@ impl CadApp {
                     r.solid,
                     Some(crate::scene::CreationParams::Extruded),
                 );
-                self.log_info(format!("Pocket: removed material (depth={depth:.2}, through_all={through_all})"));
+                self.log_info(format!(
+                    "Pocket: removed material (depth={depth:.2}, through_all={through_all})"
+                ));
             }
             Err(e) => self.log_error(format!("Pocket error: {e}")),
         }
@@ -4110,7 +4847,10 @@ impl CadApp {
             return;
         };
         if profile.len() < 2 {
-            self.log_warning(format!("Groove: sketch profile has {} points (need >= 2)", profile.len()));
+            self.log_warning(format!(
+                "Groove: sketch profile has {} points (need >= 2)",
+                profile.len()
+            ));
             return;
         }
         let Some(base_solid) = self.current_solid else {
@@ -4119,7 +4859,9 @@ impl CadApp {
         };
         let angle_rad = angle_deg.to_radians();
         if angle_rad <= 0.0 {
-            self.log_warning(format!("Groove: angle must be positive (got {angle_deg:.1}°)"));
+            self.log_warning(format!(
+                "Groove: angle must be positive (got {angle_deg:.1}°)"
+            ));
             return;
         }
         self.snapshot_before("Groove");
@@ -4171,7 +4913,9 @@ impl CadApp {
             })
             .unwrap_or(Point3::ORIGIN);
         if radius <= 0.0 || depth <= 0.0 {
-            self.log_warning(format!("Hole: radius and depth must be positive (got r={radius:.3}, d={depth:.3})"));
+            self.log_warning(format!(
+                "Hole: radius and depth must be positive (got r={radius:.3}, d={depth:.3})"
+            ));
             return;
         }
         self.snapshot_before("Hole");
@@ -4240,12 +4984,12 @@ impl CadApp {
 
     fn run_draft_line(&mut self) {
         self.snapshot_before("Draft Line");
-        // Draft Line is an open wire — filling() can't turn it into a face
-        // and the renderer has no native polyline pipeline yet. We still
-        // build the wire in a B-Rep model so half-edge data exists for
-        // downstream features, and register a tree entry so the click is
-        // user-visible; renderable polyline geometry is tracked as a
-        // separate Phase B+ item.
+        // Draft Line is an open wire. The wgpu pipeline has no native
+        // polyline path, but Phase D introduced the `scene_overlay` egui
+        // painter that projects world-space polylines to screen on every
+        // frame — so the line now actually renders. The B-Rep model is
+        // still constructed so half-edge data exists for downstream
+        // features (project_curve_on_solid, etc.).
         let mut model = BRepModel::new();
         let p1 = Point3::ORIGIN;
         let p2 = Point3::new(2.0, 0.0, 0.0);
@@ -4254,9 +4998,17 @@ impl CadApp {
                 self.scene.add_mesh_object(
                     "Draft Line",
                     cadkernel_io::Mesh::new(),
-                    Some(crate::scene::CreationParams::DraftLine { length: 2.0, angle: 0.0 }),
+                    Some(crate::scene::CreationParams::DraftLine {
+                        length: 2.0,
+                        angle: 0.0,
+                    }),
                 );
-                self.log_info("Draft: line (2-point wire — tree only, no GPU geometry)");
+                self.gui.scene_overlay.add_polyline(
+                    vec![p1, p2],
+                    OVERLAY_WIRE_COLOR,
+                    OVERLAY_LINE_WIDTH,
+                );
+                self.log_info("Draft: line (2-point wire — overlay)");
             }
             Err(e) => self.log_error(format!("Draft Line error: {e}")),
         }
@@ -4350,16 +5102,17 @@ impl CadApp {
     fn run_draft_point(&mut self) {
         self.snapshot_before("Draft Point");
         let mut model = BRepModel::new();
-        let _vh = make_point(&mut model, Point3::ORIGIN);
-        // A bare vertex has no faces or solid for the renderer to draw, so
-        // we register it as a mesh-only scene object (an empty mesh marks
-        // its presence in the tree without producing GPU geometry).
-        let _id = self.scene.add_mesh_object(
-            "Draft Point",
-            cadkernel_io::Mesh::new(),
-            None,
-        );
-        self.log_info("Draft: point at origin");
+        let position = Point3::ORIGIN;
+        let _vh = make_point(&mut model, position);
+        // A bare vertex has no triangles for the wgpu pipeline; the Phase D
+        // scene_overlay paints it as a small filled circle on screen.
+        let _id = self
+            .scene
+            .add_mesh_object("Draft Point", cadkernel_io::Mesh::new(), None);
+        self.gui
+            .scene_overlay
+            .add_point(position, OVERLAY_POINT_COLOR, OVERLAY_POINT_RADIUS);
+        self.log_info("Draft: point at origin (overlay)");
     }
 
     // -- Phase B — Draft EASY tier wiring -----------------------------------
@@ -4381,12 +5134,14 @@ impl CadApp {
         ];
         match make_wire(&mut model, &pts) {
             Ok(_) => {
-                self.scene.add_mesh_object(
-                    "Draft Wire",
-                    cadkernel_io::Mesh::new(),
-                    None,
+                self.scene
+                    .add_mesh_object("Draft Wire", cadkernel_io::Mesh::new(), None);
+                self.gui.scene_overlay.add_polyline(
+                    pts.to_vec(),
+                    OVERLAY_WIRE_COLOR,
+                    OVERLAY_LINE_WIDTH,
                 );
-                self.log_info("Draft: wire (4-point polyline — tree only, no GPU geometry)");
+                self.log_info("Draft: wire (4-point polyline — overlay)");
             }
             Err(e) => self.log_error(format!("Draft Wire error: {e}")),
         }
@@ -4401,14 +5156,31 @@ impl CadApp {
             Point3::new(3.0, 2.0, 0.0),
             Point3::new(4.0, 0.0, 0.0),
         ];
+        let cps_for_overlay = cps.clone();
         match make_bspline_wire(&mut model, cps, 3, 32) {
-            Ok(_) => {
-                self.scene.add_mesh_object(
-                    "Draft B-spline",
-                    cadkernel_io::Mesh::new(),
-                    None,
+            Ok(result) => {
+                self.scene
+                    .add_mesh_object("Draft B-spline", cadkernel_io::Mesh::new(), None);
+                // Tessellate the curve at the same `segments=32` resolution
+                // the kernel just used so the overlay matches the actual
+                // B-rep edges. Falls back to the control polygon if the
+                // sampled domain produces fewer than 2 points.
+                let (t_start, t_end) = result.curve.domain();
+                let mut sampled: Vec<Point3> = (0..=32)
+                    .map(|i| {
+                        let t = t_start + (t_end - t_start) * (i as f64) / 32.0;
+                        result.curve.point_at(t)
+                    })
+                    .collect();
+                if sampled.len() < 2 {
+                    sampled = cps_for_overlay;
+                }
+                self.gui.scene_overlay.add_polyline(
+                    sampled,
+                    OVERLAY_WIRE_COLOR,
+                    OVERLAY_LINE_WIDTH,
                 );
-                self.log_info("Draft: B-spline (degree 3 — tree only, no GPU geometry)");
+                self.log_info("Draft: B-spline (degree 3 — overlay)");
             }
             Err(e) => self.log_error(format!("Draft B-spline error: {e}")),
         }
@@ -4423,13 +5195,13 @@ impl CadApp {
             Point3::new(4.0, 0.0, 0.0),
             32,
         ) {
-            Ok(_pts) => {
-                self.scene.add_mesh_object(
-                    "Draft Bezier",
-                    cadkernel_io::Mesh::new(),
-                    None,
-                );
-                self.log_info("Draft: cubic Bezier (tree only, no GPU geometry)");
+            Ok(pts) => {
+                self.scene
+                    .add_mesh_object("Draft Bezier", cadkernel_io::Mesh::new(), None);
+                self.gui
+                    .scene_overlay
+                    .add_polyline(pts, OVERLAY_WIRE_COLOR, OVERLAY_LINE_WIDTH);
+                self.log_info("Draft: cubic Bezier (overlay)");
             }
             Err(e) => self.log_error(format!("Draft Bezier error: {e}")),
         }
@@ -4438,25 +5210,38 @@ impl CadApp {
     fn run_draft_hatch(&mut self) {
         self.snapshot_before("Draft Hatch");
         // Build a default 2x2 square boundary at the origin and run the
-        // kernel hatch generator. The hatch result is a list of fill lines
-        // (no faces), so the scene gains a tree-only entry — same renderer
-        // gap as Wire / BSpline.
+        // kernel hatch generator. The Phase D overlay paints the boundary
+        // outline plus every generated fill line as separate polylines.
         let boundary = [
             Point3::ORIGIN,
             Point3::new(2.0, 0.0, 0.0),
             Point3::new(2.0, 2.0, 0.0),
             Point3::new(0.0, 2.0, 0.0),
         ];
-        let pattern = HatchPattern::Lines { angle: std::f64::consts::FRAC_PI_4, spacing: 0.25 };
+        let pattern = HatchPattern::Lines {
+            angle: std::f64::consts::FRAC_PI_4,
+            spacing: 0.25,
+        };
         match draft_hatch(&boundary, pattern, 1.0) {
             Ok(result) => {
-                self.scene.add_mesh_object(
-                    "Draft Hatch",
-                    cadkernel_io::Mesh::new(),
-                    None,
+                self.scene
+                    .add_mesh_object("Draft Hatch", cadkernel_io::Mesh::new(), None);
+                let mut closed_boundary = boundary.to_vec();
+                closed_boundary.push(boundary[0]);
+                self.gui.scene_overlay.add_polyline(
+                    closed_boundary,
+                    OVERLAY_WIRE_COLOR,
+                    OVERLAY_LINE_WIDTH,
                 );
+                for (a, b) in &result.lines {
+                    self.gui.scene_overlay.add_polyline(
+                        vec![*a, *b],
+                        OVERLAY_WIRE_COLOR,
+                        OVERLAY_LINE_WIDTH * 0.7,
+                    );
+                }
                 self.log_info(format!(
-                    "Draft: hatch ({} fill lines — tree only, no GPU geometry)",
+                    "Draft: hatch ({} fill lines — overlay)",
                     result.lines.len()
                 ));
             }
@@ -4466,18 +5251,32 @@ impl CadApp {
 
     fn run_draft_text(&mut self) {
         self.snapshot_before("Draft Text");
-        // Default placeholder text. A future iteration will accept the text
-        // body / size from a modal; Phase B just demonstrates the kernel API
-        // is reachable.
-        match shape_from_text("CAD", Point3::ORIGIN, 1.0, Vec3::Z) {
+        // Default placeholder text. The Phase D overlay paints each stroke
+        // polyline plus an anchored label near the text origin so the click
+        // produces visible text-stroke geometry on screen.
+        let body = "CAD";
+        let position = Point3::ORIGIN;
+        match shape_from_text(body, position, 1.0, Vec3::Z) {
             Ok(strokes) => {
-                self.scene.add_mesh_object(
-                    "Draft Text",
-                    cadkernel_io::Mesh::new(),
-                    None,
+                self.scene
+                    .add_mesh_object("Draft Text", cadkernel_io::Mesh::new(), None);
+                for stroke in &strokes {
+                    if stroke.len() >= 2 {
+                        self.gui.scene_overlay.add_polyline(
+                            stroke.clone(),
+                            OVERLAY_WIRE_COLOR,
+                            OVERLAY_LINE_WIDTH,
+                        );
+                    }
+                }
+                self.gui.scene_overlay.add_label(
+                    position,
+                    body,
+                    OVERLAY_LABEL_FONT,
+                    OVERLAY_LABEL_COLOR,
                 );
                 self.log_info(format!(
-                    "Draft: text 'CAD' ({} strokes — tree only, no GPU geometry)",
+                    "Draft: text '{body}' ({} strokes — overlay)",
                     strokes.len()
                 ));
             }
@@ -4539,12 +5338,18 @@ impl CadApp {
         ];
         let mut model = BRepModel::new();
         match wire_to_bspline_convert(&mut model, &pts, 3) {
-            Ok(_curve) => {
-                self.scene.add_mesh_object(
-                    "Draft Wire→BSpline",
-                    cadkernel_io::Mesh::new(),
-                    None,
+            Ok(curve) => {
+                let (t0, t1) = curve.domain();
+                let sampled: Vec<Point3> = (0..=32)
+                    .map(|i| curve.point_at(t0 + (t1 - t0) * (i as f64) / 32.0))
+                    .collect();
+                self.gui.scene_overlay.add_polyline(
+                    sampled,
+                    OVERLAY_WIRE_COLOR,
+                    OVERLAY_LINE_WIDTH,
                 );
+                self.scene
+                    .add_mesh_object("Draft Wire→BSpline", cadkernel_io::Mesh::new(), None);
                 self.log_info("Draft: wire converted to B-spline (curve only — tree entry)");
             }
             Err(e) => self.log_error(format!("Draft Wire→BSpline error: {e}")),
@@ -4637,7 +5442,9 @@ impl CadApp {
                     );
                 }
                 self.rebuild_scene_gpu();
-                self.log_info(format!("Draft: polar array — {n_added} new copies (6-fold)"));
+                self.log_info(format!(
+                    "Draft: polar array — {n_added} new copies (6-fold)"
+                ));
             }
             Err(e) => self.log_error(format!("Draft Array Polar error: {e}")),
         }
@@ -4762,7 +5569,9 @@ impl CadApp {
                         &format!("{} ∪ {}", a.name, b.name),
                         result_model,
                         solid,
-                        Some(crate::scene::CreationParams::Boolean { op: "connect".into() }),
+                        Some(crate::scene::CreationParams::Boolean {
+                            op: "connect".into(),
+                        }),
                     );
                     self.log_info("Part: connect shapes (union)");
                 } else {
@@ -4830,7 +5639,9 @@ impl CadApp {
                         &format!("{} \\ {}", a.name, b.name),
                         result_model,
                         solid,
-                        Some(crate::scene::CreationParams::Boolean { op: "cutout".into() }),
+                        Some(crate::scene::CreationParams::Boolean {
+                            op: "cutout".into(),
+                        }),
                     );
                     self.log_info("Part: cutout shapes (difference)");
                 } else {
@@ -4970,11 +5781,18 @@ impl CadApp {
             return;
         };
         match points_from_shape(&obj.model, obj.solid) {
-            Ok(result) => self.log_info(format!(
-                "Part: extracted {} unique vertex points from '{}'",
-                result.points.len(),
-                obj.name
-            )),
+            Ok(result) => {
+                let n = result.points.len();
+                for p in result.points {
+                    self.gui
+                        .scene_overlay
+                        .add_point(p, OVERLAY_POINT_COLOR, OVERLAY_POINT_RADIUS);
+                }
+                self.log_info(format!(
+                    "Part: extracted {n} unique vertex points from '{}' (overlay)",
+                    obj.name
+                ));
+            }
             Err(e) => self.log_error(format!("Part PointsFromShape error: {e}")),
         }
     }
@@ -4992,12 +5810,7 @@ impl CadApp {
         let mut model = BRepModel::new();
         match shape_from_mesh(&mut model, &obj.mesh) {
             Ok(r) => {
-                self.add_to_scene(
-                    &format!("{} (solid)", obj.name),
-                    model,
-                    r.solid,
-                    None,
-                );
+                self.add_to_scene(&format!("{} (solid)", obj.name), model, r.solid, None);
                 self.log_info(format!(
                     "Part: converted mesh '{}' to solid ({} faces)",
                     obj.name,
@@ -5014,7 +5827,9 @@ impl CadApp {
             return;
         };
         if threshold <= 0.0 {
-            self.log_warning(format!("Auto-defeaturing: threshold must be positive (got {threshold:.3})"));
+            self.log_warning(format!(
+                "Auto-defeaturing: threshold must be positive (got {threshold:.3})"
+            ));
             return;
         }
         self.snapshot_before("Auto-defeaturing");
@@ -5062,10 +5877,10 @@ impl CadApp {
 
     fn run_part_coons_patch(&mut self) {
         // Default unit-square boundary: four LineSegments. The kernel
-        // returns a NurbsSurface — there is no built-in surface→solid
-        // wrapper for arbitrary surfaces yet, so we register a tree-only
-        // entry and document the renderer gap (same as Phase A/B wire
-        // outputs). A full surface→solid extrusion belongs in Phase C.
+        // returns a NurbsSurface; the Phase D overlay paints the boundary
+        // outline plus an interior grid sampled from the patch surface so
+        // the click is visible on screen without a NurbsSurface→solid
+        // wrapper.
         self.snapshot_before("Coons Patch");
         let p00 = Point3::new(0.0, 0.0, 0.0);
         let p10 = Point3::new(1.0, 0.0, 0.0);
@@ -5077,16 +5892,54 @@ impl CadApp {
         let v1 = LineSegment::new(p10, p11);
         match coons_patch(&u0, &u1, &v0, &v1) {
             Ok(_result) => {
-                self.scene.add_mesh_object(
-                    "Coons Patch",
-                    cadkernel_io::Mesh::new(),
-                    None,
+                self.scene
+                    .add_mesh_object("Coons Patch", cadkernel_io::Mesh::new(), None);
+                // Boundary outline (closed quad).
+                self.gui.scene_overlay.add_polyline(
+                    vec![p00, p10, p11, p01, p00],
+                    OVERLAY_WIRE_COLOR,
+                    OVERLAY_LINE_WIDTH,
                 );
-                self.log_info(
-                    "Part: Coons patch (NurbsSurface — tree only, no GPU geometry)",
-                );
+                self.log_info("Part: Coons patch (boundary overlay)");
             }
             Err(e) => self.log_error(format!("Part CoonsPatch error: {e}")),
+        }
+    }
+
+    fn run_partdesign_shape_binder(&mut self) {
+        self.snapshot_before("Shape Binder");
+        let (source_name, result) = {
+            let Some(obj) = self.scene.selected_object() else {
+                self.log_warning("Shape Binder: select a source shape first");
+                return;
+            };
+            let face_count = obj.model.faces.iter().count();
+            if face_count == 0 {
+                self.log_warning(format!("Shape Binder: '{}' has no faces to bind", obj.name));
+                return;
+            }
+            let face_indices: Vec<usize> = (0..face_count).collect();
+            (obj.name.clone(), shape_binder(&obj.model, &face_indices))
+        };
+
+        match result {
+            Ok(result_model) => {
+                let first_solid = result_model.solids.iter().next().map(|(h, _)| h);
+                if let Some(solid) = first_solid {
+                    self.add_to_scene(
+                        &format!("ShapeBinder of {source_name}"),
+                        result_model,
+                        solid,
+                        None,
+                    );
+                    self.log_info(format!(
+                        "PartDesign: Shape Binder copied faces from '{source_name}'"
+                    ));
+                } else {
+                    self.log_error("Shape Binder: result has no solid");
+                }
+            }
+            Err(e) => self.log_error(format!("Shape Binder error: {e}")),
         }
     }
 
@@ -5224,7 +6077,11 @@ impl CadApp {
         let n_nodes = analysis.mesh.nodes.len();
         let n_elems = analysis.mesh.elements.len();
         let n_bcs = analysis.boundary_conditions.len();
-        let solved = if analysis.result.is_some() { "yes" } else { "no" };
+        let solved = if analysis.result.is_some() {
+            "yes"
+        } else {
+            "no"
+        };
         let material = fem_material_label(&analysis.material);
         self.log_info(format!(
             "FEM Summary — material: {material}, nodes: {n_nodes}, elements: {n_elems}, BCs: {n_bcs}, solved: {solved}"
@@ -5263,11 +6120,7 @@ impl CadApp {
                 .iter()
                 .map(|v| (v.x * v.x + v.y * v.y + v.z * v.z).sqrt())
                 .fold(0.0_f64, f64::max);
-            let max_stress = result
-                .stresses
-                .iter()
-                .copied()
-                .fold(0.0_f64, f64::max);
+            let max_stress = result.stresses.iter().copied().fold(0.0_f64, f64::max);
             report.push_str(&format!(
                 "\n  static result: {n} nodal displacements, max |u|={max_disp:.3e}, max σ={max_stress:.3e}"
             ));
@@ -5275,6 +6128,137 @@ impl CadApp {
             report.push_str("\n  static result: not solved");
         }
         self.log_info(report);
+    }
+
+    fn run_fem_colormap(&mut self, field: FemResultField) {
+        let Some(analysis) = self.gui.fem_analysis.as_ref() else {
+            self.log_warning(format!(
+                "FEM {}: no analysis (run CreateFemAnalysis first)",
+                field.label()
+            ));
+            return;
+        };
+        let Some(result) = analysis.result.as_ref() else {
+            self.log_warning(format!(
+                "FEM {}: no mechanical result (run SolveStatic or SolveNonlinear first)",
+                field.label()
+            ));
+            return;
+        };
+
+        let built = match build_fem_colormap_meshes(&analysis.mesh, result, field) {
+            Ok(v) => v,
+            Err(e) => {
+                self.log_warning(format!("FEM {} colormap error: {e}", field.label()));
+                return;
+            }
+        };
+        let legend = FemResultLegendState::new(
+            field,
+            built.min,
+            built.max,
+            (0..FEM_COLORMAP_BANDS).map(fem_colormap_color).collect(),
+        );
+
+        let snapshot_label = format!("FEM {} colormap", field.label());
+        self.snapshot_before(&snapshot_label);
+        let old_ids: Vec<_> = self
+            .scene
+            .objects
+            .iter()
+            .filter(|o| is_fem_colormap_object(&o.name))
+            .map(|o| o.id)
+            .collect();
+        for id in old_ids {
+            self.scene.remove_object(id);
+        }
+
+        let label = field.label();
+        let mut added = 0usize;
+        for (band_idx, mesh, color) in built.meshes {
+            let id = self.scene.add_mesh_object(
+                format!("FEM {label} colormap band {}", band_idx + 1),
+                mesh,
+                None,
+            );
+            if let Some(obj) = self.scene.get_mut(id) {
+                obj.color = color;
+            }
+            added += 1;
+        }
+        self.gui.fem_result_legend = Some(legend);
+        self.rebuild_scene_gpu();
+        self.log_info(format!(
+            "FEM {label}: colormap rendered ({added} bands, range {:.3e}..{:.3e})",
+            built.min, built.max
+        ));
+    }
+
+    fn run_fem_result_probe(&mut self, state: crate::gui::FemResultProbeState) {
+        let Some(analysis) = self.gui.fem_analysis.as_ref() else {
+            self.log_warning("FEM Probe: no analysis (run CreateFemAnalysis first)");
+            return;
+        };
+        if analysis.mesh.nodes.is_empty() {
+            self.log_warning("FEM Probe: analysis mesh has no nodes");
+            return;
+        }
+        let node_index = state.node_index.min(analysis.mesh.nodes.len() - 1);
+        let position = analysis.mesh.nodes[node_index];
+        let element_index = (!analysis.mesh.elements.is_empty())
+            .then_some(state.element_index.min(analysis.mesh.elements.len() - 1));
+        let displacement_magnitude = analysis.result.as_ref().and_then(|r| {
+            r.displacements
+                .get(node_index)
+                .map(|d| (d.x * d.x + d.y * d.y + d.z * d.z).sqrt())
+        });
+        let stress = element_index.and_then(|idx| {
+            analysis
+                .result
+                .as_ref()
+                .and_then(|r| r.stresses.get(idx).copied())
+        });
+        let temperature = analysis
+            .temperature_field
+            .as_ref()
+            .and_then(|t| t.get(node_index).copied());
+        self.gui.fem_last_probe = Some(FemProbeRecord {
+            node_index,
+            element_index,
+            position: [position.x, position.y, position.z],
+            displacement_magnitude,
+            stress,
+            temperature,
+        });
+        self.log_info(format!(
+            "FEM Probe: node {node_index} at ({:.3}, {:.3}, {:.3}), |u|={}, σ={}, T={}",
+            position.x,
+            position.y,
+            position.z,
+            format_probe_value(displacement_magnitude, "m"),
+            format_probe_value(stress, "Pa"),
+            format_probe_value(temperature, "K")
+        ));
+    }
+
+    fn run_fem_result_table(&mut self) {
+        let Some(analysis) = self.gui.fem_analysis.as_ref() else {
+            self.log_warning("FEM Result Table: no analysis (run CreateFemAnalysis first)");
+            return;
+        };
+        let field = self
+            .gui
+            .fem_result_legend
+            .as_ref()
+            .map(|l| l.field)
+            .unwrap_or(FemResultField::VonMises);
+        let state = build_fem_result_table_state(analysis, field);
+        let n_nodes = state.node_rows.len();
+        let n_elems = state.element_rows.len();
+        self.gui.active_dialog = Some(crate::gui::ActiveDialog::FemResultTable(state));
+        self.log_info(format!(
+            "FEM Result Table: opened ({n_nodes} node rows, {n_elems} element rows)"
+        ));
     }
 
     // -- Phase C2 — Draft modify (Offset / Trim / Stretch / Facebinder) +
@@ -5312,14 +6296,14 @@ impl CadApp {
         let pts = self.default_polyline_or_last_sketch();
         match offset_wire(&pts, 0.5, Vec3::Z) {
             Ok(offset) => {
-                self.scene.add_mesh_object(
-                    "Draft Offset",
-                    cadkernel_io::Mesh::new(),
-                    None,
-                );
+                self.scene
+                    .add_mesh_object("Draft Offset", cadkernel_io::Mesh::new(), None);
+                let n = offset.len();
+                self.gui
+                    .scene_overlay
+                    .add_polyline(offset, OVERLAY_WIRE_COLOR, OVERLAY_LINE_WIDTH);
                 self.log_info(format!(
-                    "Draft: offset wire ({} points, distance=0.5 — tree only, no GPU geometry)",
-                    offset.len()
+                    "Draft: offset wire ({n} points, distance=0.5 — overlay)"
                 ));
             }
             Err(e) => self.log_error(format!("Draft Offset error: {e}")),
@@ -5338,15 +6322,17 @@ impl CadApp {
         };
         match trimex_draft(&pts, target) {
             Ok(trimmed) => {
-                self.scene.add_mesh_object(
-                    "Draft Trim",
-                    cadkernel_io::Mesh::new(),
-                    None,
+                self.scene
+                    .add_mesh_object("Draft Trim", cadkernel_io::Mesh::new(), None);
+                let n_in = pts.len();
+                let n_out = trimmed.len();
+                self.gui.scene_overlay.add_polyline(
+                    trimmed,
+                    OVERLAY_WIRE_COLOR,
+                    OVERLAY_LINE_WIDTH,
                 );
                 self.log_info(format!(
-                    "Draft: trim wire (in {} pts → out {} pts — tree only, no GPU geometry)",
-                    pts.len(),
-                    trimmed.len()
+                    "Draft: trim wire (in {n_in} pts → out {n_out} pts — overlay)"
                 ));
             }
             Err(e) => self.log_error(format!("Draft Trim error: {e}")),
@@ -5358,14 +6344,14 @@ impl CadApp {
         let pts = self.default_polyline_or_last_sketch();
         // Default stretch: pull all points within radius 5 by (0, 0, 1).
         let stretched = stretch_wire(&pts, Point3::ORIGIN, 5.0, Vec3::new(0.0, 0.0, 1.0));
-        self.scene.add_mesh_object(
-            "Draft Stretch",
-            cadkernel_io::Mesh::new(),
-            None,
-        );
+        self.scene
+            .add_mesh_object("Draft Stretch", cadkernel_io::Mesh::new(), None);
+        let n = stretched.len();
+        self.gui
+            .scene_overlay
+            .add_polyline(stretched, OVERLAY_WIRE_COLOR, OVERLAY_LINE_WIDTH);
         self.log_info(format!(
-            "Draft: stretch wire ({} points displaced — tree only, no GPU geometry)",
-            stretched.len()
+            "Draft: stretch wire ({n} points displaced — overlay)"
         ));
     }
 
@@ -5413,19 +6399,910 @@ impl CadApp {
         let curve = self.default_polyline_or_last_sketch();
         // Project the curve onto the selected solid's tessellated surface.
         let projected = project_curve_on_solid(&obj.model, obj.solid, &curve);
-        // Output is a Vec<Point3> with no kernel-side topology; register a
-        // tree-only entry so the dispatcher visibly fired, and report the
-        // point count for the user.
-        self.scene.add_mesh_object(
-            "Projected Curve",
-            cadkernel_io::Mesh::new(),
-            None,
-        );
+        self.scene
+            .add_mesh_object("Projected Curve", cadkernel_io::Mesh::new(), None);
+        let n = projected.len();
+        if n >= 2 {
+            self.gui
+                .scene_overlay
+                .add_polyline(projected, OVERLAY_WIRE_COLOR, OVERLAY_LINE_WIDTH);
+        }
         self.log_info(format!(
-            "Part: projected {} curve points onto '{}' (tree only, no GPU geometry)",
-            projected.len(),
+            "Part: projected {n} curve points onto '{}' (overlay)",
             obj.name
         ));
+    }
+
+    // -- Phase D — annotation overlay (Dimension / Label) -------------------
+
+    fn run_draft_dimension(&mut self) {
+        self.snapshot_before("Draft Dimension");
+        // Default linear dimension between two corners of a 2-unit segment
+        // along X. A future modal will let the user pick endpoints; Phase D
+        // just exercises the kernel API + overlay rendering pipeline.
+        let p1 = Point3::ORIGIN;
+        let p2 = Point3::new(2.0, 0.0, 0.0);
+        let dim = make_draft_dimension_full(DraftDimensionType::Linear, p1, p2, 0.5);
+        // Extension lines: from each endpoint perpendicular to the dimension
+        // line, plus the dimension line itself between the offset points.
+        let perp = Vec3::new(
+            dim.offset_point.x - dim.midpoint.x,
+            dim.offset_point.y - dim.midpoint.y,
+            dim.offset_point.z - dim.midpoint.z,
+        );
+        let p1_ext = Point3::new(p1.x + perp.x, p1.y + perp.y, p1.z + perp.z);
+        let p2_ext = Point3::new(p2.x + perp.x, p2.y + perp.y, p2.z + perp.z);
+        // Extension lines (dim_color, half-width) and dimension line
+        // (dim_color, full width) plus the value label at the midpoint of
+        // the dimension line.
+        self.gui.scene_overlay.add_polyline(
+            vec![p1, p1_ext],
+            OVERLAY_DIM_COLOR,
+            OVERLAY_LINE_WIDTH * 0.7,
+        );
+        self.gui.scene_overlay.add_polyline(
+            vec![p2, p2_ext],
+            OVERLAY_DIM_COLOR,
+            OVERLAY_LINE_WIDTH * 0.7,
+        );
+        self.gui.scene_overlay.add_polyline(
+            vec![p1_ext, p2_ext],
+            OVERLAY_DIM_COLOR,
+            OVERLAY_LINE_WIDTH,
+        );
+        self.gui.scene_overlay.add_label(
+            dim.offset_point,
+            format!("{:.2}", dim.value),
+            OVERLAY_LABEL_FONT,
+            OVERLAY_LABEL_COLOR,
+        );
+        self.scene
+            .add_mesh_object("Draft Dimension", cadkernel_io::Mesh::new(), None);
+        self.log_info(format!(
+            "Draft: dimension linear = {:.3} (overlay)",
+            dim.value
+        ));
+    }
+
+    fn run_draft_label(&mut self) {
+        self.snapshot_before("Draft Label");
+        // Default label at the origin pointing to a leader target nearby.
+        let position = Point3::new(0.5, 0.5, 0.0);
+        let leader = Some(Point3::ORIGIN);
+        let style = AnnotationStyle::default();
+        let label = make_label_full("Label", position, leader, style);
+        // Render: leader polyline (target → label position) + the text.
+        if let Some(target) = label.leader_target {
+            self.gui.scene_overlay.add_polyline(
+                vec![target, label.position],
+                OVERLAY_LABEL_COLOR,
+                OVERLAY_LINE_WIDTH * 0.7,
+            );
+        }
+        self.gui.scene_overlay.add_label(
+            label.position,
+            label.text.clone(),
+            OVERLAY_LABEL_FONT,
+            OVERLAY_LABEL_COLOR,
+        );
+        self.scene
+            .add_mesh_object("Draft Label", cadkernel_io::Mesh::new(), None);
+        self.log_info(format!("Draft: label '{}' (overlay)", label.text));
+    }
+
+    // -- Phase F-page — TechDraw page management ---------------------------
+
+    fn run_techdraw_new_page(&mut self) {
+        self.gui.techdraw_sheet = Some(cadkernel_io::DrawingSheet::a4_landscape());
+        self.log_info("TechDraw: new A4 landscape page");
+    }
+
+    fn run_techdraw_from_template(&mut self) {
+        // Legacy fast path used by headless regression tests and command
+        // dispatch. Interactive UI uses `OpenPageSetup` for named selection.
+        let idx = self.gui.techdraw_template_idx % 3;
+        let mut sheet = cadkernel_io::DrawingSheet::a4_landscape();
+        let label = match idx {
+            0 => {
+                sheet.title = "A4 Landscape (Title Block)".into();
+                "a4_landscape_titleblock"
+            }
+            1 => {
+                // A4 portrait: swap width / height of the landscape default.
+                sheet.width = 210.0;
+                sheet.height = 297.0;
+                sheet.title = "A4 Portrait".into();
+                "a4_portrait_blank"
+            }
+            _ => {
+                // A3 landscape: 420 × 297 mm.
+                sheet.width = 420.0;
+                sheet.height = 297.0;
+                sheet.title = "A3 Landscape (Title Block)".into();
+                "a3_landscape_titleblock"
+            }
+        };
+        self.gui.techdraw_sheet = Some(sheet);
+        self.gui.techdraw_template_idx = self.gui.techdraw_template_idx.wrapping_add(1);
+        self.log_info(format!("TechDraw: applied template '{label}'"));
+    }
+
+    fn run_techdraw_open_page_setup(&mut self) {
+        self.gui.open_techdraw_page_setup();
+        self.log_info("TechDraw: page setup opened");
+    }
+
+    fn run_techdraw_commit_page_setup(&mut self) {
+        let Some(crate::gui::ActiveDialog::TechDrawPageSetup(state)) =
+            self.gui.active_dialog.take()
+        else {
+            self.log_warning("TechDraw Page Setup: no page setup dialog is open");
+            return;
+        };
+        let sheet = state.to_sheet();
+        let title = sheet.title.clone();
+        let width = sheet.width;
+        let height = sheet.height;
+        self.gui.techdraw_sheet = Some(sheet);
+        self.log_info(format!(
+            "TechDraw: page setup applied ({width:.0} × {height:.0} mm, '{title}')"
+        ));
+    }
+
+    fn run_techdraw_open_dimension_setup(&mut self, kind: crate::gui::TechDrawDimensionKind) {
+        if self.gui.techdraw_sheet.is_none() {
+            self.log_warning("TechDraw Dimension Setup: no sheet open (add a view first)");
+            return;
+        }
+        self.gui.open_techdraw_dimension_setup(kind);
+        self.log_info(format!("TechDraw: {} setup opened", kind.label()));
+    }
+
+    fn run_techdraw_commit_dimension_setup(&mut self) {
+        let Some(crate::gui::ActiveDialog::TechDrawDimensionSetup(state)) =
+            self.gui.active_dialog.take()
+        else {
+            self.log_warning("TechDraw Dimension Setup: no dimension setup dialog is open");
+            return;
+        };
+        let Some(sheet) = self.gui.techdraw_sheet.as_mut() else {
+            self.log_warning("TechDraw Dimension Setup: no sheet open");
+            return;
+        };
+        let kind = state.kind;
+        state.apply_to_sheet(sheet);
+        self.log_info(format!("TechDraw: {} added from setup", kind.label()));
+    }
+
+    fn run_techdraw_open_annotation_setup(&mut self, kind: crate::gui::TechDrawAnnotationKind) {
+        if self.gui.techdraw_sheet.is_none() {
+            self.log_warning("TechDraw Annotation Setup: no sheet open (use New Page first)");
+            return;
+        }
+        self.gui.open_techdraw_annotation_setup(kind);
+        self.log_info(format!("TechDraw: {} setup opened", kind.label()));
+    }
+
+    fn run_techdraw_commit_annotation_setup(&mut self) {
+        let Some(crate::gui::ActiveDialog::TechDrawAnnotationSetup(state)) =
+            self.gui.active_dialog.take()
+        else {
+            self.log_warning("TechDraw Annotation Setup: no annotation setup dialog is open");
+            return;
+        };
+        let Some(sheet) = self.gui.techdraw_sheet.as_mut() else {
+            self.log_warning("TechDraw Annotation Setup: no sheet open");
+            return;
+        };
+        let kind = state.kind;
+        state.apply_to_sheet(sheet);
+        self.log_info(format!("TechDraw: {} added from setup", kind.label()));
+    }
+
+    fn run_techdraw_open_centerline_setup(&mut self, kind: crate::gui::TechDrawCenterlineKind) {
+        if self.gui.techdraw_sheet.is_none() {
+            self.log_warning("TechDraw Centerline Setup: no sheet open (use New Page first)");
+            return;
+        }
+        self.gui.open_techdraw_centerline_setup(kind);
+        self.log_info(format!("TechDraw: {} setup opened", kind.label()));
+    }
+
+    fn run_techdraw_commit_centerline_setup(&mut self) {
+        let Some(crate::gui::ActiveDialog::TechDrawCenterlineSetup(state)) =
+            self.gui.active_dialog.take()
+        else {
+            self.log_warning("TechDraw Centerline Setup: no centerline setup dialog is open");
+            return;
+        };
+        let Some(sheet) = self.gui.techdraw_sheet.as_mut() else {
+            self.log_warning("TechDraw Centerline Setup: no sheet open");
+            return;
+        };
+        let kind = state.kind;
+        state.apply_to_sheet(sheet);
+        self.log_info(format!("TechDraw: {} added from setup", kind.label()));
+    }
+
+    fn run_techdraw_open_view_setup(&mut self, kind: crate::gui::TechDrawViewKind) {
+        match kind {
+            crate::gui::TechDrawViewKind::Front
+            | crate::gui::TechDrawViewKind::Top
+            | crate::gui::TechDrawViewKind::Right
+            | crate::gui::TechDrawViewKind::Isometric
+            | crate::gui::TechDrawViewKind::ThreeView => {
+                if self.current_solid.is_none() {
+                    self.log_warning("TechDraw View Setup: no solid to project");
+                    return;
+                }
+            }
+            crate::gui::TechDrawViewKind::Section => {
+                if self.scene.selected_object().is_none() {
+                    self.log_warning("TechDraw View Setup: select a solid for section view");
+                    return;
+                }
+            }
+            crate::gui::TechDrawViewKind::Detail | crate::gui::TechDrawViewKind::Broken => {
+                let has_source = self
+                    .gui
+                    .techdraw_sheet
+                    .as_ref()
+                    .is_some_and(|sheet| !sheet.views.is_empty());
+                if !has_source {
+                    self.log_warning("TechDraw View Setup: add a source view first");
+                    return;
+                }
+            }
+        }
+        self.gui.open_techdraw_view_setup(kind);
+        self.log_info(format!("TechDraw: {} setup opened", kind.label()));
+    }
+
+    fn run_techdraw_commit_view_setup(&mut self) {
+        let Some(crate::gui::ActiveDialog::TechDrawViewSetup(state)) =
+            self.gui.active_dialog.take()
+        else {
+            self.log_warning("TechDraw View Setup: no view setup dialog is open");
+            return;
+        };
+
+        match state.kind {
+            crate::gui::TechDrawViewKind::Front
+            | crate::gui::TechDrawViewKind::Top
+            | crate::gui::TechDrawViewKind::Right
+            | crate::gui::TechDrawViewKind::Isometric => {
+                let Some(solid) = self.current_solid else {
+                    self.log_warning("TechDraw View Setup: no solid to project");
+                    return;
+                };
+                let Some(dir) = state.kind.projection_dir() else {
+                    return;
+                };
+                let mut view = cadkernel_io::project_solid(&self.model, solid, dir);
+                state.apply_placement(&mut view);
+                let n_edges = view.edges.len();
+                let sheet = self
+                    .gui
+                    .techdraw_sheet
+                    .get_or_insert_with(cadkernel_io::DrawingSheet::a4_landscape);
+                sheet.views.push(view);
+                self.log_info(format!(
+                    "TechDraw: {} added from setup ({n_edges} edges)",
+                    state.kind.label()
+                ));
+            }
+            crate::gui::TechDrawViewKind::ThreeView => {
+                let Some(solid) = self.current_solid else {
+                    self.log_warning("TechDraw View Setup: no solid to project");
+                    return;
+                };
+                let dirs = [
+                    cadkernel_io::ProjectionDir::Front,
+                    cadkernel_io::ProjectionDir::Top,
+                    cadkernel_io::ProjectionDir::Right,
+                ];
+                let mut views: Vec<_> = dirs
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, dir)| {
+                        let mut view = cadkernel_io::project_solid(&self.model, solid, dir);
+                        state.apply_three_view_placement(&mut view, index);
+                        view
+                    })
+                    .collect();
+                let total: usize = views.iter().map(|view| view.edges.len()).sum();
+                let sheet = self
+                    .gui
+                    .techdraw_sheet
+                    .get_or_insert_with(cadkernel_io::DrawingSheet::a4_landscape);
+                sheet.views.clear();
+                sheet.views.append(&mut views);
+                self.log_info(format!("TechDraw: 3-view setup applied ({total} edges)"));
+            }
+            crate::gui::TechDrawViewKind::Section => {
+                let Some(obj) = self.scene.selected_object().cloned() else {
+                    self.log_warning("TechDraw View Setup: select a solid for section view");
+                    return;
+                };
+                let mid = Point3::new(
+                    ((obj.aabb_min[0] + obj.aabb_max[0]) * 0.5) as f64,
+                    ((obj.aabb_min[1] + obj.aabb_max[1]) * 0.5) as f64,
+                    ((obj.aabb_min[2] + obj.aabb_max[2]) * 0.5) as f64,
+                );
+                let mut view = cadkernel_io::section_view(
+                    &obj.model,
+                    obj.solid,
+                    mid,
+                    Vec3::Z,
+                    &state.section_label,
+                );
+                state.apply_placement(&mut view);
+                let n_edges = view.edges.len();
+                let sheet = self
+                    .gui
+                    .techdraw_sheet
+                    .get_or_insert_with(cadkernel_io::DrawingSheet::a4_landscape);
+                sheet.views.push(view);
+                self.log_info(format!(
+                    "TechDraw: section view {} added from setup ({n_edges} edges)",
+                    state.section_label
+                ));
+            }
+            crate::gui::TechDrawViewKind::Detail => {
+                let Some(sheet) = self.gui.techdraw_sheet.as_mut() else {
+                    self.log_warning("TechDraw View Setup: no sheet open");
+                    return;
+                };
+                let Some(source) = sheet.views.first().cloned() else {
+                    self.log_warning("TechDraw View Setup: no source view on sheet");
+                    return;
+                };
+                let mut view = cadkernel_io::detail_view(
+                    &source,
+                    state.detail_center_x,
+                    state.detail_center_y,
+                    state.detail_radius.max(1e-6),
+                    state.detail_magnification.max(1e-6),
+                );
+                state.apply_placement(&mut view);
+                let n_edges = view.edges.len();
+                sheet.views.push(view);
+                self.log_info(format!(
+                    "TechDraw: detail view added from setup ({n_edges} edges, {:.2}×)",
+                    state.detail_magnification.max(1e-6)
+                ));
+            }
+            crate::gui::TechDrawViewKind::Broken => {
+                if state.break_end <= state.break_start {
+                    self.log_warning("TechDraw View Setup: break end must be greater than start");
+                    return;
+                }
+                let Some(sheet) = self.gui.techdraw_sheet.as_mut() else {
+                    self.log_warning("TechDraw View Setup: no sheet open");
+                    return;
+                };
+                let Some(source) = sheet.views.first().cloned() else {
+                    self.log_warning("TechDraw View Setup: no source view on sheet");
+                    return;
+                };
+                let mut view = cadkernel_io::broken_view(
+                    &source,
+                    state.break_start,
+                    state.break_end,
+                    state.break_gap.max(0.0),
+                );
+                state.apply_placement(&mut view);
+                let n_edges = view.edges.len();
+                sheet.views.push(view);
+                self.log_info(format!(
+                    "TechDraw: broken view added from setup ({n_edges} edges)"
+                ));
+            }
+        }
+    }
+
+    fn run_techdraw_redraw(&mut self) {
+        let Some(sheet) = self.gui.techdraw_sheet.as_mut() else {
+            self.log_warning("TechDraw Redraw: no sheet open (use New Page first)");
+            return;
+        };
+        let Some(solid) = self.current_solid else {
+            self.log_warning("TechDraw Redraw: no current solid to project");
+            return;
+        };
+        // Re-project each existing view from the current solid; keeps the
+        // direction stable and refreshes the edges to reflect any model
+        // changes since the view was first added.
+        let n = sheet.views.len();
+        let layouts: Vec<_> = sheet
+            .views
+            .iter()
+            .map(|view| (view.direction, view.sheet_x, view.sheet_y, view.sheet_scale))
+            .collect();
+        sheet.views.clear();
+        for (dir, sheet_x, sheet_y, sheet_scale) in layouts {
+            let mut view = cadkernel_io::project_solid(&self.model, solid, dir);
+            view.sheet_x = sheet_x;
+            view.sheet_y = sheet_y;
+            view.sheet_scale = sheet_scale;
+            sheet.views.push(view);
+        }
+        self.log_info(format!("TechDraw: redrew {n} views"));
+    }
+
+    fn run_techdraw_section_view(&mut self) {
+        let Some(obj) = self.scene.selected_object().cloned() else {
+            self.log_warning("TechDraw SectionView: select a solid first");
+            return;
+        };
+        let mid = Point3::new(
+            ((obj.aabb_min[0] + obj.aabb_max[0]) * 0.5) as f64,
+            ((obj.aabb_min[1] + obj.aabb_max[1]) * 0.5) as f64,
+            ((obj.aabb_min[2] + obj.aabb_max[2]) * 0.5) as f64,
+        );
+        let view = cadkernel_io::section_view(&obj.model, obj.solid, mid, Vec3::Z, "A-A");
+        let n_edges = view.edges.len();
+        let sheet = self
+            .gui
+            .techdraw_sheet
+            .get_or_insert_with(cadkernel_io::DrawingSheet::a4_landscape);
+        sheet.views.push(view);
+        self.log_info(format!(
+            "TechDraw: section view A-A added ({n_edges} edges)"
+        ));
+    }
+
+    fn run_techdraw_detail_view(&mut self) {
+        let Some(sheet) = self.gui.techdraw_sheet.as_mut() else {
+            self.log_warning("TechDraw DetailView: no sheet open (add a view first)");
+            return;
+        };
+        let Some(source) = sheet.views.first().cloned() else {
+            self.log_warning("TechDraw DetailView: no source view on sheet");
+            return;
+        };
+        let Some((min_x, min_y, max_x, max_y)) = Self::techdraw_view_bounds(&source) else {
+            self.log_warning("TechDraw DetailView: source view has no drawable edges");
+            return;
+        };
+        let radius = ((max_x - min_x).hypot(max_y - min_y) * 0.55).max(1.0);
+        let view =
+            cadkernel_io::detail_view(&source, source.center_x, source.center_y, radius, 2.0);
+        let n_edges = view.edges.len();
+        sheet.views.push(view);
+        self.log_info(format!(
+            "TechDraw: detail view added ({n_edges} edges, 2.0×)"
+        ));
+    }
+
+    fn run_techdraw_broken_view(&mut self) {
+        let Some(sheet) = self.gui.techdraw_sheet.as_mut() else {
+            self.log_warning("TechDraw BrokenView: no sheet open (add a view first)");
+            return;
+        };
+        let Some(source) = sheet.views.first().cloned() else {
+            self.log_warning("TechDraw BrokenView: no source view on sheet");
+            return;
+        };
+        let Some((min_x, _min_y, max_x, _max_y)) = Self::techdraw_view_bounds(&source) else {
+            self.log_warning("TechDraw BrokenView: source view has no drawable edges");
+            return;
+        };
+        let span = max_x - min_x;
+        if span <= 1e-9 {
+            self.log_warning("TechDraw BrokenView: source view has zero X span");
+            return;
+        }
+        let break_start = min_x + span * 0.40;
+        let break_end = min_x + span * 0.60;
+        let gap = span * 0.10;
+        let view = cadkernel_io::broken_view(&source, break_start, break_end, gap);
+        let n_edges = view.edges.len();
+        sheet.views.push(view);
+        self.log_info(format!(
+            "TechDraw: broken view added ({n_edges} edges, gap={gap:.2})"
+        ));
+    }
+
+    fn run_techdraw_dim_linear(&mut self) {
+        let Some(sheet) = self.gui.techdraw_sheet.as_mut() else {
+            self.log_warning("TechDraw DimLinear: no sheet open (add a view first)");
+            return;
+        };
+        let Some((min_x, _min_y, max_x, _max_y)) =
+            sheet.views.first().and_then(Self::techdraw_view_bounds)
+        else {
+            self.log_warning("TechDraw DimLinear: no source view with drawable edges");
+            return;
+        };
+        let value = (max_x - min_x).abs();
+        let y = sheet.height * 0.82;
+        sheet.dimensions.push(cadkernel_io::Dimension::Linear {
+            x1: sheet.width * 0.25,
+            y1: y,
+            x2: sheet.width * 0.75,
+            y2: y,
+            offset: -12.0,
+            text: format!("{value:.2}"),
+        });
+        self.log_info(format!("TechDraw: linear dimension added ({value:.2})"));
+    }
+
+    fn run_techdraw_dim_radius(&mut self) {
+        let Some(sheet) = self.gui.techdraw_sheet.as_mut() else {
+            self.log_warning("TechDraw DimRadius: no sheet open (add a view first)");
+            return;
+        };
+        let Some((min_x, min_y, max_x, max_y)) =
+            sheet.views.first().and_then(Self::techdraw_view_bounds)
+        else {
+            self.log_warning("TechDraw DimRadius: no source view with drawable edges");
+            return;
+        };
+        let value = ((max_x - min_x).abs().min((max_y - min_y).abs()) * 0.5).max(1e-9);
+        let visual_radius = sheet.width.min(sheet.height) * 0.08;
+        sheet.dimensions.push(cadkernel_io::Dimension::Radius {
+            cx: sheet.width * 0.48,
+            cy: sheet.height * 0.58,
+            r: visual_radius,
+            angle_deg: -25.0,
+            text: format!("R{value:.2}"),
+        });
+        self.log_info(format!("TechDraw: radius dimension added (R{value:.2})"));
+    }
+
+    fn run_techdraw_dim_diameter(&mut self) {
+        let Some(sheet) = self.gui.techdraw_sheet.as_mut() else {
+            self.log_warning("TechDraw DimDiameter: no sheet open (add a view first)");
+            return;
+        };
+        let Some((min_x, min_y, max_x, max_y)) =
+            sheet.views.first().and_then(Self::techdraw_view_bounds)
+        else {
+            self.log_warning("TechDraw DimDiameter: no source view with drawable edges");
+            return;
+        };
+        let diameter = (max_x - min_x).abs().max((max_y - min_y).abs());
+        sheet
+            .extended_dimensions
+            .push(cadkernel_io::DimensionType::DiameterDimension {
+                center: Point2::new(sheet.width * 0.58, sheet.height * 0.58),
+                diameter,
+            });
+        self.log_info(format!(
+            "TechDraw: diameter dimension added (⌀{diameter:.2})"
+        ));
+    }
+
+    fn run_techdraw_dim_angle(&mut self) {
+        let Some(sheet) = self.gui.techdraw_sheet.as_mut() else {
+            self.log_warning("TechDraw DimAngle: no sheet open (add a view first)");
+            return;
+        };
+        let Some(source) = sheet.views.first() else {
+            self.log_warning("TechDraw DimAngle: no source view on sheet");
+            return;
+        };
+        let angle = Self::techdraw_view_angle(source).unwrap_or(90.0);
+        let vertex = Point2::new(sheet.width * 0.70, sheet.height * 0.60);
+        let arm_len = sheet.width.min(sheet.height) * 0.10;
+        let arm2 = angle.to_radians();
+        sheet
+            .extended_dimensions
+            .push(cadkernel_io::DimensionType::AngleDimension {
+                vertex,
+                arm1_end: Point2::new(vertex.x + arm_len, vertex.y),
+                arm2_end: Point2::new(
+                    vertex.x + arm_len * arm2.cos(),
+                    vertex.y - arm_len * arm2.sin(),
+                ),
+                angle,
+            });
+        self.log_info(format!("TechDraw: angle dimension added ({angle:.1}°)"));
+    }
+
+    fn run_techdraw_dim_arc_len(&mut self) {
+        let Some(sheet) = self.gui.techdraw_sheet.as_mut() else {
+            self.log_warning("TechDraw DimArcLen: no sheet open (add a view first)");
+            return;
+        };
+        let Some((min_x, min_y, max_x, max_y)) =
+            sheet.views.first().and_then(Self::techdraw_view_bounds)
+        else {
+            self.log_warning("TechDraw DimArcLen: no source view with drawable edges");
+            return;
+        };
+        let radius = ((max_x - min_x).abs().min((max_y - min_y).abs()) * 0.5).max(1.0);
+        sheet
+            .arc_length_dimensions
+            .push(cadkernel_io::arc_length_dimension(
+                Point2::new(sheet.width * 0.34, sheet.height * 0.56),
+                radius,
+                20.0,
+                140.0,
+            ));
+        let arc_len = radius * 120.0_f64.to_radians();
+        self.log_info(format!(
+            "TechDraw: arc-length dimension added ({arc_len:.2})"
+        ));
+    }
+
+    fn run_techdraw_dim_area(&mut self) {
+        let Some(sheet) = self.gui.techdraw_sheet.as_mut() else {
+            self.log_warning("TechDraw DimArea: no sheet open (add a view first)");
+            return;
+        };
+        let Some((min_x, min_y, max_x, max_y)) =
+            sheet.views.first().and_then(Self::techdraw_view_bounds)
+        else {
+            self.log_warning("TechDraw DimArea: no source view with drawable edges");
+            return;
+        };
+        let area = (max_x - min_x).abs() * (max_y - min_y).abs();
+        let cx = sheet.width * 0.50;
+        let cy = sheet.height * 0.40;
+        let w = sheet.width.min(sheet.height) * 0.18;
+        let h = sheet.width.min(sheet.height) * 0.10;
+        sheet.area_annotations.push(cadkernel_io::AreaAnnotation {
+            boundary: vec![
+                Point2::new(cx - w, cy - h),
+                Point2::new(cx + w, cy - h),
+                Point2::new(cx + w, cy + h),
+                Point2::new(cx - w, cy + h),
+            ],
+            area,
+            label_position: Point2::new(cx, cy),
+        });
+        self.log_info(format!("TechDraw: area dimension added ({area:.2})"));
+    }
+
+    fn run_techdraw_text(&mut self) {
+        let Some(sheet) = self.gui.techdraw_sheet.as_mut() else {
+            self.log_warning("TechDraw Text: no sheet open (use New Page first)");
+            return;
+        };
+        sheet.text_annotations.push(cadkernel_io::TextAnnotation {
+            position: Point2::new(sheet.width * 0.12, sheet.height * 0.18),
+            text: "NOTE: Deburr all edges".into(),
+            font_size: 6.0,
+        });
+        self.log_info("TechDraw: text annotation added");
+    }
+
+    fn run_techdraw_rich_text(&mut self) {
+        let Some(sheet) = self.gui.techdraw_sheet.as_mut() else {
+            self.log_warning("TechDraw RichText: no sheet open (use New Page first)");
+            return;
+        };
+        sheet
+            .rich_text_annotations
+            .push(cadkernel_io::rich_text_annotation(
+                Point2::new(sheet.width * 0.12, sheet.height * 0.25),
+                "<b>Rich</b> text note",
+                6.0,
+            ));
+        self.log_info("TechDraw: rich text annotation added");
+    }
+
+    fn run_techdraw_balloon(&mut self) {
+        let Some(sheet) = self.gui.techdraw_sheet.as_mut() else {
+            self.log_warning("TechDraw Balloon: no sheet open (use New Page first)");
+            return;
+        };
+        sheet
+            .balloon_annotations
+            .push(cadkernel_io::balloon_annotation(
+                Point2::new(sheet.width * 0.48, sheet.height * 0.50),
+                Point2::new(sheet.width * 0.68, sheet.height * 0.34),
+                1,
+                7.0,
+            ));
+        self.log_info("TechDraw: balloon annotation added (#1)");
+    }
+
+    fn run_techdraw_leader(&mut self) {
+        let Some(sheet) = self.gui.techdraw_sheet.as_mut() else {
+            self.log_warning("TechDraw Leader: no sheet open (use New Page first)");
+            return;
+        };
+        sheet.leader_lines.push(cadkernel_io::LeaderLine {
+            start: Point2::new(sheet.width * 0.44, sheet.height * 0.56),
+            end: Point2::new(sheet.width * 0.64, sheet.height * 0.44),
+            text: "Leader callout".into(),
+        });
+        self.log_info("TechDraw: leader annotation added");
+    }
+
+    fn run_techdraw_weld(&mut self) {
+        let Some(sheet) = self.gui.techdraw_sheet.as_mut() else {
+            self.log_warning("TechDraw Weld: no sheet open (use New Page first)");
+            return;
+        };
+        sheet.weld_symbols.push(cadkernel_io::weld_symbol(
+            Point2::new(sheet.width * 0.50, sheet.height * 0.72),
+            cadkernel_io::WeldType::Fillet,
+            8.0,
+            25.0,
+            0.0,
+            cadkernel_io::WeldContour::None,
+            cadkernel_io::WeldFinish::None,
+        ));
+        self.log_info("TechDraw: weld symbol added");
+    }
+
+    fn run_techdraw_surface_finish(&mut self) {
+        let Some(sheet) = self.gui.techdraw_sheet.as_mut() else {
+            self.log_warning("TechDraw SurfFinish: no sheet open (use New Page first)");
+            return;
+        };
+        sheet
+            .surface_finish_symbols
+            .push(cadkernel_io::SurfaceFinishSymbol {
+                position: Point2::new(sheet.width * 0.74, sheet.height * 0.72),
+                roughness: 3.2,
+            });
+        self.log_info("TechDraw: surface finish symbol added (Ra 3.2)");
+    }
+
+    fn run_techdraw_center_face(&mut self) {
+        let Some(sheet) = self.gui.techdraw_sheet.as_mut() else {
+            self.log_warning("TechDraw CenterFace: no sheet open (add a view first)");
+            return;
+        };
+        let Some((min_x, min_y, max_x, max_y)) =
+            sheet.views.first().and_then(Self::techdraw_view_bounds)
+        else {
+            self.log_warning("TechDraw CenterFace: no source view with drawable edges");
+            return;
+        };
+        let span_x = (max_x - min_x).abs();
+        let span_y = (max_y - min_y).abs();
+        let base = sheet.width.min(sheet.height) * 0.16;
+        let (half_w, half_h) = if span_x >= span_y {
+            (base, base * 0.45)
+        } else {
+            (base * 0.45, base)
+        };
+        let center = Point2::new(sheet.width * 0.50, sheet.height * 0.50);
+        let boundary = vec![
+            Point2::new(center.x - half_w, center.y - half_h),
+            Point2::new(center.x + half_w, center.y - half_h),
+            Point2::new(center.x + half_w, center.y + half_h),
+            Point2::new(center.x - half_w, center.y + half_h),
+        ];
+        sheet
+            .centerlines
+            .push(cadkernel_io::centerline_on_face(&boundary, 5.0));
+        self.log_info("TechDraw: centerline on face added");
+    }
+
+    fn run_techdraw_center_lines(&mut self) {
+        let Some(sheet) = self.gui.techdraw_sheet.as_mut() else {
+            self.log_warning("TechDraw CenterLines: no sheet open (add a view first)");
+            return;
+        };
+        let Some((min_x, min_y, max_x, max_y)) =
+            sheet.views.first().and_then(Self::techdraw_view_bounds)
+        else {
+            self.log_warning("TechDraw CenterLines: no source view with drawable edges");
+            return;
+        };
+        let horizontal = (max_x - min_x).abs() >= (max_y - min_y).abs();
+        let center = Point2::new(sheet.width * 0.50, sheet.height * 0.55);
+        let span = sheet.width.min(sheet.height) * 0.22;
+        let gap = sheet.width.min(sheet.height) * 0.04;
+        let (l1_start, l1_end, l2_start, l2_end) = if horizontal {
+            (
+                Point2::new(center.x - span, center.y - gap),
+                Point2::new(center.x + span, center.y - gap),
+                Point2::new(center.x - span, center.y + gap),
+                Point2::new(center.x + span, center.y + gap),
+            )
+        } else {
+            (
+                Point2::new(center.x - gap, center.y - span),
+                Point2::new(center.x - gap, center.y + span),
+                Point2::new(center.x + gap, center.y - span),
+                Point2::new(center.x + gap, center.y + span),
+            )
+        };
+        sheet
+            .centerlines
+            .push(cadkernel_io::centerline_between_lines(
+                l1_start, l1_end, l2_start, l2_end, 5.0,
+            ));
+        self.log_info("TechDraw: centerline between lines added");
+    }
+
+    fn run_techdraw_center_points(&mut self) {
+        let Some(sheet) = self.gui.techdraw_sheet.as_mut() else {
+            self.log_warning("TechDraw CenterPoints: no sheet open (add a view first)");
+            return;
+        };
+        if sheet
+            .views
+            .first()
+            .and_then(Self::techdraw_view_bounds)
+            .is_none()
+        {
+            self.log_warning("TechDraw CenterPoints: no source view with drawable edges");
+            return;
+        }
+        sheet.center_marks.push(cadkernel_io::CenterMark {
+            center: Point2::new(sheet.width * 0.50, sheet.height * 0.50),
+            size: sheet.width.min(sheet.height) * 0.05,
+        });
+        self.log_info("TechDraw: center mark added");
+    }
+
+    fn run_techdraw_bolt_circle(&mut self) {
+        let Some(sheet) = self.gui.techdraw_sheet.as_mut() else {
+            self.log_warning("TechDraw BoltCircle: no sheet open (add a view first)");
+            return;
+        };
+        let Some((min_x, min_y, max_x, max_y)) =
+            sheet.views.first().and_then(Self::techdraw_view_bounds)
+        else {
+            self.log_warning("TechDraw BoltCircle: no source view with drawable edges");
+            return;
+        };
+        let pitch_diameter = (max_x - min_x).abs().max((max_y - min_y).abs());
+        let radius = sheet.width.min(sheet.height) * 0.09;
+        let bolt_count = 6;
+        sheet
+            .bolt_circle_centerlines
+            .push(cadkernel_io::bolt_circle_centerlines(
+                Point2::new(sheet.width * 0.50, sheet.height * 0.50),
+                radius,
+                bolt_count,
+                sheet.width.min(sheet.height) * 0.04,
+            ));
+        self.log_info(format!(
+            "TechDraw: bolt circle added ({bolt_count} centers, pitch ⌀{pitch_diameter:.2})"
+        ));
+    }
+
+    fn techdraw_view_bounds(view: &cadkernel_io::DrawingView) -> Option<(f64, f64, f64, f64)> {
+        let mut min_x = f64::INFINITY;
+        let mut min_y = f64::INFINITY;
+        let mut max_x = f64::NEG_INFINITY;
+        let mut max_y = f64::NEG_INFINITY;
+        for e in &view.edges {
+            min_x = min_x.min(e.x1).min(e.x2);
+            min_y = min_y.min(e.y1).min(e.y2);
+            max_x = max_x.max(e.x1).max(e.x2);
+            max_y = max_y.max(e.y1).max(e.y2);
+        }
+        if min_x.is_finite() && min_y.is_finite() && max_x.is_finite() && max_y.is_finite() {
+            Some((min_x, min_y, max_x, max_y))
+        } else {
+            None
+        }
+    }
+
+    fn techdraw_view_angle(view: &cadkernel_io::DrawingView) -> Option<f64> {
+        for (i, a) in view.edges.iter().enumerate() {
+            let ax = a.x2 - a.x1;
+            let ay = a.y2 - a.y1;
+            let al = (ax * ax + ay * ay).sqrt();
+            if al <= 1e-9 {
+                continue;
+            }
+            for b in view.edges.iter().skip(i + 1) {
+                let bx = b.x2 - b.x1;
+                let by = b.y2 - b.y1;
+                let bl = (bx * bx + by * by).sqrt();
+                if bl <= 1e-9 {
+                    continue;
+                }
+                let cos = ((ax * bx + ay * by) / (al * bl)).clamp(-1.0, 1.0);
+                let angle = cos.acos().to_degrees();
+                if (5.0..=175.0).contains(&angle) {
+                    return Some(angle);
+                }
+            }
+        }
+        None
     }
 
     // -- Phase C3 — Surface ops + PartDesign Loft/Pipe (final MEDIUM batch) --
@@ -5500,10 +7377,7 @@ impl CadApp {
                     r.solid,
                     None,
                 );
-                self.log_info(format!(
-                    "Surface: extended '{}' by {distance:.2}",
-                    obj.name
-                ));
+                self.log_info(format!("Surface: extended '{}' by {distance:.2}", obj.name));
             }
             Err(e) => self.log_error(format!("Surface Extend error: {e}")),
         }
@@ -5643,7 +7517,9 @@ impl CadApp {
                         &format!("{} \\ Loft", obj.name),
                         result_model,
                         solid,
-                        Some(crate::scene::CreationParams::Boolean { op: "subtractive_loft".into() }),
+                        Some(crate::scene::CreationParams::Boolean {
+                            op: "subtractive_loft".into(),
+                        }),
                     );
                     self.log_info("PartDesign: subtractive loft (Difference)");
                 } else {
@@ -5690,7 +7566,9 @@ impl CadApp {
                         &format!("{} \\ Pipe", obj.name),
                         result_model,
                         solid,
-                        Some(crate::scene::CreationParams::Boolean { op: "subtractive_pipe".into() }),
+                        Some(crate::scene::CreationParams::Boolean {
+                            op: "subtractive_pipe".into(),
+                        }),
                     );
                     self.log_info("PartDesign: subtractive pipe (Difference)");
                 } else {
@@ -5734,8 +7612,7 @@ impl CadApp {
                     let svg = cadkernel_io::drawing_to_svg(sheet);
                     match std::fs::write(&path, svg.render()) {
                         Ok(()) => {
-                            self.gui.status_message =
-                                format!("Exported SVG: {}", path.display());
+                            self.gui.status_message = format!("Exported SVG: {}", path.display());
                         }
                         Err(e) => {
                             self.gui.status_message = format!("SVG export failed: {e}");
@@ -5749,33 +7626,66 @@ impl CadApp {
                 self.gui.techdraw_sheet = None;
                 self.gui.status_message = "TechDraw: cleared".into();
             }
-            T::NewPage => self.log_info("TechDraw: new page"),
-            T::FromTemplate => self.log_info("TechDraw: from template"),
-            T::Redraw => self.log_info("TechDraw: redraw"),
-            T::SectionView => self.log_info("TechDraw: section view"),
-            T::DetailView => self.log_info("TechDraw: detail view"),
-            T::BrokenView => self.log_info("TechDraw: broken view"),
-            T::DimLinear => self.log_info("TechDraw: dim linear"),
-            T::DimRadius => self.log_info("TechDraw: dim radius"),
-            T::DimDiameter => self.log_info("TechDraw: dim diameter"),
-            T::DimAngle => self.log_info("TechDraw: dim angle"),
-            T::DimArcLen => self.log_info("TechDraw: dim arc length"),
-            T::DimArea => self.log_info("TechDraw: dim area"),
-            T::Text => self.log_info("TechDraw: text"),
-            T::RichText => self.log_info("TechDraw: rich text"),
-            T::Balloon => self.log_info("TechDraw: balloon"),
-            T::Leader => self.log_info("TechDraw: leader"),
-            T::Weld => self.log_info("TechDraw: weld symbol"),
-            T::SurfFinish => self.log_info("TechDraw: surface finish"),
-            T::CenterFace => self.log_info("TechDraw: center face"),
-            T::CenterLines => self.log_info("TechDraw: center lines"),
-            T::CenterPoints => self.log_info("TechDraw: center points"),
-            T::BoltCircle => self.log_info("TechDraw: bolt circle"),
+            T::NewPage => self.run_techdraw_new_page(),
+            T::FromTemplate => self.run_techdraw_from_template(),
+            T::OpenPageSetup => self.run_techdraw_open_page_setup(),
+            T::CommitPageSetup => self.run_techdraw_commit_page_setup(),
+            T::Redraw => self.run_techdraw_redraw(),
+            T::SectionView => self.run_techdraw_section_view(),
+            T::DetailView => self.run_techdraw_detail_view(),
+            T::BrokenView => self.run_techdraw_broken_view(),
+            T::OpenViewSetup(kind) => self.run_techdraw_open_view_setup(kind),
+            T::CommitViewSetup => self.run_techdraw_commit_view_setup(),
+            T::DimLinear => self.run_techdraw_dim_linear(),
+            T::DimRadius => self.run_techdraw_dim_radius(),
+            T::DimDiameter => self.run_techdraw_dim_diameter(),
+            T::DimAngle => self.run_techdraw_dim_angle(),
+            T::DimArcLen => self.run_techdraw_dim_arc_len(),
+            T::DimArea => self.run_techdraw_dim_area(),
+            T::OpenDimensionSetup(kind) => self.run_techdraw_open_dimension_setup(kind),
+            T::CommitDimensionSetup => self.run_techdraw_commit_dimension_setup(),
+            T::Text => self.run_techdraw_text(),
+            T::RichText => self.run_techdraw_rich_text(),
+            T::Balloon => self.run_techdraw_balloon(),
+            T::Leader => self.run_techdraw_leader(),
+            T::Weld => self.run_techdraw_weld(),
+            T::SurfFinish => self.run_techdraw_surface_finish(),
+            T::OpenAnnotationSetup(kind) => self.run_techdraw_open_annotation_setup(kind),
+            T::CommitAnnotationSetup => self.run_techdraw_commit_annotation_setup(),
+            T::OpenCenterlineSetup(kind) => self.run_techdraw_open_centerline_setup(kind),
+            T::CommitCenterlineSetup => self.run_techdraw_commit_centerline_setup(),
+            T::CenterFace => self.run_techdraw_center_face(),
+            T::CenterLines => self.run_techdraw_center_lines(),
+            T::CenterPoints => self.run_techdraw_center_points(),
+            T::BoltCircle => self.run_techdraw_bolt_circle(),
             T::ExportDxf(path) => {
-                self.log_info(format!("TechDraw: export DXF \u{2192} {}", path.display()));
+                if let Some(sheet) = &self.gui.techdraw_sheet {
+                    let doc = cadkernel_io::drawing_to_dxf(sheet);
+                    match doc.write_to(&path) {
+                        Ok(()) => {
+                            self.gui.status_message = format!("Exported DXF: {}", path.display());
+                        }
+                        Err(e) => {
+                            self.gui.status_message = format!("DXF export failed: {e}");
+                        }
+                    }
+                } else {
+                    self.gui.status_message = "TechDraw: no drawing to export".into();
+                }
             }
             T::ExportPdf(path) => {
-                self.log_info(format!("TechDraw: export PDF \u{2192} {}", path.display()));
+                if let Some(sheet) = &self.gui.techdraw_sheet {
+                    match cadkernel_io::drawing_to_pdf(sheet).and_then(|doc| doc.save_to(&path)) {
+                        Ok(()) => {
+                            self.gui.status_message = format!("Exported PDF: {}", path.display());
+                        }
+                        Err(e) => {
+                            self.gui.status_message = format!("PDF export failed: {e}");
+                        }
+                    }
+                } else {
+                    self.gui.status_message = "TechDraw: no drawing to export".into();
+                }
             }
         }
     }
@@ -5783,7 +7693,11 @@ impl CadApp {
     /// Compute a `WorkPlane` from the first selected face.
     fn compute_face_workplane(&self) -> Option<WorkPlane> {
         let face_h = self.gui.selected_entities.iter().find_map(|e| {
-            if let SelectedEntity::Face(fh) = e { Some(*fh) } else { None }
+            if let SelectedEntity::Face(fh) = e {
+                Some(*fh)
+            } else {
+                None
+            }
         })?;
         let obj = self.scene.selected_object()?;
         let (_fh, start, count) = obj.face_tri_map.iter().find(|(f, _, _)| *f == face_h)?;
@@ -5853,7 +7767,11 @@ impl CadApp {
     /// chain). Collects edges in both directions from the seed edge.
     fn compute_edge_loop(&self) -> Vec<Handle<EdgeData>> {
         let seed = self.gui.selected_entities.iter().find_map(|e| {
-            if let SelectedEntity::Edge(eh) = e { Some(*eh) } else { None }
+            if let SelectedEntity::Edge(eh) = e {
+                Some(*eh)
+            } else {
+                None
+            }
         });
         let seed = match seed {
             Some(s) => s,
@@ -5869,7 +7787,9 @@ impl CadApp {
         }
 
         // Walk in one direction from seed
-        let walk = |start_vertex: Handle<VertexData>, exclude: Handle<EdgeData>| -> Vec<Handle<EdgeData>> {
+        let walk = |start_vertex: Handle<VertexData>,
+                    exclude: Handle<EdgeData>|
+         -> Vec<Handle<EdgeData>> {
             let mut result = Vec::new();
             let mut current = start_vertex;
             let mut prev_edge = exclude;
@@ -5879,7 +7799,11 @@ impl CadApp {
                     None => break,
                 };
                 // Find the other edge at this vertex (not prev_edge)
-                let next: Vec<_> = neighbors.iter().filter(|&&e| e != prev_edge).copied().collect();
+                let next: Vec<_> = neighbors
+                    .iter()
+                    .filter(|&&e| e != prev_edge)
+                    .copied()
+                    .collect();
                 if next.len() != 1 {
                     break; // branch or dead end — stop
                 }
@@ -5893,7 +7817,11 @@ impl CadApp {
                     Some(e) => e,
                     None => break,
                 };
-                current = if ed.start == current { ed.end } else { ed.start };
+                current = if ed.start == current {
+                    ed.end
+                } else {
+                    ed.start
+                };
                 prev_edge = next_edge;
             }
             result
@@ -5920,7 +7848,11 @@ impl CadApp {
     /// opposite to the current one and continue.
     fn compute_edge_ring(&self) -> Vec<Handle<EdgeData>> {
         let seed = self.gui.selected_entities.iter().find_map(|e| {
-            if let SelectedEntity::Edge(eh) = e { Some(*eh) } else { None }
+            if let SelectedEntity::Edge(eh) = e {
+                Some(*eh)
+            } else {
+                None
+            }
         });
         let seed = match seed {
             Some(s) => s,
@@ -5928,14 +7860,15 @@ impl CadApp {
         };
 
         // Get opposite edge in a quad face
-        let opposite_edge = |face_h: Handle<FaceData>, edge_h: Handle<EdgeData>| -> Option<Handle<EdgeData>> {
-            let edges = self.model.edges_of_face(face_h).ok()?;
-            if edges.len() != 4 {
-                return None; // only works on quads
-            }
-            let idx = edges.iter().position(|&e| e == edge_h)?;
-            Some(edges[(idx + 2) % 4])
-        };
+        let opposite_edge =
+            |face_h: Handle<FaceData>, edge_h: Handle<EdgeData>| -> Option<Handle<EdgeData>> {
+                let edges = self.model.edges_of_face(face_h).ok()?;
+                if edges.len() != 4 {
+                    return None; // only works on quads
+                }
+                let idx = edges.iter().position(|&e| e == edge_h)?;
+                Some(edges[(idx + 2) % 4])
+            };
 
         let mut result = vec![seed];
         let mut visited = std::collections::HashSet::new();
@@ -5980,7 +7913,11 @@ impl CadApp {
     /// transitively connected faces.
     fn compute_face_loop(&self) -> Vec<Handle<FaceData>> {
         let seed = self.gui.selected_entities.iter().find_map(|e| {
-            if let SelectedEntity::Face(fh) = e { Some(*fh) } else { None }
+            if let SelectedEntity::Face(fh) = e {
+                Some(*fh)
+            } else {
+                None
+            }
         });
         let seed = match seed {
             Some(s) => s,
@@ -6069,6 +8006,13 @@ impl CadApp {
         for i in del_lines {
             if i < sm.sketch.lines.len() {
                 sm.sketch.lines.remove(i);
+                use cadkernel_sketch::LineId;
+                sm.sketch.construction_lines.retain(|l| l.0 != i);
+                for lid in &mut sm.sketch.construction_lines {
+                    if lid.0 > i {
+                        *lid = LineId(lid.0 - 1);
+                    }
+                }
             }
         }
         for i in del_points {
@@ -6076,31 +8020,128 @@ impl CadApp {
                 sm.sketch.points.remove(i);
                 // Adjust all PointId references that point beyond the removed index
                 use cadkernel_sketch::PointId;
+                sm.sketch.construction_points.retain(|p| p.0 != i);
+                for pid in &mut sm.sketch.construction_points {
+                    if pid.0 > i {
+                        *pid = PointId(pid.0 - 1);
+                    }
+                }
                 for line in &mut sm.sketch.lines {
-                    if line.start.0 > i { line.start = PointId(line.start.0 - 1); }
-                    if line.end.0 > i { line.end = PointId(line.end.0 - 1); }
+                    if line.start.0 > i {
+                        line.start = PointId(line.start.0 - 1);
+                    }
+                    if line.end.0 > i {
+                        line.end = PointId(line.end.0 - 1);
+                    }
                 }
                 for arc in &mut sm.sketch.arcs {
-                    if arc.center.0 > i { arc.center = PointId(arc.center.0 - 1); }
-                    if arc.start_point.0 > i { arc.start_point = PointId(arc.start_point.0 - 1); }
-                    if arc.end_point.0 > i { arc.end_point = PointId(arc.end_point.0 - 1); }
+                    if arc.center.0 > i {
+                        arc.center = PointId(arc.center.0 - 1);
+                    }
+                    if arc.start_point.0 > i {
+                        arc.start_point = PointId(arc.start_point.0 - 1);
+                    }
+                    if arc.end_point.0 > i {
+                        arc.end_point = PointId(arc.end_point.0 - 1);
+                    }
                 }
                 for circle in &mut sm.sketch.circles {
-                    if circle.center.0 > i { circle.center = PointId(circle.center.0 - 1); }
+                    if circle.center.0 > i {
+                        circle.center = PointId(circle.center.0 - 1);
+                    }
                 }
                 for ell in &mut sm.sketch.ellipses {
-                    if ell.center.0 > i { ell.center = PointId(ell.center.0 - 1); }
-                    if ell.major_end.0 > i { ell.major_end = PointId(ell.major_end.0 - 1); }
+                    if ell.center.0 > i {
+                        ell.center = PointId(ell.center.0 - 1);
+                    }
+                    if ell.major_end.0 > i {
+                        ell.major_end = PointId(ell.major_end.0 - 1);
+                    }
                 }
                 for bsp in &mut sm.sketch.bsplines {
                     for cp in &mut bsp.control_points {
-                        if cp.0 > i { *cp = PointId(cp.0 - 1); }
+                        if cp.0 > i {
+                            *cp = PointId(cp.0 - 1);
+                        }
                     }
                 }
             }
         }
 
         sm.selected_entities.clear();
+        sm.sketch
+            .construction_points
+            .retain(|p| p.0 < sm.sketch.points.len());
+        sm.sketch
+            .construction_lines
+            .retain(|l| l.0 < sm.sketch.lines.len());
+        sm.update_constraint_status();
+    }
+
+    pub(crate) fn select_sketch_references(sm: &mut SketchMode) -> usize {
+        sm.selected_entities.clear();
+        for &pid in &sm.sketch.construction_points {
+            if pid.0 < sm.sketch.points.len()
+                && !sm
+                    .selected_entities
+                    .contains(&SketchEntityRef::Point(pid.0))
+            {
+                sm.selected_entities.push(SketchEntityRef::Point(pid.0));
+            }
+        }
+        for &lid in &sm.sketch.construction_lines {
+            if lid.0 < sm.sketch.lines.len()
+                && !sm.selected_entities.contains(&SketchEntityRef::Line(lid.0))
+            {
+                sm.selected_entities.push(SketchEntityRef::Line(lid.0));
+            }
+        }
+        sm.selected_entities.len()
+    }
+
+    pub(crate) fn promote_sketch_references(sm: &mut SketchMode) -> usize {
+        let selected_points: std::collections::HashSet<usize> = sm
+            .selected_entities
+            .iter()
+            .filter_map(|entity| match *entity {
+                SketchEntityRef::Point(i) => Some(i),
+                _ => None,
+            })
+            .collect();
+        let selected_lines: std::collections::HashSet<usize> = sm
+            .selected_entities
+            .iter()
+            .filter_map(|entity| match *entity {
+                SketchEntityRef::Line(i) => Some(i),
+                _ => None,
+            })
+            .collect();
+        let selected_ref_count = sm
+            .sketch
+            .construction_points
+            .iter()
+            .filter(|pid| selected_points.contains(&pid.0))
+            .count()
+            + sm.sketch
+                .construction_lines
+                .iter()
+                .filter(|lid| selected_lines.contains(&lid.0))
+                .count();
+        let before = sm.sketch.construction_points.len() + sm.sketch.construction_lines.len();
+
+        if selected_ref_count > 0 {
+            sm.sketch
+                .construction_points
+                .retain(|pid| !selected_points.contains(&pid.0));
+            sm.sketch
+                .construction_lines
+                .retain(|lid| !selected_lines.contains(&lid.0));
+        } else {
+            sm.sketch.construction_points.clear();
+            sm.sketch.construction_lines.clear();
+        }
+
+        before - (sm.sketch.construction_points.len() + sm.sketch.construction_lines.len())
     }
 
     /// Apply Horizontal constraint to selected line(s), or last line if no selection.
@@ -6169,7 +8210,14 @@ impl CadApp {
             if line.start.0 < sm.sketch.points.len() && line.end.0 < sm.sketch.points.len() {
                 let s = &sm.sketch.points[line.start.0];
                 let e = &sm.sketch.points[line.end.0];
-                let d = Self::point_to_segment_dist(x, y, s.position.x, s.position.y, e.position.x, e.position.y);
+                let d = Self::point_to_segment_dist(
+                    x,
+                    y,
+                    s.position.x,
+                    s.position.y,
+                    e.position.x,
+                    e.position.y,
+                );
                 if d < ht && best.as_ref().is_none_or(|(_, bd)| d < *bd) {
                     best = Some((SketchEntityRef::Line(i), d));
                 }
@@ -6181,7 +8229,9 @@ impl CadApp {
         for (i, circle) in sm.sketch.circles.iter().enumerate() {
             if circle.center.0 < sm.sketch.points.len() {
                 let c = &sm.sketch.points[circle.center.0];
-                let d = (((x - c.position.x).powi(2) + (y - c.position.y).powi(2)).sqrt() - circle.radius).abs();
+                let d = (((x - c.position.x).powi(2) + (y - c.position.y).powi(2)).sqrt()
+                    - circle.radius)
+                    .abs();
                 if d < ht && best.as_ref().is_none_or(|(_, bd)| d < *bd) {
                     best = Some((SketchEntityRef::Circle(i), d));
                 }
@@ -6193,7 +8243,9 @@ impl CadApp {
         for (i, arc) in sm.sketch.arcs.iter().enumerate() {
             if arc.center.0 < sm.sketch.points.len() {
                 let c = &sm.sketch.points[arc.center.0];
-                let d = (((x - c.position.x).powi(2) + (y - c.position.y).powi(2)).sqrt() - arc.radius).abs();
+                let d = (((x - c.position.x).powi(2) + (y - c.position.y).powi(2)).sqrt()
+                    - arc.radius)
+                    .abs();
                 if d < ht && best.as_ref().is_none_or(|(_, bd)| d < *bd) {
                     best = Some((SketchEntityRef::Arc(i), d));
                 }
@@ -6210,7 +8262,12 @@ impl CadApp {
                 let s = &sm.sketch.points[line.start.0];
                 let e = &sm.sketch.points[line.end.0];
                 let d = Self::point_to_segment_dist(
-                    x, y, s.position.x, s.position.y, e.position.x, e.position.y,
+                    x,
+                    y,
+                    s.position.x,
+                    s.position.y,
+                    e.position.x,
+                    e.position.y,
                 );
                 if d < threshold && best.as_ref().is_none_or(|(_, bd)| d < *bd) {
                     best = Some((vec![line.start.0, line.end.0], d));
@@ -6312,15 +8369,29 @@ impl CadApp {
             for j in (i + 1)..n_lines {
                 let li = &sm.sketch.lines[i];
                 let lj = &sm.sketch.lines[j];
-                if li.start.0 >= sm.sketch.points.len() || li.end.0 >= sm.sketch.points.len()
-                    || lj.start.0 >= sm.sketch.points.len() || lj.end.0 >= sm.sketch.points.len()
+                if li.start.0 >= sm.sketch.points.len()
+                    || li.end.0 >= sm.sketch.points.len()
+                    || lj.start.0 >= sm.sketch.points.len()
+                    || lj.end.0 >= sm.sketch.points.len()
                 {
                     continue;
                 }
-                let (ax, ay) = (sm.sketch.points[li.start.0].position.x, sm.sketch.points[li.start.0].position.y);
-                let (bx, by) = (sm.sketch.points[li.end.0].position.x, sm.sketch.points[li.end.0].position.y);
-                let (cx, cy) = (sm.sketch.points[lj.start.0].position.x, sm.sketch.points[lj.start.0].position.y);
-                let (dx2, dy2) = (sm.sketch.points[lj.end.0].position.x, sm.sketch.points[lj.end.0].position.y);
+                let (ax, ay) = (
+                    sm.sketch.points[li.start.0].position.x,
+                    sm.sketch.points[li.start.0].position.y,
+                );
+                let (bx, by) = (
+                    sm.sketch.points[li.end.0].position.x,
+                    sm.sketch.points[li.end.0].position.y,
+                );
+                let (cx, cy) = (
+                    sm.sketch.points[lj.start.0].position.x,
+                    sm.sketch.points[lj.start.0].position.y,
+                );
+                let (dx2, dy2) = (
+                    sm.sketch.points[lj.end.0].position.x,
+                    sm.sketch.points[lj.end.0].position.y,
+                );
                 let denom = (bx - ax) * (dy2 - cy) - (by - ay) * (dx2 - cx);
                 if denom.abs() < 1e-12 {
                     continue;
@@ -6343,7 +8414,12 @@ impl CadApp {
     }
 
     /// Find an existing point within snap distance, or create a new one.
-    fn find_or_create_point(sketch: &mut cadkernel_sketch::Sketch, x: f64, y: f64, snap_dist: f64) -> cadkernel_sketch::PointId {
+    fn find_or_create_point(
+        sketch: &mut cadkernel_sketch::Sketch,
+        x: f64,
+        y: f64,
+        snap_dist: f64,
+    ) -> cadkernel_sketch::PointId {
         for (i, pt) in sketch.points.iter().enumerate() {
             let dx = pt.position.x - x;
             let dy = pt.position.y - y;
@@ -6355,14 +8431,19 @@ impl CadApp {
     }
 
     /// Detect and apply auto-constraints for a newly created line.
-    fn apply_line_auto_constraints(sketch: &mut cadkernel_sketch::Sketch, lid: cadkernel_sketch::LineId) {
+    fn apply_line_auto_constraints(
+        sketch: &mut cadkernel_sketch::Sketch,
+        lid: cadkernel_sketch::LineId,
+    ) {
         let line = &sketch.lines[lid.0];
         let s = &sketch.points[line.start.0];
         let e = &sketch.points[line.end.0];
         let dx = e.position.x - s.position.x;
         let dy = e.position.y - s.position.y;
         let len = (dx * dx + dy * dy).sqrt();
-        if len < 1e-9 { return; }
+        if len < 1e-9 {
+            return;
+        }
         let angle = dy.atan2(dx).to_degrees().abs();
         if angle < 5.0 || (180.0 - angle).abs() < 5.0 {
             sketch.add_constraint(Constraint::Horizontal(lid));
@@ -6392,9 +8473,7 @@ impl CadApp {
                     let dx = pt.position.x - x;
                     let dy = pt.position.y - y;
                     let d = (dx * dx + dy * dy).sqrt();
-                    if d < hit_threshold * 0.6
-                        && best.as_ref().is_none_or(|(_, bd)| d < *bd)
-                    {
+                    if d < hit_threshold * 0.6 && best.as_ref().is_none_or(|(_, bd)| d < *bd) {
                         best = Some((SketchEntityRef::Point(i), d));
                     }
                 }
@@ -6408,13 +8487,14 @@ impl CadApp {
                             let s = &sm.sketch.points[line.start.0];
                             let e = &sm.sketch.points[line.end.0];
                             let d = Self::point_to_segment_dist(
-                                x, y,
-                                s.position.x, s.position.y,
-                                e.position.x, e.position.y,
+                                x,
+                                y,
+                                s.position.x,
+                                s.position.y,
+                                e.position.x,
+                                e.position.y,
                             );
-                            if d < hit_threshold
-                                && best.as_ref().is_none_or(|(_, bd)| d < *bd)
-                            {
+                            if d < hit_threshold && best.as_ref().is_none_or(|(_, bd)| d < *bd) {
                                 best = Some((SketchEntityRef::Line(i), d));
                             }
                         }
@@ -6430,9 +8510,7 @@ impl CadApp {
                             let dy = y - c.position.y;
                             let dist_to_center = (dx * dx + dy * dy).sqrt();
                             let d = (dist_to_center - circle.radius).abs();
-                            if d < hit_threshold
-                                && best.as_ref().is_none_or(|(_, bd)| d < *bd)
-                            {
+                            if d < hit_threshold && best.as_ref().is_none_or(|(_, bd)| d < *bd) {
                                 best = Some((SketchEntityRef::Circle(i), d));
                             }
                         }
@@ -6448,9 +8526,7 @@ impl CadApp {
                             let dy = y - c.position.y;
                             let dist_to_center = (dx * dx + dy * dy).sqrt();
                             let d = (dist_to_center - arc.radius).abs();
-                            if d < hit_threshold
-                                && best.as_ref().is_none_or(|(_, bd)| d < *bd)
-                            {
+                            if d < hit_threshold && best.as_ref().is_none_or(|(_, bd)| d < *bd) {
                                 best = Some((SketchEntityRef::Arc(i), d));
                             }
                         }
@@ -6476,12 +8552,9 @@ impl CadApp {
                             let ly = y - c.position.y;
                             let ex = lx * cos_a + ly * sin_a;
                             let ey = -lx * sin_a + ly * cos_a;
-                            let norm_dist =
-                                ((ex / semi_a).powi(2) + (ey / semi_b).powi(2)).sqrt();
+                            let norm_dist = ((ex / semi_a).powi(2) + (ey / semi_b).powi(2)).sqrt();
                             let d = (norm_dist - 1.0).abs() * semi_a.min(semi_b);
-                            if d < hit_threshold
-                                && best.as_ref().is_none_or(|(_, bd)| d < *bd)
-                            {
+                            if d < hit_threshold && best.as_ref().is_none_or(|(_, bd)| d < *bd) {
                                 best = Some((SketchEntityRef::Ellipse(i), d));
                             }
                         }
@@ -6498,12 +8571,14 @@ impl CadApp {
                                 let s = &sm.sketch.points[seg[0].0];
                                 let e = &sm.sketch.points[seg[1].0];
                                 let d = Self::point_to_segment_dist(
-                                    x, y,
-                                    s.position.x, s.position.y,
-                                    e.position.x, e.position.y,
+                                    x,
+                                    y,
+                                    s.position.x,
+                                    s.position.y,
+                                    e.position.x,
+                                    e.position.y,
                                 );
-                                if d < hit_threshold
-                                    && best.as_ref().is_none_or(|(_, bd)| d < *bd)
+                                if d < hit_threshold && best.as_ref().is_none_or(|(_, bd)| d < *bd)
                                 {
                                     best = Some((SketchEntityRef::BSpline(i), d));
                                 }
@@ -6554,10 +8629,8 @@ impl CadApp {
                     Self::apply_line_auto_constraints(&mut sm.sketch, lid);
                     // Chain: start next line from end of previous
                     sm.pending_point = Some((x, y));
-                    self.gui.status_message = format!(
-                        "Line added ({:.1},{:.1}) -> ({:.1},{:.1})",
-                        px, py, x, y
-                    );
+                    self.gui.status_message =
+                        format!("Line added ({:.1},{:.1}) -> ({:.1},{:.1})", px, py, x, y);
                 } else {
                     sm.pending_point = Some((x, y));
                     self.gui.status_message = format!("Line start: ({x:.1}, {y:.1})");
@@ -6588,14 +8661,11 @@ impl CadApp {
                     sm.sketch.add_constraint(Constraint::Vertical(l1));
                     sm.sketch.add_constraint(Constraint::Horizontal(l2));
                     sm.sketch.add_constraint(Constraint::Vertical(l3));
-                    self.gui.status_message = format!(
-                        "Rectangle ({:.1},{:.1}) -> ({:.1},{:.1})",
-                        px, py, x, y
-                    );
+                    self.gui.status_message =
+                        format!("Rectangle ({:.1},{:.1}) -> ({:.1},{:.1})", px, py, x, y);
                 } else {
                     sm.pending_point = Some((x, y));
-                    self.gui.status_message =
-                        format!("Rectangle corner 1: ({x:.1}, {y:.1})");
+                    self.gui.status_message = format!("Rectangle corner 1: ({x:.1}, {y:.1})");
                 }
             }
             SketchTool::Circle => {
@@ -6628,16 +8698,19 @@ impl CadApp {
                         cx + radius * start_angle.cos(),
                         cy + radius * start_angle.sin(),
                     );
-                    let ep = sm.sketch.add_point(
-                        cx + radius * end_angle.cos(),
-                        cy + radius * end_angle.sin(),
+                    let ep = sm
+                        .sketch
+                        .add_point(cx + radius * end_angle.cos(), cy + radius * end_angle.sin());
+                    sm.sketch
+                        .add_arc(center, sp, ep, radius, start_angle, end_angle);
+                    self.gui.status_message = format!(
+                        "Arc center ({cx:.1},{cy:.1}) r={radius:.1} angle={:.0}°",
+                        click_angle.to_degrees()
                     );
-                    sm.sketch.add_arc(center, sp, ep, radius, start_angle, end_angle);
-                    self.gui.status_message =
-                        format!("Arc center ({cx:.1},{cy:.1}) r={radius:.1} angle={:.0}°", click_angle.to_degrees());
                 } else {
                     sm.pending_point = Some((x, y));
-                    self.gui.status_message = format!("Arc center: ({x:.1}, {y:.1}) — click circumference point");
+                    self.gui.status_message =
+                        format!("Arc center: ({x:.1}, {y:.1}) — click circumference point");
                 }
             }
             SketchTool::Point => {
@@ -6660,7 +8733,8 @@ impl CadApp {
                         format!("Ellipse center ({cx:.1},{cy:.1}) rx={rx:.1} ry={ry:.1}");
                 } else {
                     sm.pending_point = Some((x, y));
-                    self.gui.status_message = format!("Ellipse center: ({x:.1}, {y:.1}) — click corner");
+                    self.gui.status_message =
+                        format!("Ellipse center: ({x:.1}, {y:.1}) — click corner");
                 }
             }
             SketchTool::Polyline => {
@@ -6670,21 +8744,30 @@ impl CadApp {
                     let pts = &sm.polyline_points;
                     let n = pts.len();
                     let snap = 0.3;
-                    let p0 = Self::find_or_create_point(&mut sm.sketch, pts[n - 2].0, pts[n - 2].1, snap);
-                    let p1 = Self::find_or_create_point(&mut sm.sketch, pts[n - 1].0, pts[n - 1].1, snap);
+                    let p0 = Self::find_or_create_point(
+                        &mut sm.sketch,
+                        pts[n - 2].0,
+                        pts[n - 2].1,
+                        snap,
+                    );
+                    let p1 = Self::find_or_create_point(
+                        &mut sm.sketch,
+                        pts[n - 1].0,
+                        pts[n - 1].1,
+                        snap,
+                    );
                     let lid = sm.sketch.add_line(p0, p1);
                     Self::apply_line_auto_constraints(&mut sm.sketch, lid);
                 }
-                self.gui.status_message = format!(
-                    "Polyline: {} points", sm.polyline_points.len()
-                );
+                self.gui.status_message = format!("Polyline: {} points", sm.polyline_points.len());
             }
             SketchTool::Slot => {
                 // 3-click flow: center1, center2, width point
                 sm.polyline_points.push((x, y));
                 match sm.polyline_points.len() {
                     1 => {
-                        self.gui.status_message = format!("Slot center 1: ({x:.1}, {y:.1}) — click center 2");
+                        self.gui.status_message =
+                            format!("Slot center 1: ({x:.1}, {y:.1}) — click center 2");
                     }
                     2 => {
                         self.gui.status_message = "Slot axis set — click to define width".into();
@@ -6722,7 +8805,8 @@ impl CadApp {
                             let a2s = base_angle - std::f64::consts::FRAC_PI_2;
                             let a2e = base_angle + std::f64::consts::FRAC_PI_2;
                             sm.sketch.add_arc(ac1, p3, p0, half_w, a2s, a2e);
-                            self.gui.status_message = format!("Slot: length {alen:.1}, width {:.1}", half_w * 2.0);
+                            self.gui.status_message =
+                                format!("Slot: length {alen:.1}, width {:.1}", half_w * 2.0);
                         }
                     }
                 }
@@ -6730,9 +8814,8 @@ impl CadApp {
             SketchTool::BSpline => {
                 sm.save_snapshot();
                 sm.polyline_points.push((x, y));
-                self.gui.status_message = format!(
-                    "B-Spline: {} control points", sm.polyline_points.len()
-                );
+                self.gui.status_message =
+                    format!("B-Spline: {} control points", sm.polyline_points.len());
             }
             SketchTool::Polygon { sides } => {
                 if let Some((cx, cy)) = sm.pending_point.take() {
@@ -6744,13 +8827,16 @@ impl CadApp {
                     for i in 0..n {
                         let a0 = std::f64::consts::TAU * (i as f64) / (n as f64);
                         let a1 = std::f64::consts::TAU * ((i + 1) as f64) / (n as f64);
-                        let p0 = sm.sketch.add_point(cx + radius * a0.cos(), cy + radius * a0.sin());
-                        let p1 = sm.sketch.add_point(cx + radius * a1.cos(), cy + radius * a1.sin());
+                        let p0 = sm
+                            .sketch
+                            .add_point(cx + radius * a0.cos(), cy + radius * a0.sin());
+                        let p1 = sm
+                            .sketch
+                            .add_point(cx + radius * a1.cos(), cy + radius * a1.sin());
                         sm.sketch.add_line(p0, p1);
                     }
-                    self.gui.status_message = format!(
-                        "Regular {n}-gon center ({cx:.1},{cy:.1}) r={radius:.1}"
-                    );
+                    self.gui.status_message =
+                        format!("Regular {n}-gon center ({cx:.1},{cy:.1}) r={radius:.1}");
                 } else {
                     sm.pending_point = Some((x, y));
                     self.gui.status_message = format!("Polygon center: ({x:.1}, {y:.1})");
@@ -6805,6 +8891,16 @@ impl CadApp {
                     clipboard_points: sm.clipboard_points.clone(),
                     clipboard_lines: sm.clipboard_lines.clone(),
                     validation_issues: Vec::new(),
+                    constraint_warning_count: 0,
+                    constraint_status: "Constraints: healthy".into(),
+                    external_reference_count: 0,
+                    reused_geometry_count: sm.reused_geometry_count,
+                    reference_status: sm.reference_status.clone(),
+                    profile_ready: false,
+                    profile_loop_count: 0,
+                    profile_open_endpoint_count: 0,
+                    profile_branch_point_count: 0,
+                    profile_status: "Profile: no regular lines".into(),
                     box_select_start: None,
                     box_select_end: None,
                 });
@@ -6813,7 +8909,13 @@ impl CadApp {
         }
 
         // Extract profile
-        let profile = extract_profile(&sketch, &sm.plane);
+        let profile = match extract_profile_checked(&sketch, &sm.plane) {
+            Ok(profile) => profile,
+            Err(e) => {
+                self.gui.status_message = format!("Sketch profile invalid: {e}");
+                return;
+            }
+        };
         if profile.len() < 3 {
             self.gui.status_message = format!(
                 "Sketch has only {} points, need at least 3 for extrude",
@@ -6825,16 +8927,11 @@ impl CadApp {
         // Extrude along plane normal
         let distance = sm.extrude_distance;
         if distance.abs() < 1e-10 {
-            self.gui.status_message =
-                "Sketch closed (no extrude — distance is 0)".into();
+            self.gui.status_message = "Sketch closed (no extrude — distance is 0)".into();
             return;
         }
 
-        let dir = Vec3::new(
-            sm.plane.normal.x,
-            sm.plane.normal.y,
-            sm.plane.normal.z,
-        );
+        let dir = Vec3::new(sm.plane.normal.x, sm.plane.normal.y, sm.plane.normal.z);
         let mut model = BRepModel::new();
         match extrude(&mut model, &profile, dir, distance) {
             Ok(r) => {
@@ -6876,12 +8973,9 @@ impl CadApp {
         // For perspective: ray = eye + t * dir, where dir = f + ndc_x*right*tan(fov/2)*aspect + ndc_y*up*tan(fov/2)
         let half_fov_tan = (self.camera.fovy * 0.5).tan();
         let dir = normalize3([
-            f[0] + ndc_x * r[0] * half_fov_tan * self.camera.aspect
-                + ndc_y * u[0] * half_fov_tan,
-            f[1] + ndc_x * r[1] * half_fov_tan * self.camera.aspect
-                + ndc_y * u[1] * half_fov_tan,
-            f[2] + ndc_x * r[2] * half_fov_tan * self.camera.aspect
-                + ndc_y * u[2] * half_fov_tan,
+            f[0] + ndc_x * r[0] * half_fov_tan * self.camera.aspect + ndc_y * u[0] * half_fov_tan,
+            f[1] + ndc_x * r[1] * half_fov_tan * self.camera.aspect + ndc_y * u[1] * half_fov_tan,
+            f[2] + ndc_x * r[2] * half_fov_tan * self.camera.aspect + ndc_y * u[2] * half_fov_tan,
         ]);
 
         // Intersect ray with sketch plane: dot(origin + t*dir - plane_point, plane_normal) = 0
@@ -6903,7 +8997,11 @@ impl CadApp {
         if t < 0.0 {
             return None; // behind camera
         }
-        let hit = [eye[0] + t * dir[0], eye[1] + t * dir[1], eye[2] + t * dir[2]];
+        let hit = [
+            eye[0] + t * dir[0],
+            eye[1] + t * dir[1],
+            eye[2] + t * dir[2],
+        ];
 
         // Project 3D hit point to sketch 2D coordinates
         let rel = sub3(hit, po);
@@ -6924,24 +9022,34 @@ impl CadApp {
 
     fn save_scene_file(&mut self, path: &Path) {
         let path_str = path.to_str().unwrap_or("");
-        let objects: Vec<cadkernel_io::SceneObjectData> = self.scene.objects.iter().map(|obj| {
-            let params_json = obj.params.as_ref().and_then(|p| serde_json::to_string(p).ok());
-            cadkernel_io::SceneObjectData {
-                name: obj.name.clone(),
-                model: obj.model.clone(),
-                solid_index: obj.solid.index(),
-                solid_generation: obj.solid.generation(),
-                color: obj.color,
-                visible: obj.visible,
-                params_json,
-            }
-        }).collect();
+        let objects: Vec<cadkernel_io::SceneObjectData> = self
+            .scene
+            .objects
+            .iter()
+            .map(|obj| {
+                let params_json = obj
+                    .params
+                    .as_ref()
+                    .and_then(|p| serde_json::to_string(p).ok());
+                cadkernel_io::SceneObjectData {
+                    name: obj.name.clone(),
+                    model: obj.model.clone(),
+                    solid_index: obj.solid.index(),
+                    solid_generation: obj.solid.generation(),
+                    color: obj.color,
+                    visible: obj.visible,
+                    params_json,
+                }
+            })
+            .collect();
         match cadkernel_io::save_scene(&objects, path_str) {
             Ok(()) => {
                 self.gui.current_file = Some(path.display().to_string());
                 self.add_recent_file(&path.display().to_string());
                 self.log_info(format!(
-                    "Saved scene ({} objects) → {}", self.scene.len(), path.display()
+                    "Saved scene ({} objects) → {}",
+                    self.scene.len(),
+                    path.display()
                 ));
             }
             Err(e) => {
@@ -6961,13 +9069,15 @@ impl CadApp {
                 self.current_solid = None;
                 let count = objects.len();
                 for obj_data in objects {
-                    let solid = Handle::from_raw_parts(obj_data.solid_index, obj_data.solid_generation);
-                    let params: Option<crate::scene::CreationParams> = obj_data.params_json
+                    let solid =
+                        Handle::from_raw_parts(obj_data.solid_index, obj_data.solid_generation);
+                    let params: Option<crate::scene::CreationParams> = obj_data
+                        .params_json
                         .as_deref()
                         .and_then(|s| serde_json::from_str(s).ok());
-                    let id = self.scene.add_object(
-                        &obj_data.name, obj_data.model, solid, params,
-                    );
+                    let id = self
+                        .scene
+                        .add_object(&obj_data.name, obj_data.model, solid, params);
                     if let Some(scene_obj) = self.scene.get_mut(id) {
                         scene_obj.color = obj_data.color;
                         scene_obj.visible = obj_data.visible;
@@ -6981,7 +9091,8 @@ impl CadApp {
                 self.gui.current_file = Some(path.display().to_string());
                 self.add_recent_file(&path.display().to_string());
                 self.log_info(format!(
-                    "Loaded scene ({count} objects) from {}", path.display()
+                    "Loaded scene ({count} objects) from {}",
+                    path.display()
                 ));
             }
             Err(e) => {
@@ -7033,7 +9144,8 @@ impl CadApp {
         let done = if let Some(rx) = &self.mesh_rx {
             match rx.try_recv() {
                 Ok(Ok((mesh, path))) => {
-                    let name = path.file_name()
+                    let name = path
+                        .file_name()
                         .and_then(|n| n.to_str())
                         .unwrap_or("imported")
                         .to_string();
@@ -7117,7 +9229,11 @@ impl CadApp {
         }
         // Update background gradient when preset/colors change
         if let Some(rt) = &mut self.runtime {
-            rt.gpu.update_bg(self.nav.bg_preset, self.nav.bg_custom_top, self.nav.bg_custom_bottom);
+            rt.gpu.update_bg(
+                self.nav.bg_preset,
+                self.nav.bg_custom_top,
+                self.nav.bg_custom_bottom,
+            );
         }
 
         let Self {
@@ -7157,15 +9273,28 @@ impl CadApp {
 
         // Sync bookmark info for menu display
         if gui.nav_bookmarks.len() != nav.view_bookmarks.len() {
-            gui.nav_bookmarks = nav.view_bookmarks.iter().map(|b| {
-                (b.name.clone(), b.yaw.to_degrees(), b.pitch.to_degrees(), b.distance)
-            }).collect();
+            gui.nav_bookmarks = nav
+                .view_bookmarks
+                .iter()
+                .map(|b| {
+                    (
+                        b.name.clone(),
+                        b.yaw.to_degrees(),
+                        b.pitch.to_degrees(),
+                        b.distance,
+                    )
+                })
+                .collect();
         }
         // Sync group info for menu display (always update — visibility/membership can change)
-        let new_groups: Vec<(u32, String, bool, usize)> = scene.groups.iter().map(|g| {
-            let count = scene.group_members(g.id).len();
-            (g.id, g.name.clone(), g.visible, count)
-        }).collect();
+        let new_groups: Vec<(u32, String, bool, usize)> = scene
+            .groups
+            .iter()
+            .map(|g| {
+                let count = scene.group_members(g.id).len();
+                (g.id, g.name.clone(), g.visible, count)
+            })
+            .collect();
         if gui.scene_groups != new_groups {
             gui.scene_groups = new_groups;
         }
@@ -7209,7 +9338,12 @@ impl CadApp {
 
         // Clip plane from NavConfig
         let clip = if nav.clip_enabled {
-            [nav.clip_plane_normal[0], nav.clip_plane_normal[1], nav.clip_plane_normal[2], nav.clip_plane_offset]
+            [
+                nav.clip_plane_normal[0],
+                nav.clip_plane_normal[1],
+                nav.clip_plane_normal[2],
+                nav.clip_plane_offset,
+            ]
         } else {
             CLIP_DISABLED
         };
@@ -7302,8 +9436,13 @@ impl CadApp {
                 rt.gpu.write_slot(
                     mesh_slot,
                     &Uniforms {
-                        view_proj: vp, light_dir: light, base_color: SOLID_COLOR,
-                        params: lit_params, eye_pos, hover_params: hover_none, clip_params: clip,
+                        view_proj: vp,
+                        light_dir: light,
+                        base_color: SOLID_COLOR,
+                        params: lit_params,
+                        eye_pos,
+                        hover_params: hover_none,
+                        clip_params: clip,
                     },
                 );
             }
@@ -7311,8 +9450,13 @@ impl CadApp {
                 rt.gpu.write_slot(
                     mesh_slot,
                     &Uniforms {
-                        view_proj: vp, light_dir: no_light, base_color: POINT_COLOR,
-                        params: unlit_params, eye_pos, hover_params: hover_none, clip_params: clip,
+                        view_proj: vp,
+                        light_dir: no_light,
+                        base_color: POINT_COLOR,
+                        params: unlit_params,
+                        eye_pos,
+                        hover_params: hover_none,
+                        clip_params: clip,
                     },
                 );
             }
@@ -7320,8 +9464,13 @@ impl CadApp {
                 rt.gpu.write_slot(
                     mesh_slot,
                     &Uniforms {
-                        view_proj: vp, light_dir: no_light, base_color: WIRE_COLOR,
-                        params: unlit_params, eye_pos, hover_params: hover_none, clip_params: clip,
+                        view_proj: vp,
+                        light_dir: no_light,
+                        base_color: WIRE_COLOR,
+                        params: unlit_params,
+                        eye_pos,
+                        hover_params: hover_none,
+                        clip_params: clip,
                     },
                 );
             }
@@ -7329,15 +9478,25 @@ impl CadApp {
                 rt.gpu.write_slot(
                     mesh_slot,
                     &Uniforms {
-                        view_proj: vp, light_dir: no_light, base_color: HIDDEN_LINE_COLOR,
-                        params: lit_params, eye_pos, hover_params: hover_none, clip_params: clip,
+                        view_proj: vp,
+                        light_dir: no_light,
+                        base_color: HIDDEN_LINE_COLOR,
+                        params: lit_params,
+                        eye_pos,
+                        hover_params: hover_none,
+                        clip_params: clip,
                     },
                 );
                 rt.gpu.write_slot(
                     wire_slot,
                     &Uniforms {
-                        view_proj: vp, light_dir: no_light, base_color: EDGE_OVERLAY_COLOR,
-                        params: unlit_params, eye_pos, hover_params: hover_none, clip_params: clip,
+                        view_proj: vp,
+                        light_dir: no_light,
+                        base_color: EDGE_OVERLAY_COLOR,
+                        params: unlit_params,
+                        eye_pos,
+                        hover_params: hover_none,
+                        clip_params: clip,
                     },
                 );
             }
@@ -7345,8 +9504,13 @@ impl CadApp {
                 rt.gpu.write_slot(
                     mesh_slot,
                     &Uniforms {
-                        view_proj: vp, light_dir: no_light, base_color: NO_SHADE_COLOR,
-                        params: lit_params, eye_pos, hover_params: hover_none, clip_params: clip,
+                        view_proj: vp,
+                        light_dir: no_light,
+                        base_color: NO_SHADE_COLOR,
+                        params: lit_params,
+                        eye_pos,
+                        hover_params: hover_none,
+                        clip_params: clip,
                     },
                 );
             }
@@ -7354,8 +9518,13 @@ impl CadApp {
                 rt.gpu.write_slot(
                     mesh_slot,
                     &Uniforms {
-                        view_proj: vp, light_dir: light, base_color: TRANSPARENT_COLOR,
-                        params: lit_params, eye_pos, hover_params: hover_none, clip_params: clip,
+                        view_proj: vp,
+                        light_dir: light,
+                        base_color: TRANSPARENT_COLOR,
+                        params: lit_params,
+                        eye_pos,
+                        hover_params: hover_none,
+                        clip_params: clip,
                     },
                 );
             }
@@ -7363,15 +9532,25 @@ impl CadApp {
                 rt.gpu.write_slot(
                     mesh_slot,
                     &Uniforms {
-                        view_proj: vp, light_dir: light, base_color: SOLID_COLOR,
-                        params: lit_params, eye_pos, hover_params: hover_none, clip_params: clip,
+                        view_proj: vp,
+                        light_dir: light,
+                        base_color: SOLID_COLOR,
+                        params: lit_params,
+                        eye_pos,
+                        hover_params: hover_none,
+                        clip_params: clip,
                     },
                 );
                 rt.gpu.write_slot(
                     wire_slot,
                     &Uniforms {
-                        view_proj: vp, light_dir: light, base_color: EDGE_OVERLAY_COLOR,
-                        params: unlit_params, eye_pos, hover_params: hover_none, clip_params: clip,
+                        view_proj: vp,
+                        light_dir: light,
+                        base_color: EDGE_OVERLAY_COLOR,
+                        params: unlit_params,
+                        eye_pos,
+                        hover_params: hover_none,
+                        clip_params: clip,
                     },
                 );
             }
@@ -7483,11 +9662,14 @@ impl CadApp {
                 let frustum = extract_frustum_planes(&vp);
 
                 // Determine which objects are visible (frustum test)
-                let visible: Vec<bool> = object_ranges.iter().map(|&(id, _start, _count, _color, _selected)| {
-                    scene.get(id).is_some_and(|obj| {
-                        aabb_in_frustum(&frustum, obj.aabb_min, obj.aabb_max)
+                let visible: Vec<bool> = object_ranges
+                    .iter()
+                    .map(|&(id, _start, _count, _color, _selected)| {
+                        scene.get(id).is_some_and(|obj| {
+                            aabb_in_frustum(&frustum, obj.aabb_min, obj.aabb_max)
+                        })
                     })
-                }).collect();
+                    .collect();
 
                 // Reuse a single per-object uniform slot to avoid hard object-count limits.
                 let obj_slot = slot + 1;
@@ -7497,16 +9679,36 @@ impl CadApp {
                     DisplayMode::AsIs | DisplayMode::Shading => {
                         pass.set_pipeline(&rt.gpu.solid_pipeline);
                         if object_ranges.is_empty() {
-                            pass.set_bind_group(0, &rt.gpu.uniform_bind_group, &[GpuState::slot_offset(mesh_slot)]);
+                            pass.set_bind_group(
+                                0,
+                                &rt.gpu.uniform_bind_group,
+                                &[GpuState::slot_offset(mesh_slot)],
+                            );
                             pass.draw(0..rt.gpu.num_vertices, 0..1);
                         } else {
-                            for (i, &(id, start, count, color, selected)) in object_ranges.iter().enumerate() {
-                                if !visible[i] { continue; }
-                                if count == 0 { continue; }
+                            for (i, &(id, start, count, color, selected)) in
+                                object_ranges.iter().enumerate()
+                            {
+                                if !visible[i] {
+                                    continue;
+                                }
+                                if count == 0 {
+                                    continue;
+                                }
                                 let obj_color = if selected {
-                                    [color[0] * 0.5 + 0.15, color[1] * 0.5 + 0.35, color[2] * 0.5 + 0.1, color[3]]
+                                    [
+                                        color[0] * 0.5 + 0.15,
+                                        color[1] * 0.5 + 0.35,
+                                        color[2] * 0.5 + 0.1,
+                                        color[3],
+                                    ]
                                 } else if presel == Some(id) {
-                                    [color[0] * 0.6 + 0.3, color[1] * 0.6 + 0.25, color[2] * 0.4, color[3]]
+                                    [
+                                        color[0] * 0.6 + 0.3,
+                                        color[1] * 0.6 + 0.25,
+                                        color[2] * 0.4,
+                                        color[3],
+                                    ]
                                 } else {
                                     color
                                 };
@@ -7515,16 +9717,23 @@ impl CadApp {
                                 } else {
                                     [hover_id, id as f32, 0.0, 0.0]
                                 };
-                                rt.gpu.write_slot(obj_slot, &Uniforms {
-                                    view_proj: vp,
-                                    light_dir: light,
-                                    base_color: obj_color,
-                                    params: lit_params,
-                                    eye_pos,
-                                    hover_params: obj_hover,
-                                    clip_params: clip,
-                                });
-                                pass.set_bind_group(0, &rt.gpu.uniform_bind_group, &[GpuState::slot_offset(obj_slot)]);
+                                rt.gpu.write_slot(
+                                    obj_slot,
+                                    &Uniforms {
+                                        view_proj: vp,
+                                        light_dir: light,
+                                        base_color: obj_color,
+                                        params: lit_params,
+                                        eye_pos,
+                                        hover_params: obj_hover,
+                                        clip_params: clip,
+                                    },
+                                );
+                                pass.set_bind_group(
+                                    0,
+                                    &rt.gpu.uniform_bind_group,
+                                    &[GpuState::slot_offset(obj_slot)],
+                                );
                                 pass.draw(start..start + count, 0..1);
                             }
                         }
@@ -7532,17 +9741,39 @@ impl CadApp {
                     DisplayMode::NoShading => {
                         pass.set_pipeline(&rt.gpu.solid_pipeline);
                         if object_ranges.is_empty() {
-                            pass.set_bind_group(0, &rt.gpu.uniform_bind_group, &[GpuState::slot_offset(mesh_slot)]);
+                            pass.set_bind_group(
+                                0,
+                                &rt.gpu.uniform_bind_group,
+                                &[GpuState::slot_offset(mesh_slot)],
+                            );
                             pass.draw(0..rt.gpu.num_vertices, 0..1);
                         } else {
-                            for (i, &(_id, start, count, _color, _sel)) in object_ranges.iter().enumerate() {
-                                if !visible[i] { continue; }
-                                if count == 0 { continue; }
-                                rt.gpu.write_slot(obj_slot, &Uniforms {
-                                    view_proj: vp, light_dir: no_light, base_color: NO_SHADE_COLOR,
-                                    params: lit_params, eye_pos, hover_params: [0.0; 4], clip_params: clip,
-                                });
-                                pass.set_bind_group(0, &rt.gpu.uniform_bind_group, &[GpuState::slot_offset(obj_slot)]);
+                            for (i, &(_id, start, count, _color, _sel)) in
+                                object_ranges.iter().enumerate()
+                            {
+                                if !visible[i] {
+                                    continue;
+                                }
+                                if count == 0 {
+                                    continue;
+                                }
+                                rt.gpu.write_slot(
+                                    obj_slot,
+                                    &Uniforms {
+                                        view_proj: vp,
+                                        light_dir: no_light,
+                                        base_color: NO_SHADE_COLOR,
+                                        params: lit_params,
+                                        eye_pos,
+                                        hover_params: [0.0; 4],
+                                        clip_params: clip,
+                                    },
+                                );
+                                pass.set_bind_group(
+                                    0,
+                                    &rt.gpu.uniform_bind_group,
+                                    &[GpuState::slot_offset(obj_slot)],
+                                );
                                 pass.draw(start..start + count, 0..1);
                             }
                         }
@@ -7550,49 +9781,105 @@ impl CadApp {
                     DisplayMode::Transparent => {
                         pass.set_pipeline(&rt.gpu.transparent_pipeline);
                         if object_ranges.is_empty() {
-                            pass.set_bind_group(0, &rt.gpu.uniform_bind_group, &[GpuState::slot_offset(mesh_slot)]);
+                            pass.set_bind_group(
+                                0,
+                                &rt.gpu.uniform_bind_group,
+                                &[GpuState::slot_offset(mesh_slot)],
+                            );
                             pass.draw(0..rt.gpu.num_vertices, 0..1);
                         } else {
-                            for (i, &(_id, start, count, color, _sel)) in object_ranges.iter().enumerate() {
-                                if !visible[i] { continue; }
-                                if count == 0 { continue; }
-                                let obj_color = [color[0], color[1], color[2], TRANSPARENT_COLOR[3]];
-                                rt.gpu.write_slot(obj_slot, &Uniforms {
-                                    view_proj: vp, light_dir: light, base_color: obj_color,
-                                    params: lit_params, eye_pos, hover_params: [0.0; 4], clip_params: clip,
-                                });
-                                pass.set_bind_group(0, &rt.gpu.uniform_bind_group, &[GpuState::slot_offset(obj_slot)]);
+                            for (i, &(_id, start, count, color, _sel)) in
+                                object_ranges.iter().enumerate()
+                            {
+                                if !visible[i] {
+                                    continue;
+                                }
+                                if count == 0 {
+                                    continue;
+                                }
+                                let obj_color =
+                                    [color[0], color[1], color[2], TRANSPARENT_COLOR[3]];
+                                rt.gpu.write_slot(
+                                    obj_slot,
+                                    &Uniforms {
+                                        view_proj: vp,
+                                        light_dir: light,
+                                        base_color: obj_color,
+                                        params: lit_params,
+                                        eye_pos,
+                                        hover_params: [0.0; 4],
+                                        clip_params: clip,
+                                    },
+                                );
+                                pass.set_bind_group(
+                                    0,
+                                    &rt.gpu.uniform_bind_group,
+                                    &[GpuState::slot_offset(obj_slot)],
+                                );
                                 pass.draw(start..start + count, 0..1);
                             }
                         }
                     }
                     DisplayMode::Points => {
-                        pass.set_bind_group(0, &rt.gpu.uniform_bind_group, &[GpuState::slot_offset(mesh_slot)]);
+                        pass.set_bind_group(
+                            0,
+                            &rt.gpu.uniform_bind_group,
+                            &[GpuState::slot_offset(mesh_slot)],
+                        );
                         pass.set_pipeline(&rt.gpu.points_pipeline);
                         pass.draw(0..rt.gpu.num_vertices, 0..1);
                     }
                     DisplayMode::Wireframe => {
-                        pass.set_bind_group(0, &rt.gpu.uniform_bind_group, &[GpuState::slot_offset(mesh_slot)]);
+                        pass.set_bind_group(
+                            0,
+                            &rt.gpu.uniform_bind_group,
+                            &[GpuState::slot_offset(mesh_slot)],
+                        );
                         pass.set_pipeline(&rt.gpu.wire_pipeline);
-                        pass.set_index_buffer(rt.gpu.edge_index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                        pass.set_index_buffer(
+                            rt.gpu.edge_index_buffer.slice(..),
+                            wgpu::IndexFormat::Uint32,
+                        );
                         pass.draw_indexed(0..rt.gpu.num_edge_indices, 0, 0..1);
                     }
                     DisplayMode::HiddenLine => {
-                        pass.set_bind_group(0, &rt.gpu.uniform_bind_group, &[GpuState::slot_offset(mesh_slot)]);
+                        pass.set_bind_group(
+                            0,
+                            &rt.gpu.uniform_bind_group,
+                            &[GpuState::slot_offset(mesh_slot)],
+                        );
                         pass.set_pipeline(&rt.gpu.solid_pipeline);
                         pass.draw(0..rt.gpu.num_vertices, 0..1);
-                        pass.set_bind_group(0, &rt.gpu.uniform_bind_group, &[GpuState::slot_offset(wire_slot)]);
+                        pass.set_bind_group(
+                            0,
+                            &rt.gpu.uniform_bind_group,
+                            &[GpuState::slot_offset(wire_slot)],
+                        );
                         pass.set_pipeline(&rt.gpu.wire_pipeline);
-                        pass.set_index_buffer(rt.gpu.edge_index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                        pass.set_index_buffer(
+                            rt.gpu.edge_index_buffer.slice(..),
+                            wgpu::IndexFormat::Uint32,
+                        );
                         pass.draw_indexed(0..rt.gpu.num_edge_indices, 0, 0..1);
                     }
                     DisplayMode::FlatLines => {
-                        pass.set_bind_group(0, &rt.gpu.uniform_bind_group, &[GpuState::slot_offset(mesh_slot)]);
+                        pass.set_bind_group(
+                            0,
+                            &rt.gpu.uniform_bind_group,
+                            &[GpuState::slot_offset(mesh_slot)],
+                        );
                         pass.set_pipeline(&rt.gpu.solid_pipeline);
                         pass.draw(0..rt.gpu.num_vertices, 0..1);
-                        pass.set_bind_group(0, &rt.gpu.uniform_bind_group, &[GpuState::slot_offset(wire_slot)]);
+                        pass.set_bind_group(
+                            0,
+                            &rt.gpu.uniform_bind_group,
+                            &[GpuState::slot_offset(wire_slot)],
+                        );
                         pass.set_pipeline(&rt.gpu.wire_pipeline);
-                        pass.set_index_buffer(rt.gpu.edge_index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                        pass.set_index_buffer(
+                            rt.gpu.edge_index_buffer.slice(..),
+                            wgpu::IndexFormat::Uint32,
+                        );
                         pass.draw_indexed(0..rt.gpu.num_edge_indices, 0, 0..1);
                     }
                 }
@@ -7725,10 +10012,13 @@ impl ApplicationHandler for CadApp {
                                 self.mouse_dragged = false;
                                 // In sketch Select mode: start drag if near a point or entity
                                 {
-                                    let pos = self.gui.pointer_physical
+                                    let pos = self
+                                        .gui
+                                        .pointer_physical
                                         .map(|(x, y)| (x as f64, y as f64))
                                         .or(self.mouse.last_pos);
-                                    let sketch_pt = pos.and_then(|(sx, sy)| self.screen_to_sketch_plane(sx, sy));
+                                    let sketch_pt = pos
+                                        .and_then(|(sx, sy)| self.screen_to_sketch_plane(sx, sy));
                                     if let Some(sm) = &mut self.gui.sketch_mode {
                                         if matches!(sm.tool, SketchTool::Select) {
                                             if let Some((skx, sky)) = sketch_pt {
@@ -7741,7 +10031,9 @@ impl ApplicationHandler for CadApp {
                                                     let dy = pt.position.y - sky;
                                                     let d = (dx * dx + dy * dy).sqrt();
                                                     if d < pt_threshold
-                                                        && nearest_pt.as_ref().is_none_or(|(_, bd)| d < *bd)
+                                                        && nearest_pt
+                                                            .as_ref()
+                                                            .is_none_or(|(_, bd)| d < *bd)
                                                     {
                                                         nearest_pt = Some((i, d));
                                                     }
@@ -7753,7 +10045,12 @@ impl ApplicationHandler for CadApp {
                                                     sm.drag_started = false;
                                                 } else {
                                                     // Try entity drag (line/circle/arc)
-                                                    let drag_indices = Self::entity_drag_points(sm, skx, sky, entity_threshold);
+                                                    let drag_indices = Self::entity_drag_points(
+                                                        sm,
+                                                        skx,
+                                                        sky,
+                                                        entity_threshold,
+                                                    );
                                                     if !drag_indices.is_empty() {
                                                         sm.save_snapshot();
                                                         sm.drag_points = drag_indices;
@@ -7797,7 +10094,11 @@ impl ApplicationHandler for CadApp {
                                         for (i, pt) in sm.sketch.points.iter().enumerate() {
                                             let px = pt.position.x;
                                             let py = pt.position.y;
-                                            if px >= min_x && px <= max_x && py >= min_y && py <= max_y {
+                                            if px >= min_x
+                                                && px <= max_x
+                                                && py >= min_y
+                                                && py <= max_y
+                                            {
                                                 let e = SketchEntityRef::Point(i);
                                                 if !sm.selected_entities.contains(&e) {
                                                     sm.selected_entities.push(e);
@@ -7806,16 +10107,26 @@ impl ApplicationHandler for CadApp {
                                         }
                                         // Select lines (window: both endpoints inside, crossing: any endpoint inside)
                                         for (i, line) in sm.sketch.lines.iter().enumerate() {
-                                            if line.start.0 >= sm.sketch.points.len() || line.end.0 >= sm.sketch.points.len() {
+                                            if line.start.0 >= sm.sketch.points.len()
+                                                || line.end.0 >= sm.sketch.points.len()
+                                            {
                                                 continue;
                                             }
                                             let s = &sm.sketch.points[line.start.0];
                                             let e_pt = &sm.sketch.points[line.end.0];
-                                            let s_in = s.position.x >= min_x && s.position.x <= max_x
-                                                && s.position.y >= min_y && s.position.y <= max_y;
-                                            let e_in = e_pt.position.x >= min_x && e_pt.position.x <= max_x
-                                                && e_pt.position.y >= min_y && e_pt.position.y <= max_y;
-                                            let selected = if window_mode { s_in && e_in } else { s_in || e_in };
+                                            let s_in = s.position.x >= min_x
+                                                && s.position.x <= max_x
+                                                && s.position.y >= min_y
+                                                && s.position.y <= max_y;
+                                            let e_in = e_pt.position.x >= min_x
+                                                && e_pt.position.x <= max_x
+                                                && e_pt.position.y >= min_y
+                                                && e_pt.position.y <= max_y;
+                                            let selected = if window_mode {
+                                                s_in && e_in
+                                            } else {
+                                                s_in || e_in
+                                            };
                                             if selected {
                                                 let ent = SketchEntityRef::Line(i);
                                                 if !sm.selected_entities.contains(&ent) {
@@ -7827,8 +10138,10 @@ impl ApplicationHandler for CadApp {
                                         for (i, circle) in sm.sketch.circles.iter().enumerate() {
                                             if circle.center.0 < sm.sketch.points.len() {
                                                 let c = &sm.sketch.points[circle.center.0];
-                                                if c.position.x >= min_x && c.position.x <= max_x
-                                                    && c.position.y >= min_y && c.position.y <= max_y
+                                                if c.position.x >= min_x
+                                                    && c.position.x <= max_x
+                                                    && c.position.y >= min_y
+                                                    && c.position.y <= max_y
                                                 {
                                                     let ent = SketchEntityRef::Circle(i);
                                                     if !sm.selected_entities.contains(&ent) {
@@ -7841,8 +10154,10 @@ impl ApplicationHandler for CadApp {
                                         for (i, arc) in sm.sketch.arcs.iter().enumerate() {
                                             if arc.center.0 < sm.sketch.points.len() {
                                                 let c = &sm.sketch.points[arc.center.0];
-                                                if c.position.x >= min_x && c.position.x <= max_x
-                                                    && c.position.y >= min_y && c.position.y <= max_y
+                                                if c.position.x >= min_x
+                                                    && c.position.x <= max_x
+                                                    && c.position.y >= min_y
+                                                    && c.position.y <= max_y
                                                 {
                                                     let ent = SketchEntityRef::Arc(i);
                                                     if !sm.selected_entities.contains(&ent) {
@@ -7852,24 +10167,32 @@ impl ApplicationHandler for CadApp {
                                             }
                                         }
                                         let n = sm.selected_entities.len();
-                                        self.gui.status_message = format!("Box selected {n} entities");
+                                        self.gui.status_message =
+                                            format!("Box selected {n} entities");
                                     } else {
                                         sm.box_select_start = None;
                                     }
                                 }
                                 // Sketch click (not drag) — dispatch on release
                                 if !self.mouse_dragged && self.gui.sketch_mode.is_some() {
-                                    let is_dragging = self.gui.sketch_mode.as_ref()
+                                    let is_dragging = self
+                                        .gui
+                                        .sketch_mode
+                                        .as_ref()
                                         .is_some_and(|sm| !sm.drag_points.is_empty());
                                     if !is_dragging {
                                         // Double-click detection in sketch mode
                                         let now = std::time::Instant::now();
-                                        let pos = self.gui.pointer_physical
+                                        let pos = self
+                                            .gui
+                                            .pointer_physical
                                             .map(|(x, y)| (x as f64, y as f64))
                                             .or(self.mouse.last_pos);
-                                        let dt = now.duration_since(self.last_click_time).as_millis();
+                                        let dt =
+                                            now.duration_since(self.last_click_time).as_millis();
                                         let dd = pos.map_or(f64::MAX, |(px, py)| {
-                                            (px - self.last_click_pos.0).powi(2) + (py - self.last_click_pos.1).powi(2)
+                                            (px - self.last_click_pos.0).powi(2)
+                                                + (py - self.last_click_pos.1).powi(2)
                                         });
                                         let is_sketch_dbl = dt < 300 && dd < 100.0;
                                         if let Some(p) = pos {
@@ -7882,7 +10205,9 @@ impl ApplicationHandler for CadApp {
                                             self.try_sketch_dimension_edit();
                                         } else if let Some((sx, sy)) = pos {
                                             if let Some(pt) = self.screen_to_sketch_plane(sx, sy) {
-                                                self.gui.actions.push(GuiAction::Sketcher(SketcherAction::Click(pt.0, pt.1)));
+                                                self.gui.actions.push(GuiAction::Sketcher(
+                                                    SketcherAction::Click(pt.0, pt.1),
+                                                ));
                                             }
                                         }
                                     }
@@ -7925,7 +10250,9 @@ impl ApplicationHandler for CadApp {
                         MouseButton::Right => {
                             if pressed {
                                 if let Some(sm) = &mut self.gui.sketch_mode {
-                                    if matches!(sm.tool, SketchTool::Polyline) && sm.polyline_points.len() >= 3 {
+                                    if matches!(sm.tool, SketchTool::Polyline)
+                                        && sm.polyline_points.len() >= 3
+                                    {
                                         // Close polyline on right-click
                                         sm.save_snapshot();
                                         let first = sm.polyline_points[0];
@@ -7935,7 +10262,8 @@ impl ApplicationHandler for CadApp {
                                         sm.sketch.add_line(p0, p1);
                                         let n = sm.polyline_points.len();
                                         sm.polyline_points.clear();
-                                        self.gui.status_message = format!("Polyline closed ({n} points)");
+                                        self.gui.status_message =
+                                            format!("Polyline closed ({n} points)");
                                     } else if sm.pending_point.is_some()
                                         || !sm.polyline_points.is_empty()
                                     {
@@ -7984,12 +10312,17 @@ impl ApplicationHandler for CadApp {
                                             && !sm.sketch.constraints.is_empty()
                                         {
                                             let pid = cadkernel_sketch::PointId(sm.drag_points[0]);
-                                            let result = drag_solve(&mut sm.sketch, pid, sx, sy, 50, 1e-8);
+                                            let result =
+                                                drag_solve(&mut sm.sketch, pid, sx, sy, 50, 1e-8);
                                             if !result.converged {
                                                 // Fall back to raw move
                                                 if sm.drag_points[0] < sm.sketch.points.len() {
-                                                    sm.sketch.points[sm.drag_points[0]].position.x = sx;
-                                                    sm.sketch.points[sm.drag_points[0]].position.y = sy;
+                                                    sm.sketch.points[sm.drag_points[0]]
+                                                        .position
+                                                        .x = sx;
+                                                    sm.sketch.points[sm.drag_points[0]]
+                                                        .position
+                                                        .y = sy;
                                                 }
                                             }
                                         } else {
@@ -8029,7 +10362,9 @@ impl ApplicationHandler for CadApp {
                         {
                             let hover_pt = self.screen_to_sketch_plane(position.x, position.y);
                             if let Some(sm) = &mut self.gui.sketch_mode {
-                                if matches!(sm.tool, SketchTool::Select) && sm.drag_points.is_empty() {
+                                if matches!(sm.tool, SketchTool::Select)
+                                    && sm.drag_points.is_empty()
+                                {
                                     if let Some(spt) = hover_pt {
                                         sm.hovered_entity = Self::hit_test_sketch(sm, spt.0, spt.1);
                                     } else {
@@ -8042,7 +10377,8 @@ impl ApplicationHandler for CadApp {
                         }
 
                         // In sketch mode, suppress LMB-based orbit (Gesture style)
-                        let left_for_nav = self.mouse.left_pressed && self.gui.sketch_mode.is_none();
+                        let left_for_nav =
+                            self.mouse.left_pressed && self.gui.sketch_mode.is_none();
                         let action = self.nav.resolve_drag(
                             left_for_nav,
                             self.mouse.middle_pressed,
@@ -8077,7 +10413,8 @@ impl ApplicationHandler for CadApp {
                                 );
 
                                 // Restore original target if pivot was shifted
-                                if self.nav.rotation_mode != crate::nav::RotationMode::WindowCenter {
+                                if self.nav.rotation_mode != crate::nav::RotationMode::WindowCenter
+                                {
                                     self.camera.target = saved_target;
                                 }
                                 self.request_redraw();
@@ -8106,7 +10443,10 @@ impl ApplicationHandler for CadApp {
 
                     // Throttled preselection (hover highlight) — every 3 frames
                     self.preselect_frame += 1;
-                    if self.preselect_frame % 3 == 0 && !self.mouse.left_pressed && !self.mouse.middle_pressed {
+                    if self.preselect_frame % 3 == 0
+                        && !self.mouse.left_pressed
+                        && !self.mouse.middle_pressed
+                    {
                         self.update_preselection();
                     }
                 }
@@ -8136,7 +10476,8 @@ impl ApplicationHandler for CadApp {
                             let u = self.camera.screen_up();
                             let scale = self.camera.distance * 0.5;
                             for i in 0..3 {
-                                self.camera.target[i] += (r[i] * ndc_x + u[i] * ndc_y) * shift * scale;
+                                self.camera.target[i] +=
+                                    (r[i] * ndc_x + u[i] * ndc_y) * shift * scale;
                             }
                         }
                     }
@@ -8181,7 +10522,9 @@ impl ApplicationHandler for CadApp {
                                 sm.selected_entities.clear();
                                 self.gui.status_message = "Cleared".into();
                             } else {
-                                self.gui.actions.push(GuiAction::Sketcher(SketcherAction::Cancel));
+                                self.gui
+                                    .actions
+                                    .push(GuiAction::Sketcher(SketcherAction::Cancel));
                             }
                         } else if self.scene.selected_id().is_some() {
                             self.scene.deselect_all();
@@ -8267,7 +10610,9 @@ impl ApplicationHandler for CadApp {
                         }
                     }
                     // Enter: close polyline/B-spline
-                    PhysicalKey::Code(KeyCode::Enter | KeyCode::NumpadEnter) if !ctrl && self.gui.sketch_mode.is_some() => {
+                    PhysicalKey::Code(KeyCode::Enter | KeyCode::NumpadEnter)
+                        if !ctrl && self.gui.sketch_mode.is_some() =>
+                    {
                         if let Some(sm) = &mut self.gui.sketch_mode {
                             match sm.tool {
                                 SketchTool::Polyline if sm.polyline_points.len() >= 3 => {
@@ -8279,18 +10624,21 @@ impl ApplicationHandler for CadApp {
                                     sm.sketch.add_line(p0, p1);
                                     let n = sm.polyline_points.len();
                                     sm.polyline_points.clear();
-                                    self.gui.status_message = format!("Polyline closed ({n} points)");
+                                    self.gui.status_message =
+                                        format!("Polyline closed ({n} points)");
                                 }
                                 SketchTool::BSpline if sm.polyline_points.len() >= 2 => {
                                     sm.save_snapshot();
-                                    let pts: Vec<cadkernel_sketch::PointId> = sm.polyline_points
+                                    let pts: Vec<cadkernel_sketch::PointId> = sm
+                                        .polyline_points
                                         .iter()
                                         .map(|&(px, py)| sm.sketch.add_point(px, py))
                                         .collect();
                                     let n = pts.len();
                                     sm.sketch.add_bspline(pts, 3.min(n - 1), false);
                                     sm.polyline_points.clear();
-                                    self.gui.status_message = format!("B-Spline created ({n} control points)");
+                                    self.gui.status_message =
+                                        format!("B-Spline created ({n} control points)");
                                 }
                                 _ => {}
                             }
@@ -8367,7 +10715,9 @@ impl ApplicationHandler for CadApp {
                     PhysicalKey::Code(KeyCode::KeyS) if self.mouse.shift_held && !ctrl => {
                         self.gui.actions.push(GuiAction::ToggleSectionPlane);
                     }
-                    PhysicalKey::Code(KeyCode::KeyC) if !ctrl && self.gui.measurement_mode && self.gui.sketch_mode.is_none() => {
+                    PhysicalKey::Code(KeyCode::KeyC)
+                        if !ctrl && self.gui.measurement_mode && self.gui.sketch_mode.is_none() =>
+                    {
                         self.gui.measurement_points.clear();
                         self.gui.status_message = "Measurement points cleared".into();
                     }
@@ -8459,19 +10809,24 @@ impl ApplicationHandler for CadApp {
                             for i in 0..sm.sketch.bsplines.len() {
                                 sm.selected_entities.push(SketchEntityRef::BSpline(i));
                             }
-                            self.gui.status_message = format!(
-                                "Selected {} entities", sm.selected_entities.len()
-                            );
+                            self.gui.status_message =
+                                format!("Selected {} entities", sm.selected_entities.len());
                         } else {
                             self.gui.actions.push(GuiAction::SelectAll);
                         }
                     }
                     PhysicalKey::Code(KeyCode::KeyC) if ctrl && self.gui.sketch_mode.is_some() => {
-                        self.gui.actions.push(GuiAction::Sketcher(SketcherAction::CopySelection));
+                        self.gui
+                            .actions
+                            .push(GuiAction::Sketcher(SketcherAction::CopySelection));
                     }
                     PhysicalKey::Code(KeyCode::KeyV) if ctrl && self.gui.sketch_mode.is_some() => {
                         // Paste at origin (0,0); user can drag to reposition
-                        self.gui.actions.push(GuiAction::Sketcher(SketcherAction::PasteSelection(0.0, 0.0)));
+                        self.gui
+                            .actions
+                            .push(GuiAction::Sketcher(SketcherAction::PasteSelection(
+                                0.0, 0.0,
+                            )));
                     }
                     PhysicalKey::Code(KeyCode::KeyO) if ctrl => {
                         if let Some(path) = rfd::FileDialog::new()
@@ -8614,21 +10969,50 @@ fn rebuild_object_from_params(
     use crate::scene::CreationParams;
     let mut model = BRepModel::new();
     let result = match params {
-        CreationParams::Box { width, height, depth } => {
-            make_box(&mut model, Point3::ORIGIN, *width, *height, *depth).ok().map(|r| r.solid)
-        }
+        CreationParams::Box {
+            width,
+            height,
+            depth,
+        } => make_box(&mut model, Point3::ORIGIN, *width, *height, *depth)
+            .ok()
+            .map(|r| r.solid),
         CreationParams::Cylinder { radius, height } => {
-            make_cylinder(&mut model, Point3::ORIGIN, *radius, *height, 64).ok().map(|r| r.solid)
+            make_cylinder(&mut model, Point3::ORIGIN, *radius, *height, 64)
+                .ok()
+                .map(|r| r.solid)
         }
         CreationParams::Sphere { radius } => {
-            make_sphere(&mut model, Point3::ORIGIN, *radius, 64, 32).ok().map(|r| r.solid)
+            make_sphere(&mut model, Point3::ORIGIN, *radius, 64, 32)
+                .ok()
+                .map(|r| r.solid)
         }
-        CreationParams::Cone { base_radius, top_radius, height } => {
-            make_cone(&mut model, Point3::ORIGIN, *base_radius, *top_radius, *height, 64).ok().map(|r| r.solid)
-        }
-        CreationParams::Torus { major_radius, minor_radius } => {
-            make_torus(&mut model, Point3::ORIGIN, *major_radius, *minor_radius, 64, 32).ok().map(|r| r.solid)
-        }
+        CreationParams::Cone {
+            base_radius,
+            top_radius,
+            height,
+        } => make_cone(
+            &mut model,
+            Point3::ORIGIN,
+            *base_radius,
+            *top_radius,
+            *height,
+            64,
+        )
+        .ok()
+        .map(|r| r.solid),
+        CreationParams::Torus {
+            major_radius,
+            minor_radius,
+        } => make_torus(
+            &mut model,
+            Point3::ORIGIN,
+            *major_radius,
+            *minor_radius,
+            64,
+            32,
+        )
+        .ok()
+        .map(|r| r.solid),
         _ => None,
     };
     result.map(|solid| (model, solid))
@@ -8684,16 +11068,236 @@ fn selected_edge_pairs(
     entities: &[SelectedEntity],
     model: &BRepModel,
 ) -> Option<Vec<(Handle<VertexData>, Handle<VertexData>)>> {
-    let edges: Vec<Handle<EdgeData>> = entities.iter().filter_map(|e| {
-        if let SelectedEntity::Edge(eh) = e { Some(*eh) } else { None }
-    }).collect();
+    let edges: Vec<Handle<EdgeData>> = entities
+        .iter()
+        .filter_map(|e| {
+            if let SelectedEntity::Edge(eh) = e {
+                Some(*eh)
+            } else {
+                None
+            }
+        })
+        .collect();
     if edges.is_empty() {
         return None;
     }
-    let pairs: Vec<_> = edges.iter().filter_map(|eh| {
-        model.edges.get(*eh).map(|ed| (ed.start, ed.end))
-    }).collect();
+    let pairs: Vec<_> = edges
+        .iter()
+        .filter_map(|eh| model.edges.get(*eh).map(|ed| (ed.start, ed.end)))
+        .collect();
     Some(pairs)
+}
+
+struct FemColormapBuild {
+    meshes: Vec<(usize, Mesh, [f32; 4])>,
+    min: f64,
+    max: f64,
+}
+
+fn build_fem_colormap_meshes(
+    mesh: &cadkernel_modeling::TetMesh,
+    result: &cadkernel_modeling::FemResult,
+    field: FemResultField,
+) -> Result<FemColormapBuild, String> {
+    if mesh.nodes.is_empty() {
+        return Err("mesh has no nodes".into());
+    }
+    if mesh.elements.is_empty() {
+        return Err("mesh has no tetrahedra".into());
+    }
+
+    let values = fem_nodal_values(mesh, result, field);
+    let min = values.iter().copied().fold(f64::INFINITY, f64::min);
+    let max = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    let faces = fem_boundary_faces(mesh);
+    if faces.is_empty() {
+        return Err("mesh has no drawable boundary faces".into());
+    }
+
+    let mut buckets: Vec<Mesh> = (0..FEM_COLORMAP_BANDS).map(|_| Mesh::new()).collect();
+    for face in faces {
+        let avg = (values[face[0]] + values[face[1]] + values[face[2]]) / 3.0;
+        let band = fem_colormap_band(avg, min, max);
+        push_fem_colormap_triangle(
+            &mut buckets[band],
+            mesh.nodes[face[0]],
+            mesh.nodes[face[1]],
+            mesh.nodes[face[2]],
+        );
+    }
+
+    let meshes: Vec<_> = buckets
+        .into_iter()
+        .enumerate()
+        .filter_map(|(idx, mesh)| {
+            if mesh.indices.is_empty() {
+                None
+            } else {
+                Some((idx, mesh, fem_colormap_color(idx)))
+            }
+        })
+        .collect();
+    if meshes.is_empty() {
+        return Err("colormap produced no triangles".into());
+    }
+
+    Ok(FemColormapBuild { meshes, min, max })
+}
+
+fn fem_nodal_values(
+    mesh: &cadkernel_modeling::TetMesh,
+    result: &cadkernel_modeling::FemResult,
+    field: FemResultField,
+) -> Vec<f64> {
+    match field {
+        FemResultField::Displacement => mesh
+            .nodes
+            .iter()
+            .enumerate()
+            .map(|(i, _)| {
+                result
+                    .displacements
+                    .get(i)
+                    .map(|d| d.length())
+                    .unwrap_or(0.0)
+            })
+            .collect(),
+        FemResultField::Stress | FemResultField::VonMises => {
+            let mut sums = vec![0.0_f64; mesh.nodes.len()];
+            let mut counts = vec![0usize; mesh.nodes.len()];
+            for (ei, elem) in mesh.elements.iter().enumerate() {
+                let stress = result.stresses.get(ei).copied().unwrap_or(0.0);
+                for &ni in elem {
+                    if ni < sums.len() {
+                        sums[ni] += stress;
+                        counts[ni] += 1;
+                    }
+                }
+            }
+            sums.into_iter()
+                .zip(counts)
+                .map(|(sum, count)| if count > 0 { sum / count as f64 } else { 0.0 })
+                .collect()
+        }
+    }
+}
+
+fn fem_boundary_faces(mesh: &cadkernel_modeling::TetMesh) -> Vec<[usize; 3]> {
+    let mut faces: std::collections::HashMap<[usize; 3], ([usize; 3], usize)> =
+        std::collections::HashMap::new();
+    for elem in &mesh.elements {
+        if elem.iter().any(|&i| i >= mesh.nodes.len()) {
+            continue;
+        }
+        let candidates = [
+            [elem[0], elem[2], elem[1]],
+            [elem[0], elem[1], elem[3]],
+            [elem[1], elem[2], elem[3]],
+            [elem[2], elem[0], elem[3]],
+        ];
+        for face in candidates {
+            let mut key = face;
+            key.sort_unstable();
+            let entry = faces.entry(key).or_insert((face, 0));
+            entry.1 += 1;
+        }
+    }
+    faces
+        .into_values()
+        .filter_map(|(face, count)| (count == 1).then_some(face))
+        .collect()
+}
+
+fn fem_colormap_band(value: f64, min: f64, max: f64) -> usize {
+    let range = max - min;
+    let t = if range.abs() > 1e-30 {
+        ((value - min) / range).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    ((t * (FEM_COLORMAP_BANDS - 1) as f64).round() as usize).min(FEM_COLORMAP_BANDS - 1)
+}
+
+fn fem_colormap_color(band: usize) -> [f32; 4] {
+    let t = if FEM_COLORMAP_BANDS > 1 {
+        band as f64 / (FEM_COLORMAP_BANDS - 1) as f64
+    } else {
+        0.0
+    };
+    let (r, g, b) = if t < 0.5 {
+        let s = t * 2.0;
+        (0.0, s, 1.0 - s)
+    } else {
+        let s = (t - 0.5) * 2.0;
+        (s, 1.0 - s, 0.0)
+    };
+    [r as f32, g as f32, b as f32, 0.88]
+}
+
+fn push_fem_colormap_triangle(mesh: &mut Mesh, a: Point3, b: Point3, c: Point3) {
+    let base = mesh.vertices.len() as u32;
+    mesh.vertices.push(a);
+    mesh.vertices.push(b);
+    mesh.vertices.push(c);
+    mesh.indices.push([base, base + 1, base + 2]);
+    let normal = (b - a).cross(c - a).normalized().unwrap_or(Vec3::Z);
+    mesh.normals.push(normal);
+}
+
+fn is_fem_colormap_object(name: &str) -> bool {
+    name.starts_with("FEM Stress colormap")
+        || name.starts_with("FEM Displacement colormap")
+        || name.starts_with("FEM Von Mises colormap")
+}
+
+fn build_fem_result_table_state(
+    analysis: &cadkernel_modeling::AnalysisContainer,
+    field: FemResultField,
+) -> FemResultTableState {
+    let result = analysis.result.as_ref();
+    let temps = analysis.temperature_field.as_ref();
+    let node_rows = analysis
+        .mesh
+        .nodes
+        .iter()
+        .enumerate()
+        .map(|(index, p)| {
+            let displacement_magnitude = result.and_then(|r| {
+                r.displacements
+                    .get(index)
+                    .map(|d| (d.x * d.x + d.y * d.y + d.z * d.z).sqrt())
+            });
+            let temperature = temps.and_then(|v| v.get(index).copied());
+            FemNodeResultRow {
+                index,
+                position: [p.x, p.y, p.z],
+                displacement_magnitude,
+                temperature,
+            }
+        })
+        .collect();
+    let element_rows = analysis
+        .mesh
+        .elements
+        .iter()
+        .enumerate()
+        .map(|(index, nodes)| FemElementResultRow {
+            index,
+            nodes: *nodes,
+            stress: result.and_then(|r| r.stresses.get(index).copied()),
+        })
+        .collect();
+    FemResultTableState {
+        field,
+        node_rows,
+        element_rows,
+    }
+}
+
+fn format_probe_value(value: Option<f64>, unit: &str) -> String {
+    value
+        .map(|v| format!("{v:.3e} {unit}"))
+        .unwrap_or_else(|| "n/a".into())
 }
 
 fn toggle_entity(list: &mut Vec<SelectedEntity>, entity: SelectedEntity) {
@@ -8832,7 +11436,11 @@ impl CadApp {
 
     #[doc(hidden)]
     pub fn dispatch_create_box(&mut self, width: f64, height: f64, depth: f64) {
-        self.dispatch(GuiAction::CreateBox { width, height, depth });
+        self.dispatch(GuiAction::CreateBox {
+            width,
+            height,
+            depth,
+        });
     }
 
     #[doc(hidden)]
@@ -8847,27 +11455,48 @@ impl CadApp {
 
     #[doc(hidden)]
     pub fn dispatch_create_cone(&mut self, base_radius: f64, top_radius: f64, height: f64) {
-        self.dispatch(GuiAction::CreateCone { base_radius, top_radius, height });
+        self.dispatch(GuiAction::CreateCone {
+            base_radius,
+            top_radius,
+            height,
+        });
     }
 
     #[doc(hidden)]
     pub fn dispatch_create_torus(&mut self, major_radius: f64, minor_radius: f64) {
-        self.dispatch(GuiAction::CreateTorus { major_radius, minor_radius });
+        self.dispatch(GuiAction::CreateTorus {
+            major_radius,
+            minor_radius,
+        });
     }
 
     #[doc(hidden)]
     pub fn dispatch_create_tube(&mut self, outer_radius: f64, inner_radius: f64, height: f64) {
-        self.dispatch(GuiAction::CreateTube { outer_radius, inner_radius, height });
+        self.dispatch(GuiAction::CreateTube {
+            outer_radius,
+            inner_radius,
+            height,
+        });
     }
 
     #[doc(hidden)]
     pub fn dispatch_create_prism(&mut self, radius: f64, height: f64, sides: usize) {
-        self.dispatch(GuiAction::CreatePrism { radius, height, sides });
+        self.dispatch(GuiAction::CreatePrism {
+            radius,
+            height,
+            sides,
+        });
     }
 
     #[doc(hidden)]
     pub fn dispatch_create_wedge(&mut self, dx: f64, dy: f64, dz: f64, dx2: f64, dy2: f64) {
-        self.dispatch(GuiAction::CreateWedge { dx, dy, dz, dx2, dy2 });
+        self.dispatch(GuiAction::CreateWedge {
+            dx,
+            dy,
+            dz,
+            dx2,
+            dy2,
+        });
     }
 
     #[doc(hidden)]
@@ -8876,14 +11505,13 @@ impl CadApp {
     }
 
     #[doc(hidden)]
-    pub fn dispatch_create_helix(
-        &mut self,
-        radius: f64,
-        pitch: f64,
-        turns: f64,
-        tube_radius: f64,
-    ) {
-        self.dispatch(GuiAction::CreateHelix { radius, pitch, turns, tube_radius });
+    pub fn dispatch_create_helix(&mut self, radius: f64, pitch: f64, turns: f64, tube_radius: f64) {
+        self.dispatch(GuiAction::CreateHelix {
+            radius,
+            pitch,
+            turns,
+            tube_radius,
+        });
     }
 
     #[doc(hidden)]
@@ -8894,6 +11522,39 @@ impl CadApp {
     #[doc(hidden)]
     pub fn dispatch_toggle_projection(&mut self) {
         self.dispatch(GuiAction::ToggleProjection);
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_enter_sketch_xy(&mut self) {
+        self.dispatch(GuiAction::Sketcher(crate::gui::SketcherAction::Enter(
+            cadkernel_sketch::WorkPlane::xy(),
+        )));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_sketch_external_projection(&mut self) {
+        self.dispatch(GuiAction::Sketcher(
+            crate::gui::SketcherAction::ExternalProjection,
+        ));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_sketch_select_references(&mut self) {
+        self.dispatch(GuiAction::Sketcher(
+            crate::gui::SketcherAction::SelectReferences,
+        ));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_sketch_promote_references(&mut self) {
+        self.dispatch(GuiAction::Sketcher(
+            crate::gui::SketcherAction::PromoteReferences,
+        ));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_sketch_carbon_copy(&mut self) {
+        self.dispatch(GuiAction::Sketcher(crate::gui::SketcherAction::CarbonCopy));
     }
 
     /// Seed `last_sketch` with a square profile centered at the origin on the
@@ -8914,35 +11575,66 @@ impl CadApp {
         self.gui.last_sketch = Some((sketch, cadkernel_sketch::WorkPlane::xy()));
     }
 
+    /// Seed an open three-edge sketch that has enough points to look
+    /// extrudable by the old length-only check but is not a closed profile.
+    #[doc(hidden)]
+    pub fn seed_test_sketch_open_profile(&mut self) {
+        let mut sketch = cadkernel_sketch::Sketch::new();
+        let p0 = sketch.add_point(-1.0, -1.0);
+        let p1 = sketch.add_point(1.0, -1.0);
+        let p2 = sketch.add_point(1.0, 1.0);
+        let p3 = sketch.add_point(-1.0, 1.0);
+        sketch.add_line(p0, p1);
+        sketch.add_line(p1, p2);
+        sketch.add_line(p2, p3);
+        self.gui.last_sketch = Some((sketch, cadkernel_sketch::WorkPlane::xy()));
+    }
+
+    /// Seed a square with a construction diagonal; feature-profile analysis
+    /// should ignore that diagonal and still accept the outer loop.
+    #[doc(hidden)]
+    pub fn seed_test_sketch_square_with_construction_diagonal(&mut self, side: f64) {
+        let half = side * 0.5;
+        let mut sketch = cadkernel_sketch::Sketch::new();
+        let p0 = sketch.add_point(-half, -half);
+        let p1 = sketch.add_point(half, -half);
+        let p2 = sketch.add_point(half, half);
+        let p3 = sketch.add_point(-half, half);
+        sketch.add_line(p0, p1);
+        sketch.add_line(p1, p2);
+        sketch.add_line(p2, p3);
+        sketch.add_line(p3, p0);
+        let diag = sketch.add_line(p0, p2);
+        sketch.construction_lines.push(diag);
+        self.gui.last_sketch = Some((sketch, cadkernel_sketch::WorkPlane::xy()));
+    }
+
     #[doc(hidden)]
     pub fn dispatch_pad_sketch(&mut self, depth: f64, symmetric: bool) {
-        self.dispatch(GuiAction::PartDesign(crate::gui::PartDesignAction::PadSketch {
-            depth,
-            symmetric,
-        }));
+        self.dispatch(GuiAction::PartDesign(
+            crate::gui::PartDesignAction::PadSketch { depth, symmetric },
+        ));
     }
 
     #[doc(hidden)]
     pub fn dispatch_pocket_sketch(&mut self, depth: f64, through_all: bool) {
-        self.dispatch(GuiAction::PartDesign(crate::gui::PartDesignAction::PocketSketch {
-            depth,
-            through_all,
-        }));
+        self.dispatch(GuiAction::PartDesign(
+            crate::gui::PartDesignAction::PocketSketch { depth, through_all },
+        ));
     }
 
     #[doc(hidden)]
     pub fn dispatch_groove_sketch(&mut self, angle_deg: f64) {
-        self.dispatch(GuiAction::PartDesign(crate::gui::PartDesignAction::GrooveSketch {
-            angle: angle_deg,
-        }));
+        self.dispatch(GuiAction::PartDesign(
+            crate::gui::PartDesignAction::GrooveSketch { angle: angle_deg },
+        ));
     }
 
     #[doc(hidden)]
     pub fn dispatch_hole_sketch(&mut self, radius: f64, depth: f64) {
-        self.dispatch(GuiAction::PartDesign(crate::gui::PartDesignAction::HoleSketch {
-            radius,
-            depth,
-        }));
+        self.dispatch(GuiAction::PartDesign(
+            crate::gui::PartDesignAction::HoleSketch { radius, depth },
+        ));
     }
 
     #[doc(hidden)]
@@ -9058,6 +11750,37 @@ impl CadApp {
         self.gui.last_sketch.is_some()
     }
 
+    #[doc(hidden)]
+    pub fn active_sketch_geometry_counts(&self) -> Option<(usize, usize, usize, usize)> {
+        self.gui.sketch_mode.as_ref().map(|sm| {
+            (
+                sm.sketch.points.len(),
+                sm.sketch.lines.len(),
+                sm.sketch.construction_points.len(),
+                sm.sketch.construction_lines.len(),
+            )
+        })
+    }
+
+    #[doc(hidden)]
+    pub fn active_sketch_reference_summary(&self) -> Option<(usize, usize, String)> {
+        self.gui.sketch_mode.as_ref().map(|sm| {
+            (
+                sm.external_reference_count,
+                sm.reused_geometry_count,
+                sm.reference_status.clone(),
+            )
+        })
+    }
+
+    #[doc(hidden)]
+    pub fn active_sketch_selected_count(&self) -> Option<usize> {
+        self.gui
+            .sketch_mode
+            .as_ref()
+            .map(|sm| sm.selected_entities.len())
+    }
+
     // -- Phase B-cont — Part workbench dispatch wrappers --------------------
 
     #[doc(hidden)]
@@ -9112,12 +11835,18 @@ impl CadApp {
 
     #[doc(hidden)]
     pub fn dispatch_part_auto_defeaturing(&mut self, threshold: f64) {
-        self.dispatch(GuiAction::Part(crate::gui::PartAction::AutoDefeaturing { threshold }));
+        self.dispatch(GuiAction::Part(crate::gui::PartAction::AutoDefeaturing {
+            threshold,
+        }));
     }
 
     #[doc(hidden)]
     pub fn dispatch_part_transformed_copy(&mut self, dx: f64, dy: f64, dz: f64) {
-        self.dispatch(GuiAction::Part(crate::gui::PartAction::TransformedCopy { dx, dy, dz }));
+        self.dispatch(GuiAction::Part(crate::gui::PartAction::TransformedCopy {
+            dx,
+            dy,
+            dz,
+        }));
     }
 
     #[doc(hidden)]
@@ -9172,6 +11901,197 @@ impl CadApp {
         self.dispatch(GuiAction::Fem(crate::gui::FemAction::Report));
     }
 
+    #[doc(hidden)]
+    pub fn dispatch_fem_open_section_print_bc_editor(&mut self) {
+        self.dispatch(GuiAction::Fem(crate::gui::FemAction::OpenBcEditor(
+            crate::gui::BcKind::SectionPrint,
+        )));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_fem_open_tie_constraint_bc_editor(&mut self) {
+        self.dispatch(GuiAction::Fem(crate::gui::FemAction::OpenBcEditor(
+            crate::gui::BcKind::TieConstraint,
+        )));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_fem_open_rigid_body_bc_editor(&mut self) {
+        self.dispatch(GuiAction::Fem(crate::gui::FemAction::OpenBcEditor(
+            crate::gui::BcKind::RigidBody,
+        )));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_fem_open_contact_constraint_bc_editor(&mut self) {
+        self.dispatch(GuiAction::Fem(crate::gui::FemAction::OpenBcEditor(
+            crate::gui::BcKind::ContactConstraint,
+        )));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_fem_commit_bc_editor(&mut self) {
+        self.dispatch(GuiAction::Fem(crate::gui::FemAction::CommitBcEditor));
+    }
+
+    #[doc(hidden)]
+    pub fn fem_bc_editor_is_open(&self) -> bool {
+        matches!(
+            &self.gui.active_dialog,
+            Some(crate::gui::ActiveDialog::BcEditor(_))
+        )
+    }
+
+    #[doc(hidden)]
+    pub fn set_fem_bc_vec3_for_test(&mut self, x: f64, y: f64, z: f64) {
+        if let Some(crate::gui::ActiveDialog::BcEditor(state)) = self.gui.active_dialog.as_mut() {
+            state.vec3_x = x;
+            state.vec3_y = y;
+            state.vec3_z = z;
+        }
+    }
+
+    #[doc(hidden)]
+    pub fn set_fem_bc_point_for_test(&mut self, x: f64, y: f64, z: f64) {
+        if let Some(crate::gui::ActiveDialog::BcEditor(state)) = self.gui.active_dialog.as_mut() {
+            state.point_x = x;
+            state.point_y = y;
+            state.point_z = z;
+        }
+    }
+
+    #[doc(hidden)]
+    pub fn set_fem_bc_node_sets_for_test(
+        &mut self,
+        set_a_start: usize,
+        set_a_end: usize,
+        set_b_start: usize,
+        set_b_end: usize,
+    ) {
+        if let Some(crate::gui::ActiveDialog::BcEditor(state)) = self.gui.active_dialog.as_mut() {
+            state.set_a_start = set_a_start;
+            state.set_a_end = set_a_end;
+            state.set_b_start = set_b_start;
+            state.set_b_end = set_b_end;
+        }
+    }
+
+    #[doc(hidden)]
+    pub fn set_fem_bc_scalar_for_test(&mut self, scalar: f64) {
+        if let Some(crate::gui::ActiveDialog::BcEditor(state)) = self.gui.active_dialog.as_mut() {
+            state.scalar_a = scalar;
+        }
+    }
+
+    #[doc(hidden)]
+    pub fn fem_boundary_conditions_for_test(&self) -> Vec<cadkernel_modeling::BoundaryCondition> {
+        self.gui
+            .fem_analysis
+            .as_ref()
+            .map_or_else(Vec::new, |container| container.boundary_conditions.clone())
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_fem_solve_thermal(&mut self) {
+        self.dispatch(GuiAction::Fem(crate::gui::FemAction::SolveThermal));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_fem_solve_nonlinear(&mut self) {
+        self.dispatch(GuiAction::Fem(crate::gui::FemAction::SolveNonlinear));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_fem_show_stress(&mut self) {
+        self.dispatch(GuiAction::Fem(crate::gui::FemAction::ShowStress));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_fem_show_displacement(&mut self) {
+        self.dispatch(GuiAction::Fem(crate::gui::FemAction::ShowDisplacement));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_fem_show_von_mises(&mut self) {
+        self.dispatch(GuiAction::Fem(crate::gui::FemAction::ShowVonMises));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_fem_open_result_probe(&mut self) {
+        self.dispatch(GuiAction::Fem(crate::gui::FemAction::OpenResultProbe));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_fem_commit_result_probe(&mut self) {
+        self.dispatch(GuiAction::Fem(crate::gui::FemAction::CommitResultProbe));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_fem_open_result_table(&mut self) {
+        self.dispatch(GuiAction::Fem(crate::gui::FemAction::OpenResultTable));
+    }
+
+    #[doc(hidden)]
+    pub fn fem_result_legend_summary(&self) -> Option<(String, usize, f64, f64)> {
+        self.gui.fem_result_legend.as_ref().map(|legend| {
+            (
+                legend.field.label().to_string(),
+                legend.bands.len(),
+                legend.min,
+                legend.max,
+            )
+        })
+    }
+
+    #[doc(hidden)]
+    pub fn fem_result_probe_is_open(&self) -> bool {
+        matches!(
+            &self.gui.active_dialog,
+            Some(crate::gui::ActiveDialog::FemResultProbe(_))
+        )
+    }
+
+    #[doc(hidden)]
+    pub fn set_fem_result_probe_for_test(&mut self, node: usize, element: usize) {
+        if let Some(crate::gui::ActiveDialog::FemResultProbe(state)) =
+            self.gui.active_dialog.as_mut()
+        {
+            state.node_index = node;
+            state.element_index = element;
+        }
+    }
+
+    #[doc(hidden)]
+    pub fn fem_last_probe_summary(&self) -> Option<FemProbeSummary> {
+        self.gui.fem_last_probe.as_ref().map(|probe| {
+            (
+                probe.node_index,
+                probe.element_index,
+                probe.displacement_magnitude,
+                probe.stress,
+                probe.temperature,
+            )
+        })
+    }
+
+    #[doc(hidden)]
+    pub fn fem_result_table_is_open(&self) -> bool {
+        matches!(
+            &self.gui.active_dialog,
+            Some(crate::gui::ActiveDialog::FemResultTable(_))
+        )
+    }
+
+    #[doc(hidden)]
+    pub fn fem_result_table_counts(&self) -> Option<(usize, usize)> {
+        match &self.gui.active_dialog {
+            Some(crate::gui::ActiveDialog::FemResultTable(state)) => {
+                Some((state.node_rows.len(), state.element_rows.len()))
+            }
+            _ => None,
+        }
+    }
+
     // -- Phase C2 — Draft modify + ProjectCurvesOnSurface ----------------
 
     #[doc(hidden)]
@@ -9196,7 +12116,9 @@ impl CadApp {
 
     #[doc(hidden)]
     pub fn dispatch_part_project_curves_on_surface(&mut self) {
-        self.dispatch(GuiAction::Part(crate::gui::PartAction::ProjectCurvesOnSurface));
+        self.dispatch(GuiAction::Part(
+            crate::gui::PartAction::ProjectCurvesOnSurface,
+        ));
     }
 
     // -- Phase C3 — Surface ops + PartDesign Loft/Pipe ----------------------
@@ -9231,6 +12153,13 @@ impl CadApp {
     }
 
     #[doc(hidden)]
+    pub fn dispatch_partdesign_shape_binder(&mut self) {
+        self.dispatch(GuiAction::PartDesign(
+            crate::gui::PartDesignAction::ShapeBinder,
+        ));
+    }
+
+    #[doc(hidden)]
     pub fn dispatch_partdesign_subtractive_loft(&mut self) {
         self.dispatch(GuiAction::PartDesign(
             crate::gui::PartDesignAction::SubtractiveLoft,
@@ -9244,16 +12173,610 @@ impl CadApp {
         ));
     }
 
+    // -- Phase D + Phase F-page ------------------------------------------------
+
+    #[doc(hidden)]
+    pub fn dispatch_draft_dimension(&mut self) {
+        self.dispatch(GuiAction::Draft(crate::gui::DraftAction::Dimension));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_draft_label(&mut self) {
+        self.dispatch(GuiAction::Draft(crate::gui::DraftAction::Label));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_new_page(&mut self) {
+        self.dispatch(GuiAction::TechDraw(crate::gui::TechDrawAction::NewPage));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_from_template(&mut self) {
+        self.dispatch(GuiAction::TechDraw(
+            crate::gui::TechDrawAction::FromTemplate,
+        ));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_open_page_setup(&mut self) {
+        self.dispatch(GuiAction::TechDraw(
+            crate::gui::TechDrawAction::OpenPageSetup,
+        ));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_commit_page_setup(&mut self) {
+        self.dispatch(GuiAction::TechDraw(
+            crate::gui::TechDrawAction::CommitPageSetup,
+        ));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_redraw(&mut self) {
+        self.dispatch(GuiAction::TechDraw(crate::gui::TechDrawAction::Redraw));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_section_view(&mut self) {
+        self.dispatch(GuiAction::TechDraw(crate::gui::TechDrawAction::SectionView));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_add_front_view(&mut self) {
+        self.dispatch(GuiAction::TechDraw(crate::gui::TechDrawAction::AddView(
+            cadkernel_io::ProjectionDir::Front,
+        )));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_detail_view(&mut self) {
+        self.dispatch(GuiAction::TechDraw(crate::gui::TechDrawAction::DetailView));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_broken_view(&mut self) {
+        self.dispatch(GuiAction::TechDraw(crate::gui::TechDrawAction::BrokenView));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_dim_linear(&mut self) {
+        self.dispatch(GuiAction::TechDraw(crate::gui::TechDrawAction::DimLinear));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_dim_radius(&mut self) {
+        self.dispatch(GuiAction::TechDraw(crate::gui::TechDrawAction::DimRadius));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_dim_diameter(&mut self) {
+        self.dispatch(GuiAction::TechDraw(crate::gui::TechDrawAction::DimDiameter));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_dim_angle(&mut self) {
+        self.dispatch(GuiAction::TechDraw(crate::gui::TechDrawAction::DimAngle));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_dim_arc_len(&mut self) {
+        self.dispatch(GuiAction::TechDraw(crate::gui::TechDrawAction::DimArcLen));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_dim_area(&mut self) {
+        self.dispatch(GuiAction::TechDraw(crate::gui::TechDrawAction::DimArea));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_open_linear_dimension_setup(&mut self) {
+        self.dispatch(GuiAction::TechDraw(
+            crate::gui::TechDrawAction::OpenDimensionSetup(
+                crate::gui::TechDrawDimensionKind::Linear,
+            ),
+        ));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_open_diameter_dimension_setup(&mut self) {
+        self.dispatch(GuiAction::TechDraw(
+            crate::gui::TechDrawAction::OpenDimensionSetup(
+                crate::gui::TechDrawDimensionKind::Diameter,
+            ),
+        ));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_commit_dimension_setup(&mut self) {
+        self.dispatch(GuiAction::TechDraw(
+            crate::gui::TechDrawAction::CommitDimensionSetup,
+        ));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_open_text_annotation_setup(&mut self) {
+        self.dispatch(GuiAction::TechDraw(
+            crate::gui::TechDrawAction::OpenAnnotationSetup(
+                crate::gui::TechDrawAnnotationKind::Text,
+            ),
+        ));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_open_balloon_annotation_setup(&mut self) {
+        self.dispatch(GuiAction::TechDraw(
+            crate::gui::TechDrawAction::OpenAnnotationSetup(
+                crate::gui::TechDrawAnnotationKind::Balloon,
+            ),
+        ));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_commit_annotation_setup(&mut self) {
+        self.dispatch(GuiAction::TechDraw(
+            crate::gui::TechDrawAction::CommitAnnotationSetup,
+        ));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_open_center_mark_setup(&mut self) {
+        self.dispatch(GuiAction::TechDraw(
+            crate::gui::TechDrawAction::OpenCenterlineSetup(
+                crate::gui::TechDrawCenterlineKind::CenterMark,
+            ),
+        ));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_open_bolt_circle_setup(&mut self) {
+        self.dispatch(GuiAction::TechDraw(
+            crate::gui::TechDrawAction::OpenCenterlineSetup(
+                crate::gui::TechDrawCenterlineKind::BoltCircle,
+            ),
+        ));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_commit_centerline_setup(&mut self) {
+        self.dispatch(GuiAction::TechDraw(
+            crate::gui::TechDrawAction::CommitCenterlineSetup,
+        ));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_open_front_view_setup(&mut self) {
+        self.dispatch(GuiAction::TechDraw(
+            crate::gui::TechDrawAction::OpenViewSetup(crate::gui::TechDrawViewKind::Front),
+        ));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_open_three_view_setup(&mut self) {
+        self.dispatch(GuiAction::TechDraw(
+            crate::gui::TechDrawAction::OpenViewSetup(crate::gui::TechDrawViewKind::ThreeView),
+        ));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_commit_view_setup(&mut self) {
+        self.dispatch(GuiAction::TechDraw(
+            crate::gui::TechDrawAction::CommitViewSetup,
+        ));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_text(&mut self) {
+        self.dispatch(GuiAction::TechDraw(crate::gui::TechDrawAction::Text));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_rich_text(&mut self) {
+        self.dispatch(GuiAction::TechDraw(crate::gui::TechDrawAction::RichText));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_balloon(&mut self) {
+        self.dispatch(GuiAction::TechDraw(crate::gui::TechDrawAction::Balloon));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_leader(&mut self) {
+        self.dispatch(GuiAction::TechDraw(crate::gui::TechDrawAction::Leader));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_weld(&mut self) {
+        self.dispatch(GuiAction::TechDraw(crate::gui::TechDrawAction::Weld));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_surf_finish(&mut self) {
+        self.dispatch(GuiAction::TechDraw(crate::gui::TechDrawAction::SurfFinish));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_center_face(&mut self) {
+        self.dispatch(GuiAction::TechDraw(crate::gui::TechDrawAction::CenterFace));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_center_lines(&mut self) {
+        self.dispatch(GuiAction::TechDraw(crate::gui::TechDrawAction::CenterLines));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_center_points(&mut self) {
+        self.dispatch(GuiAction::TechDraw(
+            crate::gui::TechDrawAction::CenterPoints,
+        ));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_bolt_circle(&mut self) {
+        self.dispatch(GuiAction::TechDraw(crate::gui::TechDrawAction::BoltCircle));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_three_view(&mut self) {
+        self.dispatch(GuiAction::TechDraw(crate::gui::TechDrawAction::ThreeView));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_export_dxf(&mut self, path: std::path::PathBuf) {
+        self.dispatch(GuiAction::TechDraw(crate::gui::TechDrawAction::ExportDxf(
+            path,
+        )));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_techdraw_export_pdf(&mut self, path: std::path::PathBuf) {
+        self.dispatch(GuiAction::TechDraw(crate::gui::TechDrawAction::ExportPdf(
+            path,
+        )));
+    }
+
+    /// Snapshot the current `gui.scene_overlay` size — used by Phase D
+    /// tests to assert that wire-output dispatcher arms populated the
+    /// overlay (vs. just registering a tree entry).
+    #[doc(hidden)]
+    pub fn overlay_counts(&self) -> (usize, usize, usize) {
+        let o = &self.gui.scene_overlay;
+        (o.polylines.len(), o.points.len(), o.labels.len())
+    }
+
+    /// Read the current TechDraw sheet dimensions (for F-page tests).
+    /// Returns `None` if no sheet is open.
+    #[doc(hidden)]
+    pub fn techdraw_sheet_size(&self) -> Option<(f64, f64)> {
+        self.gui
+            .techdraw_sheet
+            .as_ref()
+            .map(|s| (s.width, s.height))
+    }
+
+    #[doc(hidden)]
+    pub fn techdraw_sheet_title(&self) -> Option<String> {
+        self.gui.techdraw_sheet.as_ref().map(|s| s.title.clone())
+    }
+
+    #[doc(hidden)]
+    pub fn techdraw_page_setup_is_open(&self) -> bool {
+        matches!(
+            self.gui.active_dialog,
+            Some(crate::gui::ActiveDialog::TechDrawPageSetup(_))
+        )
+    }
+
+    #[doc(hidden)]
+    pub fn techdraw_dimension_setup_is_open(&self) -> bool {
+        matches!(
+            self.gui.active_dialog,
+            Some(crate::gui::ActiveDialog::TechDrawDimensionSetup(_))
+        )
+    }
+
+    #[doc(hidden)]
+    pub fn techdraw_annotation_setup_is_open(&self) -> bool {
+        matches!(
+            self.gui.active_dialog,
+            Some(crate::gui::ActiveDialog::TechDrawAnnotationSetup(_))
+        )
+    }
+
+    #[doc(hidden)]
+    pub fn techdraw_centerline_setup_is_open(&self) -> bool {
+        matches!(
+            self.gui.active_dialog,
+            Some(crate::gui::ActiveDialog::TechDrawCenterlineSetup(_))
+        )
+    }
+
+    #[doc(hidden)]
+    pub fn techdraw_view_setup_is_open(&self) -> bool {
+        matches!(
+            self.gui.active_dialog,
+            Some(crate::gui::ActiveDialog::TechDrawViewSetup(_))
+        )
+    }
+
+    #[doc(hidden)]
+    pub fn set_techdraw_page_setup_custom_for_test(
+        &mut self,
+        width: f64,
+        height: f64,
+        title: &str,
+    ) {
+        if let Some(crate::gui::ActiveDialog::TechDrawPageSetup(state)) =
+            &mut self.gui.active_dialog
+        {
+            state.preset = crate::gui::TechDrawTemplatePreset::Custom;
+            state.width = width;
+            state.height = height;
+            state.title = title.into();
+        }
+    }
+
+    #[doc(hidden)]
+    pub fn set_techdraw_page_setup_a3_for_test(&mut self, title: &str) {
+        if let Some(crate::gui::ActiveDialog::TechDrawPageSetup(state)) =
+            &mut self.gui.active_dialog
+        {
+            state.apply_preset(crate::gui::TechDrawTemplatePreset::A3Landscape);
+            state.title = title.into();
+        }
+    }
+
+    #[doc(hidden)]
+    pub fn set_techdraw_dimension_setup_linear_for_test(
+        &mut self,
+        text: &str,
+        x1: f64,
+        y1: f64,
+        x2: f64,
+        y2: f64,
+        offset: f64,
+    ) {
+        if let Some(crate::gui::ActiveDialog::TechDrawDimensionSetup(state)) =
+            &mut self.gui.active_dialog
+        {
+            state.kind = crate::gui::TechDrawDimensionKind::Linear;
+            state.label = text.into();
+            state.x1 = x1;
+            state.y1 = y1;
+            state.x2 = x2;
+            state.y2 = y2;
+            state.offset = offset;
+        }
+    }
+
+    #[doc(hidden)]
+    pub fn set_techdraw_dimension_setup_diameter_for_test(
+        &mut self,
+        diameter: f64,
+        center_x: f64,
+        center_y: f64,
+    ) {
+        if let Some(crate::gui::ActiveDialog::TechDrawDimensionSetup(state)) =
+            &mut self.gui.active_dialog
+        {
+            state.kind = crate::gui::TechDrawDimensionKind::Diameter;
+            state.value = diameter;
+            state.center_x = center_x;
+            state.center_y = center_y;
+        }
+    }
+
+    #[doc(hidden)]
+    pub fn set_techdraw_annotation_setup_text_for_test(
+        &mut self,
+        text: &str,
+        x: f64,
+        y: f64,
+        font_size: f64,
+    ) {
+        if let Some(crate::gui::ActiveDialog::TechDrawAnnotationSetup(state)) =
+            &mut self.gui.active_dialog
+        {
+            state.kind = crate::gui::TechDrawAnnotationKind::Text;
+            state.text = text.into();
+            state.x = x;
+            state.y = y;
+            state.font_size = font_size;
+        }
+    }
+
+    #[doc(hidden)]
+    pub fn set_techdraw_annotation_setup_balloon_for_test(
+        &mut self,
+        number: u32,
+        leader_x: f64,
+        leader_y: f64,
+        balloon_x: f64,
+        balloon_y: f64,
+        radius: f64,
+    ) {
+        if let Some(crate::gui::ActiveDialog::TechDrawAnnotationSetup(state)) =
+            &mut self.gui.active_dialog
+        {
+            state.kind = crate::gui::TechDrawAnnotationKind::Balloon;
+            state.number = number;
+            state.x = leader_x;
+            state.y = leader_y;
+            state.end_x = balloon_x;
+            state.end_y = balloon_y;
+            state.radius = radius;
+        }
+    }
+
+    #[doc(hidden)]
+    pub fn set_techdraw_centerline_setup_center_mark_for_test(
+        &mut self,
+        center_x: f64,
+        center_y: f64,
+        mark_size: f64,
+    ) {
+        if let Some(crate::gui::ActiveDialog::TechDrawCenterlineSetup(state)) =
+            &mut self.gui.active_dialog
+        {
+            state.kind = crate::gui::TechDrawCenterlineKind::CenterMark;
+            state.center_x = center_x;
+            state.center_y = center_y;
+            state.mark_size = mark_size;
+        }
+    }
+
+    #[doc(hidden)]
+    pub fn set_techdraw_centerline_setup_bolt_circle_for_test(
+        &mut self,
+        center_x: f64,
+        center_y: f64,
+        radius: f64,
+        bolt_count: u32,
+        mark_size: f64,
+    ) {
+        if let Some(crate::gui::ActiveDialog::TechDrawCenterlineSetup(state)) =
+            &mut self.gui.active_dialog
+        {
+            state.kind = crate::gui::TechDrawCenterlineKind::BoltCircle;
+            state.center_x = center_x;
+            state.center_y = center_y;
+            state.radius = radius;
+            state.bolt_count = bolt_count;
+            state.mark_size = mark_size;
+        }
+    }
+
+    #[doc(hidden)]
+    pub fn set_techdraw_view_setup_placement_for_test(
+        &mut self,
+        sheet_x: f64,
+        sheet_y: f64,
+        sheet_scale: f64,
+    ) {
+        if let Some(crate::gui::ActiveDialog::TechDrawViewSetup(state)) =
+            &mut self.gui.active_dialog
+        {
+            state.sheet_x = sheet_x;
+            state.sheet_y = sheet_y;
+            state.auto_scale = false;
+            state.sheet_scale = sheet_scale;
+        }
+    }
+
+    #[doc(hidden)]
+    pub fn set_techdraw_three_view_spacing_for_test(&mut self, spacing_x: f64, spacing_y: f64) {
+        if let Some(crate::gui::ActiveDialog::TechDrawViewSetup(state)) =
+            &mut self.gui.active_dialog
+        {
+            state.kind = crate::gui::TechDrawViewKind::ThreeView;
+            state.spacing_x = spacing_x;
+            state.spacing_y = spacing_y;
+        }
+    }
+
+    #[doc(hidden)]
+    pub fn techdraw_view_count(&self) -> usize {
+        self.gui
+            .techdraw_sheet
+            .as_ref()
+            .map_or(0, |s| s.views.len())
+    }
+
+    #[doc(hidden)]
+    pub fn techdraw_last_view_edge_count(&self) -> Option<usize> {
+        self.gui
+            .techdraw_sheet
+            .as_ref()
+            .and_then(|s| s.views.last())
+            .map(|v| v.edges.len())
+    }
+
+    #[doc(hidden)]
+    pub fn techdraw_view_placement(
+        &self,
+        index: usize,
+    ) -> Option<(Option<f64>, Option<f64>, Option<f64>)> {
+        self.gui
+            .techdraw_sheet
+            .as_ref()
+            .and_then(|sheet| sheet.views.get(index))
+            .map(|view| (view.sheet_x, view.sheet_y, view.sheet_scale))
+    }
+
+    #[doc(hidden)]
+    pub fn techdraw_dimension_counts(&self) -> (usize, usize, usize, usize) {
+        self.gui.techdraw_sheet.as_ref().map_or((0, 0, 0, 0), |s| {
+            (
+                s.dimensions.len(),
+                s.extended_dimensions.len(),
+                s.arc_length_dimensions.len(),
+                s.area_annotations.len(),
+            )
+        })
+    }
+
+    #[doc(hidden)]
+    pub fn techdraw_annotation_counts(&self) -> (usize, usize, usize, usize, usize, usize) {
+        self.gui
+            .techdraw_sheet
+            .as_ref()
+            .map_or((0, 0, 0, 0, 0, 0), |s| {
+                (
+                    s.text_annotations.len(),
+                    s.rich_text_annotations.len(),
+                    s.balloon_annotations.len(),
+                    s.leader_lines.len(),
+                    s.weld_symbols.len(),
+                    s.surface_finish_symbols.len(),
+                )
+            })
+    }
+
+    #[doc(hidden)]
+    pub fn techdraw_centerline_counts(&self) -> (usize, usize, usize) {
+        self.gui.techdraw_sheet.as_ref().map_or((0, 0, 0), |s| {
+            (
+                s.center_marks.len(),
+                s.centerlines.len(),
+                s.bolt_circle_centerlines.len(),
+            )
+        })
+    }
+
+    #[doc(hidden)]
+    pub fn techdraw_svg(&self) -> Option<String> {
+        self.gui
+            .techdraw_sheet
+            .as_ref()
+            .map(|s| cadkernel_io::drawing_to_svg(s).render())
+    }
+
     /// Inject a synthetic FEM analysis container so Summary / Report tests
     /// don't have to spin up the full Sketcher → tet-mesher state machine.
     #[doc(hidden)]
     pub fn seed_test_fem_analysis(&mut self) {
         let mesh = cadkernel_modeling::TetMesh {
             nodes: vec![
-                cadkernel_math::Point3 { x: 0.0, y: 0.0, z: 0.0 },
-                cadkernel_math::Point3 { x: 1.0, y: 0.0, z: 0.0 },
-                cadkernel_math::Point3 { x: 0.0, y: 1.0, z: 0.0 },
-                cadkernel_math::Point3 { x: 0.0, y: 0.0, z: 1.0 },
+                cadkernel_math::Point3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                cadkernel_math::Point3 {
+                    x: 1.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                cadkernel_math::Point3 {
+                    x: 0.0,
+                    y: 1.0,
+                    z: 0.0,
+                },
+                cadkernel_math::Point3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 1.0,
+                },
             ],
             elements: vec![[0, 1, 2, 3]],
         };
@@ -9264,8 +12787,77 @@ impl CadApp {
         container.add_bc(cadkernel_modeling::BoundaryCondition::FixedNode(0));
         container.add_bc(cadkernel_modeling::BoundaryCondition::Force {
             node: 3,
-            force: cadkernel_math::Vec3 { x: 0.0, y: 0.0, z: -1000.0 },
+            force: cadkernel_math::Vec3 {
+                x: 0.0,
+                y: 0.0,
+                z: -1000.0,
+            },
         });
+        self.gui.fem_analysis = Some(container);
+    }
+
+    /// Inject a synthetic FEM analysis with no pre-existing BCs for dialog
+    /// commit tests that need exact BC counts.
+    #[doc(hidden)]
+    pub fn seed_test_fem_empty_analysis(&mut self) {
+        self.seed_test_fem_analysis();
+        if let Some(container) = self.gui.fem_analysis.as_mut() {
+            container.boundary_conditions.clear();
+        }
+    }
+
+    /// Variant of [`Self::seed_test_fem_analysis`] for Phase E solver tests.
+    /// Pins three nodes (proper rigid-body removal so the nonlinear solver
+    /// converges) and adds InitialTemperature on all four nodes so the
+    /// thermal pass also has a Dirichlet anchor.
+    #[doc(hidden)]
+    pub fn seed_test_fem_analysis_for_solvers(&mut self) {
+        let mesh = cadkernel_modeling::TetMesh {
+            nodes: vec![
+                cadkernel_math::Point3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                cadkernel_math::Point3 {
+                    x: 1.0,
+                    y: 0.0,
+                    z: 0.0,
+                },
+                cadkernel_math::Point3 {
+                    x: 0.0,
+                    y: 1.0,
+                    z: 0.0,
+                },
+                cadkernel_math::Point3 {
+                    x: 0.0,
+                    y: 0.0,
+                    z: 1.0,
+                },
+            ],
+            elements: vec![[0, 1, 2, 3]],
+        };
+        let mut container = cadkernel_modeling::AnalysisContainer::new(
+            mesh,
+            cadkernel_modeling::FemMaterial::steel(),
+        );
+        container.add_bc(cadkernel_modeling::BoundaryCondition::FixedNode(0));
+        container.add_bc(cadkernel_modeling::BoundaryCondition::FixedNode(1));
+        container.add_bc(cadkernel_modeling::BoundaryCondition::FixedNode(2));
+        container.add_bc(cadkernel_modeling::BoundaryCondition::Force {
+            node: 3,
+            force: cadkernel_math::Vec3 {
+                x: 0.0,
+                y: 0.0,
+                z: -10.0,
+            },
+        });
+        for (n, t) in [(0_usize, 0.0_f64), (1, 0.0), (2, 0.0), (3, 100.0)] {
+            container.add_bc(cadkernel_modeling::BoundaryCondition::InitialTemperature {
+                node: n,
+                temperature: t,
+            });
+        }
         self.gui.fem_analysis = Some(container);
     }
 }

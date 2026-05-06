@@ -136,10 +136,30 @@ pub fn make_helix(
         for j in 0..ts {
             let j_next = (j + 1) % ts;
             let hes = [
-                ec.get_or_create(model, rings[i][j], rings[i][j_next], next_edge_tag(op, &mut edge_idx)),
-                ec.get_or_create(model, rings[i][j_next], rings[i + 1][j_next], next_edge_tag(op, &mut edge_idx)),
-                ec.get_or_create(model, rings[i + 1][j_next], rings[i + 1][j], next_edge_tag(op, &mut edge_idx)),
-                ec.get_or_create(model, rings[i + 1][j], rings[i][j], next_edge_tag(op, &mut edge_idx)),
+                ec.get_or_create(
+                    model,
+                    rings[i][j],
+                    rings[i][j_next],
+                    next_edge_tag(op, &mut edge_idx),
+                ),
+                ec.get_or_create(
+                    model,
+                    rings[i][j_next],
+                    rings[i + 1][j_next],
+                    next_edge_tag(op, &mut edge_idx),
+                ),
+                ec.get_or_create(
+                    model,
+                    rings[i + 1][j_next],
+                    rings[i + 1][j],
+                    next_edge_tag(op, &mut edge_idx),
+                ),
+                ec.get_or_create(
+                    model,
+                    rings[i + 1][j],
+                    rings[i][j],
+                    next_edge_tag(op, &mut edge_idx),
+                ),
             ];
             let loop_h = model.make_loop(&hes)?;
             let tag = Tag::generated(EntityKind::Face, op, face_idx);

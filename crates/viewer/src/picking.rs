@@ -109,8 +109,16 @@ fn ray_segment_distance(
     seg_a: [f32; 3],
     seg_b: [f32; 3],
 ) -> (f32, f32) {
-    let u = [seg_b[0] - seg_a[0], seg_b[1] - seg_a[1], seg_b[2] - seg_a[2]];
-    let w = [ray_o[0] - seg_a[0], ray_o[1] - seg_a[1], ray_o[2] - seg_a[2]];
+    let u = [
+        seg_b[0] - seg_a[0],
+        seg_b[1] - seg_a[1],
+        seg_b[2] - seg_a[2],
+    ];
+    let w = [
+        ray_o[0] - seg_a[0],
+        ray_o[1] - seg_a[1],
+        ray_o[2] - seg_a[2],
+    ];
 
     let a = dot(ray_d, ray_d);
     let b = dot(ray_d, u);
@@ -188,7 +196,11 @@ pub fn pick_vertex(
 
     for (i, v) in vertices.iter().enumerate() {
         // Project vertex onto ray: t = dot(v - origin, dir)
-        let ov = [v[0] - ray_origin[0], v[1] - ray_origin[1], v[2] - ray_origin[2]];
+        let ov = [
+            v[0] - ray_origin[0],
+            v[1] - ray_origin[1],
+            v[2] - ray_origin[2],
+        ];
         let t = dot(ov, ray_dir);
         if t < 0.0 {
             continue; // behind camera
@@ -233,7 +245,10 @@ pub fn screen_to_ray(
     let dir = [far[0] - near[0], far[1] - near[1], far[2] - near[2]];
     let len = (dir[0] * dir[0] + dir[1] * dir[1] + dir[2] * dir[2]).sqrt();
     if len > 1e-8 {
-        ([near[0], near[1], near[2]], [dir[0] / len, dir[1] / len, dir[2] / len])
+        (
+            [near[0], near[1], near[2]],
+            [dir[0] / len, dir[1] / len, dir[2] / len],
+        )
     } else {
         (near, [0.0, 0.0, -1.0])
     }
@@ -296,10 +311,10 @@ mod tests {
     /// and verify it hits the box.
     #[test]
     fn test_pick_box_at_center() {
+        use crate::render::Camera;
+        use cadkernel_io::tessellate_solid;
         use cadkernel_modeling::make_box;
         use cadkernel_topology::BRepModel;
-        use cadkernel_io::tessellate_solid;
-        use crate::render::Camera;
 
         // Create a 2x2x2 box centered at origin
         let mut model = BRepModel::new();
@@ -330,10 +345,10 @@ mod tests {
     /// Simulates 130% DPI: logical 1440x900 → physical 1872x1170.
     #[test]
     fn test_pick_box_at_130_percent_scale() {
+        use crate::render::Camera;
+        use cadkernel_io::tessellate_solid;
         use cadkernel_modeling::make_box;
         use cadkernel_topology::BRepModel;
-        use cadkernel_io::tessellate_solid;
-        use crate::render::Camera;
 
         let mut model = BRepModel::new();
         let r = make_box(&mut model, Point3::new(-1.0, -1.0, -1.0), 2.0, 2.0, 2.0).unwrap();
@@ -351,7 +366,10 @@ mod tests {
         // Physical center = 936, 585
         let (origin, dir) = screen_to_ray(936.0, 585.0, 1872.0, 1170.0, inv_vp);
         let hit = pick_triangle(origin, dir, &mesh.vertices, &mesh.indices);
-        assert!(hit.is_some(), "Pick at physical center should hit box at 130% scale");
+        assert!(
+            hit.is_some(),
+            "Pick at physical center should hit box at 130% scale"
+        );
 
         // If cursor coords were LOGICAL (720, 450) but used with PHYSICAL window size,
         // the NDC would be wrong: ndc_x = (2*720/1872)-1 = -0.231 ≠ 0
@@ -389,9 +407,9 @@ mod tests {
 
         for &wp in world_points {
             // Project world → clip
-            let cx = vp[0][0]*wp[0] + vp[1][0]*wp[1] + vp[2][0]*wp[2] + vp[3][0];
-            let cy = vp[0][1]*wp[0] + vp[1][1]*wp[1] + vp[2][1]*wp[2] + vp[3][1];
-            let cw = vp[0][3]*wp[0] + vp[1][3]*wp[1] + vp[2][3]*wp[2] + vp[3][3];
+            let cx = vp[0][0] * wp[0] + vp[1][0] * wp[1] + vp[2][0] * wp[2] + vp[3][0];
+            let cy = vp[0][1] * wp[0] + vp[1][1] * wp[1] + vp[2][1] * wp[2] + vp[3][1];
+            let cw = vp[0][3] * wp[0] + vp[1][3] * wp[1] + vp[2][3] * wp[2] + vp[3][3];
 
             // clip → NDC
             let ndc_x = cx / cw;
@@ -416,7 +434,7 @@ mod tests {
                 origin[2] + dir[2] * t,
             ];
             let err = [closest[0] - wp[0], closest[1] - wp[1], closest[2] - wp[2]];
-            let dist = (err[0]*err[0] + err[1]*err[1] + err[2]*err[2]).sqrt();
+            let dist = (err[0] * err[0] + err[1] * err[1] + err[2] * err[2]).sqrt();
             assert!(
                 dist < 0.01,
                 "Roundtrip error {dist:.6} for point {wp:?} (screen {sx:.1},{sy:.1})"
@@ -464,10 +482,10 @@ mod tests {
     /// Pick a box with default isometric camera at multiple screen positions.
     #[test]
     fn test_pick_box_default_camera() {
+        use crate::render::Camera;
+        use cadkernel_io::tessellate_solid;
         use cadkernel_modeling::make_box;
         use cadkernel_topology::BRepModel;
-        use cadkernel_io::tessellate_solid;
-        use crate::render::Camera;
 
         let mut model = BRepModel::new();
         let r = make_box(&mut model, Point3::new(-1.0, -1.0, -1.0), 2.0, 2.0, 2.0).unwrap();
@@ -484,7 +502,7 @@ mod tests {
         let (w, h) = (1440.0_f32, 900.0_f32);
 
         // Project the box center (0,0,0) to screen
-        let cw = vp[0][3]*0.0 + vp[1][3]*0.0 + vp[2][3]*0.0 + vp[3][3];
+        let cw = vp[0][3] * 0.0 + vp[1][3] * 0.0 + vp[2][3] * 0.0 + vp[3][3];
         let cx = vp[3][0] / cw;
         let cy = vp[3][1] / cw;
         let center_sx = (cx + 1.0) * 0.5 * w;
@@ -493,6 +511,9 @@ mod tests {
         // Pick at projected box center — must hit
         let (origin, dir) = screen_to_ray(center_sx, center_sy, w, h, inv_vp);
         let hit = pick_triangle(origin, dir, &mesh.vertices, &mesh.indices);
-        assert!(hit.is_some(), "Pick at box center ({center_sx:.0},{center_sy:.0}) must hit");
+        assert!(
+            hit.is_some(),
+            "Pick at box center ({center_sx:.0},{center_sy:.0}) must hit"
+        );
     }
 }

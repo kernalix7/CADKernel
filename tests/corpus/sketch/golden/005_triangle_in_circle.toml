@@ -1,0 +1,101 @@
+# Sketch golden 005: Triangle inscribed in circle (intentionally underdetermined)
+#
+# A circle and three points on it forming a triangle. The triangle's rotation
+# about the circle centre is unconstrained — verifies that the solver
+# correctly classifies this as UnderDetermined and reports the remaining DoF.
+
+[sketch]
+name = "Triangle in circle"
+units = "mm"
+description = "3 points on a circle, no rotation pin -> 1 DoF remaining."
+
+[[entity]]
+id = 1
+kind = "Point"
+x = 0.0
+y = 0.0
+anchor = true
+
+[[entity]]
+id = 2
+kind = "Point"
+x = 10.0
+y = 0.0
+
+[[entity]]
+id = 3
+kind = "Point"
+x = -5.0
+y = 8.660254
+
+[[entity]]
+id = 4
+kind = "Point"
+x = -5.0
+y = -8.660254
+
+[[entity]]
+id = 10
+kind = "Circle"
+center = 1
+radius = 10.0
+
+[[entity]]
+id = 20
+kind = "Line"
+start = 2
+end = 3
+
+[[entity]]
+id = 21
+kind = "Line"
+start = 3
+end = 4
+
+[[entity]]
+id = 22
+kind = "Line"
+start = 4
+end = 2
+
+[[constraint]]
+id = 100
+kind = "PointOnCurve"
+point = 2
+curve = 10
+
+[[constraint]]
+id = 101
+kind = "PointOnCurve"
+point = 3
+curve = 10
+
+[[constraint]]
+id = 102
+kind = "PointOnCurve"
+point = 4
+curve = 10
+
+[[constraint]]
+id = 103
+kind = "Radius"
+of = 10
+value = 10.0
+
+[[constraint]]
+id = 104
+kind = "EqualLength"
+between = [20, 21]
+
+[[constraint]]
+id = 105
+kind = "EqualLength"
+between = [21, 22]
+
+[expected]
+status = "UnderDetermined"
+dof = 1                       # rotation of triangle about circle centre
+positional_residual_max = 1e-9
+dimensional_residual_max = 1e-6
+solve_iterations_max = 15
+remaining_dof_description = "rotation of equilateral triangle about circle centre"

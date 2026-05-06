@@ -27,11 +27,7 @@ impl RevolutionSurface {
         angle_end: f64,
     ) -> Self {
         let len = axis_dir.length();
-        let axis_dir = if len > 1e-14 {
-            axis_dir / len
-        } else {
-            Vec3::Z
-        };
+        let axis_dir = if len > 1e-14 { axis_dir / len } else { Vec3::Z };
         Self {
             profile,
             axis_origin,
@@ -72,11 +68,7 @@ impl Surface for RevolutionSurface {
         let dv = self.dv(u, v);
         let n = du.cross(dv);
         let len = n.length();
-        if len < 1e-14 {
-            Vec3::Z
-        } else {
-            n / len
-        }
+        if len < 1e-14 { Vec3::Z } else { n / len }
     }
 
     fn domain_u(&self) -> (f64, f64) {

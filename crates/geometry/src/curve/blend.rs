@@ -1,8 +1,8 @@
 use cadkernel_core::KernelResult;
 use cadkernel_math::Point3;
 
-use crate::curve::nurbs::NurbsCurve;
 use crate::curve::Curve;
+use crate::curve::nurbs::NurbsCurve;
 
 /// Creates a cubic Bezier blend curve connecting the end of `curve1` to the
 /// start of `curve2`.

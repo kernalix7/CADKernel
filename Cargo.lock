@@ -519,6 +519,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cadkernel-api"
+version = "0.1.0"
+dependencies = [
+ "cadkernel-core",
+ "cadkernel-math",
+ "cadkernel-modeling",
+ "cadkernel-topology",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cadkernel-core"
 version = "0.1.0"
 

@@ -1,0 +1,28 @@
+[test]
+id = "002"
+description = "Difference: large box with smaller box subtracted from interior, producing a rectangular cavity."
+
+[a]
+kind = "Box"
+size = [2.0, 2.0, 2.0]
+origin = [0.0, 0.0, 0.0]
+
+[b]
+kind = "Box"
+size = [1.0, 1.0, 1.0]
+origin = [0.5, 0.5, 0.5]   # fully interior; no face coplanar
+
+[op]
+kind = "Difference"        # A - B
+
+[expected]
+solid_count = 1
+shell_count = 2            # outer + inner (cavity void)
+manifold = true
+genus = 0
+volume_min = 6.999          # 8 - 1 = 7, allow tiny tolerance
+volume_max = 7.001
+face_count_min = 12         # 6 outer + 6 inner
+
+all_faces_tagged = true
+recompute_deterministic = true

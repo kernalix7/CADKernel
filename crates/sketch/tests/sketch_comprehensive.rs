@@ -7,6 +7,7 @@
 use std::f64::consts::{FRAC_PI_2, FRAC_PI_4, PI, TAU};
 
 use cadkernel_math::{Point2, Point3, Vec3};
+use cadkernel_sketch::Sketch;
 use cadkernel_sketch::bspline_tools::{
     carbon_copy, decrease_bspline_degree, decrease_knot_multiplicity, delete_all_constraints,
     delete_all_geometry, external_projection, geometry_to_bspline, increase_bspline_degree,
@@ -33,7 +34,6 @@ use cadkernel_sketch::tools::{
     trim_edge,
 };
 use cadkernel_sketch::validate::{SketchValidation, SketchValidationIssue, validate_sketch};
-use cadkernel_sketch::Sketch;
 
 const TOL: f64 = 1e-10;
 const SOLVE_TOL: f64 = 1e-10;
@@ -458,10 +458,11 @@ fn validate_empty_sketch_reports_issue() {
     let s = Sketch::new();
     let v = validate_sketch(&s, 1e-3);
     assert!(!v.valid);
-    assert!(v
-        .issues
-        .iter()
-        .any(|i| matches!(i, SketchValidationIssue::EmptySketch)));
+    assert!(
+        v.issues
+            .iter()
+            .any(|i| matches!(i, SketchValidationIssue::EmptySketch))
+    );
 }
 
 #[test]
@@ -471,10 +472,11 @@ fn validate_zero_length_line() {
     let p1 = s.add_point(1.0, 1.0);
     s.add_line(p0, p1);
     let v = validate_sketch(&s, 1e-3);
-    assert!(v
-        .issues
-        .iter()
-        .any(|i| matches!(i, SketchValidationIssue::ZeroLengthLine { .. })));
+    assert!(
+        v.issues
+            .iter()
+            .any(|i| matches!(i, SketchValidationIssue::ZeroLengthLine { .. }))
+    );
 }
 
 #[test]
@@ -483,10 +485,11 @@ fn validate_nearly_coincident_points() {
     s.add_point(0.0, 0.0);
     s.add_point(1e-6, 0.0);
     let v = validate_sketch(&s, 1e-3);
-    assert!(v
-        .issues
-        .iter()
-        .any(|i| matches!(i, SketchValidationIssue::NearlyCoincidentPoints { .. })));
+    assert!(
+        v.issues
+            .iter()
+            .any(|i| matches!(i, SketchValidationIssue::NearlyCoincidentPoints { .. }))
+    );
 }
 
 #[test]
@@ -495,10 +498,11 @@ fn validate_invalid_point_reference() {
     s.add_point(0.0, 0.0);
     s.add_constraint(Constraint::Fixed(PointId(99), 0.0, 0.0));
     let v = validate_sketch(&s, 1e-3);
-    assert!(v
-        .issues
-        .iter()
-        .any(|i| matches!(i, SketchValidationIssue::InvalidPointReference { .. })));
+    assert!(
+        v.issues
+            .iter()
+            .any(|i| matches!(i, SketchValidationIssue::InvalidPointReference { .. }))
+    );
 }
 
 #[test]
@@ -507,10 +511,11 @@ fn validate_invalid_line_reference() {
     s.add_point(0.0, 0.0);
     s.add_constraint(Constraint::Horizontal(LineId(99)));
     let v = validate_sketch(&s, 1e-3);
-    assert!(v
-        .issues
-        .iter()
-        .any(|i| matches!(i, SketchValidationIssue::InvalidLineReference { .. })));
+    assert!(
+        v.issues
+            .iter()
+            .any(|i| matches!(i, SketchValidationIssue::InvalidLineReference { .. }))
+    );
 }
 
 #[test]
@@ -518,10 +523,11 @@ fn validate_under_and_over_constrained_flags() {
     let mut under = Sketch::new();
     under.add_point(1.0, 1.0);
     let v = validate_sketch(&under, 1e-6);
-    assert!(v
-        .issues
-        .iter()
-        .any(|i| matches!(i, SketchValidationIssue::UnderConstrained { .. })));
+    assert!(
+        v.issues
+            .iter()
+            .any(|i| matches!(i, SketchValidationIssue::UnderConstrained { .. }))
+    );
 }
 
 #[test]

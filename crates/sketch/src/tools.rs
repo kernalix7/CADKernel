@@ -1,7 +1,7 @@
 //! Sketch editing tools: fillet, chamfer, trim, split, extend.
 
-use crate::entity::{ArcId, LineId, PointId};
 use crate::Sketch;
+use crate::entity::{ArcId, LineId, PointId};
 
 /// Result of a sketch fillet operation.
 #[derive(Debug)]

@@ -196,11 +196,13 @@ mod tests {
     #[test]
     fn test_sweep_validation() {
         let mut model = BRepModel::new();
-        assert!(sweep(
-            &mut model,
-            &[Point3::ORIGIN, Point3::new(1.0, 0.0, 0.0)],
-            &[Point3::ORIGIN, Point3::new(0.0, 0.0, 5.0)]
-        )
-        .is_err());
+        assert!(
+            sweep(
+                &mut model,
+                &[Point3::ORIGIN, Point3::new(1.0, 0.0, 0.0)],
+                &[Point3::ORIGIN, Point3::new(0.0, 0.0, 5.0)]
+            )
+            .is_err()
+        );
     }
 }
