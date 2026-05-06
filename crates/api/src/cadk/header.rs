@@ -66,7 +66,7 @@ pub struct CadkHeader {
     pub manifest_crc32: u32,
     /// Padding so the header always serializes to exactly
     /// [`HEADER_SIZE`] bytes. Must be zero on write.
-    pub reserved: [u8; 32],
+    pub reserved: [u8; 28],
 }
 
 impl Default for CadkHeader {
@@ -78,7 +78,7 @@ impl Default for CadkHeader {
             manifest_offset: 0,
             manifest_length: 0,
             manifest_crc32: 0,
-            reserved: [0u8; 32],
+            reserved: [0u8; 28],
         }
     }
 }

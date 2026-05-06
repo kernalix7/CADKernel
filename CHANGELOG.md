@@ -11,9 +11,19 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### A3 — `.cadk` v0 codec: encode / decode with CRC integrity (2026-05-07)
+- `crates/api/src/cadk/codec.rs` (~270 lines) implements the v0 container layout end-to-end:
+  - `crc32_ieee(&[u8]) -> u32` — IEEE 802.3 CRC-32, lazy table via `std::sync::OnceLock`, polynomial `0xEDB88320`. Verified against canonical reference `crc32(b"123456789") == 0xCBF43926`. Zero new dependencies.
+  - `write_header` / `read_header` — explicit little-endian field-by-field codec; layout: 4 (schema_version) + 4 (flags) + 8 (total_size) + 8 (manifest_offset) + 8 (manifest_length) + 4 (manifest_crc32) + 28 (reserved) = 64 bytes. `CadkHeader.reserved` shrunk from `[u8; 32]` → `[u8; 28]` to make `HEADER_SIZE = 64` arithmetic correct.
+  - `encode(commands: &[Command]) -> ApiResult<Vec<u8>>` — produces `b"CADK" + header[64] + manifest_json + doc_json`. Uses fixed-point convergence to reconcile JSON-encoded manifest length vs. content_offset (offset value's digit count affects manifest size, which feeds back into the offset).
+  - `decode(bytes: &[u8]) -> ApiResult<Vec<Command>>` — validates min size → magic → `header.is_supported()` → `total_size == bytes.len()` → manifest range → manifest CRC → parses `Manifest` → finds `BlobKind::Document` → blob range → blob CRC → deserializes `Vec<Command>`.
+- `Session` gains `save_cadk(&self) -> ApiResult<Vec<u8>>` and `load_cadk(bytes: &[u8]) -> ApiResult<Self>` (replays the decoded log via `Session::replay`). Note: redo stack is not preserved by the codec — only the applied prefix round-trips. JSON snapshot path remains for full session state.
+- 8 new codec unit tests + 1 new session integration test (`session_save_cadk_round_trip_preserves_solid_count`): empty log, 5-command log, bad magic rejection, truncation rejection, document-blob CRC corruption rejection, header round-trip, two CRC32 reference checks.
+- A3 deliverable §1 (container header + magic + schema check), §2 (manifest CRC), §3 (single document blob with CRC), §6 (CRC integrity) — landed at v0 (JSON blob bodies). Pending follow-ups: bincode swap behind `CadkFlags::MANIFEST_COMPRESSED`, zstd, Ed25519 signing, autosave + crash recovery, thumbnail blob, `cadk-inspect` CLI.
+
 #### A3 — `.cadk` native file format scaffold (2026-05-07)
 - New `crates/api/src/cadk/` module establishes the on-disk container types:
-  - `cadk::header` — `MAGIC = b"CADK"`, `SCHEMA_VERSION = 1`, `HEADER_SIZE = 64`, `CadkHeader { schema_version, flags, total_size, manifest_offset, manifest_length, manifest_crc32, reserved[32] }`, `CadkFlags { MANIFEST_COMPRESSED, SIGNED, HAS_THUMBNAIL, KNOWN, MUST_UNDERSTAND_MASK }`. `is_supported()` rejects unknown must-understand flags and incompatible schema versions.
+  - `cadk::header` — `MAGIC = b"CADK"`, `SCHEMA_VERSION = 1`, `HEADER_SIZE = 64`, `CadkHeader { schema_version, flags, total_size, manifest_offset, manifest_length, manifest_crc32, reserved[28] }`, `CadkFlags { MANIFEST_COMPRESSED, SIGNED, HAS_THUMBNAIL, KNOWN, MUST_UNDERSTAND_MASK }`. `is_supported()` rejects unknown must-understand flags and incompatible schema versions.
   - `cadk::manifest` — `BlobKind { Document, Thumbnail, History, Attachment, Signature, Unknown }`, `BlobRecord { kind, name, offset, length, crc32 }`, `Manifest { records }` with `find_first()` and `total_blob_bytes()` helpers.
 - 7 new unit tests (5 header + 2 manifest). No external dependencies added — flags stay as plain `u32` constants, no `bitflags` crate.
 - Encoder / decoder, zstd compression, Ed25519 signing, autosave policy, and migration scaffolding remain TBD; this commit lands the format constants and TOC types only so future patches can be additive.

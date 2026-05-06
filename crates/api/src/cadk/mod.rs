@@ -15,8 +15,10 @@
 //! +----------------+----------------+----------------------+----------------+
 //! ```
 
+pub mod codec;
 pub mod header;
 pub mod manifest;
 
+pub use codec::{decode, encode};
 pub use header::{CadkFlags, CadkHeader, MAGIC};
 pub use manifest::{BlobKind, BlobRecord, Manifest};

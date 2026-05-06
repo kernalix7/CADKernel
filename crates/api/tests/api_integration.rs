@@ -668,3 +668,33 @@ fn rename_coalesces_keeps_only_last_label() {
         other => panic!("expected coalesced Rename, got {other:?}"),
     }
 }
+
+#[test]
+fn session_save_cadk_round_trip_preserves_solid_count() {
+    use cadkernel_api::{Command, Session};
+
+    let mut session = Session::new();
+    session
+        .execute(Command::CreateBox {
+            dx: 10.0,
+            dy: 5.0,
+            dz: 2.0,
+        })
+        .unwrap();
+    session
+        .execute(Command::CreateSphere { radius: 1.5 })
+        .unwrap();
+    session
+        .execute(Command::CreateCylinder {
+            radius: 0.5,
+            height: 4.0,
+        })
+        .unwrap();
+
+    let bytes = session.save_cadk().unwrap();
+    assert_eq!(&bytes[..4], b"CADK");
+
+    let restored = Session::load_cadk(&bytes).unwrap();
+    assert_eq!(restored.document().solid_count(), 3);
+    assert_eq!(restored.log().len(), 3);
+}

@@ -11,6 +11,16 @@
 
 ### 추가됨
 
+#### A3 — `.cadk` v0 코덱: CRC 무결성 포함 인코드/디코드 (2026-05-07)
+- `crates/api/src/cadk/codec.rs` (~270 LOC)에 v0 컨테이너 레이아웃 end-to-end 구현:
+  - `crc32_ieee` — IEEE 802.3 CRC-32, `OnceLock` 기반 lazy 테이블, polynomial `0xEDB88320`. 외부 크레이트 0개.
+  - `write_header` / `read_header` — little-endian 필드별 직접 인코딩. 레이아웃: 4+4+8+8+8+4+28 = 64 byte. `reserved`를 `[u8; 32]` → `[u8; 28]`로 축소하여 `HEADER_SIZE = 64` 산수 정합화.
+  - `encode(commands)` — `b"CADK" + header[64] + manifest_json + doc_json` 컨테이너 생성. JSON 인코딩된 manifest 길이 ↔ content_offset 자릿수 상호의존성을 fixed-point 수렴 루프로 해결.
+  - `decode(bytes)` — 매직, `is_supported()`, total_size, manifest 범위/CRC, 문서 blob 범위/CRC를 모두 검증 후 `Vec<Command>` 역직렬화.
+- `Session`에 `save_cadk()` / `load_cadk()` 추가 (load는 `Session::replay`로 적용). redo 스택은 코덱이 보존하지 않음 — 적용된 prefix만 round-trip. 전체 세션 상태는 기존 JSON 스냅샷 경로 유지.
+- 코덱 단위 테스트 8개 + 세션 통합 테스트 1개 추가: 빈 로그, 5-커맨드 로그, 잘못된 매직 거부, 절단 거부, 문서 blob CRC 손상 거부, 헤더 round-trip, CRC32 reference 검증.
+- A3 deliverable §1/§2/§3/§6 v0 랜딩 (blob 본문은 JSON). 후속: bincode 스왑(`MANIFEST_COMPRESSED` 뒤), zstd, Ed25519 서명, 자동저장 + 충돌 복구, 썸네일 blob, `cadk-inspect` CLI.
+
 #### A3 — `.cadk` 네이티브 파일 포맷 스캐폴드 (2026-05-07)
 - 신규 `crates/api/src/cadk/` 모듈에 온디스크 컨테이너 타입 추가:
   - `cadk::header` — `MAGIC = b"CADK"`, `SCHEMA_VERSION = 1`, `HEADER_SIZE = 64`, `CadkHeader`, `CadkFlags { MANIFEST_COMPRESSED, SIGNED, HAS_THUMBNAIL }`. `is_supported()`는 미키 must-understand 플래그와 대응되지 않는 스키마 버전을 거부.

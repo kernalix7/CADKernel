@@ -225,11 +225,27 @@ impl Session {
         Ok(serde_json::to_string_pretty(&snap)?)
     }
 
+    /// Encode the applied prefix of the command log into the `.cadk`
+    /// binary container format. Round-trips with [`Self::load_cadk`].
+    /// See [`crate::cadk`] for the on-disk layout.
+    pub fn save_cadk(&self) -> ApiResult<Vec<u8>> {
+        crate::cadk::encode(self.log())
+    }
+
+    /// Restore a session from a `.cadk` byte buffer produced by
+    /// [`Self::save_cadk`]. The redo stack is **not** preserved by this
+    /// codec — only the applied prefix round-trips. Use
+    /// [`Self::save_to_json`] / [`Self::load_from_json`] when redo state
+    /// matters.
+    pub fn load_cadk(bytes: &[u8]) -> ApiResult<Self> {
+        let commands = crate::cadk::decode(bytes)?;
+        Self::replay(&commands)
+    }
+
     /// Restore a session from a [`SessionSnapshot`] JSON document.
     /// Replays `commands[..cursor]` and keeps `commands[cursor..]` as the
     /// pending redo stack.
-    pub fn load_from_json(json: &str) -> ApiResult<Self> {
-        let snap: SessionSnapshot = serde_json::from_str(json)?;
+    pub fn load_from_json(json: &str) -> ApiResult<Self> {        let snap: SessionSnapshot = serde_json::from_str(json)?;
         if snap.schema_version != SessionSnapshot::CURRENT_SCHEMA {
             return Err(ApiError::Codec(format!(
                 "unsupported session schema version {} (expected {})",
