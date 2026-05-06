@@ -11,6 +11,13 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### A3 — `.cadk` native file format scaffold (2026-05-07)
+- New `crates/api/src/cadk/` module establishes the on-disk container types:
+  - `cadk::header` — `MAGIC = b"CADK"`, `SCHEMA_VERSION = 1`, `HEADER_SIZE = 64`, `CadkHeader { schema_version, flags, total_size, manifest_offset, manifest_length, manifest_crc32, reserved[32] }`, `CadkFlags { MANIFEST_COMPRESSED, SIGNED, HAS_THUMBNAIL, KNOWN, MUST_UNDERSTAND_MASK }`. `is_supported()` rejects unknown must-understand flags and incompatible schema versions.
+  - `cadk::manifest` — `BlobKind { Document, Thumbnail, History, Attachment, Signature, Unknown }`, `BlobRecord { kind, name, offset, length, crc32 }`, `Manifest { records }` with `find_first()` and `total_blob_bytes()` helpers.
+- 7 new unit tests (5 header + 2 manifest). No external dependencies added — flags stay as plain `u32` constants, no `bitflags` crate.
+- Encoder / decoder, zstd compression, Ed25519 signing, autosave policy, and migration scaffolding remain TBD; this commit lands the format constants and TOC types only so future patches can be additive.
+
 #### A2 Phase 2A — undo/redo coalescing window (2026-05-07)
 - `Session` gains `coalesce_window_ms` (default 1 000 ms) and `set_coalesce_window_ms(ms)`. Within the window, consecutive `Translate` / `Scale` / `Rename` commands targeting the same `SolidId` are folded into the previous log entry instead of producing a new history record. `Translate` deltas accumulate, `Scale` factors multiply, `Rename` labels are replaced.
 - Replay disables coalescing internally so deterministic reproduction from snapshots is preserved (replayed log = input slice exactly).

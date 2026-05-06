@@ -11,6 +11,13 @@
 
 ### 추가됨
 
+#### A3 — `.cadk` 네이티브 파일 포맷 스캐폴드 (2026-05-07)
+- 신규 `crates/api/src/cadk/` 모듈에 온디스크 컨테이너 타입 추가:
+  - `cadk::header` — `MAGIC = b"CADK"`, `SCHEMA_VERSION = 1`, `HEADER_SIZE = 64`, `CadkHeader`, `CadkFlags { MANIFEST_COMPRESSED, SIGNED, HAS_THUMBNAIL }`. `is_supported()`는 미키 must-understand 플래그와 대응되지 않는 스키마 버전을 거부.
+  - `cadk::manifest` — `BlobKind { Document, Thumbnail, History, Attachment, Signature, Unknown }`, `BlobRecord`, `Manifest` (find_first / total_blob_bytes 헬퍼 포함).
+- 단위 테스트 7개 추가 (헤더 5 + manifest 2). 외부 크레이트 추가 없이 플래그는 단순 `u32` 상수로 유지.
+- 인코더/디코더, zstd 압축, Ed25519 서명, 자동저장 정책, 마이그레이션은 TBD. 이 커밋은 포맷 상수와 TOC 타입만 랜딩 → 이후 패치가 추가적으로 쌓이도록.
+
 #### A2 Phase 2A — undo/redo 병합 (coalescing) 윈도우 (2026-05-07)
 - `Session`에 `coalesce_window_ms` 필드(기본 1 000 ms)와 `set_coalesce_window_ms(ms)` 추가. 윈도우 내에 같은 `SolidId`를 대상으로 연속된 `Translate` / `Scale` / `Rename`은 이전 로그 항목에 병합되고 새 history 항목을 만들지 않음. `Translate` 델타는 합산, `Scale` 계수는 곱, `Rename` 라벨은 교체.
 - replay 동안에는 내부적으로 coalescing을 비활성화 → 스냅샷 결정론적 재현 보장 (replay 로그 = 입력 슬라이스 그대로).
