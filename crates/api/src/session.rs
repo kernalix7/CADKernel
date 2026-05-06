@@ -38,11 +38,25 @@ use crate::{ApiError, ApiResult};
 /// Internal invariant: `log[..cursor]` has been applied to `document`;
 /// `log[cursor..]` is the redo stack (entries that were undone but not
 /// overwritten).
-#[derive(Default)]
 pub struct Session {
     document: Document,
     log: Vec<Command>,
     cursor: usize,
+    /// Wall-clock instant when the most recent command was executed.
+    /// Used to coalesce rapid-fire property edits (Translate / Scale /
+    /// Rename) into a single log entry within `coalesce_window_ms`.
+    /// Not serialized — coalescing is a runtime-only interactive feature.
+    last_command_at: Option<std::time::Instant>,
+    /// Window during which a same-kind same-target command will be
+    /// folded into the previous log entry instead of producing a new
+    /// HistoryEvent. 0 disables coalescing entirely.
+    coalesce_window_ms: u64,
+}
+
+impl Default for Session {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// On-disk session snapshot. Round-trips with [`Session::save_to_json`] and
@@ -101,8 +115,28 @@ fn now_unix_seconds() -> i64 {
 
 impl Session {
     /// Creates a fresh session with an empty document and empty log.
+    /// Coalesce window defaults to 1 000 ms per A2 spec.
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            document: Document::default(),
+            log: Vec::new(),
+            cursor: 0,
+            last_command_at: None,
+            coalesce_window_ms: 1000,
+        }
+    }
+
+    /// Sets the coalesce window in milliseconds. `0` disables coalescing.
+    /// Consecutive `Translate` / `Scale` / `Rename` commands targeting the
+    /// same solid id within this window are folded into the previous log
+    /// entry instead of producing a new history record.
+    pub fn set_coalesce_window_ms(&mut self, ms: u64) {
+        self.coalesce_window_ms = ms;
+    }
+
+    /// Returns the current coalesce window in milliseconds.
+    pub fn coalesce_window_ms(&self) -> u64 {
+        self.coalesce_window_ms
     }
 
     /// Returns a reference to the underlying [`Document`].
@@ -140,11 +174,16 @@ impl Session {
 
     /// Replays a slice of commands from scratch and returns the resulting
     /// session. The first failure aborts replay and is returned.
+    /// Coalescing is disabled during replay so the resulting log is
+    /// identical to the input slice — important for deterministic
+    /// reproduction from snapshots.
     pub fn replay(commands: &[Command]) -> ApiResult<Self> {
         let mut session = Self::new();
+        session.coalesce_window_ms = 0;
         for cmd in commands {
             session.execute(cmd.clone())?;
         }
+        session.coalesce_window_ms = 1000;
         Ok(session)
     }
 
@@ -217,9 +256,30 @@ impl Session {
     /// Executes a single command. On success it is appended to the log,
     /// the cursor advances, and one [`HistoryEvent`] is recorded. Any
     /// pending redo stack is discarded (standard CAD/editor behaviour).
+    ///
+    /// **Coalescing**: if the previous applied command and the new command
+    /// are both property-edit commands of the same kind targeting the
+    /// same solid id, and arrive within `coalesce_window_ms`, the
+    /// previous log entry is replaced with a merged command instead of
+    /// pushing a new one. `Translate` deltas accumulate, `Scale` factors
+    /// multiply, `Rename` labels are replaced. No new history event is
+    /// emitted in that case.
     pub fn execute(&mut self, command: Command) -> ApiResult<Outcome> {
         // Discard the redo stack — a new branch starts here.
         self.log.truncate(self.cursor);
+
+        // Try to coalesce with the previous command. If it succeeds we
+        // dispatch the new (delta) command onto the live document, then
+        // overwrite the previous log entry with the merged form so a
+        // future replay reproduces the same final state in one step. No
+        // new history event is emitted.
+        if let Some(merged) = self.try_coalesce_with_previous(&command) {
+            let outcome = self.dispatch(&command)?;
+            self.log[self.cursor - 1] = merged;
+            self.last_command_at = Some(std::time::Instant::now());
+            return Ok(outcome);
+        }
+
         let outcome = self.dispatch(&command)?;
         let event = HistoryEvent {
             op: command.op_name().to_string(),
@@ -229,7 +289,62 @@ impl Session {
         self.document.push_history(event);
         self.log.push(command);
         self.cursor += 1;
+        self.last_command_at = Some(std::time::Instant::now());
         Ok(outcome)
+    }
+
+    /// Returns the merged command if `incoming` is coalescable with the
+    /// previous applied command, else `None`.
+    fn try_coalesce_with_previous(&self, incoming: &Command) -> Option<Command> {
+        if self.coalesce_window_ms == 0 || self.cursor == 0 {
+            return None;
+        }
+        let last_at = self.last_command_at?;
+        if last_at.elapsed().as_millis() as u64 > self.coalesce_window_ms {
+            return None;
+        }
+        let prev = &self.log[self.cursor - 1];
+        match (prev, incoming) {
+            (
+                Command::Translate {
+                    id: a,
+                    dx: x1,
+                    dy: y1,
+                    dz: z1,
+                },
+                Command::Translate {
+                    id: b,
+                    dx: x2,
+                    dy: y2,
+                    dz: z2,
+                },
+            ) if a == b => Some(Command::Translate {
+                id: *a,
+                dx: x1 + x2,
+                dy: y1 + y2,
+                dz: z1 + z2,
+            }),
+            (
+                Command::Scale {
+                    id: a,
+                    factor: f1,
+                },
+                Command::Scale {
+                    id: b,
+                    factor: f2,
+                },
+            ) if a == b => Some(Command::Scale {
+                id: *a,
+                factor: f1 * f2,
+            }),
+            (Command::Rename { id: a, .. }, Command::Rename { id: b, label }) if a == b => {
+                Some(Command::Rename {
+                    id: *a,
+                    label: label.clone(),
+                })
+            }
+            _ => None,
+        }
     }
 
     /// Undo the most recently applied command. Returns the [`Command`] that

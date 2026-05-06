@@ -11,6 +11,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### A2 Phase 2A — undo/redo coalescing window (2026-05-07)
+- `Session` gains `coalesce_window_ms` (default 1 000 ms) and `set_coalesce_window_ms(ms)`. Within the window, consecutive `Translate` / `Scale` / `Rename` commands targeting the same `SolidId` are folded into the previous log entry instead of producing a new history record. `Translate` deltas accumulate, `Scale` factors multiply, `Rename` labels are replaced.
+- Replay disables coalescing internally so deterministic reproduction from snapshots is preserved (replayed log = input slice exactly).
+- 3 new integration tests: `translate_coalesces_within_window`, `coalescing_disabled_when_window_is_zero`, `rename_coalesces_keeps_only_last_label` (19 → 22).
+- A2 deliverable #6 (undo/redo with 1 s coalesce window) — landed.
+
 #### A2 Phase 2A — SessionSnapshot metadata fields (2026-05-07)
 - `crates/api/src/session.rs` — `SessionSnapshot` extended with A2-spec metadata fields: `document_hash` (FNV-1a-64 hex digest of serialized command prefix), `log_position` (mirror of cursor), `timestamp` (unix epoch seconds at save), `label` (optional human label). All four fields use `#[serde(default)]` so legacy schema-v1 snapshots written before A2 still load cleanly.
 - `Session::save_to_json_with_label(label: Option<String>)` — new public method for tagging snapshots ("before boolean", "release-v0.5-tag", etc.). `save_to_json()` continues to work and now auto-populates the metadata fields with `label = None`.

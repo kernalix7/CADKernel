@@ -550,3 +550,121 @@ fn old_schema_v1_snapshot_without_metadata_still_loads() {
     let restored = Session::load_from_json(legacy).unwrap();
     assert_eq!(restored.document().solid_count(), 1);
 }
+
+#[test]
+fn translate_coalesces_within_window() {
+    use cadkernel_api::{Command, Session, SolidId};
+
+    let mut session = Session::new();
+    session
+        .execute(Command::CreateBox {
+            dx: 1.0,
+            dy: 1.0,
+            dz: 1.0,
+        })
+        .unwrap();
+    let id = SolidId(0);
+
+    // Three rapid translates of the same id within 1 s — should coalesce
+    // into a single Translate(sum) log entry.
+    session
+        .execute(Command::Translate {
+            id,
+            dx: 1.0,
+            dy: 0.0,
+            dz: 0.0,
+        })
+        .unwrap();
+    session
+        .execute(Command::Translate {
+            id,
+            dx: 2.0,
+            dy: 0.0,
+            dz: 0.0,
+        })
+        .unwrap();
+    session
+        .execute(Command::Translate {
+            id,
+            dx: 0.0,
+            dy: 4.0,
+            dz: 0.0,
+        })
+        .unwrap();
+
+    // Log = [CreateBox, Translate(merged 3.0, 4.0, 0.0)]
+    assert_eq!(session.log().len(), 2);
+    match &session.log()[1] {
+        Command::Translate { id: t, dx, dy, dz } => {
+            assert_eq!(*t, id);
+            assert!((dx - 3.0).abs() < 1e-9);
+            assert!((dy - 4.0).abs() < 1e-9);
+            assert!((dz - 0.0).abs() < 1e-9);
+        }
+        other => panic!("expected coalesced Translate, got {other:?}"),
+    }
+    // Only 2 history events (CreateBox + 1 coalesced Translate, not 4).
+    assert_eq!(session.document().history().len(), 2);
+}
+
+#[test]
+fn coalescing_disabled_when_window_is_zero() {
+    use cadkernel_api::{Command, Session, SolidId};
+
+    let mut session = Session::new();
+    session.set_coalesce_window_ms(0);
+    session
+        .execute(Command::CreateBox {
+            dx: 1.0,
+            dy: 1.0,
+            dz: 1.0,
+        })
+        .unwrap();
+    let id = SolidId(0);
+    session
+        .execute(Command::Translate {
+            id,
+            dx: 1.0,
+            dy: 0.0,
+            dz: 0.0,
+        })
+        .unwrap();
+    session
+        .execute(Command::Translate {
+            id,
+            dx: 1.0,
+            dy: 0.0,
+            dz: 0.0,
+        })
+        .unwrap();
+    // Both translates should be separate log entries.
+    assert_eq!(session.log().len(), 3);
+}
+
+#[test]
+fn rename_coalesces_keeps_only_last_label() {
+    use cadkernel_api::{Command, Session, SolidId};
+
+    let mut session = Session::new();
+    session
+        .execute(Command::CreateBox {
+            dx: 1.0,
+            dy: 1.0,
+            dz: 1.0,
+        })
+        .unwrap();
+    let id = SolidId(0);
+    for label in ["A", "AB", "ABC", "ABCD"] {
+        session
+            .execute(Command::Rename {
+                id,
+                label: label.to_string(),
+            })
+            .unwrap();
+    }
+    assert_eq!(session.log().len(), 2);
+    match &session.log()[1] {
+        Command::Rename { label, .. } => assert_eq!(label, "ABCD"),
+        other => panic!("expected coalesced Rename, got {other:?}"),
+    }
+}

@@ -11,6 +11,12 @@
 
 ### 추가됨
 
+#### A2 Phase 2A — undo/redo 병합 (coalescing) 윈도우 (2026-05-07)
+- `Session`에 `coalesce_window_ms` 필드(기본 1 000 ms)와 `set_coalesce_window_ms(ms)` 추가. 윈도우 내에 같은 `SolidId`를 대상으로 연속된 `Translate` / `Scale` / `Rename`은 이전 로그 항목에 병합되고 새 history 항목을 만들지 않음. `Translate` 델타는 합산, `Scale` 계수는 곱, `Rename` 라벨은 교체.
+- replay 동안에는 내부적으로 coalescing을 비활성화 → 스냅샷 결정론적 재현 보장 (replay 로그 = 입력 슬라이스 그대로).
+- 통합 테스트 3개 추가 (19 → 22): `translate_coalesces_within_window`, `coalescing_disabled_when_window_is_zero`, `rename_coalesces_keeps_only_last_label`.
+- A2 deliverable #6 (1초 윈도우 undo/redo coalesce) — 완료.
+
 #### A2 Phase 2A — SessionSnapshot 메타데이터 필드 (2026-05-07)
 - `crates/api/src/session.rs` — `SessionSnapshot`에 A2 스펙 메타데이터 필드 4개 추가: `document_hash` (커서까지 직렬화된 명령 prefix의 FNV-1a-64 hex 다이제스트), `log_position` (커서 미러), `timestamp` (저장 시 유닉스 epoch 초), `label` (선택 사용자 레이블). 모두 `#[serde(default)]` 사용 → A2 이전 스키마 v1 스냅샷도 그대로 로드 가능.
 - `Session::save_to_json_with_label(label: Option<String>)` — 스냅샷에 사람 친화적 레이블을 붙이는 신규 메서드 ("before boolean", "release-v0.5-tag" 등). 기존 `save_to_json()`도 그대로 동작하며 메타데이터 필드는 `label = None`으로 자동 채워짐.
