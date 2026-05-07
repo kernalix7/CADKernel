@@ -2118,6 +2118,101 @@ pub(crate) fn draw_about_dialog(ctx: &egui::Context, gui: &mut GuiState) {
 }
 
 // ---------------------------------------------------------------------------
+// `.cadk` Inspector dialog
+// ---------------------------------------------------------------------------
+
+/// Renders the `.cadk` Command-log inspector window when
+/// `gui.cadk_inspector` is `Some`. Closing the window clears the field.
+pub(crate) fn draw_cadk_inspector_dialog(ctx: &egui::Context, gui: &mut GuiState) {
+    let Some(report) = gui.cadk_inspector.clone() else {
+        return;
+    };
+    let mut open = true;
+    egui::Window::new(".cadk Command Log Inspector")
+        .collapsible(true)
+        .resizable(true)
+        .default_width(560.0)
+        .default_height(420.0)
+        .open(&mut open)
+        .show(ctx, |ui| {
+            ui.label(
+                egui::RichText::new(&report.path)
+                    .strong()
+                    .color(super::theme::COLOR_ACCENT),
+            );
+            ui.add_space(4.0);
+            egui::Grid::new("cadk_inspector_summary")
+                .num_columns(2)
+                .spacing([12.0, 4.0])
+                .striped(true)
+                .show(ui, |ui| {
+                    ui.strong("File size");
+                    ui.label(format!("{} bytes", report.size));
+                    ui.end_row();
+                    ui.strong("Schema version");
+                    ui.label(format!("{}", report.schema_version));
+                    ui.end_row();
+                    ui.strong("Flags");
+                    let mut flag_text = format!("0x{:08x}", report.flags);
+                    let mut named = Vec::new();
+                    if report.flags & cadkernel_api::cadk::CadkFlags::MANIFEST_COMPRESSED != 0 {
+                        named.push("MANIFEST_COMPRESSED");
+                    }
+                    if report.flags & cadkernel_api::cadk::CadkFlags::SIGNED != 0 {
+                        named.push("SIGNED");
+                    }
+                    if report.flags & cadkernel_api::cadk::CadkFlags::HAS_THUMBNAIL != 0 {
+                        named.push("HAS_THUMBNAIL");
+                    }
+                    if !named.is_empty() {
+                        flag_text.push_str("  (");
+                        flag_text.push_str(&named.join(" | "));
+                        flag_text.push(')');
+                    }
+                    ui.label(flag_text);
+                    ui.end_row();
+                    ui.strong("Commands");
+                    ui.label(format!("{}", report.command_count));
+                    ui.end_row();
+                    ui.strong("Thumbnail");
+                    match report.thumbnail_size {
+                        Some(n) => ui.label(format!("{n} bytes (CRC OK)")),
+                        None => ui.label("absent"),
+                    };
+                    ui.end_row();
+                });
+            ui.add_space(6.0);
+            if let Some(err) = &report.error {
+                ui.colored_label(egui::Color32::from_rgb(220, 90, 90), format!("⚠ {err}"));
+                ui.add_space(4.0);
+            } else {
+                ui.colored_label(egui::Color32::from_rgb(120, 200, 120), "✓ Status: OK");
+                ui.add_space(4.0);
+            }
+            ui.separator();
+            ui.label(
+                egui::RichText::new(format!(
+                    "Commands (showing first {} of {})",
+                    report.commands_preview.len(),
+                    report.command_count
+                ))
+                .color(super::theme::COLOR_DIM),
+            );
+            egui::ScrollArea::vertical()
+                .max_height(220.0)
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    for (i, line) in report.commands_preview.iter().enumerate() {
+                        ui.monospace(format!("[{i:>4}] {line}"));
+                    }
+                });
+        });
+    if !open {
+        gui.cadk_inspector = None;
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Settings dialog
 // ---------------------------------------------------------------------------
 

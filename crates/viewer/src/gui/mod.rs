@@ -460,6 +460,94 @@ pub(crate) enum ActiveDialog {
 }
 
 // ---------------------------------------------------------------------------
+// `.cadk` inspector report (rendered by `dialogs::draw_cadk_inspector_dialog`)
+// ---------------------------------------------------------------------------
+
+/// Diagnostic snapshot of a `.cadk` Command-log container, produced by
+/// `inspect_cadk_path`. Either `error` is `Some` (and the rest is best-effort)
+/// or the file decoded successfully and `error` is `None`.
+#[derive(Clone, Debug)]
+pub(crate) struct CadkInspectorReport {
+    pub path: String,
+    pub size: usize,
+    pub schema_version: u32,
+    pub flags: u32,
+    pub command_count: usize,
+    pub thumbnail_size: Option<usize>,
+    /// First N commands, formatted with `Debug`.
+    pub commands_preview: Vec<String>,
+    pub error: Option<String>,
+}
+
+/// Read `path` and produce an inspector report. Never panics; errors land
+/// in `report.error`.
+pub(crate) fn inspect_cadk_path(path: &std::path::Path) -> CadkInspectorReport {
+    let display = path.display().to_string();
+    let bytes = match std::fs::read(path) {
+        Ok(b) => b,
+        Err(e) => {
+            return CadkInspectorReport {
+                path: display,
+                size: 0,
+                schema_version: 0,
+                flags: 0,
+                command_count: 0,
+                thumbnail_size: None,
+                commands_preview: Vec::new(),
+                error: Some(format!("read failed: {e}")),
+            };
+        }
+    };
+
+    let magic = cadkernel_api::cadk::MAGIC;
+    let mut report = CadkInspectorReport {
+        path: display,
+        size: bytes.len(),
+        schema_version: 0,
+        flags: 0,
+        command_count: 0,
+        thumbnail_size: None,
+        commands_preview: Vec::new(),
+        error: None,
+    };
+
+    if bytes.len() < magic.len() + 64 {
+        report.error = Some("file too small to contain .cadk header".into());
+        return report;
+    }
+    if bytes[..magic.len()] != magic {
+        report.error = Some("magic mismatch (not a .cadk codec file)".into());
+        return report;
+    }
+    let header = &bytes[magic.len()..magic.len() + 64];
+    report.schema_version = u32::from_le_bytes(header[0..4].try_into().unwrap());
+    report.flags = u32::from_le_bytes(header[4..8].try_into().unwrap());
+
+    match cadkernel_api::cadk::decode(&bytes) {
+        Ok(commands) => {
+            report.command_count = commands.len();
+            report.commands_preview = commands
+                .iter()
+                .take(64)
+                .map(|c| format!("{c:?}"))
+                .collect();
+        }
+        Err(e) => {
+            report.error = Some(format!("decode failed: {e}"));
+            return report;
+        }
+    }
+    match cadkernel_api::cadk::decode_thumbnail(&bytes) {
+        Ok(Some(thumb)) => report.thumbnail_size = Some(thumb.len()),
+        Ok(None) => {}
+        Err(e) => {
+            report.error = Some(format!("thumbnail check failed: {e}"));
+        }
+    }
+    report
+}
+
+// ---------------------------------------------------------------------------
 // GUI state persisted across frames
 // ---------------------------------------------------------------------------
 
@@ -482,6 +570,9 @@ pub(crate) struct GuiState {
     pub show_create_helix: bool,
     pub status_message: String,
     pub current_file: Option<String>,
+    /// Active `.cadk` inspector report (None = window hidden).
+    /// Populated by the File → "Inspect Command File…" menu entry.
+    pub cadk_inspector: Option<CadkInspectorReport>,
 
     pub create_box_size: [f64; 3],
     pub create_cylinder_radius: f64,
@@ -762,6 +853,7 @@ impl GuiState {
             show_create_helix: false,
             status_message: "Ready".into(),
             current_file: None,
+            cadk_inspector: None,
             create_box_size: [10.0, 10.0, 10.0],
             create_cylinder_radius: 5.0,
             create_cylinder_height: 10.0,
@@ -1252,6 +1344,7 @@ pub(crate) fn draw_ui(
     overlays::draw_techdraw_overlay(ctx, gui);
     fem::draw_result_legend(ctx, gui);
     dialogs::draw_about_dialog(ctx, gui);
+    dialogs::draw_cadk_inspector_dialog(ctx, gui);
     dialogs::draw_shortcuts_dialog(ctx, gui);
     dialogs::draw_settings(ctx, gui, nav);
     dialogs::draw_plugin_manager(ctx, gui);

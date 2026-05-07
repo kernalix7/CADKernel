@@ -11,6 +11,19 @@
 
 ### 추가됨
 
+#### Viewer — `.cadk` Command Log Inspector 다이얼로그 (2026-05-07)
+- File 메뉴에 신규 항목 **“Inspect Command File…”** 추가. `.cadk` Command 로그 컴테이너를 열어 헤더, 플래그 비트(`MANIFEST_COMPRESSED` / `SIGNED` / `HAS_THUMBNAIL`), 스키마 버전, 명령 개수, 썸네일 크기 + CRC 상태, 앞 64개 명령의 스크롤 프리뷰를 표시.
+- 구현: `crates/viewer/src/gui/mod.rs`에 `CadkInspectorReport` + `inspect_cadk_path()` 추가 (~95 LOC, `cadkernel_api::cadk::decode` / `decode_thumbnail` 재사용). `crates/viewer/src/gui/dialogs.rs`에 `draw_cadk_inspector_dialog` egui 윈도우 추가 (~85 LOC).
+- viewer에 `cadkernel-api` 워크스페이스 디폴던시 추가. 읽기 실패 / 매직 불일치 / 절단 / CRC 실패 모두 다이얼로그에 인라인 표시 — 잘못된 파일에 대해 viewer가 panic 하지 않음.
+- 이는 A3 `.cadk` 코덱을 viewer 쪽에서 처음 노출한 UI. 기존 scene-graph `.cadk` JSON 경로는 그대로 유지.
+
+#### A3 — `cadk-inspect` 진단 CLI (2026-05-07)
+- `crates/api`에서 신규 바이너리 `cadk-inspect` 제공 (`cargo run -p cadkernel-api --bin cadk-inspect -- <file.cadk> [--verbose]`). 읽기 전용 — 원본을 능동적으로 수정하지 않음.
+- 기본 출력: 파일 크기, 매직 검증, 인스트럭션 개수, 썸네일 존재 여부 + CRC 상태, 종합 상태. `--verbose / -v` 올이면: 스키마 버전, 플래그 비트필드 + 명명된 비트 디코드(`MANIFEST_COMPRESSED` / `SIGNED` / `HAS_THUMBNAIL` / unknown), 전체 역직렬화 된 커맨드 로그.
+- Exit code: `0` 건강, `1` I/O 또는 인자 에러, `2` 컴테이너 손상 또는 무결성 첩크 실패.
+- 구현 단일 파일 `crates/api/src/bin/cadk_inspect.rs` (~120 LOC). `cadk::decode` + `cadk::decode_thumbnail` 재사용 → CLI가 통과시키는 파일은 정의상 `Session::load_cadk`가 디코드 가능.
+- A3 deliverable §8 (`cadk-inspect` CLI) — 완료.
+
 #### A3 — `.cadk` 썸네일 blob 지원 (2026-05-07)
 - 신규 공개 API: `cadk::encode_with_thumbnail(commands, thumbnail)`, `cadk::decode_thumbnail(bytes) -> Option<Vec<u8>>`. 썸네일 바이트는 포맷 비종속 (보통 PNG); 코덱은 CRC32만 검증하고 내용은 파싱하지 않음.
 - 썸네일이 있으면 manifest에 `BlobKind::Thumbnail` 레코드 추가 + 헤더에 `CadkFlags::HAS_THUMBNAIL` 비트 설정. 기존 `cadk::decode` 호출자는 플래그를 무시하고 그대로 동작 → 완전한 하위 호환.

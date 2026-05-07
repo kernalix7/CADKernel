@@ -70,6 +70,25 @@ pub(crate) fn draw_menu_bar(
                     });
                 }
 
+                if ui
+                    .add(egui::Button::new("Inspect Command File\u{2026}"))
+                    .on_hover_text(
+                        "Decode a .cadk Command-log container and show its header, \
+                         flags, command count, and thumbnail status.",
+                    )
+                    .clicked()
+                {
+                    if let Some(path) = rfd::FileDialog::new()
+                        .add_filter("CADKernel Command Log", &["cadk"])
+                        .pick_file()
+                    {
+                        let report = super::inspect_cadk_path(&path);
+                        gui.status_message = format!("Inspected {}", path.display());
+                        gui.cadk_inspector = Some(report);
+                    }
+                    ui.close_menu();
+                }
+
                 ui.separator();
 
                 menu_section(ui, "Transfer");

@@ -11,6 +11,19 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### Viewer — `.cadk` Command Log Inspector dialog (2026-05-07)
+- New File menu entry **“Inspect Command File…”**: opens any `.cadk` Command-log container and shows its header, flag bits (`MANIFEST_COMPRESSED` / `SIGNED` / `HAS_THUMBNAIL`), schema version, command count, thumbnail size + CRC status, and a scrollable preview of the first 64 commands.
+- Implementation: `crates/viewer/src/gui/mod.rs` adds `CadkInspectorReport` + `inspect_cadk_path()` (~95 LOC, builds on `cadkernel_api::cadk::decode` and `decode_thumbnail`); `crates/viewer/src/gui/dialogs.rs` adds `draw_cadk_inspector_dialog` egui window (~85 LOC) with summary grid + status badge + monospace command list. Menu entry added under File after “Recent Files”.
+- New workspace dependency: viewer now depends on `cadkernel-api`. Failure modes (read errors, magic mismatch, truncation, CRC failure) are caught and surfaced inline in the dialog — the viewer never panics on a malformed file.
+- This is the first viewer-side surface for the new A3 `.cadk` codec; existing scene-graph `.cadk` JSON path (`cadkernel_io::save_scene` / `load_scene`) is unchanged.
+
+#### A3 — `cadk-inspect` diagnostic CLI (2026-05-07)
+- New binary `cadk-inspect` shipped from `crates/api` (`cargo run -p cadkernel-api --bin cadk-inspect -- <file.cadk> [--verbose]`). Read-only; never modifies the file.
+- Default output: file size, magic check, command count, thumbnail presence + CRC status, overall status. With `--verbose / -v`: schema version, flag bitfield with named bit decode (`MANIFEST_COMPRESSED` / `SIGNED` / `HAS_THUMBNAIL` / unknown), and the full deserialised command log.
+- Exit codes: `0` healthy, `1` I/O or argument error, `2` malformed container or any failed integrity check (magic / schema / CRC).
+- Implementation depth: a single self-contained `crates/api/src/bin/cadk_inspect.rs` (~120 LOC). Reuses the existing `cadk::decode` and `cadk::decode_thumbnail` codec entry points so anything the CLI accepts is by definition decodable by `Session::load_cadk`.
+- A3 deliverable §8 (`cadk-inspect` CLI) — landed.
+
 #### A3 — `.cadk` thumbnail blob support (2026-05-07)
 - New public codec entry points: `cadk::encode_with_thumbnail(commands, thumbnail)` and `cadk::decode_thumbnail(bytes) -> Option<Vec<u8>>`. Thumbnail bytes are content-agnostic (typically PNG); the codec validates CRC32 but does not parse the payload.
 - When a thumbnail is present, the encoder appends a second `BlobKind::Thumbnail` record to the manifest and sets `CadkFlags::HAS_THUMBNAIL` in the header. Decoders that only call `cadk::decode` ignore the flag and return commands as before — full backward compatibility.
