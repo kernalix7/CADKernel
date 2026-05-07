@@ -1032,7 +1032,7 @@ fn draw_object_row(
         ui.painter().rect_filled(
             egui::Rect::from_min_size(full_row.left_top(), egui::vec2(2.0, ROW_HEIGHT)),
             0.0,
-            egui::Color32::from_rgb(0, 122, 204),
+            theme::COLOR_ACCENT,
         );
     } else if hovered {
         ui.painter()

@@ -2072,9 +2072,9 @@ pub(crate) fn draw_breadcrumb_bar(ctx: &egui::Context, gui: &mut GuiState, scene
     egui::TopBottomPanel::top("breadcrumb_bar")
         .exact_height(20.0)
         .frame(egui::Frame {
-            fill: egui::Color32::from_rgb(30, 32, 38),
+            fill: egui::Color32::from_rgb(0x18, 0x1C, 0x23),
             inner_margin: egui::Margin::symmetric(8, 0),
-            stroke: egui::Stroke::new(0.5, egui::Color32::from_rgb(50, 54, 62)),
+            stroke: egui::Stroke::new(0.5, egui::Color32::from_rgb(0x2A, 0x30, 0x3C)),
             ..egui::Frame::NONE
         })
         .show(ctx, |ui| {

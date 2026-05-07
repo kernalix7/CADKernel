@@ -11,6 +11,13 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Changed
 
+#### Viewer — UI/UX overhaul Pt. 2: chrome-wide teal accent + repalette (2026-05-07)
+- **Eliminated the last seven hardcoded VS-Code-blue (`#007ACC`) accents** scattered across the viewer chrome — now all sourced from `theme::COLOR_ACCENT` (the new signature teal). Touched: `toolbar.rs` flyout button active state, primitive button active state, sketch-tool active state, workbench-tab active underline; `tree.rs` tree-row selection bar; `properties.rs` property-row indicator; `report.rs` log-tab active underline. Translucent active fills (`from_rgba_premultiplied(0,122,204,40)`) replaced by `theme::COLOR_ACCENT.gamma_multiply(0.22)` so the alpha automatically tracks any future palette change.
+- **All top/bottom/side panel chrome retuned to the new cool blue-tinted neutral palette.** Top toolbar (`#202530`), workbench tabs (`#161920`), context toolbar (`#1C2028`), ComboView side panel (`#1C2028`), report panel (`#1A1E26`), breadcrumb bar (`#181C23`), status bar (`#14171D`), and menu bar (`#14171D` — previously unstyled, now framed) all use a consistent darker hierarchy with matching `#0F121A`-range strokes for visual continuity.
+- **Status bar refinements**: top-edge accent line is now a teal sliver (`COLOR_ACCENT.gamma_multiply(0.55)`) instead of plain grey — gives the viewer a subtle signature glow at the bottom of the canvas. Vertical dividers softened (1px wider, 0.5 stroke kept) and aligned to the new `#323844` border tone.
+- **Cumulative effect**: the entire chrome — menu bar → toolbar → workbench tabs → context toolbar → breadcrumb → side panels → report dock → status bar — now reads as one coherent dark-teal CADKernel surface, rather than a stack of independently-tuned VS-Code/Fusion-360 imitations.
+- 2,896 / 0 / 0 tests; strict `clippy --all-targets --all-features -D warnings` clean.
+
 #### Viewer — UI/UX overhaul: signature teal palette + redesigned welcome screen (2026-05-07)
 - **Signature CADKernel palette**: `CadTheme::dark()` retired the VS-Code-blue accent (`#007ACC`) for a deep teal signature accent (`#14B8A6`, hover `#2AD4C0`, pressed `#0E8E80`). Backgrounds now use cool blue-tinted neutrals (`#161920` → `#1C2028` → `#24293 3` → `#2B303B`) for a more distinctive look while keeping dock-friendly contrast levels. Selection / toolbar-active fill aligned to a darker teal tint (`#12554F`); border tones (`#323844` / `#4A5260`) re-tuned for the new accent. Default panel rounding bumped from 4px to 6px for a softer modern feel.
 - **Public color constants** (`COLOR_ACCENT`, `COLOR_SELECTED`) re-aligned to the new teal palette so direct const consumers across the viewer pick up the change automatically.

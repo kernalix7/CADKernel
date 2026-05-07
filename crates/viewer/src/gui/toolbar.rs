@@ -1,5 +1,6 @@
 use super::{
-    AssemblyJointType, BcKind, GizmoMode, GuiAction, GuiState, SelectionMode, SketchTool, Workbench,
+    theme, AssemblyJointType, BcKind, GizmoMode, GuiAction, GuiState, SelectionMode, SketchTool,
+    Workbench,
 };
 use cadkernel_sketch::WorkPlane;
 use egui::{Color32, Pos2, Stroke, StrokeKind, Vec2};
@@ -2731,10 +2732,10 @@ fn flyout_button_inner(
     let over_triangle = pointer_pos.is_some_and(|p| tri_rect.contains(p));
 
     if ui.is_rect_visible(rect) {
-        let accent = Color32::from_rgb(0, 122, 204);
+        let accent = theme::COLOR_ACCENT;
         let color = if is_active {
             ui.painter()
-                .rect_filled(rect, 4.0, Color32::from_rgba_premultiplied(0, 122, 204, 40));
+                .rect_filled(rect, 4.0, theme::COLOR_ACCENT.gamma_multiply(0.22));
             ui.painter().line_segment(
                 [
                     Pos2::new(rect.left() + 2.0, rect.bottom()),
@@ -2899,10 +2900,10 @@ fn icon_button_ex(
     let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
 
     if ui.is_rect_visible(rect) {
-        let accent = Color32::from_rgb(0, 122, 204);
+        let accent = theme::COLOR_ACCENT;
         let color = if active {
             ui.painter()
-                .rect_filled(rect, 4.0, Color32::from_rgba_premultiplied(0, 122, 204, 40));
+                .rect_filled(rect, 4.0, theme::COLOR_ACCENT.gamma_multiply(0.22));
             // Bottom accent border
             ui.painter().line_segment(
                 [
@@ -3003,14 +3004,14 @@ fn icon_toggle(
     if ui.is_rect_visible(rect) {
         if selected {
             ui.painter()
-                .rect_filled(rect, 4.0, Color32::from_rgba_premultiplied(0, 122, 204, 40));
+                .rect_filled(rect, 4.0, theme::COLOR_ACCENT.gamma_multiply(0.22));
             // Bottom accent border
             ui.painter().line_segment(
                 [
                     Pos2::new(rect.left() + 2.0, rect.bottom()),
                     Pos2::new(rect.right() - 2.0, rect.bottom()),
                 ],
-                Stroke::new(2.0, Color32::from_rgb(0, 122, 204)),
+                Stroke::new(2.0, theme::COLOR_ACCENT),
             );
         }
         let color = if response.hovered() {
@@ -3090,9 +3091,9 @@ fn section_label(ui: &mut egui::Ui, text: &str) {
 pub(crate) fn draw_toolbar(ctx: &egui::Context, gui: &mut GuiState) {
     egui::TopBottomPanel::top("toolbar")
         .frame(egui::Frame {
-            fill: Color32::from_rgb(45, 48, 56),
-            inner_margin: egui::Margin::symmetric(8, 3),
-            stroke: egui::Stroke::new(1.0, Color32::from_rgb(30, 32, 38)),
+            fill: Color32::from_rgb(0x20, 0x25, 0x2F),
+            inner_margin: egui::Margin::symmetric(8, 4),
+            stroke: egui::Stroke::new(1.0, Color32::from_rgb(0x12, 0x15, 0x1B)),
             ..egui::Frame::NONE
         })
         .show(ctx, |ui| {
@@ -3376,9 +3377,9 @@ pub(crate) fn draw_toolbar(ctx: &egui::Context, gui: &mut GuiState) {
 pub(crate) fn draw_workbench_tabs(ctx: &egui::Context, gui: &mut GuiState) {
     egui::TopBottomPanel::top("workbench_tabs")
         .frame(egui::Frame {
-            fill: Color32::from_rgb(37, 37, 38),
+            fill: Color32::from_rgb(0x16, 0x19, 0x20),
             inner_margin: egui::Margin::symmetric(8, 2),
-            stroke: egui::Stroke::new(1.0, Color32::from_rgb(28, 28, 30)),
+            stroke: egui::Stroke::new(1.0, Color32::from_rgb(0x0F, 0x12, 0x17)),
             ..egui::Frame::NONE
         })
         .show(ctx, |ui| {
@@ -3409,7 +3410,7 @@ pub(crate) fn draw_workbench_tabs(ctx: &egui::Context, gui: &mut GuiState) {
                                 Pos2::new(tab_rect.left() + padding.x * 0.3, tab_rect.bottom()),
                                 Pos2::new(tab_rect.right() - padding.x * 0.3, tab_rect.bottom()),
                             ],
-                            Stroke::new(2.0, Color32::from_rgb(0, 122, 204)),
+                            Stroke::new(2.0, theme::COLOR_ACCENT),
                         );
                     } else if response.hovered() {
                         let tab_rect = response.rect;
@@ -3451,9 +3452,9 @@ pub(crate) fn draw_workbench_tabs(ctx: &egui::Context, gui: &mut GuiState) {
 pub(crate) fn draw_context_toolbar(ctx: &egui::Context, gui: &mut GuiState) {
     egui::TopBottomPanel::top("context_toolbar")
         .frame(egui::Frame {
-            fill: Color32::from_rgb(40, 40, 44),
-            inner_margin: egui::Margin::symmetric(8, 3),
-            stroke: egui::Stroke::new(1.0, Color32::from_rgb(28, 30, 35)),
+            fill: Color32::from_rgb(0x1C, 0x20, 0x28),
+            inner_margin: egui::Margin::symmetric(8, 4),
+            stroke: egui::Stroke::new(1.0, Color32::from_rgb(0x10, 0x13, 0x19)),
             ..egui::Frame::NONE
         })
         .show(ctx, |ui| {

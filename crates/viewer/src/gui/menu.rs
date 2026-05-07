@@ -10,7 +10,14 @@ pub(crate) fn draw_menu_bar(
     camera: &Camera,
     display_mode: DisplayMode,
 ) {
-    egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
+    egui::TopBottomPanel::top("menu_bar")
+        .frame(egui::Frame {
+            fill: egui::Color32::from_rgb(0x14, 0x17, 0x1D),
+            inner_margin: egui::Margin::symmetric(6, 2),
+            stroke: egui::Stroke::new(1.0, egui::Color32::from_rgb(0x0B, 0x0D, 0x12)),
+            ..egui::Frame::NONE
+        })
+        .show(ctx, |ui| {
         egui::menu::bar(ui, |ui| {
             // ---- File ----
             ui.menu_button("File", |ui| {

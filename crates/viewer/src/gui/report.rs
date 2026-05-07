@@ -20,9 +20,9 @@ pub(crate) fn draw_report_panel(ctx: &egui::Context, gui: &mut GuiState) {
         .resizable(true)
         .min_height(60.0)
         .frame(egui::Frame {
-            fill: egui::Color32::from_rgb(32, 35, 42),
+            fill: egui::Color32::from_rgb(0x1A, 0x1E, 0x26),
             inner_margin: egui::Margin::ZERO,
-            stroke: egui::Stroke::new(1.0, egui::Color32::from_rgb(22, 24, 30)),
+            stroke: egui::Stroke::new(1.0, egui::Color32::from_rgb(0x0F, 0x12, 0x18)),
             ..egui::Frame::NONE
         })
         .show(ctx, |ui| {
@@ -54,7 +54,7 @@ pub(crate) fn draw_report_panel(ctx: &egui::Context, gui: &mut GuiState) {
 
             let tab_font = egui::FontId::new(11.0, egui::FontFamily::Proportional);
             let mut x = tab_rect.left() + 8.0;
-            let accent = egui::Color32::from_rgb(0, 122, 204);
+            let accent = theme::COLOR_ACCENT;
 
             for (tab_id, label) in &tabs {
                 let is_active = gui.bottom_tab == *tab_id;

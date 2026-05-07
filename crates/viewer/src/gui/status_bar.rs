@@ -5,13 +5,13 @@ use crate::scene::{CreationParams, Scene};
 
 /// Vertical divider (thin line) between status bar sections.
 fn vert_divider(ui: &mut egui::Ui) {
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(9.0, 14.0), egui::Sense::hover());
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(11.0, 14.0), egui::Sense::hover());
     ui.painter().line_segment(
         [
-            egui::pos2(rect.center().x, rect.top() + 1.0),
-            egui::pos2(rect.center().x, rect.bottom() - 1.0),
+            egui::pos2(rect.center().x, rect.top() + 2.0),
+            egui::pos2(rect.center().x, rect.bottom() - 2.0),
         ],
-        egui::Stroke::new(0.5, egui::Color32::from_rgb(60, 65, 75)),
+        egui::Stroke::new(0.5, egui::Color32::from_rgb(0x32, 0x38, 0x44)),
     );
 }
 
@@ -23,20 +23,20 @@ pub(crate) fn draw_status_bar(
 ) {
     egui::TopBottomPanel::bottom("status_bar")
         .frame(egui::Frame {
-            fill: egui::Color32::from_rgb(30, 33, 40),
-            inner_margin: egui::Margin::symmetric(8, 2),
-            stroke: egui::Stroke::new(1.0, egui::Color32::from_rgb(22, 24, 28)),
+            fill: egui::Color32::from_rgb(0x14, 0x17, 0x1D),
+            inner_margin: egui::Margin::symmetric(10, 3),
+            stroke: egui::Stroke::new(1.0, egui::Color32::from_rgb(0x0B, 0x0D, 0x12)),
             ..egui::Frame::NONE
         })
         .show(ctx, |ui| {
-            // Top edge accent (subtle blue line like FreeCAD)
+            // Top edge accent: subtle teal sliver (signature CADKernel color)
             let top_rect = ui.available_rect_before_wrap();
             ui.painter().line_segment(
                 [
                     egui::pos2(top_rect.left(), top_rect.top() - 3.0),
                     egui::pos2(top_rect.right(), top_rect.top() - 3.0),
                 ],
-                egui::Stroke::new(1.0, egui::Color32::from_rgb(50, 55, 65)),
+                egui::Stroke::new(1.0, theme::COLOR_ACCENT.gamma_multiply(0.55)),
             );
 
             ui.horizontal(|ui| {

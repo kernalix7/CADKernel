@@ -137,7 +137,7 @@ pub(crate) fn draw_properties_inline(ui: &mut egui::Ui, gui: &mut GuiState, scen
         let painter = ui.painter();
         painter.rect_filled(tab_rect, 0.0, egui::Color32::from_rgb(32, 35, 40));
 
-        let accent = egui::Color32::from_rgb(0, 122, 204);
+        let accent = theme::COLOR_ACCENT;
         let tabs = [(PropertyTab::Data, "Data"), (PropertyTab::View, "View")];
         let font = egui::FontId::new(11.0, egui::FontFamily::Proportional);
         let mut x = tab_rect.left() + 4.0;

@@ -1269,9 +1269,9 @@ pub(crate) fn draw_ui(
             .default_width(300.0)
             .width_range(220.0..=450.0)
             .frame(egui::Frame {
-                fill: egui::Color32::from_rgb(37, 37, 38),
+                fill: egui::Color32::from_rgb(0x1C, 0x20, 0x28),
                 inner_margin: egui::Margin::ZERO,
-                stroke: egui::Stroke::new(1.0, egui::Color32::from_rgb(26, 28, 32)),
+                stroke: egui::Stroke::new(1.0, egui::Color32::from_rgb(0x10, 0x13, 0x19)),
                 ..egui::Frame::NONE
             })
             .show(ctx, |ui| {

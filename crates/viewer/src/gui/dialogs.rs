@@ -20,7 +20,7 @@ fn dialog_section(ui: &mut egui::Ui, label: &str) {
         ui.painter().rect_filled(
             rect,
             2.0,
-            egui::Color32::from_rgba_premultiplied(0, 122, 204, 25),
+            super::theme::COLOR_ACCENT.gamma_multiply(0.16),
         );
         // Left accent bar
         ui.painter().rect_filled(
