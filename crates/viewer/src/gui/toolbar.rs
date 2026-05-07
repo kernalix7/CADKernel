@@ -3371,9 +3371,172 @@ pub(crate) fn draw_toolbar(ctx: &egui::Context, gui: &mut GuiState) {
 }
 
 // ---------------------------------------------------------------------------
+// Activity rail: vertical 56 px workbench switcher (left edge of window).
+//
+// Replaces the older horizontal `draw_workbench_tabs` row. Each rail entry is
+// a single-glyph icon button with a teal accent bar on the active workbench
+// and a small caption beneath the active icon. Hovering shows the full
+// workbench name as a tooltip.
+// ---------------------------------------------------------------------------
+
+pub(crate) fn draw_activity_rail(ctx: &egui::Context, gui: &mut GuiState) {
+    let rail_w = 56.0;
+    let icon_h = 44.0;
+    let active_bg = theme::COLOR_ACCENT.gamma_multiply(0.18);
+    let hover_bg = Color32::from_rgb(0x24, 0x29, 0x33);
+
+    egui::SidePanel::left("activity_rail")
+        .exact_width(rail_w)
+        .resizable(false)
+        .frame(egui::Frame {
+            fill: Color32::from_rgb(0x10, 0x13, 0x19),
+            inner_margin: egui::Margin::ZERO,
+            stroke: egui::Stroke::new(1.0, Color32::from_rgb(0x06, 0x08, 0x0C)),
+            ..egui::Frame::NONE
+        })
+        .show(ctx, |ui| {
+            ui.add_space(6.0);
+            ui.spacing_mut().item_spacing.y = 2.0;
+
+            for &wb in Workbench::ALL {
+                let selected = gui.active_workbench == wb;
+                let (rect, resp) = ui.allocate_exact_size(
+                    Vec2::new(rail_w, icon_h),
+                    egui::Sense::click(),
+                );
+
+                let painter = ui.painter_at(rect);
+
+                // Background: active fill, hover fill, or transparent
+                if selected {
+                    painter.rect_filled(rect, 0.0, active_bg);
+                    // Teal accent bar on the left edge
+                    let bar = egui::Rect::from_min_size(
+                        rect.min + Vec2::new(0.0, 6.0),
+                        Vec2::new(3.0, rect.height() - 12.0),
+                    );
+                    painter.rect_filled(bar, 1.5, theme::COLOR_ACCENT);
+                } else if resp.hovered() {
+                    painter.rect_filled(rect, 0.0, hover_bg);
+                }
+
+                // Icon glyph
+                let icon_color = if selected {
+                    theme::COLOR_ACCENT
+                } else if resp.hovered() {
+                    Color32::from_rgb(0xE4, 0xE7, 0xEC)
+                } else {
+                    Color32::from_rgb(0x9A, 0xA1, 0xAE)
+                };
+                painter.text(
+                    rect.center() - Vec2::new(0.0, 4.0),
+                    egui::Align2::CENTER_CENTER,
+                    wb.icon(),
+                    egui::FontId::proportional(20.0),
+                    icon_color,
+                );
+
+                // Caption under the icon (always visible — keeps the rail
+                // discoverable without forcing tooltip-only navigation).
+                painter.text(
+                    rect.center() + Vec2::new(0.0, 13.0),
+                    egui::Align2::CENTER_CENTER,
+                    wb.short_name(),
+                    egui::FontId::proportional(8.5),
+                    if selected {
+                        theme::COLOR_ACCENT
+                    } else {
+                        Color32::from_rgb(0x6E, 0x76, 0x83)
+                    },
+                );
+
+                if resp.hovered() {
+                    ui.ctx().output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
+                }
+                if resp.clicked() {
+                    gui.active_workbench = wb;
+                }
+                resp.on_hover_text(format!("{} workbench", wb.short_name()));
+            }
+
+            // Push helpers (Tree / Properties toggles) to the bottom of the rail.
+            ui.with_layout(egui::Layout::bottom_up(egui::Align::Center), |ui| {
+                ui.add_space(8.0);
+
+                // Properties toggle (right inspector dock)
+                rail_toggle_button(
+                    ui,
+                    rail_w,
+                    "\u{1F50E}",
+                    "Properties",
+                    gui.show_properties,
+                    &mut gui.show_properties,
+                    hover_bg,
+                    active_bg,
+                );
+
+                // Tree toggle (left model tree dock)
+                rail_toggle_button(
+                    ui,
+                    rail_w,
+                    "\u{2630}",
+                    "Model Tree",
+                    gui.show_model_tree,
+                    &mut gui.show_model_tree,
+                    hover_bg,
+                    active_bg,
+                );
+            });
+        });
+}
+
+#[allow(clippy::too_many_arguments)]
+fn rail_toggle_button(
+    ui: &mut egui::Ui,
+    rail_w: f32,
+    icon: &str,
+    tooltip: &str,
+    active: bool,
+    target: &mut bool,
+    hover_bg: Color32,
+    active_bg: Color32,
+) {
+    let h = 32.0;
+    let (rect, resp) = ui.allocate_exact_size(Vec2::new(rail_w, h), egui::Sense::click());
+    let painter = ui.painter_at(rect);
+    if active {
+        painter.rect_filled(rect, 0.0, active_bg);
+    } else if resp.hovered() {
+        painter.rect_filled(rect, 0.0, hover_bg);
+    }
+    let color = if active {
+        theme::COLOR_ACCENT
+    } else if resp.hovered() {
+        Color32::from_rgb(0xE4, 0xE7, 0xEC)
+    } else {
+        Color32::from_rgb(0x82, 0x8A, 0x97)
+    };
+    painter.text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        icon,
+        egui::FontId::proportional(15.0),
+        color,
+    );
+    if resp.hovered() {
+        ui.ctx().output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
+    }
+    if resp.clicked() {
+        *target = !*target;
+    }
+    resp.on_hover_text(tooltip);
+}
+
+// ---------------------------------------------------------------------------
 // Workbench tabs: styled tab bar
 // ---------------------------------------------------------------------------
 
+#[allow(dead_code)] // Replaced by `draw_activity_rail` (kept for revert path).
 pub(crate) fn draw_workbench_tabs(ctx: &egui::Context, gui: &mut GuiState) {
     egui::TopBottomPanel::top("workbench_tabs")
         .frame(egui::Frame {

@@ -100,6 +100,36 @@ impl Workbench {
             Self::Fem => "\u{2206} FEM",
         }
     }
+
+    /// Single-glyph icon for the activity rail (no leading text).
+    pub fn icon(self) -> &'static str {
+        match self {
+            Self::Part => "\u{2B22}",
+            Self::PartDesign => "\u{2699}",
+            Self::Sketcher => "\u{270F}",
+            Self::Mesh => "\u{25A6}",
+            Self::TechDraw => "\u{1F4D0}",
+            Self::Assembly => "\u{1F527}",
+            Self::Draft => "\u{2712}",
+            Self::Surface => "\u{223F}",
+            Self::Fem => "\u{2206}",
+        }
+    }
+
+    /// Short, plain-text name for tooltips and the activity-rail caption.
+    pub fn short_name(self) -> &'static str {
+        match self {
+            Self::Part => "Part",
+            Self::PartDesign => "PartDesign",
+            Self::Sketcher => "Sketcher",
+            Self::Mesh => "Mesh",
+            Self::TechDraw => "TechDraw",
+            Self::Assembly => "Assembly",
+            Self::Draft => "Draft",
+            Self::Surface => "Surface",
+            Self::Fem => "FEM",
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1260,14 +1290,17 @@ pub(crate) fn draw_ui(
     gui.tb_display_mode = vp.display_mode;
     menu::draw_menu_bar(ctx, gui, vp.camera, vp.display_mode);
     toolbar::draw_toolbar(ctx, gui);
-    toolbar::draw_workbench_tabs(ctx, gui);
+    // Vertical activity rail on the far left replaces the old horizontal
+    // workbench tab strip — Blender / VS Code style icon switcher.
+    toolbar::draw_activity_rail(ctx, gui);
     toolbar::draw_context_toolbar(ctx, gui);
     overlays::draw_breadcrumb_bar(ctx, gui, scene);
-    // FreeCAD-style ComboView: single left panel with tree (top) + properties/task (bottom)
-    if gui.show_model_tree || gui.show_properties {
-        egui::SidePanel::left("combo_view")
-            .default_width(300.0)
-            .width_range(220.0..=450.0)
+    // Left dock: Model Tree only (Properties moved to a dedicated right
+    // inspector dock — Fusion 360 / SolidWorks layout pattern).
+    if gui.show_model_tree {
+        egui::SidePanel::left("model_tree_dock")
+            .default_width(260.0)
+            .width_range(200.0..=400.0)
             .frame(egui::Frame {
                 fill: egui::Color32::from_rgb(0x1C, 0x20, 0x28),
                 inner_margin: egui::Margin::ZERO,
@@ -1275,58 +1308,54 @@ pub(crate) fn draw_ui(
                 ..egui::Frame::NONE
             })
             .show(ctx, |ui| {
-                let avail = ui.available_height();
-                let tree_height = avail * 0.45;
-
-                // ---- Top: Model Tree ----
-                if gui.show_model_tree {
-                    // Panel header bar
-                    if theme::draw_panel_header(ui, "Model", true) {
-                        gui.show_model_tree = false;
-                    }
-
-                    egui::ScrollArea::vertical()
-                        .id_salt("combo_tree")
-                        .max_height(tree_height - 24.0)
-                        .show(ui, |ui| {
-                            ui.add_space(2.0);
-                            // Inset content with horizontal padding
-                            egui::Frame::NONE
-                                .inner_margin(egui::Margin::symmetric(6, 0))
-                                .show(ui, |ui| {
-                                    tree::draw_model_tree_inline(ui, gui, scene);
-                                });
-                        });
+                if theme::draw_panel_header(ui, "Model", true) {
+                    gui.show_model_tree = false;
                 }
+                egui::ScrollArea::vertical()
+                    .id_salt("model_tree_scroll")
+                    .show(ui, |ui| {
+                        ui.add_space(2.0);
+                        egui::Frame::NONE
+                            .inner_margin(egui::Margin::symmetric(6, 0))
+                            .show(ui, |ui| {
+                                tree::draw_model_tree_inline(ui, gui, scene);
+                            });
+                    });
+            });
+    }
 
-                // Separator
-                theme::draw_separator(ui);
-
-                // ---- Bottom: Task Panel OR Properties ----
-                if gui.show_properties {
-                    // Panel header bar
-                    let props_title = if gui.active_task.is_some() {
-                        "Tasks"
-                    } else {
-                        "Properties"
-                    };
-                    if theme::draw_panel_header(ui, props_title, true) {
-                        gui.show_properties = false;
-                    }
-
-                    egui::ScrollArea::vertical()
-                        .id_salt("combo_props")
-                        .show(ui, |ui| {
-                            ui.add_space(2.0);
-                            egui::Frame::NONE
-                                .inner_margin(egui::Margin::symmetric(6, 0))
-                                .show(ui, |ui| {
-                                    if !task_panel::draw_task_panel_inline(ui, gui) {
-                                        properties::draw_properties_inline(ui, gui, scene);
-                                    }
-                                });
-                        });
+    // Right inspector dock: Tasks (when active) OR Properties.
+    if gui.show_properties || gui.active_task.is_some() {
+        egui::SidePanel::right("inspector_dock")
+            .default_width(300.0)
+            .width_range(240.0..=460.0)
+            .frame(egui::Frame {
+                fill: egui::Color32::from_rgb(0x1C, 0x20, 0x28),
+                inner_margin: egui::Margin::ZERO,
+                stroke: egui::Stroke::new(1.0, egui::Color32::from_rgb(0x10, 0x13, 0x19)),
+                ..egui::Frame::NONE
+            })
+            .show(ctx, |ui| {
+                let title = if gui.active_task.is_some() {
+                    "Tasks"
+                } else {
+                    "Properties"
+                };
+                if theme::draw_panel_header(ui, title, true) {
+                    gui.show_properties = false;
                 }
+                egui::ScrollArea::vertical()
+                    .id_salt("inspector_scroll")
+                    .show(ui, |ui| {
+                        ui.add_space(2.0);
+                        egui::Frame::NONE
+                            .inner_margin(egui::Margin::symmetric(6, 0))
+                            .show(ui, |ui| {
+                                if !task_panel::draw_task_panel_inline(ui, gui) {
+                                    properties::draw_properties_inline(ui, gui, scene);
+                                }
+                            });
+                    });
             });
     }
     report::draw_report_panel(ctx, gui);

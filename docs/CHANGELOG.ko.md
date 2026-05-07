@@ -11,6 +11,13 @@
 
 ### 변경됨
 
+#### Viewer — UI/UX 정비 Pt. 3: 구조적 레이아웃 재구성 (2026-05-07)
+- **액티비티 레일 신규** — 좌측 최단에 고정된 세로형 56px 워크벤치 스위첰를 추가하고 기존 가로형 워크벤치 탭 줄을 제거. 9개 단일 글리프 아이콘 버튼(Part / PartDesign / Sketcher / Mesh / TechDraw / Assembly / Draft / Surface / FEM)을 세로로 배치. 활성 워크벤치는 틸 좀드 좌측 바 + 틸 아이콘 + 틸 캡션으로 강조. 레일 하단에는 Model Tree / Properties 토글 버튼 2개를 배치해 메뉴 안 거치고도 사이드 독 표시 제어 가능. 상단 크롬의 워크벤치 탭 행 하나가 완전히 사라져 메뉴 → 툴바 → 컨텍스트 툴바 → 브레드크럼 4줄로 압축. 구 탭 함수는 `#[allow(dead_code)]`로 널겨두어 롤백 경로 유지.
+- **ComboView → 좌측 Tree + 우측 Inspector 분리** — FreeCAD식 단일 좌측 ComboView(윈도우 하나에 트리 위 + 속성 아래)를 해체하고 Fusion 360 / SolidWorks 스타일로 재구성: `SidePanel::left("model_tree_dock")`(기본 260px, 모델 트리 전용)는 좌측, `SidePanel::right("inspector_dock")`(기본 300px, ActiveTask 있으면 Tasks, 없으면 Properties)는 우측에 배치. 각 독은 독립적으로 리사이즈 핸들을 가지며 액티비티 레일 스위치로 각각 토글 가능. ActiveTask가 설정되면 Task 패널이 우측 inspector에 인라인 렌더링되어 이제 피처 생성 플로가 트리와 세로 공간 경쟁을 하지 않음.
+- **Workbench enum API 확장** — `Workbench::icon()`(단일 글리프 반환, 액티비티 레일용), `Workbench::short_name()`(툴팁과 레일 캡션용 평문 이름) 추가. 기존 `Workbench::label()`("⬢ Part" 조합형)는 그대로 유지.
+- **누적 효과**: 뷰어 한면이 명확한 3단 레이아웃으로 읽힘 — 액티비티 레일(56px) │ 모델 트리(260px, 토글 가능) │ 뷰포트 │ inspector(300px, 토글 가능). 상단 크롬 한 줄 줄어들고, inspector가 더 이상 트리와 경쟁하지 않고 현대 CAD 앱이 다 쓰는 우측 위치로 이동. 워크벤치 전환은 상단 바를 숨겼을 때도 항상 한 번 클릭으로 가능.
+- 테스트 2,896 / 0 / 0, `clippy --all-targets --all-features -D warnings` 무경고.
+
 #### Viewer — UI/UX 정비 Pt. 2: 크롬 전체 틸 강조색 + 팔레트 재구성 (2026-05-07)
 - 뷰어 곳곳에 박혀 있던 하드코딩된 VS Code 블루(`#007ACC`) 강조색 7개를 전부 제거하고 `theme::COLOR_ACCENT`(새 시그니처 틸)에서 가져오도록 통일. 대상: `toolbar.rs`(플라이아웃/프리미티브/스케치 도구 활성 상태, 워크벤치 탭 활성 밑줄), `tree.rs`(트리 행 선택 바), `properties.rs`(속성 행 표시), `report.rs`(로그 탭 활성 밑줄). 반투명 활성 채움도 `COLOR_ACCENT.gamma_multiply(0.22)`로 교체 — 이후 팔레트 변경 시 알파도 자동 추종.
 - 상/하/좌측 패널 크롬 전체를 새 푸른빛 중성 톤 팔레트로 재구성: 메인 툴바 `#202530`, 워크벤치 탭 `#161920`, 컨텍스트 툴바 `#1C2028`, ComboView 사이드 패널 `#1C2028`, Report 패널 `#1A1E26`, 브레드크럼 `#181C23`, 상태바 `#14171D`, 메뉴바 `#14171D`(기존엔 미설정, 이제 프레임 적용). 보더 톤도 `#0F121A` 계열로 일관 정렬.
