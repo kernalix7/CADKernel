@@ -437,6 +437,7 @@ fn command_schemas_cover_every_op_name() {
             profile: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0]],
             direction: [0.0, 0.0, 1.0],
             distance: 1.0,
+            kind: cadkernel_api::ExtrudeKind::Blind,
         },
         Command::LinearPattern {
             id: cadkernel_api::SolidId(0),
@@ -801,4 +802,114 @@ fn linear_pattern_outcome_reports_pattern_id_instance_count_and_total_features()
 
     // Drop unused warning for SolidId.
     let _: SolidId = source_id;
+}
+
+#[test]
+fn extrude_kind_blind_is_default_and_matches_legacy_json_shape() {
+    use cadkernel_api::{Command, ExtrudeKind, Outcome, Session};
+
+    // ExtrudeKind defaults to Blind so a JSON document missing the `kind`
+    // field round-trips into a Blind extrusion identical to pre-A2.1
+    // behavior.
+    let legacy_json = r#"{
+        "op": "extrude",
+        "profile": [[0,0,0],[2,0,0],[2,2,0],[0,2,0]],
+        "direction": [0,0,1],
+        "distance": 5
+    }"#;
+    let cmd: Command = serde_json::from_str(legacy_json).unwrap();
+    match &cmd {
+        Command::Extrude { kind, .. } => assert_eq!(*kind, ExtrudeKind::Blind),
+        other => panic!("expected Extrude, got {other:?}"),
+    }
+    let mut session = Session::new();
+    let out = session.execute(cmd).unwrap();
+    assert!(matches!(out, Outcome::SolidCreated { .. }));
+}
+
+#[test]
+fn extrude_kind_mid_plane_centers_solid_and_total_span_matches_distance() {
+    use cadkernel_api::{Command, ExtrudeKind, Outcome, Session};
+
+    let mut session = Session::new();
+    let blind = session
+        .execute(Command::Extrude {
+            profile: vec![[0.0, 0.0, 0.0], [4.0, 0.0, 0.0], [4.0, 4.0, 0.0], [0.0, 4.0, 0.0]],
+            direction: [0.0, 0.0, 1.0],
+            distance: 10.0,
+            kind: ExtrudeKind::Blind,
+        })
+        .unwrap();
+    let blind_id = match blind {
+        Outcome::SolidCreated { id, .. } => id,
+        other => panic!("expected SolidCreated, got {other:?}"),
+    };
+    let blind_m = session.document().measure_solid(blind_id).unwrap();
+
+    let mid = session
+        .execute(Command::Extrude {
+            profile: vec![[0.0, 0.0, 0.0], [4.0, 0.0, 0.0], [4.0, 4.0, 0.0], [0.0, 4.0, 0.0]],
+            direction: [0.0, 0.0, 1.0],
+            distance: 10.0,
+            kind: ExtrudeKind::MidPlane,
+        })
+        .unwrap();
+    let mid_id = match mid {
+        Outcome::SolidCreated { id, .. } => id,
+        other => panic!("expected SolidCreated, got {other:?}"),
+    };
+    let mid_m = session.document().measure_solid(mid_id).unwrap();
+
+    // 4x4 base, height 10 → volume 160 in both kinds.
+    assert!((blind_m.volume - 160.0).abs() < 1e-6);
+    assert!((mid_m.volume - 160.0).abs() < 1e-6);
+    // Blind: profile at z=0, extrudes up → centroid z = 5.0.
+    assert!((blind_m.centroid[2] - 5.0).abs() < 1e-6);
+    // MidPlane: profile shifted by -d/2 = -5, extrudes 10 → centroid z = 0.
+    assert!(mid_m.centroid[2].abs() < 1e-6);
+}
+
+#[test]
+fn extrude_kind_two_sided_extends_in_both_directions_with_correct_total_span() {
+    use cadkernel_api::{Command, ExtrudeKind, Outcome, Session};
+
+    let mut session = Session::new();
+    let two = session
+        .execute(Command::Extrude {
+            profile: vec![[0.0, 0.0, 0.0], [3.0, 0.0, 0.0], [3.0, 3.0, 0.0], [0.0, 3.0, 0.0]],
+            direction: [0.0, 0.0, 1.0],
+            distance: 4.0,
+            kind: ExtrudeKind::TwoSided { back_distance: 2.0 },
+        })
+        .unwrap();
+    let two_id = match two {
+        Outcome::SolidCreated { id, .. } => id,
+        other => panic!("expected SolidCreated, got {other:?}"),
+    };
+    let m = session.document().measure_solid(two_id).unwrap();
+    // 3x3 base, total height 6 → volume 54.
+    assert!((m.volume - 54.0).abs() < 1e-6, "expected volume 54, got {}", m.volume);
+    // Centroid z = midpoint of [-2, +4] = 1.0.
+    assert!((m.centroid[2] - 1.0).abs() < 1e-6, "expected centroid z=1, got {}", m.centroid[2]);
+
+    // back_distance must be positive.
+    let bad = session.execute(Command::Extrude {
+        profile: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0]],
+        direction: [0.0, 0.0, 1.0],
+        distance: 1.0,
+        kind: ExtrudeKind::TwoSided { back_distance: 0.0 },
+    });
+    assert!(bad.is_err(), "back_distance = 0 must be rejected");
+
+    // JSON wire format: TwoSided uses tagged union with mode = two_sided.
+    let json = serde_json::to_value(&Command::Extrude {
+        profile: vec![[0.0, 0.0, 0.0], [1.0, 0.0, 0.0], [1.0, 1.0, 0.0]],
+        direction: [0.0, 0.0, 1.0],
+        distance: 4.0,
+        kind: ExtrudeKind::TwoSided { back_distance: 2.0 },
+    })
+    .unwrap();
+    assert_eq!(json["op"], "extrude");
+    assert_eq!(json["kind"]["mode"], "two_sided");
+    assert_eq!(json["kind"]["back_distance"], serde_json::json!(2.0));
 }

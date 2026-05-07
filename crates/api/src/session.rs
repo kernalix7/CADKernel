@@ -458,7 +458,8 @@ impl Session {
                 profile,
                 direction,
                 distance,
-            } => self.extrude_profile(profile, *direction, *distance),
+                kind,
+            } => self.extrude_profile(profile, *direction, *distance, *kind),
             Command::LinearPattern {
                 id,
                 direction,
@@ -582,6 +583,7 @@ impl Session {
         profile: &[[f64; 3]],
         direction: [f64; 3],
         distance: f64,
+        kind: crate::command::ExtrudeKind,
     ) -> ApiResult<Outcome> {
         if profile.len() < 3 {
             return Err(ApiError::InvalidArgument(format!(
@@ -594,18 +596,46 @@ impl Session {
                 "extrude distance must be > 0, got {distance}"
             )));
         }
-        let pts: Vec<Point3> = profile
-            .iter()
-            .map(|p| Point3::new(p[0], p[1], p[2]))
-            .collect();
+        if let crate::command::ExtrudeKind::TwoSided { back_distance } = kind {
+            if back_distance <= 0.0 {
+                return Err(ApiError::InvalidArgument(format!(
+                    "extrude TwoSided back_distance must be > 0, got {back_distance}"
+                )));
+            }
+        }
         let dir = Vec3::new(direction[0], direction[1], direction[2]);
         if dir.length() < 1e-12 {
             return Err(ApiError::InvalidArgument(
                 "extrude direction must be non-zero".into(),
             ));
         }
+        // Normalize direction once; ExtrudeKind reuses it as the offset axis.
+        let dir_unit = dir.normalized().ok_or_else(|| {
+            ApiError::Kernel("extrude direction failed to normalize".into())
+        })?;
+        // Determine the back-shift applied to the profile and the final
+        // extrusion length, then forward to the existing kernel API.
+        let (back_shift, total_distance) = match kind {
+            crate::command::ExtrudeKind::Blind => (0.0, distance),
+            crate::command::ExtrudeKind::MidPlane => (distance * 0.5, distance),
+            crate::command::ExtrudeKind::TwoSided { back_distance } => {
+                (back_distance, distance + back_distance)
+            }
+        };
+        let pts: Vec<Point3> = profile
+            .iter()
+            .map(|p| {
+                Point3::new(
+                    p[0] - dir_unit.x * back_shift,
+                    p[1] - dir_unit.y * back_shift,
+                    p[2] - dir_unit.z * back_shift,
+                )
+            })
+            .collect();
         let mut model = BRepModel::new();
-        let result = extrude(&mut model, &pts, dir, distance)?;
+        // Pass `dir` (un-normalized) so the kernel's existing direction
+        // handling is preserved; total_distance is the post-kind span.
+        let result = extrude(&mut model, &pts, dir, total_distance)?;
         let id = self.document.insert(model, result.solid, "Extrude");
         Ok(Outcome::SolidCreated {
             id,

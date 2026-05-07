@@ -60,10 +60,18 @@ pub enum Command {
     /// Extrude a planar polygonal profile along a direction by `distance`.
     /// `profile` is a list of `[x, y, z]` points forming a closed polygon
     /// (≥ 3 points, no duplicate closing point).
+    ///
+    /// `kind` selects the extrusion mode (defaults to `Blind`, which matches
+    /// pre-A2.1 behavior). `MidPlane` and `TwoSided` use `distance` as the
+    /// total span and reposition the profile accordingly. `ThroughAll` and
+    /// `UpToFace` are reserved for A2.2 once `sketch_id` lands on the
+    /// document and feature-id selection is wired through the API.
     Extrude {
         profile: Vec<[f64; 3]>,
         direction: [f64; 3],
         distance: f64,
+        #[serde(default)]
+        kind: ExtrudeKind,
     },
     /// Linear pattern: produces `count` copies of `id` (including the
     /// original) at `spacing` intervals along `direction`. The original is
@@ -340,7 +348,7 @@ pub fn command_schemas() -> Vec<CommandSchema> {
         },
         CommandSchema {
             op: "extrude",
-            description: "Extrude a planar polygonal profile along a direction by a distance.",
+            description: "Extrude a planar polygonal profile along a direction by a distance. `kind` (optional, default ‘blind’) selects Blind/MidPlane/TwoSided. ThroughAll and UpToFace are reserved for A2.2.",
             params: &[
                 ParamSchema {
                     name: "profile",
@@ -358,7 +366,13 @@ pub fn command_schemas() -> Vec<CommandSchema> {
                     name: "distance",
                     ty: "number",
                     required: true,
-                    doc: "Extrusion length (> 0).",
+                    doc: "Extrusion length (> 0). Total span for MidPlane/TwoSided is interpreted per kind.",
+                },
+                ParamSchema {
+                    name: "kind",
+                    ty: "extrude_kind",
+                    required: false,
+                    doc: "Optional. Discriminated union with mode = blind | mid_plane | two_sided. TwoSided requires back_distance.",
                 },
             ],
         },
@@ -445,4 +459,38 @@ pub struct ParamSchema {
     pub ty: &'static str,
     pub required: bool,
     pub doc: &'static str,
+}
+
+/// Extrusion mode for [`Command::Extrude`].
+///
+/// Subset of the A2 spec landed in 2026-05-07. `ThroughAll` and `UpToFace`
+/// are reserved for A2.2 — they require sketch/feature-id concepts that are
+/// not yet wired through the API surface.
+///
+/// JSON serialization uses the `mode` tag for clean discriminated-union
+/// matching by AI agents and tests; for example `MidPlane` becomes
+/// `{ "mode": "mid_plane" }` and `TwoSided` becomes
+/// `{ "mode": "two_sided", "back_distance": 5.0 }`.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
+#[serde(tag = "mode", rename_all = "snake_case")]
+pub enum ExtrudeKind {
+    /// One-sided extrusion: the profile is the start cap and the result
+    /// extends `distance` units along `direction`. Matches pre-A2.1 behavior
+    /// and is the default when the `kind` field is omitted from JSON.
+    #[default]
+    Blind,
+    /// Symmetric extrusion: the profile sits at the mid-plane and the result
+    /// extends `distance / 2` units in both `+direction` and `-direction`,
+    /// for a total span of `distance` units.
+    MidPlane,
+    /// Asymmetric two-sided extrusion: the profile sits at the join, the
+    /// result extends `distance` units along `+direction` and
+    /// `back_distance` units along `-direction`. Total span is
+    /// `distance + back_distance`.
+    TwoSided {
+        /// Length along `-direction`. Must be > 0; equal to `distance` is
+        /// allowed (and identical in result to `MidPlane` with twice the
+        /// distance).
+        back_distance: f64,
+    },
 }

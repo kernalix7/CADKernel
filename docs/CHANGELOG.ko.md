@@ -11,6 +11,13 @@
 
 ### 변경됨
 
+#### API — A2 #1 (부분): `ExtrudeKind` enum (Blind / MidPlane / TwoSided) (2026-05-07)
+- **`Command::Extrude`에 선택적 `kind` 파라미터 추가** (`#[serde(default)]`로 기본값 `Blind` — 기존 JSON 호환). 신규 `ExtrudeKind` enum (`crates/api/src/command.rs`)은 `#[serde(tag = "mode", rename_all = "snake_case")]` 태그 유니언으로 세 변형: `Blind` (단방향, 레거시), `MidPlane` (프로파일 평면 중심으로 양쪽 절반씩), `TwoSided { back_distance: f64 }` (전방 `distance` + 후방 `back_distance` 독립 제어, `back_distance > 0` 필요). `ThroughAll`/`UpToFace`는 `sketch_id` 배선 후 A2.2에서 추가.
+- **`Session::extrude_profile` 재작성** — `(back_shift, total_distance)`을 kind별로 계산하고 방향을 한 번 정규화한 뒤 프로파일을 `-dir_unit * back_shift`만큼 이동, `total_distance`를 커널 `extrude(...)`에 전달. `TwoSided`의 `back_distance <= 0`은 `KernelError::Invalid`로 조기 거부.
+- **`cadkernel_api::ExtrudeKind`로 재내보내기** — Lua 브리지/MCP/향후 Python 바인딩 등 다운스트림 도구에서 사용.
+- **회귀 테스트 3개 추가** — `extrude_kind_blind_is_default_and_matches_legacy_json_shape` (기본값 + JSON 호환), `extrude_kind_mid_plane_centers_solid_and_total_span_matches_distance` (centroid_z=0, 부피 동일), `extrude_kind_two_sided_extends_in_both_directions_with_correct_total_span` (부피 54, centroid_z=1 + back_distance 검증 + JSON 와이어).
+- 테스트 **2,900 / 0 / 0** (Pt.6 대비 +3), `clippy --all-targets --all-features -D warnings` 무경고.
+
 #### Viewer + API — UI/UX 정비 Pt. 6 + API A2 #4 (2026-05-07)
 - **트리 행 팔레트 Pt.1–5 틸 악센트로 통일** — 모델 트리 오브젝트 행의 선택 배경이 FreeCAD 시절의 네이비(`rgb(9, 71, 113)`)로 남아 Pt.1–5 코르만 팔레트와 충돌했던 문제를 해소. 이제 선택 배경은 `theme::COLOR_ACCENT.gamma_multiply(0.18)` (Command Palette 결과 행 + 상태바 배지와 동일)로 교체하고 기존 2px 틸 악센트 좌측 바는 그대로 유지. Hover 배경은 `rgb(42, 45, 48)` → `#242933`로 승꺰해 패널 계층과 일치. Active body 워시도 소프트 틸 `rgba(20, 70, 65, 32)`로 재채색. 가시성 눈 아이콘 색상이 hover 시 틸 악센트 계열로 변경.
 - **그룹 헤더 행**도 같은 hover(`#242933`) + 틸 눈 아이콘 결합으로 일치시켜 다중 선택 그룹 토글도 나머지 코르롤롬함.
