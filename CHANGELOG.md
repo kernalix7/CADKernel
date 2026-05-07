@@ -9,6 +9,19 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Changed
+
+#### Viewer — UI/UX overhaul: signature teal palette + redesigned welcome screen (2026-05-07)
+- **Signature CADKernel palette**: `CadTheme::dark()` retired the VS-Code-blue accent (`#007ACC`) for a deep teal signature accent (`#14B8A6`, hover `#2AD4C0`, pressed `#0E8E80`). Backgrounds now use cool blue-tinted neutrals (`#161920` → `#1C2028` → `#24293 3` → `#2B303B`) for a more distinctive look while keeping dock-friendly contrast levels. Selection / toolbar-active fill aligned to a darker teal tint (`#12554F`); border tones (`#323844` / `#4A5260`) re-tuned for the new accent. Default panel rounding bumped from 4px to 6px for a softer modern feel.
+- **Public color constants** (`COLOR_ACCENT`, `COLOR_SELECTED`) re-aligned to the new teal palette so direct const consumers across the viewer pick up the change automatically.
+- **Welcome screen** (`crates/viewer/src/gui/overlays.rs::draw_welcome_screen`) rebuilt from scratch: replaced the layer-painter hand-paint approach with proper `egui::Area`-anchored widgets so DPI scaling, text shaping, and theming apply naturally. New layout —
+  - **Hero banner**: 56×56 logo plate with teal backdrop + glyph, 26pt title, monospace version pill auto-derived from `CARGO_PKG_VERSION`, and a one-line subtitle.
+  - **Action card grid (2×3)**: Create Box (primary, with accent left bar), Create Cylinder, Create Sphere, Import Mesh, Open Project, Inspect `.cadk`. Each card has icon + title + subtitle, hover elevation, and accent border on hover. Primary card always shows a thin accent bar even when idle.
+  - **Shortcut chip strip**: monospace key chips (`Ctrl+N`, `Ctrl+O`, `Ctrl+S`, `F1`, `Ctrl+P`) with inline labels, replacing the single-line "Press F1 for keyboard shortcuts" footer.
+  - **Build-info footer**: Apache-2.0 + Rust edition + stack credit ("Rust + egui + wgpu").
+- **Wired actions**: cards reuse existing `task_panel::ActiveTask::{Box,Cylinder,Sphere}` openers, `GuiAction::ImportFile` / `OpenFile`, and the new `inspect_cadk_path` helper for the Inspect card — no new GuiAction variants needed.
+- 2,896 / 0 / 0 tests; strict `clippy --all-targets --all-features -D warnings` clean.
+
 ### Added
 
 #### Viewer — `.cadk` Command Log Inspector dialog (2026-05-07)

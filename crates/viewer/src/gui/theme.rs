@@ -93,41 +93,46 @@ pub struct CadTheme {
 }
 
 impl CadTheme {
-    /// Professional dark theme — FreeCAD/Fusion 360 inspired.
+    /// Professional dark theme — CADKernel signature palette
+    /// (deep teal accent, cool blue-tinted neutrals, soft elevation).
+    /// Replaces the previous VS-Code-inspired flat blue with a more
+    /// distinctive look while keeping the dock-friendly contrast levels.
     pub fn dark() -> Self {
         Self {
             mode: ThemeMode::Dark,
-            bg_primary: Color32::from_rgb(0x1E, 0x1E, 0x1E),
-            bg_secondary: Color32::from_rgb(0x25, 0x25, 0x26),
-            bg_tertiary: Color32::from_rgb(0x2D, 0x2D, 0x30),
-            bg_viewport: Color32::from_rgb(0x33, 0x33, 0x33),
-            text_primary: Color32::from_rgb(0xCC, 0xCC, 0xCC),
-            text_secondary: Color32::from_rgb(0x85, 0x85, 0x85),
-            text_disabled: Color32::from_rgb(0x5A, 0x5A, 0x5A),
-            accent: Color32::from_rgb(0x00, 0x7A, 0xCC),
-            accent_hover: Color32::from_rgb(0x1A, 0x8A, 0xD4),
-            accent_pressed: Color32::from_rgb(0x00, 0x5A, 0x9E),
-            selection: Color32::from_rgb(0x09, 0x47, 0x71),
+            // Cool blue-tinted neutrals (was pure greys)
+            bg_primary: Color32::from_rgb(0x16, 0x19, 0x20),
+            bg_secondary: Color32::from_rgb(0x1C, 0x20, 0x28),
+            bg_tertiary: Color32::from_rgb(0x24, 0x29, 0x33),
+            bg_viewport: Color32::from_rgb(0x2B, 0x30, 0x3B),
+            text_primary: Color32::from_rgb(0xE4, 0xE7, 0xEC),
+            text_secondary: Color32::from_rgb(0x9A, 0xA1, 0xAE),
+            text_disabled: Color32::from_rgb(0x5C, 0x63, 0x70),
+            // Signature accent: deep teal (was VS Code blue #007ACC)
+            accent: Color32::from_rgb(0x14, 0xB8, 0xA6),
+            accent_hover: Color32::from_rgb(0x2A, 0xD4, 0xC0),
+            accent_pressed: Color32::from_rgb(0x0E, 0x8E, 0x80),
+            selection: Color32::from_rgb(0x12, 0x55, 0x4F),
             selection_text: Color32::from_rgb(0xFF, 0xFF, 0xFF),
-            preselection: Color32::from_rgb(0x2A, 0x2D, 0x2E),
-            error: Color32::from_rgb(0xF4, 0x47, 0x47),
-            warning: Color32::from_rgb(0xCC, 0xA7, 0x00),
-            info: Color32::from_rgb(0x37, 0x94, 0xFF),
-            success: Color32::from_rgb(0x89, 0xD1, 0x85),
-            border: Color32::from_rgb(0x3C, 0x3C, 0x3C),
-            border_strong: Color32::from_rgb(0x55, 0x55, 0x55),
-            toolbar_bg: Color32::from_rgb(0x25, 0x25, 0x26),
-            toolbar_button_hover: Color32::from_rgb(0x3C, 0x3C, 0x3C),
-            toolbar_button_active: Color32::from_rgb(0x09, 0x47, 0x71),
-            tree_bg: Color32::from_rgb(0x25, 0x25, 0x26),
-            tree_selected: Color32::from_rgb(0x09, 0x47, 0x71),
-            tree_hover: Color32::from_rgb(0x2A, 0x2D, 0x2E),
-            // Panel chrome — dark title bar like FreeCAD's dock headers
-            panel_header_bg: Color32::from_rgb(0x1A, 0x1C, 0x20),
-            panel_header_text: Color32::from_rgb(0xA0, 0xA5, 0xB0),
-            panel_separator: Color32::from_rgb(0x38, 0x3C, 0x46),
-            section_header_bg: Color32::from_rgb(0x28, 0x2B, 0x30),
-            section_header_text: Color32::from_rgb(0x90, 0x98, 0xA5),
+            preselection: Color32::from_rgb(0x2E, 0x34, 0x40),
+            error: Color32::from_rgb(0xF4, 0x6E, 0x6E),
+            warning: Color32::from_rgb(0xF1, 0xB7, 0x3E),
+            info: Color32::from_rgb(0x4D, 0xA8, 0xFF),
+            success: Color32::from_rgb(0x6F, 0xD9, 0x89),
+            border: Color32::from_rgb(0x32, 0x38, 0x44),
+            border_strong: Color32::from_rgb(0x4A, 0x52, 0x60),
+            toolbar_bg: Color32::from_rgb(0x1C, 0x20, 0x28),
+            toolbar_button_hover: Color32::from_rgb(0x2E, 0x34, 0x40),
+            toolbar_button_active: Color32::from_rgb(0x12, 0x55, 0x4F),
+            tree_bg: Color32::from_rgb(0x1C, 0x20, 0x28),
+            tree_selected: Color32::from_rgb(0x12, 0x55, 0x4F),
+            tree_hover: Color32::from_rgb(0x2A, 0x30, 0x3C),
+            // Dock chrome
+            panel_header_bg: Color32::from_rgb(0x14, 0x17, 0x1D),
+            panel_header_text: Color32::from_rgb(0xB0, 0xB7, 0xC4),
+            panel_separator: Color32::from_rgb(0x2A, 0x30, 0x3C),
+            section_header_bg: Color32::from_rgb(0x22, 0x27, 0x31),
+            section_header_text: Color32::from_rgb(0xA0, 0xA8, 0xB6),
             ..Self::normal_density()
         }
     }
@@ -344,7 +349,7 @@ impl CadTheme {
             font_size_normal: 13.0,
             font_size_small: 11.0,
             font_size_header: 14.0,
-            rounding: 4.0,
+            rounding: 6.0,
             panel_header_height: 24.0,
             section_header_height: 22.0,
             tree_row_height: 22.0,
@@ -407,10 +412,10 @@ pub const COLOR_WARN: Color32 = Color32::from_rgb(240, 190, 60);
 pub const COLOR_ERROR: Color32 = Color32::from_rgb(230, 80, 70);
 #[allow(dead_code)]
 pub const COLOR_SUCCESS: Color32 = Color32::from_rgb(100, 210, 120);
-pub const COLOR_ACCENT: Color32 = Color32::from_rgb(80, 140, 220);
+pub const COLOR_ACCENT: Color32 = Color32::from_rgb(0x14, 0xB8, 0xA6);
 pub const COLOR_DIM: Color32 = Color32::from_rgb(120, 125, 135);
 #[allow(dead_code)]
-pub const COLOR_SELECTED: Color32 = Color32::from_rgb(80, 160, 240);
+pub const COLOR_SELECTED: Color32 = Color32::from_rgb(0x2A, 0xD4, 0xC0);
 #[allow(dead_code)]
 pub const COLOR_PRESELECT: Color32 = Color32::from_rgb(240, 200, 80);
 

@@ -9,6 +9,15 @@
 
 ## [Unreleased]
 
+### 변경됨
+
+#### Viewer — UI/UX 정비: 시그니처 틸 팔레트 + 환영 화면 재설계 (2026-05-07)
+- 다크 테마 기본 강조색을 VS Code 블루(`#007ACC`)에서 시그니처 틸(`#14B8A6` / hover `#2AD4C0` / pressed `#0E8E80`)로 교체하고 배경 계층(`#161920` → `#1C2028` → `#24293 3` → `#2B303B`)을 푸른빛이 도는 중성 톤으로 재구성. 선택/툴바 활성 색상도 어두운 틸 톤(`#12554F`)으로 통일하고 패널 모서리 라운딩을 4px → 6px로 부드럽게 조정.
+- 공개 색상 상수(`COLOR_ACCENT`, `COLOR_SELECTED`)를 새 팔레트에 맞춰 갱신해 직접 참조하는 코드도 자동으로 새 색상에 반영.
+- 환영 화면(`draw_welcome_screen`)을 layer-painter 직접 그리기에서 정식 egui 위젯(`egui::Area` 기반)으로 전면 재작성. 구성: 56×56 로고 플레이트 + 26pt 타이틀 + 버전 알약 형식의 히어로 배너, 2×3 액션 카드 그리드(Create Box / Cylinder / Sphere / Import Mesh / Open Project / Inspect `.cadk`, 첫 카드는 강조색 좌측 바 + 강조색 보더), 단축키 칩 스트립(`Ctrl+N` `Ctrl+O` `Ctrl+S` `F1` `Ctrl+P`), 빌드 정보 풋터(라이선스 + Rust + egui + wgpu).
+- 카드 액션은 기존 `task_panel::ActiveTask::{Box,Cylinder,Sphere}` / `GuiAction::ImportFile` / `OpenFile` / `inspect_cadk_path` 진입점을 그대로 재사용 — 신규 GuiAction 변형 추가 없음.
+- 테스트 2,896 / 0 / 0, `clippy --all-targets --all-features -D warnings` 무경고 유지.
+
 ### 추가됨
 
 #### Viewer — `.cadk` Command Log Inspector 다이얼로그 (2026-05-07)

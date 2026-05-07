@@ -1656,141 +1656,412 @@ fn draw_measurement_overlay_between(
 
 // ---------------------------------------------------------------------------
 // Welcome screen for empty scene
+//
+// Modern card-based layout: hero banner with logo + version, 2-row action card
+// grid (primitives + import/open), keyboard-shortcut chip strip, and a
+// build-info footer. Uses real egui widgets so theming + DPI scaling apply
+// automatically.
 // ---------------------------------------------------------------------------
 
 pub(crate) fn draw_welcome_screen(ctx: &egui::Context, gui: &mut GuiState) {
-    let screen = ctx.screen_rect();
-    let painter = ctx.layer_painter(egui::LayerId::new(
-        egui::Order::Middle,
-        egui::Id::new("welcome_screen"),
-    ));
+    use crate::gui::theme::CadTheme;
 
-    let cx = screen.center().x;
-    let cy = screen.center().y - 30.0;
+    let theme = CadTheme::dark();
+    let accent = theme.accent;
+    let bg_card = theme.bg_secondary;
+    let bg_card_hover = theme.bg_tertiary;
+    let border = theme.border;
 
-    // Title
-    painter.text(
-        egui::pos2(cx, cy - 60.0),
-        egui::Align2::CENTER_CENTER,
-        "\u{2B22}  CADKernel",
-        egui::FontId::new(24.0, egui::FontFamily::Proportional),
-        egui::Color32::from_rgb(160, 170, 185),
-    );
+    // Card painter: returns the response (so the caller can read .clicked()).
+    #[allow(clippy::too_many_arguments)]
+    fn card(
+        ui: &mut egui::Ui,
+        size: egui::Vec2,
+        icon: &str,
+        title: &str,
+        subtitle: &str,
+        primary: bool,
+        accent: egui::Color32,
+        bg: egui::Color32,
+        bg_hover: egui::Color32,
+        border: egui::Color32,
+    ) -> egui::Response {
+        let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
+        let painter = ui.painter_at(rect);
 
-    // Subtitle
-    painter.text(
-        egui::pos2(cx, cy - 30.0),
-        egui::Align2::CENTER_CENTER,
-        "Open-Source B-Rep CAD Kernel",
-        egui::FontId::proportional(12.0),
-        egui::Color32::from_rgb(90, 95, 110),
-    );
+        let hovered = resp.hovered();
+        let pressed = resp.is_pointer_button_down_on();
 
-    // Quick action buttons
-    let btn_w = 150.0;
-    let btn_h = 32.0;
-    let btn_gap = 8.0;
-    let total_h = 3.0 * btn_h + 2.0 * btn_gap;
-    let start_y = cy + 10.0;
-
-    let actions: &[(&str, &str, &str)] = &[
-        ("\u{2795}  Create Box", "Create a box primitive", "box"),
-        ("\u{1F4C2}  Import File", "Import STL/OBJ/glTF", "import"),
-        ("\u{1F4C4}  Open Project", "Open .cadk file", "open"),
-    ];
-
-    let pointer_pos = ctx.input(|i| i.pointer.hover_pos());
-    let clicked = ctx.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary));
-
-    for (i, &(label, hint, action_id)) in actions.iter().enumerate() {
-        let btn_y = start_y + i as f32 * (btn_h + btn_gap);
-        let btn_rect = egui::Rect::from_center_size(
-            egui::pos2(cx, btn_y + btn_h * 0.5),
-            egui::vec2(btn_w, btn_h),
-        );
-
-        let hovered = pointer_pos.is_some_and(|p| btn_rect.contains(p));
-
-        let (bg, text_color) = if hovered {
-            (
-                egui::Color32::from_rgba_premultiplied(0, 122, 204, 50),
-                egui::Color32::from_rgb(220, 225, 235),
-            )
+        let fill = if pressed {
+            bg_hover.gamma_multiply(0.85)
+        } else if hovered {
+            bg_hover
         } else {
-            (
-                egui::Color32::from_rgba_premultiplied(40, 42, 50, 180),
-                egui::Color32::from_rgb(160, 168, 180),
-            )
+            bg
         };
+        painter.rect_filled(rect, 8.0, fill);
 
-        painter.rect_filled(btn_rect, 6.0, bg);
+        // Primary card: accent left bar + brighter border on hover
+        let stroke_col = if hovered {
+            accent
+        } else if primary {
+            accent.gamma_multiply(0.55)
+        } else {
+            border
+        };
         painter.rect_stroke(
-            btn_rect,
-            6.0,
-            egui::Stroke::new(0.5, egui::Color32::from_rgb(65, 70, 80)),
-            egui::StrokeKind::Outside,
+            rect,
+            8.0,
+            egui::Stroke::new(if hovered { 1.4 } else { 1.0 }, stroke_col),
+            egui::StrokeKind::Inside,
         );
 
-        painter.text(
-            btn_rect.center(),
-            egui::Align2::CENTER_CENTER,
-            label,
-            egui::FontId::proportional(12.5),
-            text_color,
-        );
-
-        if hovered && clicked {
-            match action_id {
-                "box" => {
-                    gui.active_task = Some(super::task_panel::ActiveTask::Box {
-                        width: 10.0,
-                        height: 10.0,
-                        depth: 10.0,
-                        preview_id: None,
-                    });
-                }
-                "import" => {
-                    if let Some(path) = rfd::FileDialog::new()
-                        .add_filter("Mesh", &["stl", "obj", "gltf", "glb"])
-                        .pick_file()
-                    {
-                        gui.actions.push(GuiAction::ImportFile(path));
-                    }
-                }
-                "open" => {
-                    if let Some(path) = rfd::FileDialog::new()
-                        .add_filter("CADKernel", &["cadk"])
-                        .pick_file()
-                    {
-                        gui.actions.push(GuiAction::OpenFile(path));
-                    }
-                }
-                _ => {}
-            }
+        if primary {
+            // Left accent bar
+            let bar = egui::Rect::from_min_size(
+                rect.min + egui::vec2(0.0, 6.0),
+                egui::vec2(3.0, rect.height() - 12.0),
+            );
+            painter.rect_filled(bar, 1.5, accent);
         }
+
+        // Icon (large glyph, top-left padded)
+        let icon_color = if hovered || primary {
+            accent
+        } else {
+            egui::Color32::from_rgb(0x9A, 0xA1, 0xAE)
+        };
+        painter.text(
+            rect.min + egui::vec2(18.0, 16.0),
+            egui::Align2::LEFT_TOP,
+            icon,
+            egui::FontId::proportional(22.0),
+            icon_color,
+        );
+
+        // Title
+        painter.text(
+            rect.min + egui::vec2(18.0, 46.0),
+            egui::Align2::LEFT_TOP,
+            title,
+            egui::FontId::proportional(14.0),
+            egui::Color32::from_rgb(0xE4, 0xE7, 0xEC),
+        );
+
+        // Subtitle
+        painter.text(
+            rect.min + egui::vec2(18.0, 66.0),
+            egui::Align2::LEFT_TOP,
+            subtitle,
+            egui::FontId::proportional(11.0),
+            egui::Color32::from_rgb(0x82, 0x8A, 0x97),
+        );
 
         if hovered {
-            ctx.output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
+            ui.ctx().output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
         }
-
-        // Hint text below button
-        painter.text(
-            egui::pos2(cx, btn_y + btn_h + 1.0),
-            egui::Align2::CENTER_TOP,
-            hint,
-            egui::FontId::proportional(9.5),
-            egui::Color32::from_rgb(70, 75, 85),
-        );
+        resp
     }
 
-    // Footer: keyboard shortcuts hint
-    painter.text(
-        egui::pos2(cx, start_y + total_h + 40.0),
-        egui::Align2::CENTER_CENTER,
-        "Press F1 for keyboard shortcuts",
-        egui::FontId::proportional(10.0),
-        egui::Color32::from_rgb(70, 75, 85),
-    );
+    // Shortcut chip helper
+    fn chip(ui: &mut egui::Ui, key: &str, label: &str, border: egui::Color32) {
+        ui.horizontal(|ui| {
+            let key_size = egui::vec2(
+                (key.len() as f32 * 7.5).max(22.0),
+                18.0,
+            );
+            let (key_rect, _) = ui.allocate_exact_size(key_size, egui::Sense::hover());
+            let painter = ui.painter_at(key_rect);
+            painter.rect_filled(key_rect, 3.0, egui::Color32::from_rgb(0x2B, 0x30, 0x3B));
+            painter.rect_stroke(
+                key_rect,
+                3.0,
+                egui::Stroke::new(0.8, border),
+                egui::StrokeKind::Inside,
+            );
+            painter.text(
+                key_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                key,
+                egui::FontId::monospace(10.0),
+                egui::Color32::from_rgb(0xC0, 0xC6, 0xD0),
+            );
+            ui.add_space(4.0);
+            ui.label(
+                egui::RichText::new(label)
+                    .size(11.0)
+                    .color(egui::Color32::from_rgb(0x82, 0x8A, 0x97)),
+            );
+        });
+    }
+
+    egui::Area::new(egui::Id::new("welcome_screen"))
+        .order(egui::Order::Middle)
+        .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
+        .show(ctx, |ui| {
+            // Constrain to a centered column
+            ui.set_max_width(640.0);
+            ui.vertical_centered(|ui| {
+                // -- Hero banner ----------------------------------------------------
+                ui.add_space(8.0);
+                ui.horizontal(|ui| {
+                    ui.add_space(0.0);
+                    // Logo glyph block with accent backdrop
+                    let (logo_rect, _) =
+                        ui.allocate_exact_size(egui::vec2(56.0, 56.0), egui::Sense::hover());
+                    let p = ui.painter_at(logo_rect);
+                    p.rect_filled(
+                        logo_rect,
+                        12.0,
+                        accent.gamma_multiply(0.18),
+                    );
+                    p.rect_stroke(
+                        logo_rect,
+                        12.0,
+                        egui::Stroke::new(1.0, accent.gamma_multiply(0.55)),
+                        egui::StrokeKind::Inside,
+                    );
+                    p.text(
+                        logo_rect.center(),
+                        egui::Align2::CENTER_CENTER,
+                        "\u{2B22}",
+                        egui::FontId::proportional(28.0),
+                        accent,
+                    );
+
+                    ui.add_space(14.0);
+                    ui.vertical(|ui| {
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                egui::RichText::new("CADKernel")
+                                    .size(26.0)
+                                    .strong()
+                                    .color(egui::Color32::from_rgb(0xE9, 0xEC, 0xF1)),
+                            );
+                            ui.add_space(8.0);
+                            // Version pill
+                            let v = format!("v{}", env!("CARGO_PKG_VERSION"));
+                            let pill_w = (v.len() as f32 * 6.5) + 14.0;
+                            let (pill_rect, _) = ui.allocate_exact_size(
+                                egui::vec2(pill_w, 18.0),
+                                egui::Sense::hover(),
+                            );
+                            let pp = ui.painter_at(pill_rect);
+                            pp.rect_filled(pill_rect, 9.0, accent.gamma_multiply(0.22));
+                            pp.text(
+                                pill_rect.center(),
+                                egui::Align2::CENTER_CENTER,
+                                &v,
+                                egui::FontId::monospace(10.5),
+                                accent,
+                            );
+                        });
+                        ui.add_space(2.0);
+                        ui.label(
+                            egui::RichText::new(
+                                "Open-source B-Rep CAD kernel \u{2014} NURBS, half-edge topology, parametric features.",
+                            )
+                            .size(12.5)
+                            .color(egui::Color32::from_rgb(0x9A, 0xA1, 0xAE)),
+                        );
+                    });
+                });
+
+                ui.add_space(22.0);
+
+                // -- Action card grid (2 rows × 3 cols) ----------------------------
+                let card_w = 196.0;
+                let card_h = 92.0;
+                let gap = 10.0;
+
+                let mut click_action: Option<&'static str> = None;
+
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = gap;
+                    if card(
+                        ui,
+                        egui::vec2(card_w, card_h),
+                        "\u{25A3}",
+                        "Create Box",
+                        "Start a parametric primitive",
+                        true,
+                        accent,
+                        bg_card,
+                        bg_card_hover,
+                        border,
+                    )
+                    .clicked()
+                    {
+                        click_action = Some("box");
+                    }
+                    if card(
+                        ui,
+                        egui::vec2(card_w, card_h),
+                        "\u{25CD}",
+                        "Create Cylinder",
+                        "Radius + height primitive",
+                        false,
+                        accent,
+                        bg_card,
+                        bg_card_hover,
+                        border,
+                    )
+                    .clicked()
+                    {
+                        click_action = Some("cylinder");
+                    }
+                    if card(
+                        ui,
+                        egui::vec2(card_w, card_h),
+                        "\u{25CF}",
+                        "Create Sphere",
+                        "Radius primitive",
+                        false,
+                        accent,
+                        bg_card,
+                        bg_card_hover,
+                        border,
+                    )
+                    .clicked()
+                    {
+                        click_action = Some("sphere");
+                    }
+                });
+
+                ui.add_space(gap);
+
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = gap;
+                    if card(
+                        ui,
+                        egui::vec2(card_w, card_h),
+                        "\u{1F4C2}",
+                        "Import Mesh",
+                        "STL, OBJ, glTF, PLY \u{2026}",
+                        false,
+                        accent,
+                        bg_card,
+                        bg_card_hover,
+                        border,
+                    )
+                    .clicked()
+                    {
+                        click_action = Some("import");
+                    }
+                    if card(
+                        ui,
+                        egui::vec2(card_w, card_h),
+                        "\u{1F4C4}",
+                        "Open Project",
+                        "Load a .cadk file",
+                        false,
+                        accent,
+                        bg_card,
+                        bg_card_hover,
+                        border,
+                    )
+                    .clicked()
+                    {
+                        click_action = Some("open");
+                    }
+                    if card(
+                        ui,
+                        egui::vec2(card_w, card_h),
+                        "\u{1F50E}",
+                        "Inspect .cadk",
+                        "Decode command log",
+                        false,
+                        accent,
+                        bg_card,
+                        bg_card_hover,
+                        border,
+                    )
+                    .clicked()
+                    {
+                        click_action = Some("inspect");
+                    }
+                });
+
+                if let Some(action) = click_action {
+                    match action {
+                        "box" => {
+                            gui.active_task = Some(super::task_panel::ActiveTask::Box {
+                                width: 10.0,
+                                height: 10.0,
+                                depth: 10.0,
+                                preview_id: None,
+                            });
+                        }
+                        "cylinder" => {
+                            gui.active_task = Some(super::task_panel::ActiveTask::Cylinder {
+                                radius: 5.0,
+                                height: 10.0,
+                                preview_id: None,
+                            });
+                        }
+                        "sphere" => {
+                            gui.active_task = Some(super::task_panel::ActiveTask::Sphere {
+                                radius: 5.0,
+                                preview_id: None,
+                            });
+                        }
+                        "import" => {
+                            if let Some(path) = rfd::FileDialog::new()
+                                .add_filter("Mesh", &["stl", "obj", "gltf", "glb", "ply", "3mf"])
+                                .pick_file()
+                            {
+                                gui.actions.push(GuiAction::ImportFile(path));
+                            }
+                        }
+                        "open" => {
+                            if let Some(path) = rfd::FileDialog::new()
+                                .add_filter("CADKernel", &["cadk"])
+                                .pick_file()
+                            {
+                                gui.actions.push(GuiAction::OpenFile(path));
+                            }
+                        }
+                        "inspect" => {
+                            if let Some(path) = rfd::FileDialog::new()
+                                .add_filter("CADKernel", &["cadk"])
+                                .pick_file()
+                            {
+                                gui.cadk_inspector = Some(super::inspect_cadk_path(&path));
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+
+                ui.add_space(22.0);
+
+                // -- Shortcut chip row ---------------------------------------------
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 16.0;
+                    chip(ui, "Ctrl+N", "New", border);
+                    chip(ui, "Ctrl+O", "Open", border);
+                    chip(ui, "Ctrl+S", "Save", border);
+                    chip(ui, "F1", "Shortcuts", border);
+                    chip(ui, "Ctrl+P", "Command palette", border);
+                });
+
+                ui.add_space(14.0);
+
+                // -- Footer --------------------------------------------------------
+                ui.label(
+                    egui::RichText::new(format!(
+                        "Apache-2.0 \u{2022} {} edition \u{2022} Built with Rust + egui + wgpu",
+                        env!("CARGO_PKG_RUST_VERSION", "stable")
+                            .split('.')
+                            .take(2)
+                            .collect::<Vec<_>>()
+                            .join("."),
+                    ))
+                    .size(10.5)
+                    .color(egui::Color32::from_rgb(0x5F, 0x66, 0x73)),
+                );
+            });
+        });
 }
 
 // ---------------------------------------------------------------------------
