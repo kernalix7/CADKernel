@@ -11,6 +11,13 @@
 
 ### 변경됨
 
+#### Viewer — UI/UX 정비 Pt. 4: 브레드크럼 병합 + 뷰포트 HUD + 탭형 Inspector (2026-05-07)
+- **브레드크럼을 컨텍스트 툴바에 통합** — 전용 20px 브레드크럼 줄(`draw_breadcrumb_bar` 패널)을 제거하고 Scene › Object › Mode 경로를 새 헬퍼 `overlays::draw_breadcrumb_inline`로 컨텍스트 툴바 우측에 인라인 렌더링. 상단 크롬 4줄 → **3줄**(메뉴 → 툴바 → 컨텍스트+브레드크럼)로 압축. 단독 브레드크럼 함수는 삭제하고 모든 호출을 인라인 헬퍼로 통일.
+- **플로팅 뷰포트 HUD 신규** — `overlays::draw_viewport_hud`는 뷰 큐브 아래에 같은 코너 설정으로 고정되는 28px 사각 4버튼 세로 컬럼을 그림. Fit All / Reset Camera / Toggle Projection(원근일 때 틸 강조) / Toggle Grid. 각 버튼은 hover elevation + 활성 시 액센트 보더 + 숏컷 툴팁. 기존 `GuiAction::{FitAll, ResetCamera, ToggleProjection, ToggleGrid}` 재사용 — 신규 GuiAction 없음. 뷰 큐브를 숨기면 같이 숨겨져 깔끔한 캔버스 선호 사용자도 OK.
+- **Inspector 도크 탭화** — Pt.3에서 분리된 우측 Inspector 도크는 `active_task.is_some()`에 따라 Tasks ↔ Properties로 자동 스왑하던 구조였는데, 이제 도크 헤더 아래 26px 탭 스트립(Properties / Tasks)으로 명시적 탭 전환. 활성 탭은 틸 밑줄 + 액센트 레이블 색. Task 진행 중에도 Properties를 유지하거나 Tasks 탭에서 다른 엔티티 검사 가능. 새 Task 시작 시엔 여전히 Tasks 탭으로 자동 전환(기존 플로 유지)하되, 사용자가 언제든 수동 전환 가능. 신규 `InspectorTab` enum + `gui.inspector_tab` 필드 + `mod::draw_inspector_tabs` 헬퍼.
+- **누적 효과(Pt.1–4)**: 시그니처 틸 팔레트 + 크롬 재도색 + 액티비티 레일 + ComboView 분리 + 브레드크럼 병합 + 뷰포트 HUD + 탭형 Inspector. 상단 크롬 정비 전 대비 **2줄** 단축(5 → 3); Inspector는 우측 + 탭형; 뷰포트는 자체 내장 nav HUD 보유; 워크벤치 전환은 항상 한 번 클릭.
+- 테스트 2,896 / 0 / 0, `clippy --all-targets --all-features -D warnings` 무경고.
+
 #### Viewer — UI/UX 정비 Pt. 3: 구조적 레이아웃 재구성 (2026-05-07)
 - **액티비티 레일 신규** — 좌측 최단에 고정된 세로형 56px 워크벤치 스위첰를 추가하고 기존 가로형 워크벤치 탭 줄을 제거. 9개 단일 글리프 아이콘 버튼(Part / PartDesign / Sketcher / Mesh / TechDraw / Assembly / Draft / Surface / FEM)을 세로로 배치. 활성 워크벤치는 틸 좀드 좌측 바 + 틸 아이콘 + 틸 캡션으로 강조. 레일 하단에는 Model Tree / Properties 토글 버튼 2개를 배치해 메뉴 안 거치고도 사이드 독 표시 제어 가능. 상단 크롬의 워크벤치 탭 행 하나가 완전히 사라져 메뉴 → 툴바 → 컨텍스트 툴바 → 브레드크럼 4줄로 압축. 구 탭 함수는 `#[allow(dead_code)]`로 널겨두어 롤백 경로 유지.
 - **ComboView → 좌측 Tree + 우측 Inspector 분리** — FreeCAD식 단일 좌측 ComboView(윈도우 하나에 트리 위 + 속성 아래)를 해체하고 Fusion 360 / SolidWorks 스타일로 재구성: `SidePanel::left("model_tree_dock")`(기본 260px, 모델 트리 전용)는 좌측, `SidePanel::right("inspector_dock")`(기본 300px, ActiveTask 있으면 Tasks, 없으면 Properties)는 우측에 배치. 각 독은 독립적으로 리사이즈 핸들을 가지며 액티비티 레일 스위치로 각각 토글 가능. ActiveTask가 설정되면 Task 패널이 우측 inspector에 인라인 렌더링되어 이제 피처 생성 플로가 트리와 세로 공간 경쟁을 하지 않음.

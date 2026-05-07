@@ -208,6 +208,24 @@ pub(crate) enum MirrorPlane {
     YZ,
 }
 
+/// Right-inspector dock tabs. The dock used to auto-swap between Tasks and
+/// Properties; explicit tabs let users keep Properties visible while a task
+/// is mid-edit (or vice versa).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum InspectorTab {
+    Properties,
+    Tasks,
+}
+
+impl InspectorTab {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Properties => "Properties",
+            Self::Tasks => "Tasks",
+        }
+    }
+}
+
 #[allow(dead_code)]
 pub(crate) enum GuiAction {
     NewModel,
@@ -586,6 +604,7 @@ pub(crate) struct GuiState {
     pub tree_filter: String,
     pub show_properties: bool,
     pub property_tab: properties::PropertyTab,
+    pub inspector_tab: InspectorTab,
     pub show_about: bool,
     pub show_settings: bool,
     pub show_create_box: bool,
@@ -869,6 +888,7 @@ impl GuiState {
             tree_filter: String::new(),
             show_properties: true,
             property_tab: properties::PropertyTab::Data,
+            inspector_tab: InspectorTab::Properties,
             show_about: false,
             show_settings: false,
             show_create_box: false,
@@ -1204,6 +1224,77 @@ pub(crate) struct ViewportInfo<'a> {
     pub show_fps: bool,
 }
 
+/// Inspector tab strip rendered just below the dock header. Active tab gets
+/// the teal accent bottom edge; clicking a tab swaps `gui.inspector_tab`.
+fn draw_inspector_tabs(ui: &mut egui::Ui, gui: &mut GuiState) {
+    use egui::{Color32, Sense, Stroke, vec2};
+    const TABS: &[InspectorTab] = &[InspectorTab::Properties, InspectorTab::Tasks];
+
+    let avail_w = ui.available_width();
+    let h = 26.0_f32;
+    let (strip_rect, _) = ui.allocate_exact_size(vec2(avail_w, h), Sense::hover());
+    let painter = ui.painter();
+    painter.rect_filled(strip_rect, 0.0, Color32::from_rgb(0x16, 0x19, 0x20));
+    painter.line_segment(
+        [
+            egui::pos2(strip_rect.left(), strip_rect.bottom() - 0.5),
+            egui::pos2(strip_rect.right(), strip_rect.bottom() - 0.5),
+        ],
+        Stroke::new(1.0, Color32::from_rgb(0x10, 0x13, 0x19)),
+    );
+
+    let tab_w = (avail_w / TABS.len() as f32).max(60.0);
+    for (i, tab) in TABS.iter().copied().enumerate() {
+        let x0 = strip_rect.left() + tab_w * i as f32;
+        let tab_rect = egui::Rect::from_min_size(
+            egui::pos2(x0, strip_rect.top()),
+            vec2(tab_w, h),
+        );
+        let id = ui.id().with(("inspector_tab", i));
+        let resp = ui.interact(tab_rect, id, Sense::click());
+        let active = gui.inspector_tab == tab;
+
+        let bg = if active {
+            Color32::from_rgb(0x1C, 0x20, 0x28)
+        } else if resp.hovered() {
+            Color32::from_rgb(0x1A, 0x1E, 0x26)
+        } else {
+            Color32::TRANSPARENT
+        };
+        painter.rect_filled(tab_rect, 0.0, bg);
+
+        let label_color = if active {
+            theme::COLOR_ACCENT
+        } else if resp.hovered() {
+            Color32::from_rgb(220, 224, 232)
+        } else {
+            theme::COLOR_DIM
+        };
+        painter.text(
+            tab_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            tab.label(),
+            egui::FontId::proportional(11.5),
+            label_color,
+        );
+
+        if active {
+            // Teal underline anchoring the active tab.
+            painter.line_segment(
+                [
+                    egui::pos2(tab_rect.left() + 6.0, tab_rect.bottom() - 1.5),
+                    egui::pos2(tab_rect.right() - 6.0, tab_rect.bottom() - 1.5),
+                ],
+                Stroke::new(2.0, theme::COLOR_ACCENT),
+            );
+        }
+
+        if resp.clicked() {
+            gui.inspector_tab = tab;
+        }
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn draw_ui(
     ctx: &egui::Context,
@@ -1293,8 +1384,7 @@ pub(crate) fn draw_ui(
     // Vertical activity rail on the far left replaces the old horizontal
     // workbench tab strip — Blender / VS Code style icon switcher.
     toolbar::draw_activity_rail(ctx, gui);
-    toolbar::draw_context_toolbar(ctx, gui);
-    overlays::draw_breadcrumb_bar(ctx, gui, scene);
+    toolbar::draw_context_toolbar(ctx, gui, scene);
     // Left dock: Model Tree only (Properties moved to a dedicated right
     // inspector dock — Fusion 360 / SolidWorks layout pattern).
     if gui.show_model_tree {
@@ -1324,8 +1414,15 @@ pub(crate) fn draw_ui(
             });
     }
 
-    // Right inspector dock: Tasks (when active) OR Properties.
+    // Right inspector dock: tabbed Properties / Tasks panel. Tabs let the
+    // user keep Properties visible while a task is mid-edit (and vice versa)
+    // instead of the dock auto-swapping.
     if gui.show_properties || gui.active_task.is_some() {
+        // Auto-switch to Tasks when a new task starts; user can manually
+        // swap back to Properties at will.
+        if gui.active_task.is_some() && gui.inspector_tab == InspectorTab::Properties {
+            gui.inspector_tab = InspectorTab::Tasks;
+        }
         egui::SidePanel::right("inspector_dock")
             .default_width(300.0)
             .width_range(240.0..=460.0)
@@ -1336,22 +1433,28 @@ pub(crate) fn draw_ui(
                 ..egui::Frame::NONE
             })
             .show(ctx, |ui| {
-                let title = if gui.active_task.is_some() {
-                    "Tasks"
-                } else {
-                    "Properties"
-                };
-                if theme::draw_panel_header(ui, title, true) {
+                if theme::draw_panel_header(ui, "Inspector", true) {
                     gui.show_properties = false;
                 }
+                draw_inspector_tabs(ui, gui);
                 egui::ScrollArea::vertical()
                     .id_salt("inspector_scroll")
                     .show(ui, |ui| {
                         ui.add_space(2.0);
                         egui::Frame::NONE
                             .inner_margin(egui::Margin::symmetric(6, 0))
-                            .show(ui, |ui| {
-                                if !task_panel::draw_task_panel_inline(ui, gui) {
+                            .show(ui, |ui| match gui.inspector_tab {
+                                InspectorTab::Tasks => {
+                                    if !task_panel::draw_task_panel_inline(ui, gui) {
+                                        ui.add_space(8.0);
+                                        ui.label(
+                                            egui::RichText::new("No active task.")
+                                                .color(theme::COLOR_DIM)
+                                                .size(11.0),
+                                        );
+                                    }
+                                }
+                                InspectorTab::Properties => {
                                     properties::draw_properties_inline(ui, gui, scene);
                                 }
                             });
@@ -1391,6 +1494,7 @@ pub(crate) fn draw_ui(
     if nav.show_view_cube {
         view_cube::draw_view_cube(ctx, vp.camera, gui, nav);
     }
+    overlays::draw_viewport_hud(ctx, gui, nav, vp.camera);
     if nav.show_axes_indicator {
         overlays::draw_axes_overlay(ctx, vp.camera, gui);
     }

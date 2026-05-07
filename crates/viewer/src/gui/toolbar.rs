@@ -3612,7 +3612,11 @@ pub(crate) fn draw_workbench_tabs(ctx: &egui::Context, gui: &mut GuiState) {
 // Context toolbar: workbench-specific tools
 // ---------------------------------------------------------------------------
 
-pub(crate) fn draw_context_toolbar(ctx: &egui::Context, gui: &mut GuiState) {
+pub(crate) fn draw_context_toolbar(
+    ctx: &egui::Context,
+    gui: &mut GuiState,
+    scene: &crate::scene::Scene,
+) {
     egui::TopBottomPanel::top("context_toolbar")
         .frame(egui::Frame {
             fill: Color32::from_rgb(0x1C, 0x20, 0x28),
@@ -3634,6 +3638,12 @@ pub(crate) fn draw_context_toolbar(ctx: &egui::Context, gui: &mut GuiState) {
                     Workbench::Surface => draw_surface_toolbar(ui, gui),
                     Workbench::Fem => draw_fem_toolbar(ui, gui),
                 }
+
+                // Breadcrumb path pinned to the right edge of the same row —
+                // collapses what used to be a dedicated breadcrumb strip.
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    super::overlays::draw_breadcrumb_inline(ui, gui, scene);
+                });
             });
         });
 }

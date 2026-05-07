@@ -2065,114 +2065,240 @@ pub(crate) fn draw_welcome_screen(ctx: &egui::Context, gui: &mut GuiState) {
 }
 
 // ---------------------------------------------------------------------------
-// Breadcrumb navigation bar
+// Breadcrumb navigation (inline — embedded in context toolbar)
 // ---------------------------------------------------------------------------
 
-pub(crate) fn draw_breadcrumb_bar(ctx: &egui::Context, gui: &mut GuiState, scene: &Scene) {
-    egui::TopBottomPanel::top("breadcrumb_bar")
-        .exact_height(20.0)
-        .frame(egui::Frame {
-            fill: egui::Color32::from_rgb(0x18, 0x1C, 0x23),
-            inner_margin: egui::Margin::symmetric(8, 0),
-            stroke: egui::Stroke::new(0.5, egui::Color32::from_rgb(0x2A, 0x30, 0x3C)),
-            ..egui::Frame::NONE
-        })
+/// Draws the breadcrumb path (Scene › Object › Mode) directly into the given
+/// `ui`. Used inside the context toolbar's right-aligned region so the path
+/// shares a row with workbench tools instead of consuming a separate strip.
+pub(crate) fn draw_breadcrumb_inline(ui: &mut egui::Ui, gui: &mut GuiState, scene: &Scene) {
+    ui.spacing_mut().item_spacing.x = 2.0;
+
+    let dim_color = theme::COLOR_DIM;
+    let active_color = egui::Color32::from_rgb(200, 205, 215);
+    let sep_color = egui::Color32::from_rgb(80, 84, 92);
+    let font = egui::FontId::new(10.5, egui::FontFamily::Proportional);
+
+    // Determine segments
+    let has_selection = scene.selected_object().is_some();
+    let has_entities = !gui.selected_entities.is_empty();
+    let in_sketch = gui.sketch_mode.is_some();
+
+    // Scene root
+    let scene_active = !has_selection && !in_sketch;
+    let scene_color = if scene_active {
+        active_color
+    } else {
+        dim_color
+    };
+    if ui
+        .add(
+            egui::Label::new(
+                egui::RichText::new("Scene")
+                    .font(font.clone())
+                    .color(scene_color),
+            )
+            .selectable(false)
+            .sense(egui::Sense::click()),
+        )
+        .clicked()
+        && !scene_active
+    {
+        gui.actions.push(GuiAction::DeselectAll);
+    }
+
+    if let Some(obj) = scene.selected_object() {
+        ui.label(egui::RichText::new("\u{203A}").size(12.0).color(sep_color));
+        let obj_active = !has_entities && !in_sketch;
+        let obj_color = if obj_active { active_color } else { dim_color };
+        ui.add(
+            egui::Label::new(
+                egui::RichText::new(&obj.name)
+                    .font(font.clone())
+                    .color(obj_color),
+            )
+            .selectable(false),
+        );
+
+        if has_entities {
+            ui.label(egui::RichText::new("\u{203A}").size(12.0).color(sep_color));
+            let mode_str = match gui.selection_mode {
+                SelectionMode::Face => "Face",
+                SelectionMode::Edge => "Edge",
+                SelectionMode::Vertex => "Vertex",
+                SelectionMode::Solid => "Solid",
+            };
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(mode_str)
+                        .font(font.clone())
+                        .color(active_color),
+                )
+                .selectable(false),
+            );
+
+            if gui.selected_entities.len() > 1 {
+                ui.label(
+                    egui::RichText::new(format!("({})", gui.selected_entities.len()))
+                        .size(10.0)
+                        .color(theme::COLOR_ACCENT),
+                );
+            }
+        }
+    }
+
+    if in_sketch {
+        ui.label(egui::RichText::new("\u{203A}").size(12.0).color(sep_color));
+        ui.add(
+            egui::Label::new(egui::RichText::new("Sketch").font(font).color(active_color))
+                .selectable(false),
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Floating viewport HUD: nav controls beneath the view cube
+// ---------------------------------------------------------------------------
+
+/// Compact vertical column of camera-nav buttons (Fit All / Reset / Toggle
+/// Projection / Toggle Grid) anchored to the view-cube corner. Acts as the
+/// in-viewport equivalent of the View menu's most-used items so users don't
+/// have to hunt through menus to recenter or switch projection.
+pub(crate) fn draw_viewport_hud(
+    ctx: &egui::Context,
+    gui: &mut GuiState,
+    nav: &crate::nav::NavConfig,
+    camera: &crate::render::Camera,
+) {
+    use egui::{Align2, Color32, Stroke, vec2};
+
+    if !nav.show_view_cube {
+        return;
+    }
+
+    // Position directly below the view cube using the same corner anchor.
+    let cube_h = (nav.cube_size * 1.6 + 92.0).max(120.0); // approx. view cube footprint
+    let btn = 28.0_f32;
+    let gap = 4.0_f32;
+    let edge = 16.0_f32;
+
+    let (anchor, offset) = match nav.cube_corner {
+        1 => (
+            Align2::LEFT_TOP,
+            vec2(280.0 + edge, 82.0 + cube_h + edge),
+        ),
+        2 => (Align2::LEFT_BOTTOM, vec2(280.0 + edge, -(170.0 + edge))),
+        3 => (Align2::RIGHT_BOTTOM, vec2(-edge, -(170.0 + edge))),
+        _ => (Align2::RIGHT_TOP, vec2(-edge, 82.0 + cube_h + edge)),
+    };
+
+    egui::Area::new(egui::Id::new("viewport_hud"))
+        .anchor(anchor, offset)
+        .order(egui::Order::Foreground)
+        .interactable(true)
         .show(ctx, |ui| {
-            ui.horizontal_centered(|ui| {
-                ui.spacing_mut().item_spacing.x = 2.0;
+            let frame = egui::Frame {
+                fill: Color32::from_rgba_premultiplied(0x18, 0x1C, 0x23, 230),
+                stroke: Stroke::new(1.0, Color32::from_rgb(0x2A, 0x30, 0x3C)),
+                inner_margin: egui::Margin::same(4),
+                corner_radius: egui::CornerRadius::same(8),
+                ..egui::Frame::NONE
+            };
+            frame.show(ui, |ui| {
+                ui.set_width(btn);
+                ui.spacing_mut().item_spacing.y = gap;
 
-                let dim_color = theme::COLOR_DIM;
-                let active_color = egui::Color32::from_rgb(200, 205, 215);
-                let sep_color = egui::Color32::from_rgb(80, 84, 92);
-                let font = egui::FontId::new(10.5, egui::FontFamily::Proportional);
+                // Determine projection state for tinted toggle button.
+                let perspective_active = matches!(
+                    camera.projection,
+                    crate::render::Projection::Perspective
+                );
 
-                // Determine segments
-                let has_selection = scene.selected_object().is_some();
-                let has_entities = !gui.selected_entities.is_empty();
-                let in_sketch = gui.sketch_mode.is_some();
-
-                // Scene root
-                let scene_active = !has_selection && !in_sketch;
-                let scene_color = if scene_active {
-                    active_color
-                } else {
-                    dim_color
-                };
-                if ui
-                    .add(
-                        egui::Label::new(
-                            egui::RichText::new("Scene")
-                                .font(font.clone())
-                                .color(scene_color),
-                        )
-                        .selectable(false)
-                        .sense(egui::Sense::click()),
-                    )
-                    .clicked()
-                    && !scene_active
-                {
-                    gui.actions.push(GuiAction::DeselectAll);
-                }
-
-                if let Some(obj) = scene.selected_object() {
-                    ui.label(egui::RichText::new("\u{203A}").size(12.0).color(sep_color));
-                    let obj_active = !has_entities && !in_sketch;
-                    let obj_color = if obj_active { active_color } else { dim_color };
-                    ui.add(
-                        egui::Label::new(
-                            egui::RichText::new(&obj.name)
-                                .font(font.clone())
-                                .color(obj_color),
-                        )
-                        .selectable(false),
-                    );
-
-                    if has_entities {
-                        ui.label(egui::RichText::new("\u{203A}").size(12.0).color(sep_color));
-                        let mode_str = match gui.selection_mode {
-                            SelectionMode::Face => "Face",
-                            SelectionMode::Edge => "Edge",
-                            SelectionMode::Vertex => "Vertex",
-                            SelectionMode::Solid => "Solid",
-                        };
-                        ui.add(
-                            egui::Label::new(
-                                egui::RichText::new(mode_str)
-                                    .font(font.clone())
-                                    .color(active_color),
-                            )
-                            .selectable(false),
-                        );
-
-                        if gui.selected_entities.len() > 1 {
-                            ui.with_layout(
-                                egui::Layout::right_to_left(egui::Align::Center),
-                                |ui| {
-                                    ui.label(
-                                        egui::RichText::new(format!(
-                                            "{} selected",
-                                            gui.selected_entities.len()
-                                        ))
-                                        .size(10.0)
-                                        .color(theme::COLOR_ACCENT),
-                                    );
-                                },
-                            );
-                        }
-                    }
-                }
-
-                if in_sketch {
-                    ui.label(egui::RichText::new("\u{203A}").size(12.0).color(sep_color));
-                    ui.add(
-                        egui::Label::new(
-                            egui::RichText::new("Sketch").font(font).color(active_color),
-                        )
-                        .selectable(false),
-                    );
-                }
+                hud_button(ui, btn, "\u{26F6}", "Fit All  (F)", false, || {
+                    gui.actions.push(GuiAction::FitAll);
+                });
+                hud_button(ui, btn, "\u{2302}", "Reset Camera  (Home)", false, || {
+                    gui.actions.push(GuiAction::ResetCamera);
+                });
+                hud_button(
+                    ui,
+                    btn,
+                    "\u{25A3}",
+                    if perspective_active {
+                        "Switch to Orthographic"
+                    } else {
+                        "Switch to Perspective"
+                    },
+                    perspective_active,
+                    || {
+                        gui.actions.push(GuiAction::ToggleProjection);
+                    },
+                );
+                hud_button(ui, btn, "\u{229E}", "Toggle Grid  (G)", false, || {
+                    gui.actions.push(GuiAction::ToggleGrid);
+                });
             });
         });
+}
+
+fn hud_button(
+    ui: &mut egui::Ui,
+    size: f32,
+    glyph: &str,
+    tooltip: &str,
+    active: bool,
+    on_click: impl FnOnce(),
+) {
+    use egui::{Color32, Sense, Stroke};
+
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(size, size), Sense::click());
+    let painter = ui.painter();
+
+    let hovered = resp.hovered();
+    let bg = if active {
+        theme::COLOR_ACCENT.gamma_multiply(0.32)
+    } else if hovered {
+        Color32::from_rgb(0x2B, 0x30, 0x3B)
+    } else {
+        Color32::from_rgba_premultiplied(0x20, 0x25, 0x30, 200)
+    };
+    let stroke_color = if active {
+        theme::COLOR_ACCENT
+    } else if hovered {
+        Color32::from_rgb(0x55, 0x5C, 0x6A)
+    } else {
+        Color32::from_rgb(0x2F, 0x35, 0x42)
+    };
+    painter.rect_filled(rect, egui::CornerRadius::same(6), bg);
+    painter.rect_stroke(
+        rect,
+        egui::CornerRadius::same(6),
+        Stroke::new(1.0, stroke_color),
+        egui::StrokeKind::Inside,
+    );
+    let glyph_color = if active {
+        theme::COLOR_ACCENT
+    } else if hovered {
+        Color32::from_rgb(220, 224, 232)
+    } else {
+        Color32::from_rgb(180, 186, 196)
+    };
+    painter.text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        glyph,
+        egui::FontId::proportional(15.0),
+        glyph_color,
+    );
+
+    let clicked = resp.clicked();
+    if hovered {
+        resp.on_hover_text(tooltip);
+    }
+
+    if clicked {
+        on_click();
+    }
 }
 
 // ---------------------------------------------------------------------------
