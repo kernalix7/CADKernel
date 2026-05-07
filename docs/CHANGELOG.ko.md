@@ -11,6 +11,12 @@
 
 ### 변경됨
 
+#### API — A2 #3 (부분): `Mirror.merge` (2026-05-07)
+- **`Command::Mirror`에 선택적 `merge: bool` 추가** — `#[serde(default, skip_serializing_if = "std::ops::Not::not")]`로 기존 JSON 호환. `merge=true`일 때 미러된 복사본을 원본과 Boolean Union으로 융합하고 원본 슬롯을 소모 — FreeCAD/SolidWorks PartDesign Mirrored 기능과 동일한 동작. `false`(기본값)일 때는 기존 레거시 동작 그대로 원본 보존 + 미러 별도 수다 등.
+- **`Session::mirror` 재작성** — `merge=true`일 때 기존 `boolean(BooleanKind::Union)` 헬퍼로 위임해 `Outcome::Booleaned { result, consumed }`를 반환. 전체 A2 `MirrorSpec { features, plane, merge }`는 `FeatureId` 장착 후 A2.2로 미루기.
+- **회귀 테스트 2개 추가** — merge=true 융합 동작 + 원본 제거 검증, merge=false 와이어 호환성(JSON 생략 + 레거시 JSON 역직렬화 + 두 솔리드 잔존).
+- 테스트 **2,906 / 0 / 0** (A2 #2 부분 대비 +2), `clippy --all-targets --all-features -D warnings` 무경고.
+
 #### API — A2 #2 (부분): `LinearPattern.skip_instances` (2026-05-07)
 - **`Command::LinearPattern`에 선택적 `skip_instances: Vec<u32>` 추가** — `#[serde(default, skip_serializing_if = "Vec::is_empty")]`로 기존 JSON 페이로드 호환. 인스턴스 인덱스(0 = 원본, 1..count-1 = 복사본)를 애제하는 용도 — A2 `instance_overrides`에서 가장 빈번한 “skip” 양상을 먼저 제공(예: 마운팅 플랜지의 빠진 볼트 위치). 범위 밖 항목은 조용히 필터. 전체 `instance_overrides: HashMap<u32, InstanceOverride>`는 `FeatureId` 장착 후 A2.2로 미루기.
 - **`Session::linear_pattern` 재작성** — skip 세트를 중복/범위 필터, 인덱스 0 스킵 시 원본 솔리드도 문서에서 제거, `Outcome::PatternCreated.instance_count`는 생존 멤버 수(`count - skip.len()`)로 설정, “전부 스킵” 잘못된 호출은 `ApiError::InvalidArgument`로 거부.

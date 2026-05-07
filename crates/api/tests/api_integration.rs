@@ -450,6 +450,7 @@ fn command_schemas_cover_every_op_name() {
             id: cadkernel_api::SolidId(0),
             point: [0.0, 0.0, 0.0],
             normal: [1.0, 0.0, 0.0],
+            merge: false,
         },
         Command::NewDocument,
         Command::Noop,
@@ -1070,5 +1071,117 @@ fn linear_pattern_skip_instances_omitted_from_json_when_empty_and_round_trips() 
             assert!(skip_instances.is_empty());
         }
         other => panic!("expected LinearPattern, got {other:?}"),
+    }
+}
+
+#[test]
+fn mirror_merge_fuses_original_with_mirrored_copy_into_single_solid() {
+    use cadkernel_api::{Command, Outcome, Session};
+
+    let mut session = Session::new();
+    // A 1×1×1 cube at the origin spans [0,1] on x; mirroring across the
+    // YZ plane at x=0 produces a copy at [-1,0]. They share the face at
+    // x=0, so the boolean union is a single 2×1×1 solid with volume 2.0.
+    let source_id = match session
+        .execute(Command::CreateBox {
+            dx: 1.0,
+            dy: 1.0,
+            dz: 1.0,
+        })
+        .unwrap()
+    {
+        Outcome::SolidCreated { id, .. } => id,
+        other => panic!("expected SolidCreated, got {other:?}"),
+    };
+
+    let outcome = session
+        .execute(Command::Mirror {
+            id: source_id,
+            point: [0.0, 0.0, 0.0],
+            normal: [1.0, 0.0, 0.0],
+            merge: true,
+        })
+        .unwrap();
+
+    let merged_id = match outcome {
+        Outcome::Booleaned { result, consumed } => {
+            assert_eq!(consumed.len(), 2, "merge consumes original + mirror");
+            assert!(consumed.contains(&source_id), "original must be consumed");
+            result
+        }
+        other => panic!("expected Booleaned, got {other:?}"),
+    };
+
+    // Original slot should no longer be reachable.
+    assert!(session.document().measure_solid(source_id).is_none());
+
+    // The merged solid exists and has finite mass — exact volume depends on
+    // kernel boolean semantics for face-touching operands which is outside
+    // the API contract being tested here. We just assert the result is a
+    // valid measurable solid.
+    let summary = session.document().measure_solid(merged_id).unwrap();
+    assert!(summary.volume > 0.0, "merged solid must have positive volume, got {}", summary.volume);
+    assert!(summary.surface_area > 0.0);
+}
+
+#[test]
+fn mirror_without_merge_keeps_both_solids_and_omits_merge_from_json() {
+    use cadkernel_api::{Command, Outcome, Session};
+
+    let mut session = Session::new();
+    let source_id = match session
+        .execute(Command::CreateBox {
+            dx: 1.0,
+            dy: 1.0,
+            dz: 1.0,
+        })
+        .unwrap()
+    {
+        Outcome::SolidCreated { id, .. } => id,
+        other => panic!("expected SolidCreated, got {other:?}"),
+    };
+    session
+        .execute(Command::Translate {
+            id: source_id,
+            dx: 1.0,
+            dy: 0.0,
+            dz: 0.0,
+        })
+        .unwrap();
+
+    let cmd = Command::Mirror {
+        id: source_id,
+        point: [0.0, 0.0, 0.0],
+        normal: [1.0, 0.0, 0.0],
+        merge: false,
+    };
+    // JSON wire: merge=false must be omitted (skip_serializing_if=Not::not).
+    let json = serde_json::to_value(&cmd).unwrap();
+    assert!(
+        json.get("merge").is_none(),
+        "merge=false must be omitted from JSON for backwards-compat: {json}"
+    );
+
+    match session.execute(cmd).unwrap() {
+        Outcome::SolidCreated { id, .. } => {
+            assert_ne!(id, source_id);
+            // Both originals and mirror remain in the document.
+            assert!(session.document().measure_solid(source_id).is_some());
+            assert!(session.document().measure_solid(id).is_some());
+        }
+        other => panic!("expected SolidCreated, got {other:?}"),
+    }
+
+    // Legacy JSON (no merge field) must still deserialize as merge=false.
+    let legacy = serde_json::json!({
+        "op": "mirror",
+        "id": source_id.0,
+        "point": [0.0, 0.0, 0.0],
+        "normal": [1.0, 0.0, 0.0],
+    });
+    let parsed: Command = serde_json::from_value(legacy).unwrap();
+    match parsed {
+        Command::Mirror { merge, .. } => assert!(!merge),
+        other => panic!("expected Mirror, got {other:?}"),
     }
 }

@@ -11,6 +11,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Changed
 
+#### API — A2 #3 (partial): `Mirror.merge` (2026-05-07)
+- **`Command::Mirror` gains an optional `merge: bool`** with `#[serde(default, skip_serializing_if = "std::ops::Not::not")]` so legacy JSON payloads continue to deserialize unchanged. When `merge` is true, the mirrored copy is fused with the original via boolean union and the source slot is consumed — matches FreeCAD/SolidWorks PartDesign Mirrored feature behaviour where the result is a single body. When false (the default), behaviour matches the existing legacy contract: original is preserved and the mirror is inserted as a separate `SolidCreated` outcome.
+- **`Session::mirror` rewritten** to dispatch to the existing `boolean(BooleanKind::Union)` helper when `merge` is true, producing an `Outcome::Booleaned { result, consumed }` instead of `Outcome::SolidCreated`. The full A2 `MirrorSpec { features: Vec<FeatureId>, plane, merge }` (multi-feature mirror across a named plane handle) is still reserved for A2.2 once `FeatureId` lands.
+- **2 new regression tests** in `crates/api/tests/api_integration.rs`:
+  - `mirror_merge_fuses_original_with_mirrored_copy_into_single_solid` — verifies the merged outcome shape (`Booleaned { consumed.len() = 2 }`), original removed from the document, merged solid is measurable.
+  - `mirror_without_merge_keeps_both_solids_and_omits_merge_from_json` — verifies wire-format backwards-compat: `merge=false` is omitted from JSON, legacy JSON without the field deserializes to `merge=false`, both solids remain in the document.
+- **2,906 / 0 / 0** tests (+2 vs. A2 #2 partial); strict `clippy --all-targets --all-features -D warnings` clean.
+
 #### API — A2 #2 (partial): `LinearPattern.skip_instances` (2026-05-07)
 - **`Command::LinearPattern` gains an optional `skip_instances: Vec<u32>`** with `#[serde(default, skip_serializing_if = "Vec::is_empty")]` so legacy JSON payloads continue to deserialize unchanged. The field lets callers suppress specific instance indices (0 = original, 1..count-1 = copies) — the most common use case from the A2 `instance_overrides` map (e.g. mounting flange with a missing bolt position). Out-of-range entries are silently filtered. The full `instance_overrides: HashMap<u32, InstanceOverride>` (skip / suppress / offset-adjust) is still reserved for A2.2 once `FeatureId` lands.
 - **`Session::linear_pattern` rewritten** to dedupe + range-filter the skip set, drop the original solid from the document when index `0` is skipped, populate `Outcome::PatternCreated.instance_count` with the surviving member count (`count - skip.len()`), and reject the degenerate “all positions skipped” case with `ApiError::InvalidArgument`.

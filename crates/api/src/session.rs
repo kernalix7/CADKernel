@@ -467,7 +467,7 @@ impl Session {
                 count,
                 skip_instances,
             } => self.linear_pattern(*id, *direction, *spacing, *count, skip_instances),
-            Command::Mirror { id, point, normal } => self.mirror(*id, *point, *normal),
+            Command::Mirror { id, point, normal, merge } => self.mirror(*id, *point, *normal, *merge),
             Command::NewDocument => {
                 self.document = Document::new();
                 self.log.clear();
@@ -725,6 +725,7 @@ impl Session {
         id: SolidId,
         point: [f64; 3],
         normal: [f64; 3],
+        merge: bool,
     ) -> ApiResult<Outcome> {
         let plane_point = Point3::new(point[0], point[1], point[2]);
         let plane_normal = Vec3::new(normal[0], normal[1], normal[2]);
@@ -767,6 +768,13 @@ impl Session {
         let new_id = self
             .document
             .insert(work, mirror_handle, format!("{label} (mirror)"));
+        if merge {
+            // Fuse the original with the freshly inserted mirror via
+            // boolean union. This consumes both source slots and produces
+            // a single Booleaned outcome — matches FreeCAD's PartDesign
+            // Mirrored feature behaviour where the result is a single body.
+            return self.boolean(id, new_id, BooleanKind::Union);
+        }
         Ok(Outcome::SolidCreated {
             id: new_id,
             label: format!("{label} (mirror)"),

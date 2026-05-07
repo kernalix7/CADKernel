@@ -92,11 +92,16 @@ pub enum Command {
         skip_instances: Vec<u32>,
     },
     /// Mirror a solid across a plane. Produces a new solid; the original is
-    /// preserved.
+    /// preserved unless `merge` is true, in which case the original and the
+    /// mirrored copy are fused via boolean union and the source slot is
+    /// consumed (matches FreeCAD/SolidWorks “mirror with merge” /
+    /// PartDesign Mirrored feature behaviour).
     Mirror {
         id: SolidId,
         point: [f64; 3],
         normal: [f64; 3],
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        merge: bool,
     },
     /// Create a freshly-named empty document. Discards every existing solid
     /// and resets the [`Session`] log. Useful as the first command of a
@@ -442,6 +447,12 @@ pub fn command_schemas() -> Vec<CommandSchema> {
                     ty: "vec3",
                     required: true,
                     doc: "Mirror plane normal [x,y,z]; will be normalized.",
+                },
+                ParamSchema {
+                    name: "merge",
+                    ty: "boolean",
+                    required: false,
+                    doc: "Optional. When true, fuse the mirrored copy with the original via boolean union and consume the source slot.",
                 },
             ],
         },
