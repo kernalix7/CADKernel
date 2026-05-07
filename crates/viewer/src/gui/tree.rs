@@ -699,7 +699,11 @@ pub(crate) fn draw_model_tree_inline(ui: &mut egui::Ui, gui: &mut GuiState, scen
                 let painter = ui.painter();
 
                 if row_resp.hovered() {
-                    painter.rect_filled(row_rect, 0.0, egui::Color32::from_rgb(42, 45, 52));
+                    painter.rect_filled(
+                        row_rect,
+                        0.0,
+                        egui::Color32::from_rgb(0x24, 0x29, 0x33),
+                    );
                 }
 
                 let cy = row_rect.center().y;
@@ -712,7 +716,7 @@ pub(crate) fn draw_model_tree_inline(ui: &mut egui::Ui, gui: &mut GuiState, scen
                     "\u{25CB}"
                 };
                 let eye_color = if group.visible {
-                    egui::Color32::from_rgb(90, 185, 110)
+                    theme::COLOR_ACCENT.gamma_multiply(0.85)
                 } else {
                     egui::Color32::from_gray(70)
                 };
@@ -950,7 +954,8 @@ fn handle_keyboard_shortcuts(ui: &mut egui::Ui, gui: &mut GuiState) {
 const INDENT_PX: f32 = 16.0;
 const ICON_SIZE: f32 = 14.0;
 const GUIDE_COLOR: egui::Color32 = egui::Color32::from_rgb(55, 60, 70);
-const ACTIVE_BODY_BG: egui::Color32 = egui::Color32::from_rgba_premultiplied(15, 45, 75, 35);
+// Active body tint — soft teal wash matching the chrome accent.
+const ACTIVE_BODY_BG: egui::Color32 = egui::Color32::from_rgba_premultiplied(20, 70, 65, 32);
 const TIP_COLOR: egui::Color32 = egui::Color32::from_rgb(60, 200, 100);
 const ROW_HEIGHT: f32 = 22.0;
 
@@ -1026,17 +1031,18 @@ fn draw_object_row(
         ui.painter().rect_filled(full_row, 0.0, ACTIVE_BODY_BG);
     }
     if is_selected {
-        // Selection with left accent bar (FreeCAD style)
+        // Teal-tinted selection with left accent bar (matches command palette rows)
         ui.painter()
-            .rect_filled(full_row, 0.0, egui::Color32::from_rgb(9, 71, 113));
+            .rect_filled(full_row, 0.0, theme::COLOR_ACCENT.gamma_multiply(0.18));
         ui.painter().rect_filled(
             egui::Rect::from_min_size(full_row.left_top(), egui::vec2(2.0, ROW_HEIGHT)),
             0.0,
             theme::COLOR_ACCENT,
         );
     } else if hovered {
+        // Hover background harmonized with chrome panel tier (#242933)
         ui.painter()
-            .rect_filled(full_row, 0.0, egui::Color32::from_rgb(42, 45, 48));
+            .rect_filled(full_row, 0.0, egui::Color32::from_rgb(0x24, 0x29, 0x33));
     }
 
     if row_resp.dragged() {
@@ -1209,9 +1215,13 @@ fn draw_object_row(
         if show_eye {
             let eye_char = if obj.visible { "\u{25C9}" } else { "\u{25CB}" };
             let eye_color = if obj.visible {
-                egui::Color32::from_rgb(100, 108, 120)
+                if hovered {
+                    theme::COLOR_ACCENT.gamma_multiply(0.85)
+                } else {
+                    theme::COLOR_DIM
+                }
             } else {
-                egui::Color32::from_rgb(60, 60, 65)
+                egui::Color32::from_rgb(70, 72, 80)
             };
             painter.text(
                 egui::pos2(eye_x, center_y),

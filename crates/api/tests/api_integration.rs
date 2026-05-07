@@ -721,3 +721,84 @@ fn session_save_cadk_with_thumbnail_round_trips_payload() {
     let recovered_thumb = cadk::decode_thumbnail(&bytes).unwrap().unwrap();
     assert_eq!(recovered_thumb, thumbnail);
 }
+
+#[test]
+fn linear_pattern_outcome_reports_pattern_id_instance_count_and_total_features() {
+    use cadkernel_api::{Command, Outcome, Session, SolidId};
+
+    let mut session = Session::new();
+    let create = session
+        .execute(Command::CreateBox {
+            dx: 2.0,
+            dy: 2.0,
+            dz: 2.0,
+        })
+        .unwrap();
+    let source_id = match create {
+        Outcome::SolidCreated { id, .. } => id,
+        other => panic!("expected SolidCreated, got {other:?}"),
+    };
+
+    let pattern = session
+        .execute(Command::LinearPattern {
+            id: source_id,
+            direction: [1.0, 0.0, 0.0],
+            spacing: 5.0,
+            count: 4,
+        })
+        .unwrap();
+
+    match pattern {
+        Outcome::PatternCreated {
+            pattern_id,
+            instance_count,
+            total_features,
+            ids,
+        } => {
+            assert_eq!(pattern_id, source_id, "pattern_id must echo the source");
+            assert_eq!(instance_count, 4, "instance_count must equal Command::count");
+            assert_eq!(
+                total_features, 3,
+                "total_features must equal new instances (count - 1)"
+            );
+            assert_eq!(ids.len(), 4, "ids list must include original + new copies");
+            assert_eq!(ids[0], source_id, "ids[0] must be the source/original");
+            // every ID after [0] must be unique and not equal to the source
+            assert!(ids[1..].iter().all(|i| *i != source_id));
+            assert_eq!(
+                ids.iter().copied().collect::<std::collections::HashSet<_>>().len(),
+                4,
+                "all pattern ids must be unique"
+            );
+        }
+        other => panic!("expected PatternCreated, got {other:?}"),
+    }
+
+    // Verify the JSON wire format carries the new fields (AI-/test-friendly schema).
+    let pattern2 = session
+        .execute(Command::LinearPattern {
+            id: source_id,
+            direction: [0.0, 1.0, 0.0],
+            spacing: 3.0,
+            count: 2,
+        })
+        .unwrap();
+    let json = serde_json::to_value(&pattern2).unwrap();
+    assert_eq!(json["kind"], "pattern_created");
+    assert_eq!(json["pattern_id"], serde_json::json!(source_id.0));
+    assert_eq!(json["instance_count"], serde_json::json!(2));
+    assert_eq!(json["total_features"], serde_json::json!(1));
+    assert!(json["ids"].is_array());
+
+    // Sanity: count = 1 is rejected (existing API contract).
+    let bad = session.execute(Command::LinearPattern {
+        id: source_id,
+        direction: [1.0, 0.0, 0.0],
+        spacing: 1.0,
+        count: 1,
+    });
+    assert!(bad.is_err(), "count < 2 must be rejected");
+
+    // Drop unused warning for SolidId.
+    let _: SolidId = source_id;
+}

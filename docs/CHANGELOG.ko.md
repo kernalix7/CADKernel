@@ -11,6 +11,12 @@
 
 ### 변경됨
 
+#### Viewer + API — UI/UX 정비 Pt. 6 + API A2 #4 (2026-05-07)
+- **트리 행 팔레트 Pt.1–5 틸 악센트로 통일** — 모델 트리 오브젝트 행의 선택 배경이 FreeCAD 시절의 네이비(`rgb(9, 71, 113)`)로 남아 Pt.1–5 코르만 팔레트와 충돌했던 문제를 해소. 이제 선택 배경은 `theme::COLOR_ACCENT.gamma_multiply(0.18)` (Command Palette 결과 행 + 상태바 배지와 동일)로 교체하고 기존 2px 틸 악센트 좌측 바는 그대로 유지. Hover 배경은 `rgb(42, 45, 48)` → `#242933`로 승꺰해 패널 계층과 일치. Active body 워시도 소프트 틸 `rgba(20, 70, 65, 32)`로 재채색. 가시성 눈 아이콘 색상이 hover 시 틸 악센트 계열로 변경.
+- **그룹 헤더 행**도 같은 hover(`#242933`) + 틸 눈 아이콘 결합으로 일치시켜 다중 선택 그룹 토글도 나머지 코르롤롬함.
+- **`Outcome::PatternCreated` 스키마가 AI/테스트 친화적으로 강화** (`crates/api`) — 기존 `{ ids: Vec<SolidId> }`에 `pattern_id`, `instance_count`, `total_features` 필드를 추가해 `{ pattern_id, instance_count, total_features, ids }` 구조로 증설. `pattern_id`는 소스 솔리드, `instance_count`는 `Command::LinearPattern.count` 그대로, `total_features`는 새로 삽입된 솔리드 수(`instance_count - 1`), `ids`는 기존처럼 전체 패턴 구성원 리스트(원본이 이덱스 0). 상업 CAD 로드맵의 A2 디리버러블 #4 완료. JSON 와이어도 기존 `"kind": "pattern_created"` 태그 아래 세 필드가 노출되어 외부 소비자가 `ids.len()`을 파싱하지 않고도 `instance_count`/`total_features`로 분기 가능. `OutcomeKind::PatternCreated`, `Outcome::primary_id()` 갱신. 회귀 테스트 `linear_pattern_outcome_reports_pattern_id_instance_count_and_total_features` 신규로 필드 값 / JSON 세 구조 / `count < 2` 거부 동작을 검증.
+- 테스트 **2,897 / 0 / 0** (Pt.5 대비 +1), `clippy --all-targets --all-features -D warnings` 무경고.
+
 #### Viewer — UI/UX 정비 Pt. 5: 뷰포트 고정 HUD + 상태바 배지 + Command Palette 재디자인 (2026-05-07)
 - **뷰 큐브 + 뷰포트 HUD를 중앙 뷰포트 사각형(`ctx.available_rect()`)에 고정** — 기존에는 하드코딩된 패널 오프셋(280px ComboView, 170px Report, 82px Toolbar)을 빼는 방식이었는데 이제 사이드 도크를 켜고/끄고 리사이즈해도 항상 올바른 위치에 따라옴. Pt.3/Pt.4 레이아웃 일번으로 쓰이지 않던 코너 오프셋 버그 수정.
 - **상태바 세그먼트를 pill 배지로 재구성** — 더 이상 평범한 텍스트 레이블이 아니라 우측 모든 항목(워크벤치, Auto, mm, F1, CAD, Persp/Ortho, Display Mode, 씬 통계, 선택, Measure, FPS)을 새 `status_bar::badge()` 헬퍼로 16px 높이의 뛐근 알약 원으로 그림 — 채움은 `accent.gamma_multiply(0.18)`, 보더는 액센트 소프트 라인, 텍스트는 액센트 자체 색. Hover 시 채움이 밝아짐. 클릭 가능한 배지(투영 토글, F1, CAD)는 `Sense::click()` 유지하며 기존 `GuiAction` 발굴. 하단 바가 이제 각 세그먼트마다 별개 시각 칩으로 읽힘.

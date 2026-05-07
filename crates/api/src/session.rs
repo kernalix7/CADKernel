@@ -655,7 +655,13 @@ impl Session {
                 .insert(copy, handle, format!("{label} (pattern {i})"));
             ids.push(new_id);
         }
-        Ok(Outcome::PatternCreated { ids })
+        let total_features = (ids.len() as u32).saturating_sub(1);
+        Ok(Outcome::PatternCreated {
+            pattern_id: id,
+            instance_count: count,
+            total_features,
+            ids,
+        })
     }
 
     fn mirror(
@@ -762,7 +768,7 @@ fn history_description(cmd: &Command, outcome: &Outcome) -> String {
         ) => format!("Extrude ({} pts, h={distance})", profile.len()),
         (
             Command::LinearPattern { id, count, .. },
-            Outcome::PatternCreated { ids },
+            Outcome::PatternCreated { ids, .. },
         ) => format!("LinearPattern {id} ×{count} ({} solids)", ids.len()),
         (Command::LinearPattern { id, count, .. }, _) => {
             format!("LinearPattern {id} ×{count}")

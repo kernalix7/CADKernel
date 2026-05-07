@@ -21,7 +21,19 @@ pub enum Outcome {
     SolidModified { id: SolidId },
     /// A pattern (linear/mirror) produced one or more new solids; the
     /// original was preserved.
-    PatternCreated { ids: Vec<SolidId> },
+    ///
+    /// - `pattern_id`: the source solid the pattern was generated from.
+    /// - `instance_count`: total instances including the original.
+    /// - `total_features`: number of newly inserted solids
+    ///   (`instance_count - 1`, i.e. excluding the original).
+    /// - `ids`: every solid in the pattern, with the original at index 0
+    ///   and new instances appended in creation order.
+    PatternCreated {
+        pattern_id: SolidId,
+        instance_count: u32,
+        total_features: u32,
+        ids: Vec<SolidId>,
+    },
     /// The document was reset (`Command::NewDocument`).
     DocumentReset,
     /// Nothing happened (`Command::Noop`).
@@ -62,7 +74,7 @@ impl Outcome {
             Self::SolidDeleted { id } => Some(*id),
             Self::Booleaned { result, .. } => Some(*result),
             Self::SolidModified { id } => Some(*id),
-            Self::PatternCreated { ids } => ids.first().copied(),
+            Self::PatternCreated { ids, .. } => ids.first().copied(),
             _ => None,
         }
     }
