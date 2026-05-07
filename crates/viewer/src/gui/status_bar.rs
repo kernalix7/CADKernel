@@ -15,6 +15,49 @@ fn vert_divider(ui: &mut egui::Ui) {
     );
 }
 
+/// Status-bar pill badge. Renders a rounded rect with a thin tinted background
+/// behind the label; on hover the background brightens. Returns the egui
+/// `Response` so call sites can layer click semantics + tooltips on top.
+///
+/// `accent` controls the tint: the badge fill is `accent.gamma_multiply(0.22)`,
+/// the stroke is `accent.gamma_multiply(0.55)`, and the text is rendered in
+/// `accent` itself. For purely decorative badges pass a dimmer color.
+fn badge(
+    ui: &mut egui::Ui,
+    text: &str,
+    accent: egui::Color32,
+    interactive: bool,
+) -> egui::Response {
+    let font = egui::FontId::new(10.5, egui::FontFamily::Proportional);
+    let galley = ui.painter().layout_no_wrap(text.to_owned(), font, accent);
+    let pad_x = 7.0_f32;
+    let pad_y = 1.5_f32;
+    let size = egui::vec2(galley.size().x + pad_x * 2.0, 16.0);
+    let sense = if interactive {
+        egui::Sense::click()
+    } else {
+        egui::Sense::hover()
+    };
+    let (rect, resp) = ui.allocate_exact_size(size, sense);
+
+    let painter = ui.painter();
+    let hovered = resp.hovered();
+    let bg_alpha: f32 = if hovered { 0.32 } else { 0.18 };
+    let stroke_alpha: f32 = if hovered { 0.85 } else { 0.55 };
+    let bg = accent.gamma_multiply(bg_alpha);
+    let stroke = egui::Stroke::new(0.8, accent.gamma_multiply(stroke_alpha));
+    painter.rect_filled(rect, egui::CornerRadius::same(7), bg);
+    painter.rect_stroke(
+        rect,
+        egui::CornerRadius::same(7),
+        stroke,
+        egui::StrokeKind::Inside,
+    );
+    let text_pos = egui::pos2(rect.left() + pad_x, rect.center().y - galley.size().y * 0.5 + pad_y * 0.5 - 0.5);
+    painter.galley(text_pos, galley, accent);
+    resp
+}
+
 pub(crate) fn draw_status_bar(
     ctx: &egui::Context,
     gui: &mut GuiState,
@@ -136,21 +179,13 @@ pub(crate) fn draw_status_bar(
                     ui.label(egui::RichText::new("Grid").size(10.0).color(grid_color));
                     vert_divider(ui);
                 } else {
-                    // Workbench indicator
+                    // Workbench indicator badge (teal accent — matches activity rail)
                     let wb_label = workbench_short_label(gui.active_workbench);
-                    ui.label(
-                        egui::RichText::new(wb_label)
-                            .size(11.0)
-                            .color(theme::COLOR_ACCENT),
-                    );
+                    badge(ui, wb_label, theme::COLOR_ACCENT, false);
                     vert_divider(ui);
 
                     // Selection mode indicator — "Auto" since auto-pick is always active
-                    ui.label(
-                        egui::RichText::new("Auto")
-                            .size(11.0)
-                            .color(theme::COLOR_DIM),
-                    );
+                    badge(ui, "Auto", theme::COLOR_DIM, false);
                     vert_divider(ui);
 
                     // Hover preview: show what entity is under cursor
@@ -195,55 +230,31 @@ pub(crate) fn draw_status_bar(
                 // -- Right section --
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     // Unit system indicator (far right, dimmed)
-                    ui.label(
-                        egui::RichText::new("mm")
-                            .size(10.0)
-                            .color(egui::Color32::from_rgb(90, 95, 105)),
-                    );
+                    badge(ui, "mm", egui::Color32::from_rgb(110, 118, 130), false);
 
                     // Shortcuts hint (press F1 to open reference)
-                    let hint_resp = ui.label(
-                        egui::RichText::new("F1: Shortcuts")
-                            .size(10.0)
-                            .color(egui::Color32::from_rgb(90, 95, 105)),
-                    );
+                    let hint_resp =
+                        badge(ui, "F1", egui::Color32::from_rgb(120, 130, 145), true);
                     if hint_resp.hovered() {
                         hint_resp.on_hover_text("Press F1 to open the Keyboard Shortcuts panel");
                     }
 
                     // Navigation mode indicator (clickable)
-                    let nav_resp = ui.add(
-                        egui::Label::new(
-                            egui::RichText::new("CAD")
-                                .size(10.0)
-                                .color(egui::Color32::from_rgb(110, 130, 160)),
-                        )
-                        .sense(egui::Sense::click()),
-                    );
-                    if nav_resp.hovered() {
-                        nav_resp.on_hover_text("Navigation style");
-                    }
+                    let nav_resp = badge(ui, "CAD", egui::Color32::from_rgb(120, 145, 180), true);
+                    nav_resp.on_hover_text("Navigation style");
 
                     vert_divider(ui);
 
                     // Projection toggle (clickable)
                     let (proj_label, proj_color) = match vp.camera.projection {
                         Projection::Perspective => {
-                            ("Persp", egui::Color32::from_rgb(100, 160, 220))
+                            ("Persp", egui::Color32::from_rgb(110, 175, 235))
                         }
                         Projection::Orthographic => {
-                            ("Ortho", egui::Color32::from_rgb(140, 200, 120))
+                            ("Ortho", egui::Color32::from_rgb(150, 215, 130))
                         }
                     };
-                    let proj_resp = ui.add(
-                        egui::Label::new(
-                            egui::RichText::new(proj_label)
-                                .size(10.0)
-                                .color(proj_color)
-                                .strong(),
-                        )
-                        .sense(egui::Sense::click()),
-                    );
+                    let proj_resp = badge(ui, proj_label, proj_color, true);
                     if proj_resp.clicked() {
                         gui.actions.push(GuiAction::ToggleProjection);
                     }
@@ -251,11 +262,12 @@ pub(crate) fn draw_status_bar(
 
                     vert_divider(ui);
 
-                    // Display mode
-                    ui.label(
-                        egui::RichText::new(vp.display_mode.label())
-                            .size(10.0)
-                            .color(egui::Color32::from_rgb(120, 125, 140)),
+                    // Display mode badge
+                    badge(
+                        ui,
+                        vp.display_mode.label(),
+                        egui::Color32::from_rgb(135, 145, 165),
+                        false,
                     );
 
                     vert_divider(ui);
@@ -274,10 +286,11 @@ pub(crate) fn draw_status_bar(
                     } else {
                         format!("{total_tri}")
                     };
-                    ui.label(
-                        egui::RichText::new(format!("{n_vis}/{n_obj} obj  \u{25B3} {tri_text}"))
-                            .size(10.0)
-                            .color(theme::COLOR_DIM),
+                    badge(
+                        ui,
+                        &format!("{n_vis}/{n_obj} obj  \u{25B3} {tri_text}"),
+                        theme::COLOR_DIM,
+                        false,
                     );
 
                     // Selection info
@@ -292,31 +305,24 @@ pub(crate) fn draw_status_bar(
                             String::new()
                         };
                         if !sel_text.is_empty() {
-                            ui.label(
-                                egui::RichText::new(sel_text)
-                                    .size(10.0)
-                                    .color(egui::Color32::from_rgb(80, 160, 255)),
-                            );
+                            badge(ui, &sel_text, egui::Color32::from_rgb(100, 175, 255), false);
                         }
                     }
 
                     // Measure mode
                     if gui.measurement_mode {
                         vert_divider(ui);
-                        ui.label(
-                            egui::RichText::new("Measure")
-                                .size(10.0)
-                                .color(egui::Color32::from_rgb(220, 180, 60)),
-                        );
+                        badge(ui, "Measure", egui::Color32::from_rgb(230, 190, 80), false);
                     }
 
                     // FPS (far left of right section, so it renders last = leftmost)
                     if vp.show_fps {
                         vert_divider(ui);
-                        ui.label(
-                            egui::RichText::new(format!("{:.0} FPS", vp.fps))
-                                .size(10.0)
-                                .color(theme::COLOR_DIM),
+                        badge(
+                            ui,
+                            &format!("{:.0} FPS", vp.fps),
+                            theme::COLOR_DIM,
+                            false,
                         );
                     }
                 });

@@ -11,6 +11,12 @@
 
 ### 변경됨
 
+#### Viewer — UI/UX 정비 Pt. 5: 뷰포트 고정 HUD + 상태바 배지 + Command Palette 재디자인 (2026-05-07)
+- **뷰 큐브 + 뷰포트 HUD를 중앙 뷰포트 사각형(`ctx.available_rect()`)에 고정** — 기존에는 하드코딩된 패널 오프셋(280px ComboView, 170px Report, 82px Toolbar)을 빼는 방식이었는데 이제 사이드 도크를 켜고/끄고 리사이즈해도 항상 올바른 위치에 따라옴. Pt.3/Pt.4 레이아웃 일번으로 쓰이지 않던 코너 오프셋 버그 수정.
+- **상태바 세그먼트를 pill 배지로 재구성** — 더 이상 평범한 텍스트 레이블이 아니라 우측 모든 항목(워크벤치, Auto, mm, F1, CAD, Persp/Ortho, Display Mode, 씬 통계, 선택, Measure, FPS)을 새 `status_bar::badge()` 헬퍼로 16px 높이의 뛐근 알약 원으로 그림 — 채움은 `accent.gamma_multiply(0.18)`, 보더는 액센트 소프트 라인, 텍스트는 액센트 자체 색. Hover 시 채움이 밝아짐. 클릭 가능한 배지(투영 토글, F1, CAD)는 `Sense::click()` 유지하며 기존 `GuiAction` 발굴. 하단 바가 이제 각 세그먼트마다 별개 시각 칩으로 읽힘.
+- **Command Palette 전면 재디자인** — 제너릭 `Frame::popup`을 커스텀 테마 팝업으로 교체: 10px 능근 모서리, 틸 액센트 보더(`COLOR_ACCENT.gamma_multiply(0.55)`), 드롭 삜도우, `#16191F` 다크 헤더 밴드 + 돋보기 글리프, 프레임리스 전폭 검색 필드, 헤더 우측 라이브 매치 카운트 칩, 액센트 틴트 결과 행 + 활성 행에 틸 좌측 바, 속성 키는 모노스페이스 칩(채움 `#14171D` + 보더 `#353C48`), 우측 희미한 카테고리 레이블, 푸터 밴드에 `↑↓ navigate / ↵ run / Esc close` 힌트 + `Ctrl+P` 리마인더. 검색 결과 없을 때도 단순 "No matching commands."가 아니라 사용자의 쿼리를 이키릭체로 보여줌.
+- 테스트 2,896 / 0 / 0, `clippy --all-targets --all-features -D warnings` 무경고.
+
 #### Viewer — UI/UX 정비 Pt. 4: 브레드크럼 병합 + 뷰포트 HUD + 탭형 Inspector (2026-05-07)
 - **브레드크럼을 컨텍스트 툴바에 통합** — 전용 20px 브레드크럼 줄(`draw_breadcrumb_bar` 패널)을 제거하고 Scene › Object › Mode 경로를 새 헬퍼 `overlays::draw_breadcrumb_inline`로 컨텍스트 툴바 우측에 인라인 렌더링. 상단 크롬 4줄 → **3줄**(메뉴 → 툴바 → 컨텍스트+브레드크럼)로 압축. 단독 브레드크럼 함수는 삭제하고 모든 호출을 인라인 헬퍼로 통일.
 - **플로팅 뷰포트 HUD 신규** — `overlays::draw_viewport_hud`는 뷰 큐브 아래에 같은 코너 설정으로 고정되는 28px 사각 4버튼 세로 컬럼을 그림. Fit All / Reset Camera / Toggle Projection(원근일 때 틸 강조) / Toggle Grid. 각 버튼은 hover elevation + 활성 시 액센트 보더 + 숏컷 툴팁. 기존 `GuiAction::{FitAll, ResetCamera, ToggleProjection, ToggleGrid}` 재사용 — 신규 GuiAction 없음. 뷰 큐브를 숨기면 같이 숨겨져 깔끔한 캔버스 선호 사용자도 OK.

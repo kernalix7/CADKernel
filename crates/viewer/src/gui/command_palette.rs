@@ -10,7 +10,7 @@
 //!
 //! Reference: `docs/COMMERCIAL_CAD_ROADMAP.md` Track B §B15 (search).
 
-use super::tokens;
+use super::theme;
 use super::{GuiAction, GuiState};
 use crate::render::{DisplayMode, StandardView};
 
@@ -247,115 +247,266 @@ pub(crate) fn draw_command_palette(ctx: &egui::Context, gui: &mut GuiState) {
     let mut to_dispatch: Option<fn(&mut GuiState)> = None;
 
     let screen = ctx.screen_rect();
-    let palette_width = 560.0_f32.min(screen.width() - 32.0);
-    let palette_height = 420.0_f32.min(screen.height() - 64.0);
+    let palette_width = 600.0_f32.min(screen.width() - 32.0);
+    let palette_height = 460.0_f32.min(screen.height() - 64.0);
 
     egui::Area::new(egui::Id::new("__command_palette"))
         .order(egui::Order::Foreground)
-        .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 80.0))
+        .anchor(egui::Align2::CENTER_TOP, egui::vec2(0.0, 92.0))
         .show(ctx, |ui| {
-            egui::Frame::popup(ui.style())
-                .inner_margin(egui::Margin::same(tokens::SPACE_MD as i8))
-                .corner_radius(egui::CornerRadius::same(tokens::RADIUS_LG as u8))
-                .show(ui, |ui| {
-                    ui.set_width(palette_width);
-                    ui.set_max_height(palette_height);
+            // Themed popup frame: dark panel with thin teal accent stroke +
+            // soft drop shadow, matches the rest of the CADKernel chrome.
+            let frame = egui::Frame {
+                fill: egui::Color32::from_rgb(0x1C, 0x20, 0x28),
+                stroke: egui::Stroke::new(1.0, theme::COLOR_ACCENT.gamma_multiply(0.55)),
+                inner_margin: egui::Margin::same(0),
+                corner_radius: egui::CornerRadius::same(10),
+                shadow: egui::epaint::Shadow {
+                    offset: [0, 8],
+                    blur: 24,
+                    spread: 0,
+                    color: egui::Color32::from_black_alpha(110),
+                },
+                ..egui::Frame::NONE
+            };
+            frame.show(ui, |ui| {
+                ui.set_width(palette_width);
+                ui.set_max_height(palette_height);
 
-                    // Search input.
-                    let edit = egui::TextEdit::singleline(&mut gui.command_palette.query)
-                        .hint_text("Type a command…")
-                        .font(egui::FontId::proportional(tokens::FONT_LG))
-                        .desired_width(palette_width - 2.0 * tokens::SPACE_MD);
-                    let resp = ui.add(edit);
-                    if gui.command_palette.request_focus {
-                        resp.request_focus();
-                        gui.command_palette.request_focus = false;
-                    }
+                // -- Search header --
+                let header_h = 44.0;
+                let header_rect = ui.allocate_space(egui::vec2(palette_width, header_h)).1;
+                let painter = ui.painter();
+                painter.rect_filled(
+                    header_rect,
+                    egui::CornerRadius {
+                        nw: 10,
+                        ne: 10,
+                        sw: 0,
+                        se: 0,
+                    },
+                    egui::Color32::from_rgb(0x16, 0x19, 0x20),
+                );
+                painter.line_segment(
+                    [
+                        egui::pos2(header_rect.left() + 8.0, header_rect.bottom() - 0.5),
+                        egui::pos2(header_rect.right() - 8.0, header_rect.bottom() - 0.5),
+                    ],
+                    egui::Stroke::new(1.0, egui::Color32::from_rgb(0x10, 0x13, 0x19)),
+                );
+                // Magnifier glyph
+                painter.text(
+                    egui::pos2(header_rect.left() + 16.0, header_rect.center().y),
+                    egui::Align2::LEFT_CENTER,
+                    "\u{1F50D}",
+                    egui::FontId::proportional(15.0),
+                    theme::COLOR_ACCENT,
+                );
 
-                    ui.add_space(tokens::SPACE_XS);
-                    ui.separator();
-                    ui.add_space(tokens::SPACE_XS);
+                // Place the text edit inside the header rect.
+                let edit_rect = egui::Rect::from_min_size(
+                    egui::pos2(header_rect.left() + 38.0, header_rect.top() + 8.0),
+                    egui::vec2(palette_width - 76.0, header_h - 16.0),
+                );
+                let edit_resp = ui.put(
+                    edit_rect,
+                    egui::TextEdit::singleline(&mut gui.command_palette.query)
+                        .hint_text("Type a command, view, or tool…")
+                        .font(egui::FontId::proportional(14.0))
+                        .frame(false)
+                        .text_color(egui::Color32::from_rgb(220, 226, 235)),
+                );
+                if gui.command_palette.request_focus {
+                    edit_resp.request_focus();
+                    gui.command_palette.request_focus = false;
+                }
+                // Match-count chip on the right edge of the header.
+                let chip_text = if scored.is_empty() {
+                    "no matches".to_string()
+                } else {
+                    format!("{} match{}", scored.len(), if scored.len() == 1 { "" } else { "es" })
+                };
+                let chip_color = if scored.is_empty() {
+                    egui::Color32::from_rgb(180, 110, 110)
+                } else {
+                    theme::COLOR_ACCENT
+                };
+                let painter = ui.painter();
+                painter.text(
+                    egui::pos2(header_rect.right() - 14.0, header_rect.center().y),
+                    egui::Align2::RIGHT_CENTER,
+                    chip_text,
+                    egui::FontId::proportional(10.5),
+                    chip_color,
+                );
 
-                    if scored.is_empty() {
-                        ui.weak("No matching commands.");
-                        return;
-                    }
-
+                // -- Results list --
+                if scored.is_empty() {
+                    ui.add_space(28.0);
+                    ui.vertical_centered(|ui| {
+                        ui.label(
+                            egui::RichText::new("No commands match \u{201C}")
+                                .color(theme::COLOR_DIM)
+                                .size(12.0),
+                        );
+                        ui.label(
+                            egui::RichText::new(format!("\u{201C}{}\u{201D}", gui.command_palette.query))
+                                .color(egui::Color32::from_rgb(200, 210, 225))
+                                .size(13.0)
+                                .italics(),
+                        );
+                    });
+                    ui.add_space(20.0);
+                } else {
                     egui::ScrollArea::vertical()
-                        .max_height(palette_height - 80.0)
+                        .auto_shrink([false, false])
+                        .max_height(palette_height - header_h - 32.0)
                         .show(ui, |ui| {
+                            ui.add_space(4.0);
                             for (visible_row, (_score, entry_idx)) in scored.iter().enumerate() {
                                 let entry = &entries[*entry_idx];
                                 let selected = visible_row == gui.command_palette.selected;
-                                let row = ui.horizontal(|ui| {
-                                    ui.set_min_width(palette_width - 2.0 * tokens::SPACE_MD);
-                                    let bg = if selected {
-                                        ui.visuals().selection.bg_fill
-                                    } else {
-                                        egui::Color32::TRANSPARENT
-                                    };
-                                    let text_color = if selected {
-                                        ui.visuals().selection.stroke.color
-                                    } else {
-                                        ui.visuals().text_color()
-                                    };
-                                    let row_rect = ui.available_rect_before_wrap();
-                                    ui.painter().rect_filled(
+                                let row_h = 34.0;
+                                let (row_rect, row_resp) = ui.allocate_exact_size(
+                                    egui::vec2(palette_width - 8.0, row_h),
+                                    egui::Sense::click(),
+                                );
+                                // Inset the row so we get a 4px margin on each side.
+                                let inset = row_rect.shrink2(egui::vec2(4.0, 1.0));
+                                let painter = ui.painter();
+                                let bg = if selected {
+                                    theme::COLOR_ACCENT.gamma_multiply(0.18)
+                                } else if row_resp.hovered() {
+                                    egui::Color32::from_rgb(0x24, 0x29, 0x33)
+                                } else {
+                                    egui::Color32::TRANSPARENT
+                                };
+                                painter.rect_filled(inset, egui::CornerRadius::same(6), bg);
+                                if selected {
+                                    // Teal accent left bar.
+                                    painter.rect_filled(
                                         egui::Rect::from_min_size(
-                                            row_rect.min,
-                                            egui::vec2(row_rect.width(), tokens::HIT_TARGET_MIN),
+                                            inset.min,
+                                            egui::vec2(3.0, inset.height()),
                                         ),
-                                        egui::CornerRadius::same(tokens::RADIUS_SM as u8),
-                                        bg,
+                                        egui::CornerRadius {
+                                            nw: 6,
+                                            sw: 6,
+                                            ne: 0,
+                                            se: 0,
+                                        },
+                                        theme::COLOR_ACCENT,
                                     );
+                                }
 
-                                    ui.add_space(tokens::SPACE_SM);
-                                    ui.vertical(|ui| {
-                                        ui.add_space(tokens::SPACE_XS);
-                                        ui.horizontal(|ui| {
-                                            ui.label(
-                                                egui::RichText::new(entry.label)
-                                                    .color(text_color)
-                                                    .size(tokens::FONT_MD),
-                                            );
-                                            ui.add_space(tokens::SPACE_SM);
-                                            ui.weak(
-                                                egui::RichText::new(entry.category)
-                                                    .size(tokens::FONT_SM),
-                                            );
-                                        });
-                                    });
+                                // Label
+                                let label_color = if selected {
+                                    egui::Color32::from_rgb(232, 238, 246)
+                                } else {
+                                    egui::Color32::from_rgb(210, 216, 226)
+                                };
+                                painter.text(
+                                    egui::pos2(inset.left() + 14.0, inset.center().y),
+                                    egui::Align2::LEFT_CENTER,
+                                    entry.label,
+                                    egui::FontId::proportional(13.0),
+                                    label_color,
+                                );
 
-                                    if let Some(sc) = entry.shortcut {
-                                        ui.with_layout(
-                                            egui::Layout::right_to_left(egui::Align::Center),
-                                            |ui| {
-                                                ui.add_space(tokens::SPACE_SM);
-                                                ui.weak(
-                                                    egui::RichText::new(sc)
-                                                        .size(tokens::FONT_SM)
-                                                        .monospace(),
-                                                );
-                                            },
-                                        );
-                                    }
-                                });
+                                // Category chip on the right side, before the shortcut.
+                                let mut right_x = inset.right() - 8.0;
+                                if let Some(sc) = entry.shortcut {
+                                    let font = egui::FontId::monospace(10.5);
+                                    let g = painter.layout_no_wrap(
+                                        sc.to_string(),
+                                        font.clone(),
+                                        theme::COLOR_DIM,
+                                    );
+                                    let pad = 6.0;
+                                    let chip_w = g.size().x + pad * 2.0;
+                                    let chip_rect = egui::Rect::from_min_size(
+                                        egui::pos2(right_x - chip_w, inset.center().y - 8.0),
+                                        egui::vec2(chip_w, 16.0),
+                                    );
+                                    painter.rect_filled(
+                                        chip_rect,
+                                        egui::CornerRadius::same(4),
+                                        egui::Color32::from_rgb(0x14, 0x17, 0x1D),
+                                    );
+                                    painter.rect_stroke(
+                                        chip_rect,
+                                        egui::CornerRadius::same(4),
+                                        egui::Stroke::new(
+                                            0.6,
+                                            egui::Color32::from_rgb(0x35, 0x3C, 0x48),
+                                        ),
+                                        egui::StrokeKind::Inside,
+                                    );
+                                    painter.galley(
+                                        egui::pos2(
+                                            chip_rect.left() + pad,
+                                            chip_rect.center().y - g.size().y * 0.5,
+                                        ),
+                                        g,
+                                        theme::COLOR_DIM,
+                                    );
+                                    right_x = chip_rect.left() - 6.0;
+                                }
+                                // Category text right-aligned.
+                                painter.text(
+                                    egui::pos2(right_x, inset.center().y),
+                                    egui::Align2::RIGHT_CENTER,
+                                    entry.category,
+                                    egui::FontId::proportional(10.5),
+                                    theme::COLOR_DIM,
+                                );
 
-                                if row.response.interact(egui::Sense::click()).clicked() {
+                                if row_resp.clicked() {
                                     to_dispatch = Some(entry.run);
                                 }
                             }
+                            ui.add_space(4.0);
                         });
+                }
 
-                    ui.add_space(tokens::SPACE_XS);
-                    ui.separator();
-                    ui.horizontal(|ui| {
-                        ui.weak(
-                            egui::RichText::new("↑↓ navigate    ↵ run    Esc close")
-                                .size(tokens::FONT_SM),
-                        );
-                    });
-                });
+                // -- Footer hints --
+                let footer_h = 26.0;
+                let footer_rect = ui
+                    .allocate_space(egui::vec2(palette_width, footer_h))
+                    .1;
+                let painter = ui.painter();
+                painter.rect_filled(
+                    footer_rect,
+                    egui::CornerRadius {
+                        nw: 0,
+                        ne: 0,
+                        sw: 10,
+                        se: 10,
+                    },
+                    egui::Color32::from_rgb(0x16, 0x19, 0x20),
+                );
+                painter.line_segment(
+                    [
+                        egui::pos2(footer_rect.left() + 8.0, footer_rect.top() + 0.5),
+                        egui::pos2(footer_rect.right() - 8.0, footer_rect.top() + 0.5),
+                    ],
+                    egui::Stroke::new(1.0, egui::Color32::from_rgb(0x10, 0x13, 0x19)),
+                );
+                painter.text(
+                    egui::pos2(footer_rect.left() + 14.0, footer_rect.center().y),
+                    egui::Align2::LEFT_CENTER,
+                    "\u{2191}\u{2193} navigate    \u{21B5} run    Esc close",
+                    egui::FontId::proportional(10.5),
+                    theme::COLOR_DIM,
+                );
+                painter.text(
+                    egui::pos2(footer_rect.right() - 14.0, footer_rect.center().y),
+                    egui::Align2::RIGHT_CENTER,
+                    "Ctrl+P",
+                    egui::FontId::monospace(10.0),
+                    egui::Color32::from_rgb(120, 130, 145),
+                );
+            });
         });
 
     // Enter dispatches the highlighted entry.

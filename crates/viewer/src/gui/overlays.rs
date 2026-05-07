@@ -2170,30 +2170,36 @@ pub(crate) fn draw_viewport_hud(
     nav: &crate::nav::NavConfig,
     camera: &crate::render::Camera,
 ) {
-    use egui::{Align2, Color32, Stroke, vec2};
+    use egui::{Color32, Stroke};
 
     if !nav.show_view_cube {
         return;
     }
 
     // Position directly below the view cube using the same corner anchor.
-    let cube_h = (nav.cube_size * 1.6 + 92.0).max(120.0); // approx. view cube footprint
+    // The cube footprint is roughly cube_size * 1.6 in radius (ring) plus the
+    // arrow/side-button overhang (~46px) — match the math in view_cube.rs.
+    let cube_radius = nav.cube_size * 0.8 + 46.0;
+    let cube_full = cube_radius * 2.0 + 16.0; // diameter + a small gap
     let btn = 28.0_f32;
     let gap = 4.0_f32;
     let edge = 16.0_f32;
 
-    let (anchor, offset) = match nav.cube_corner {
-        1 => (
-            Align2::LEFT_TOP,
-            vec2(280.0 + edge, 82.0 + cube_h + edge),
+    // Anchor inside the central viewport rect so the HUD never sits over a
+    // dock or report panel — matches the view-cube fix.
+    let vp = ctx.available_rect();
+    let pos = match nav.cube_corner {
+        1 => egui::pos2(vp.left() + edge, vp.top() + cube_full),
+        2 => egui::pos2(vp.left() + edge, vp.bottom() - cube_full - btn * 4.0 - gap * 3.0 - 8.0),
+        3 => egui::pos2(
+            vp.right() - edge - btn - 8.0,
+            vp.bottom() - cube_full - btn * 4.0 - gap * 3.0 - 8.0,
         ),
-        2 => (Align2::LEFT_BOTTOM, vec2(280.0 + edge, -(170.0 + edge))),
-        3 => (Align2::RIGHT_BOTTOM, vec2(-edge, -(170.0 + edge))),
-        _ => (Align2::RIGHT_TOP, vec2(-edge, 82.0 + cube_h + edge)),
+        _ => egui::pos2(vp.right() - edge - btn - 8.0, vp.top() + cube_full),
     };
 
     egui::Area::new(egui::Id::new("viewport_hud"))
-        .anchor(anchor, offset)
+        .fixed_pos(pos)
         .order(egui::Order::Foreground)
         .interactable(true)
         .show(ctx, |ui| {

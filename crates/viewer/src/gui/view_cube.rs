@@ -191,15 +191,17 @@ pub(crate) fn draw_view_cube(
     // Total radius: ring(cube_half*1.6) + arrows(14) + side buttons(18+10) + margin
     let ring_outer = cube_half * 1.6;
     let pad = ring_outer + 46.0; // 14(arrow) + 18(side offset) + 10(side radius) + 4(extra)
-    let scr = ctx.screen_rect();
-    // Offsets to avoid panels: top ~80px (toolbars), bottom ~170px (report+status), left ~280px (combo)
+    // Use the central viewport rect (ctx.available_rect after side/top panels
+    // are laid out) instead of hardcoding panel offsets — keeps the cube
+    // anchored correctly regardless of which docks are toggled or how their
+    // widths are resized.
+    let vp = ctx.available_rect();
     let edge = pad + 8.0;
-    // Toolbar height ~82px, report+status ~170px, combo panel ~280px
     let center = match nav.cube_corner {
-        1 => egui::pos2(scr.left() + 280.0 + edge, scr.top() + 82.0 + edge),
-        2 => egui::pos2(scr.left() + 280.0 + edge, scr.bottom() - 170.0 - edge),
-        3 => egui::pos2(scr.right() - edge, scr.bottom() - 170.0 - edge),
-        _ => egui::pos2(scr.right() - edge, scr.top() + 82.0 + edge), // TopRight
+        1 => egui::pos2(vp.left() + edge, vp.top() + edge),
+        2 => egui::pos2(vp.left() + edge, vp.bottom() - edge),
+        3 => egui::pos2(vp.right() - edge, vp.bottom() - edge),
+        _ => egui::pos2(vp.right() - edge, vp.top() + edge), // TopRight
     };
 
     let eye = camera.eye();
