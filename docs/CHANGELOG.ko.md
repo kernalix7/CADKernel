@@ -11,6 +11,12 @@
 
 ### 변경됨
 
+#### API — A2 #2 (부분): `LinearPattern.skip_instances` (2026-05-07)
+- **`Command::LinearPattern`에 선택적 `skip_instances: Vec<u32>` 추가** — `#[serde(default, skip_serializing_if = "Vec::is_empty")]`로 기존 JSON 페이로드 호환. 인스턴스 인덱스(0 = 원본, 1..count-1 = 복사본)를 애제하는 용도 — A2 `instance_overrides`에서 가장 빈번한 “skip” 양상을 먼저 제공(예: 마운팅 플랜지의 빠진 볼트 위치). 범위 밖 항목은 조용히 필터. 전체 `instance_overrides: HashMap<u32, InstanceOverride>`는 `FeatureId` 장착 후 A2.2로 미루기.
+- **`Session::linear_pattern` 재작성** — skip 세트를 중복/범위 필터, 인덱스 0 스킵 시 원본 솔리드도 문서에서 제거, `Outcome::PatternCreated.instance_count`는 생존 멤버 수(`count - skip.len()`)로 설정, “전부 스킵” 잘못된 호출은 `ApiError::InvalidArgument`로 거부.
+- **회귀 테스트 4개 추가** — 인덱스 일부 스킵 / 원본 스킵 / 전체 스킵 거부 / JSON 와이어 단방향 호환(빈 벡터 생략 + 레거시 JSON 역직렬화).
+- 테스트 **2,904 / 0 / 0** (A2 #1 부분 대비 +4), `clippy --all-targets --all-features -D warnings` 무경고.
+
 #### API — A2 #1 (부분): `ExtrudeKind` enum (Blind / MidPlane / TwoSided) (2026-05-07)
 - **`Command::Extrude`에 선택적 `kind` 파라미터 추가** (`#[serde(default)]`로 기본값 `Blind` — 기존 JSON 호환). 신규 `ExtrudeKind` enum (`crates/api/src/command.rs`)은 `#[serde(tag = "mode", rename_all = "snake_case")]` 태그 유니언으로 세 변형: `Blind` (단방향, 레거시), `MidPlane` (프로파일 평면 중심으로 양쪽 절반씩), `TwoSided { back_distance: f64 }` (전방 `distance` + 후방 `back_distance` 독립 제어, `back_distance > 0` 필요). `ThroughAll`/`UpToFace`는 `sketch_id` 배선 후 A2.2에서 추가.
 - **`Session::extrude_profile` 재작성** — `(back_shift, total_distance)`을 kind별로 계산하고 방향을 한 번 정규화한 뒤 프로파일을 `-dir_unit * back_shift`만큼 이동, `total_distance`를 커널 `extrude(...)`에 전달. `TwoSided`의 `back_distance <= 0`은 `KernelError::Invalid`로 조기 거부.

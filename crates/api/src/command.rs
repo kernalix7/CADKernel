@@ -76,11 +76,20 @@ pub enum Command {
     /// Linear pattern: produces `count` copies of `id` (including the
     /// original) at `spacing` intervals along `direction`. The original is
     /// preserved; new solids get fresh `SolidId`s.
+    ///
+    /// `skip_instances` lets callers suppress specific instance indices
+    /// (0 = original, 1..count-1 = copies). Indices outside the valid
+    /// range are ignored. This is a precursor to the full A2
+    /// `instance_overrides` map (skip / suppress / offset-adjust); for
+    /// now we only model the “skip” case which is by far the most
+    /// common use (e.g. mounting flange with a missing bolt position).
     LinearPattern {
         id: SolidId,
         direction: [f64; 3],
         spacing: f64,
         count: u32,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        skip_instances: Vec<u32>,
     },
     /// Mirror a solid across a plane. Produces a new solid; the original is
     /// preserved.
@@ -403,6 +412,12 @@ pub fn command_schemas() -> Vec<CommandSchema> {
                     ty: "integer",
                     required: true,
                     doc: "Total number of copies including the original (≥ 2).",
+                },
+                ParamSchema {
+                    name: "skip_instances",
+                    ty: "integer[]",
+                    required: false,
+                    doc: "Optional. Instance indices to suppress (0 = original, 1..count-1 = copies). Out-of-range entries are ignored.",
                 },
             ],
         },

@@ -444,6 +444,7 @@ fn command_schemas_cover_every_op_name() {
             direction: [1.0, 0.0, 0.0],
             spacing: 1.0,
             count: 2,
+            skip_instances: Vec::new(),
         },
         Command::Mirror {
             id: cadkernel_api::SolidId(0),
@@ -746,6 +747,7 @@ fn linear_pattern_outcome_reports_pattern_id_instance_count_and_total_features()
             direction: [1.0, 0.0, 0.0],
             spacing: 5.0,
             count: 4,
+            skip_instances: Vec::new(),
         })
         .unwrap();
 
@@ -782,6 +784,7 @@ fn linear_pattern_outcome_reports_pattern_id_instance_count_and_total_features()
             direction: [0.0, 1.0, 0.0],
             spacing: 3.0,
             count: 2,
+            skip_instances: Vec::new(),
         })
         .unwrap();
     let json = serde_json::to_value(&pattern2).unwrap();
@@ -797,6 +800,7 @@ fn linear_pattern_outcome_reports_pattern_id_instance_count_and_total_features()
         direction: [1.0, 0.0, 0.0],
         spacing: 1.0,
         count: 1,
+        skip_instances: Vec::new(),
     });
     assert!(bad.is_err(), "count < 2 must be rejected");
 
@@ -912,4 +916,159 @@ fn extrude_kind_two_sided_extends_in_both_directions_with_correct_total_span() {
     assert_eq!(json["op"], "extrude");
     assert_eq!(json["kind"]["mode"], "two_sided");
     assert_eq!(json["kind"]["back_distance"], serde_json::json!(2.0));
+}
+
+#[test]
+fn linear_pattern_skip_instances_suppresses_specified_indices_and_reports_correct_counts() {
+    use cadkernel_api::{Command, Outcome, Session};
+
+    let mut session = Session::new();
+    let source_id = match session
+        .execute(Command::CreateBox {
+            dx: 1.0,
+            dy: 1.0,
+            dz: 1.0,
+        })
+        .unwrap()
+    {
+        Outcome::SolidCreated { id, .. } => id,
+        other => panic!("expected SolidCreated, got {other:?}"),
+    };
+
+    // Pattern of 5 with instances 1 and 3 skipped → original (0) + 2 + 4 = 3 surviving members.
+    let outcome = session
+        .execute(Command::LinearPattern {
+            id: source_id,
+            direction: [1.0, 0.0, 0.0],
+            spacing: 5.0,
+            count: 5,
+            skip_instances: vec![1, 3],
+        })
+        .unwrap();
+
+    match outcome {
+        Outcome::PatternCreated {
+            pattern_id,
+            instance_count,
+            total_features,
+            ids,
+        } => {
+            assert_eq!(pattern_id, source_id);
+            assert_eq!(instance_count, 3, "5 minus 2 skipped = 3 surviving instances");
+            assert_eq!(total_features, 2, "two new solids inserted (i=2 and i=4)");
+            assert_eq!(ids.len(), 3);
+            assert_eq!(ids[0], source_id, "original retained at index 0");
+        }
+        other => panic!("expected PatternCreated, got {other:?}"),
+    }
+}
+
+#[test]
+fn linear_pattern_skip_instance_zero_drops_original_and_keeps_only_copies() {
+    use cadkernel_api::{Command, Outcome, Session};
+
+    let mut session = Session::new();
+    let source_id = match session
+        .execute(Command::CreateBox {
+            dx: 1.0,
+            dy: 1.0,
+            dz: 1.0,
+        })
+        .unwrap()
+    {
+        Outcome::SolidCreated { id, .. } => id,
+        other => panic!("expected SolidCreated, got {other:?}"),
+    };
+
+    let outcome = session
+        .execute(Command::LinearPattern {
+            id: source_id,
+            direction: [0.0, 1.0, 0.0],
+            spacing: 2.0,
+            count: 3,
+            skip_instances: vec![0],
+        })
+        .unwrap();
+
+    match outcome {
+        Outcome::PatternCreated {
+            pattern_id,
+            instance_count,
+            total_features,
+            ids,
+        } => {
+            assert_eq!(pattern_id, source_id);
+            assert_eq!(instance_count, 2);
+            assert_eq!(total_features, 2, "both copies count as new features when original is dropped");
+            assert_eq!(ids.len(), 2);
+            assert!(!ids.contains(&source_id), "original id must not appear when index 0 is skipped");
+        }
+        other => panic!("expected PatternCreated, got {other:?}"),
+    }
+
+    // Document no longer exposes the original solid.
+    assert!(
+        session.document().measure_solid(source_id).is_none(),
+        "original solid must be removed from the document when skipped"
+    );
+}
+
+#[test]
+fn linear_pattern_skip_all_instances_is_rejected_with_invalid_argument() {
+    use cadkernel_api::{ApiError, Command, Outcome, Session};
+
+    let mut session = Session::new();
+    let source_id = match session
+        .execute(Command::CreateBox {
+            dx: 1.0,
+            dy: 1.0,
+            dz: 1.0,
+        })
+        .unwrap()
+    {
+        Outcome::SolidCreated { id, .. } => id,
+        other => panic!("expected SolidCreated, got {other:?}"),
+    };
+
+    let result = session.execute(Command::LinearPattern {
+        id: source_id,
+        direction: [1.0, 0.0, 0.0],
+        spacing: 2.0,
+        count: 3,
+        skip_instances: vec![0, 1, 2],
+    });
+    assert!(matches!(result, Err(ApiError::InvalidArgument(_))));
+}
+
+#[test]
+fn linear_pattern_skip_instances_omitted_from_json_when_empty_and_round_trips() {
+    use cadkernel_api::Command;
+
+    let cmd = Command::LinearPattern {
+        id: cadkernel_api::SolidId(0),
+        direction: [1.0, 0.0, 0.0],
+        spacing: 1.0,
+        count: 3,
+        skip_instances: Vec::new(),
+    };
+    let json = serde_json::to_value(&cmd).unwrap();
+    assert!(
+        json.get("skip_instances").is_none(),
+        "empty skip_instances must be omitted from JSON for backwards-compat: {json}"
+    );
+    // Legacy JSON (no skip_instances field) must still deserialize as an empty Vec.
+    let legacy = serde_json::json!({
+        "op": "linear_pattern",
+        "id": 0,
+        "direction": [1.0, 0.0, 0.0],
+        "spacing": 1.0,
+        "count": 3,
+    });
+    let parsed: Command = serde_json::from_value(legacy).unwrap();
+    match parsed {
+        Command::LinearPattern { skip_instances, .. } => {
+            assert!(skip_instances.is_empty());
+        }
+        other => panic!("expected LinearPattern, got {other:?}"),
+    }
 }

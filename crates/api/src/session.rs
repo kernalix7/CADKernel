@@ -465,7 +465,8 @@ impl Session {
                 direction,
                 spacing,
                 count,
-            } => self.linear_pattern(*id, *direction, *spacing, *count),
+                skip_instances,
+            } => self.linear_pattern(*id, *direction, *spacing, *count, skip_instances),
             Command::Mirror { id, point, normal } => self.mirror(*id, *point, *normal),
             Command::NewDocument => {
                 self.document = Document::new();
@@ -649,6 +650,7 @@ impl Session {
         direction: [f64; 3],
         spacing: f64,
         count: u32,
+        skip_instances: &[u32],
     ) -> ApiResult<Outcome> {
         if count < 2 {
             return Err(ApiError::InvalidArgument(format!(
@@ -659,6 +661,20 @@ impl Session {
         let dir = dir_v.normalized().ok_or_else(|| {
             ApiError::InvalidArgument("linear_pattern direction must be non-zero".into())
         })?;
+        // Skip set: filter to in-range indices and dedupe.
+        let skip: std::collections::HashSet<u32> = skip_instances
+            .iter()
+            .copied()
+            .filter(|i| *i < count)
+            .collect();
+        // Reject the degenerate case where every position is skipped —
+        // including the original — since that would produce a pattern
+        // with no surviving members.
+        if skip.len() as u32 == count {
+            return Err(ApiError::InvalidArgument(
+                "linear_pattern skip_instances would suppress every position".into(),
+            ));
+        }
         // Snapshot the source model + label up front so subsequent
         // mutations to the document do not invalidate references.
         let (src_model, label) = {
@@ -668,8 +684,17 @@ impl Session {
                 .ok_or_else(|| ApiError::UnknownSolid(format!("{id}")))?;
             (slot.model.clone(), slot.label.clone())
         };
-        let mut ids = vec![id];
+        let original_skipped = skip.contains(&0);
+        // If index 0 is skipped, the original solid is removed from the
+        // document so the pattern member list never contains a phantom.
+        if original_skipped {
+            self.document.remove(id);
+        }
+        let mut ids = if original_skipped { Vec::new() } else { vec![id] };
         for i in 1..count {
+            if skip.contains(&i) {
+                continue;
+            }
             let mut copy = src_model.clone();
             let dx = dir.x * spacing * i as f64;
             let dy = dir.y * spacing * i as f64;
@@ -685,10 +710,11 @@ impl Session {
                 .insert(copy, handle, format!("{label} (pattern {i})"));
             ids.push(new_id);
         }
-        let total_features = (ids.len() as u32).saturating_sub(1);
+        let instance_count = count - skip.len() as u32;
+        let total_features = (ids.len() as u32).saturating_sub(if original_skipped { 0 } else { 1 });
         Ok(Outcome::PatternCreated {
             pattern_id: id,
-            instance_count: count,
+            instance_count,
             total_features,
             ids,
         })
