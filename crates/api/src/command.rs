@@ -172,6 +172,13 @@ pub enum Command {
     /// `Outcome::Stats { solid_count, history_count }`. Cheap O(1)
     /// counts — no mesh / volume traversal.
     Stats,
+    /// Read-only axis-aligned bounding box of a solid. Returns
+    /// `Outcome::Bounds { id, min, max }`. Cheap observer that skips
+    /// the volume / surface-area / centroid pass performed by
+    /// `Measure` — use this when only the AABB is needed (e.g.
+    /// frustum culling, layout, snapping). Does not mutate or
+    /// append a history event.
+    Bounds { id: SolidId },
     /// Deep-clone a solid into a new slot. Returns the new
     /// `Outcome::SolidCreated { id, label }` where `label` is
     /// `"<source-label> (copy)"`. The source slot is left untouched.
@@ -223,6 +230,7 @@ impl Command {
             Self::FindByLabel { .. } => "find_by_label",
             Self::HistoryEvents => "history_events",
             Self::Stats => "stats",
+            Self::Bounds { .. } => "bounds",
             Self::Duplicate { .. } => "duplicate",
             Self::Rotate { .. } => "rotate",
             Self::Noop => "noop",
@@ -604,6 +612,16 @@ pub fn command_schemas() -> Vec<CommandSchema> {
             op: "stats",
             description: "Return cheap O(1) document statistics: solid_count and history_count. Read-only.",
             params: &[],
+        },
+        CommandSchema {
+            op: "bounds",
+            description: "Return the axis-aligned bounding box of a solid. Cheap observer (skips volume/centroid).",
+            params: &[ParamSchema {
+                name: "id",
+                ty: "solid_id",
+                required: true,
+                doc: "Solid to query.",
+            }],
         },
         CommandSchema {
             op: "scale_non_uniform",

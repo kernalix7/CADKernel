@@ -11,6 +11,16 @@
 
 ### 추가됨
 
+#### API — `Command::Bounds` + `Outcome::Bounds` 경량 AABB 올서버 (2026-05-08)
+- **`Command::Bounds { id }` (7번째 올서버) 신규 추가** + `Outcome::Bounds { id, min, max }` + `OutcomeKind::Bounds` 태그. `Measure`가 수행하는 volume/표면적/centroid 순회를 건너뛰고 월드 공간 AABB만 반환. AABB만 필요한 경우(frustum culling, 레이아웃, 스냅, UI fitting) 용.
+- **올서버 fast-path 7개로 확장**: `Measure | Validate | ListSolids | FindByLabel | HistoryEvents | Stats | Bounds` — 상태 변경 없음, history 추가 없음.
+- **검증**: unknown id는 `UnknownSolid`. `min[i] <= max[i]` 보장(`Document::bounding_box` 상속).
+- **`CommandSchema` 엔트리** 추가.
+- **구현**: `Session::dispatch`의 Bounds 아벍이 `Document::bounding_box(id)` 감싸기 — 최단 수 줄, 수학 연산 없음.
+- **회귀 테스트 5개**: 2×4×6 박스 bbox 범위 검증 / history event 미추가 / 잘못된 id 거절 / JSON 라운드트립 / `OutcomeKind::Bounds`.
+- `command_schemas_cover_every_op_name` 업데이트.
+- 테스트 **2,981 / 0 / 0** (TranslateTo 대비 +5), `clippy --all-targets --all-features -D warnings` 무경고.
+
 #### API — `Command::TranslateTo` centroid를 임의 좌표로 이동 (2026-05-08)
 - **`Command::TranslateTo { id, point }` 신규 추가** — 솔리드의 centroid를 월드 좌표 `point`에 일치시키는 translate. `CenterOnOrigin`(= `TranslateTo [0,0,0]`)과 `AlignTo`(= `TranslateTo target.centroid`)의 일반화. `Translate` by `point - centroid` 동가이지만 단일 명령으로 표현.
 - **검증**: unknown id는 `UnknownSolid`. `Solid` handle 필요.

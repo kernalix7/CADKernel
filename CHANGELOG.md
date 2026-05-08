@@ -11,6 +11,16 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::Bounds` + `Outcome::Bounds` cheap AABB observer (2026-05-08)
+- **New `Command::Bounds { id }` (7th observer)** + new `Outcome::Bounds { id, min, max }` + `OutcomeKind::Bounds` tag. Returns the world-space axis-aligned bounding box of a solid without paying the volume / surface-area / centroid traversal that `Measure` performs. Use this when only the AABB is needed (frustum culling, layout, snapping, UI fitting).
+- **Observer fast-path widened** to 7 variants: `Measure | Validate | ListSolids | FindByLabel | HistoryEvents | Stats | Bounds` — these never mutate state nor append history events.
+- **Validation**: unknown id rejected with `UnknownSolid`. `min[i] <= max[i]` is guaranteed (inherited from `Document::bounding_box`).
+- **`CommandSchema` entry** documents the contract.
+- **Implementation**: `Session::dispatch` Bounds arm wraps `Document::bounding_box(id)` — ~2 lines, no math.
+- **5 new regression tests**: 2×4×6 box bbox extents check, no history event appended, unknown id rejected, JSON round-trip (`op: "bounds"`), `OutcomeKind::Bounds`.
+- **`command_schemas_cover_every_op_name`** updated.
+- **2,981 / 0 / 0** tests (+5 vs. TranslateTo slice); strict `clippy --all-targets --all-features -D warnings` clean.
+
 #### API — `Command::TranslateTo` move centroid to arbitrary point (2026-05-08)
 - **New `Command::TranslateTo { id, point }`** — translates a solid so its centroid coincides with `point` (in world coordinates). Generalisation of `CenterOnOrigin` (= `TranslateTo [0,0,0]`) and `AlignTo` (= `TranslateTo target.centroid`). Equivalent to `Translate` by `point - centroid` but expressed as a single command.
 - **Validation**: unknown id rejected with `UnknownSolid`; the slot must already have a populated `Solid` handle.

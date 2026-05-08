@@ -78,6 +78,15 @@ pub enum Outcome {
         solid_count: u32,
         history_count: u32,
     },
+    /// Read-only axis-aligned bounding box (`Command::Bounds`). Cheap
+    /// observer that skips the volume / surface-area / centroid pass
+    /// performed by `Measure`. Coordinates are in world space and
+    /// `min[i] <= max[i]` is guaranteed.
+    Bounds {
+        id: SolidId,
+        min: [f64; 3],
+        max: [f64; 3],
+    },
     /// Nothing happened (`Command::Noop`).
     Empty,
 }
@@ -105,6 +114,7 @@ pub enum OutcomeKind {
     SolidsListed,
     HistoryListed,
     Stats,
+    Bounds,
     Empty,
 }
 
@@ -123,6 +133,7 @@ impl Outcome {
             Self::SolidsListed { .. } => OutcomeKind::SolidsListed,
             Self::HistoryListed { .. } => OutcomeKind::HistoryListed,
             Self::Stats { .. } => OutcomeKind::Stats,
+            Self::Bounds { .. } => OutcomeKind::Bounds,
             Self::Empty => OutcomeKind::Empty,
         }
     }

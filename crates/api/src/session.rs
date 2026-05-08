@@ -294,7 +294,7 @@ impl Session {
         // because they don't mutate the document.
         if matches!(
             command,
-            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. } | Command::HistoryEvents | Command::Stats
+            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. } | Command::HistoryEvents | Command::Stats | Command::Bounds { .. }
         ) {
             return self.dispatch(&command);
         }
@@ -533,6 +533,17 @@ impl Session {
                 solid_count: self.document.solid_count() as u32,
                 history_count: self.document.history().len() as u32,
             }),
+            Command::Bounds { id } => {
+                let bbox = self
+                    .document
+                    .bounding_box(*id)
+                    .ok_or_else(|| ApiError::UnknownSolid(format!("{id}")))?;
+                Ok(Outcome::Bounds {
+                    id: *id,
+                    min: bbox.min,
+                    max: bbox.max,
+                })
+            }
             Command::Rotate {
                 id,
                 axis,
@@ -1118,6 +1129,7 @@ fn history_description(cmd: &Command, outcome: &Outcome) -> String {
         (Command::FindByLabel { query }, _) => format!("FindByLabel '{query}'"),
         (Command::HistoryEvents, _) => "HistoryEvents".into(),
         (Command::Stats, _) => "Stats".into(),
+        (Command::Bounds { id }, _) => format!("Bounds {id}"),
         (Command::Duplicate { id }, _) => format!("Duplicate {id}"),
         (Command::Rotate { id, angle_rad, .. }, _) => {
             format!("Rotate {id} ({angle_rad} rad)")
