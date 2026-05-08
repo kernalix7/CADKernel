@@ -460,6 +460,7 @@ fn command_schemas_cover_every_op_name() {
         Command::FindByLabel {
             query: "box".into(),
         },
+        Command::HistoryEvents,
         Command::Duplicate {
             id: cadkernel_api::SolidId(0),
         },
@@ -1835,5 +1836,74 @@ fn find_by_label_command_round_trips_through_json() {
     match back {
         Command::FindByLabel { query } => assert_eq!(query, "myPart"),
         other => panic!("expected FindByLabel, got {other:?}"),
+    }
+}
+
+#[test]
+fn history_events_command_returns_recorded_events_in_execution_order() {
+    use cadkernel_api::{Command, Outcome, Session, SolidId};
+    let mut session = Session::new();
+    session.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    session.execute(Command::CreateSphere { radius: 1.0 }).unwrap();
+    session.execute(Command::Translate { id: SolidId(0), dx: 1.0, dy: 0.0, dz: 0.0 }).unwrap();
+    let outcome = session.execute(Command::HistoryEvents).unwrap();
+    match outcome {
+        Outcome::HistoryListed { events } => {
+            assert_eq!(events.len(), 3);
+            assert_eq!(events[0].op, "create_box");
+            assert_eq!(events[1].op, "create_sphere");
+            assert_eq!(events[2].op, "translate");
+            assert_eq!(events[2].primary, Some(SolidId(0)));
+        }
+        other => panic!("expected HistoryListed, got {other:?}"),
+    }
+}
+
+#[test]
+fn history_events_command_on_fresh_session_returns_empty_list() {
+    use cadkernel_api::{Command, Outcome, Session};
+    let mut session = Session::new();
+    let outcome = session.execute(Command::HistoryEvents).unwrap();
+    match outcome {
+        Outcome::HistoryListed { events } => assert!(events.is_empty()),
+        other => panic!("expected HistoryListed, got {other:?}"),
+    }
+}
+
+#[test]
+fn history_events_command_does_not_append_history() {
+    use cadkernel_api::{Command, Session};
+    let mut session = Session::new();
+    session.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let len_before = session.document().history().len();
+    session.execute(Command::HistoryEvents).unwrap();
+    session.execute(Command::HistoryEvents).unwrap();
+    assert_eq!(session.document().history().len(), len_before);
+}
+
+#[test]
+fn history_events_command_round_trips_through_json() {
+    use cadkernel_api::Command;
+    let cmd = Command::HistoryEvents;
+    let json = serde_json::to_value(&cmd).unwrap();
+    assert_eq!(json["op"], "history_events");
+    let back: Command = serde_json::from_value(json).unwrap();
+    assert!(matches!(back, Command::HistoryEvents));
+}
+
+#[test]
+fn history_events_outcome_round_trips_through_json() {
+    use cadkernel_api::{Command, Outcome, Session};
+    let mut session = Session::new();
+    session.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let outcome = session.execute(Command::HistoryEvents).unwrap();
+    let json = serde_json::to_value(&outcome).unwrap();
+    let back: Outcome = serde_json::from_value(json).unwrap();
+    match back {
+        Outcome::HistoryListed { events } => {
+            assert_eq!(events.len(), 1);
+            assert_eq!(events[0].op, "create_box");
+        }
+        other => panic!("expected HistoryListed, got {other:?}"),
     }
 }

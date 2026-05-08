@@ -127,6 +127,13 @@ pub enum Command {
     /// An empty `query` matches every solid (equivalent to `ListSolids`).
     /// Does not mutate the document or append a history event.
     FindByLabel { query: String },
+    /// Read-only history dump. Returns
+    /// `Outcome::HistoryListed { events }` with every recorded
+    /// `HistoryEvent` in execution order. Equivalent to
+    /// `session.document().history().to_vec()` but available through
+    /// the command surface so AI/scripts can introspect history with a
+    /// single dispatch. Does not mutate or append a history event.
+    HistoryEvents,
     /// Deep-clone a solid into a new slot. Returns the new
     /// `Outcome::SolidCreated { id, label }` where `label` is
     /// `"<source-label> (copy)"`. The source slot is left untouched.
@@ -171,6 +178,7 @@ impl Command {
             Self::Validate => "validate",
             Self::ListSolids => "list_solids",
             Self::FindByLabel { .. } => "find_by_label",
+            Self::HistoryEvents => "history_events",
             Self::Duplicate { .. } => "duplicate",
             Self::Rotate { .. } => "rotate",
             Self::Noop => "noop",
@@ -542,6 +550,11 @@ pub fn command_schemas() -> Vec<CommandSchema> {
                 required: true,
                 doc: "Substring to match against each solid's label (case-insensitive).",
             }],
+        },
+        CommandSchema {
+            op: "history_events",
+            description: "Return every recorded HistoryEvent in execution order. Read-only; does not append a new event.",
+            params: &[],
         },
         CommandSchema {
             op: "rotate",

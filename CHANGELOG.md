@@ -11,6 +11,20 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::HistoryEvents` + `Outcome::HistoryListed` (2026-05-08)
+- **New `Command::HistoryEvents`** — fifth pure-observer command. Returns `Outcome::HistoryListed { events: Vec<HistoryEvent> }` containing every recorded event in execution order. Equivalent to `session.document().history().to_vec()` but available through the command surface so AI / scripts can introspect history with a single dispatch (no need to call into `Document` directly).
+- **New `Outcome::HistoryListed { events }`** + matching `OutcomeKind::HistoryListed` tag.
+- **`CommandSchema` entry** documents the contract (zero parameters).
+- **Implementation**: trivial — clones `Document::history()` into the outcome; observer fast-path means no log/cursor/history side effects.
+- **5 new regression tests**:
+  - `history_events_command_returns_recorded_events_in_execution_order` — box → sphere → translate produces 3 events with correct `op` strings and `primary` ids.
+  - `history_events_command_on_fresh_session_returns_empty_list` — empty session edge case.
+  - `history_events_command_does_not_append_history` — observer guarantee (called twice, history still untouched).
+  - `history_events_command_round_trips_through_json` — unit-variant JSON shape `{"op": "history_events"}`.
+  - `history_events_outcome_round_trips_through_json` — `Outcome::HistoryListed` deserialises with full event field fidelity.
+- **`command_schemas_cover_every_op_name`** updated to include HistoryEvents.
+- **2,945 / 0 / 0** tests (+5 vs. FindByLabel slice); strict `clippy --all-targets --all-features -D warnings` clean.
+
 #### API — `Command::FindByLabel` case-insensitive label search (2026-05-08)
 - **New `Command::FindByLabel { query }`** — fourth pure-observer command. Returns `Outcome::SolidsListed { entries }` containing every solid whose label contains `query` as a case-insensitive substring. An empty query matches every solid (equivalent to `ListSolids`). Reuses the existing `SolidsListed` outcome shape so AI consumers can treat list / search responses uniformly. Does not mutate the document or append a history event.
 - **Implementation**: lower-cases the needle once, iterates `Document::solid_ids()`, lower-cases each label and runs `contains()`. Empty-query fast-path keeps semantics consistent with `ListSolids`.

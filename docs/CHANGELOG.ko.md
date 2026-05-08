@@ -11,6 +11,15 @@
 
 ### 추가됨
 
+#### API — `Command::HistoryEvents` + `Outcome::HistoryListed` (2026-05-08)
+- **`Command::HistoryEvents` 신규 추가** — 5번째 순수 observer 명령. 실행 순서의 기록된 모든 `HistoryEvent`를 `Outcome::HistoryListed { events }`로 반환. `session.document().history().to_vec()` 동가이지만 command surface를 통해 접근 가능 — AI/스크립트가 `Document` 직접 호출 없이 단일 dispatch로 디스패치 가능.
+- **`Outcome::HistoryListed { events }` + `OutcomeKind::HistoryListed` 태그 추가.
+- **`CommandSchema` 엔트리** 추가 (매개변수 없음).
+- **구현**: `Document::history()`를 outcome으로 clone; observer fast-path로 log/cursor/history 부작용 없음.
+- **회귀 테스트 5개 추가** — box+sphere+translate로 3개 이벤트 순서+`primary` 검증 / 빈 세션 / observer 불변성 / Command JSON 라운드트립 / Outcome JSON 라운드트립.
+- `command_schemas_cover_every_op_name` 에 HistoryEvents 포함.
+- 테스트 **2,945 / 0 / 0** (FindByLabel 슬라이스 대비 +5), `clippy --all-targets --all-features -D warnings` 무경고.
+
 #### API — `Command::FindByLabel` 대소문자 무시 라벨 검색 (2026-05-08)
 - **`Command::FindByLabel { query }` 신규 추가** — 4번째 순수 observer 명령. 라벨에 `query`가 대소문자 무시 substring으로 포함되는 모든 솔리드를 `Outcome::SolidsListed { entries }`로 반환. 빈 query는 모든 솔리드 매칭(`ListSolids`와 동일). 기존 `SolidsListed` outcome shape 재사용 — AI/스크립트가 list/search 응답을 동일하게 다룰 수 있음. Document mutation/history 이벤트 없음.
 - **구현**: needle 한 번 lower-case, `Document::solid_ids()` 순회, 각 라벨 lower-case 후 `contains()`. 빈 query fast-path로 `ListSolids`와 의미 일관성 유지.

@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::document::{DocumentIssue, SolidId};
+use crate::document::{DocumentIssue, HistoryEvent, SolidId};
 
 /// Successful result of [`Session::execute`](crate::Session::execute).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -62,6 +62,15 @@ pub enum Outcome {
     SolidsListed {
         entries: Vec<SolidEntry>,
     },
+    /// Read-only history dump (`Command::HistoryEvents`). Returns the
+    /// list of events recorded by every previously-executed mutating
+    /// command in execution order. Equivalent to
+    /// `session.document().history().to_vec()` but available through
+    /// the command surface so AI / scripts can introspect history
+    /// without touching the `Document` API directly.
+    HistoryListed {
+        events: Vec<HistoryEvent>,
+    },
     /// Nothing happened (`Command::Noop`).
     Empty,
 }
@@ -87,6 +96,7 @@ pub enum OutcomeKind {
     Measured,
     Validated,
     SolidsListed,
+    HistoryListed,
     Empty,
 }
 
@@ -103,6 +113,7 @@ impl Outcome {
             Self::Measured { .. } => OutcomeKind::Measured,
             Self::Validated { .. } => OutcomeKind::Validated,
             Self::SolidsListed { .. } => OutcomeKind::SolidsListed,
+            Self::HistoryListed { .. } => OutcomeKind::HistoryListed,
             Self::Empty => OutcomeKind::Empty,
         }
     }
