@@ -11,6 +11,15 @@
 
 ### 추가됨
 
+#### API — `Command::ScaleToFit` 최대 bbox 경건 정규화 (2026-05-08)
+- **`Command::ScaleToFit { id, target_size }` 신규 추가** — 원점(centroid) 기준 단일 명령으로 솔리드의 최대 축 범위가 `target_size`가 되도록 귬일스케일. Aspect ratio 유지. 임포트한 부품을 권장 크기로 정규화할 때 유용.
+- **검증**: `target_size > 0` 아니면 `InvalidArgument`; 퇴화된 bbox(경원 0) 거절; 잘못된 id는 `UnknownSolid`.
+- **`CommandSchema` 엔트리** 추가.
+- **구현**: `Session::scale_to_fit()`이 `Document::bounding_box`로 bbox 조회 → 최대 경원 산출 → `factor = target_size / max_extent` → 기존 `scale_uniform` 재사용. log/cursor로 완전 undo.
+- **회귀 테스트 5개**: 2×4×8 박스 → 0.25×0.5×1.0 정규화 / 음수·0 거절 / 잘못된 id 거절 / JSON 라운드트립 / undo 복원.
+- `command_schemas_cover_every_op_name` 업데이트.
+- 테스트 **2,971 / 0 / 0** (AlignTo 대비 +5), `clippy --all-targets --all-features -D warnings` 무경고.
+
 #### API — `Command::AlignTo` 두 솔리드 간 centroid 정렬 (2026-05-08)
 - **`Command::AlignTo { id, target_id }` 신규 추가** — `id`의 centroid를 `target_id`의 centroid와 일치시킬. 두 솔리드 정렬 컴팡스. `Translate` by `target_centroid - source_centroid` 동가이지만 단일 명령/undo로 표현.
 - **자기 정렬**(`id == target_id`)은 no-op (`Outcome::SolidModified` 그대로 반환, 기하 수정 없음).

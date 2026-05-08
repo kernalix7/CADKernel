@@ -11,6 +11,15 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::ScaleToFit` normalise largest bbox extent (2026-05-08)
+- **New `Command::ScaleToFit { id, target_size }`** — uniformly scales a solid about its centroid so that the largest axis-aligned bbox extent equals `target_size`. Convenience for AI / scripts that want to normalise an imported part to a canonical size without first measuring its bbox. Aspect ratios are preserved.
+- **Validation**: `target_size` must be > 0 (`InvalidArgument`); degenerate (zero-extent) bboxes rejected; unknown id rejected with `UnknownSolid`.
+- **`CommandSchema` entry** documents the contract.
+- **Implementation**: `Session::scale_to_fit()` queries `Document::bounding_box`, computes max extent, derives `factor = target_size / max_extent`, then delegates to the existing `scale_uniform` helper. Returns `Outcome::SolidModified`; fully undoable.
+- **5 new regression tests**: 2×4×8 box → 0.25×0.5×1.0 normalisation with aspect-ratio check, non-positive target_size rejected, unknown id rejected, JSON round-trip (`op: "scale_to_fit"`), undo restoration.
+- **`command_schemas_cover_every_op_name`** updated.
+- **2,971 / 0 / 0** tests (+5 vs. AlignTo slice); strict `clippy --all-targets --all-features -D warnings` clean.
+
 #### API — `Command::AlignTo` two-solid centroid alignment (2026-05-08)
 - **New `Command::AlignTo { id, target_id }`** — translates `id` so its centroid coincides with the centroid of `target_id`. Two-solid alignment convenience. Equivalent to `Translate` by `target_centroid - source_centroid` but expressed as a single command (and one undo step).
 - **Self-alignment is a no-op** when `id == target_id` (returns `Outcome::SolidModified` without touching geometry).

@@ -74,6 +74,12 @@ pub enum Command {
     /// `target_centroid - source_centroid` but expressed as a single
     /// command. The target slot is read-only.
     AlignTo { id: SolidId, target_id: SolidId },
+    /// Uniformly scale a solid about its centroid so that the largest
+    /// axis-aligned bounding-box extent equals `target_size`. Convenience
+    /// for AI / scripts that want to normalise an imported part to a
+    /// canonical size without first measuring its bbox. `target_size`
+    /// must be > 0; degenerate (zero-extent) bboxes are rejected.
+    ScaleToFit { id: SolidId, target_size: f64 },
     /// Rename a solid (does not change its [`SolidId`]).
     Rename { id: SolidId, label: String },
     /// Delete a solid.
@@ -196,6 +202,7 @@ impl Command {
             Self::ScaleNonUniform { .. } => "scale_non_uniform",
             Self::CenterOnOrigin { .. } => "center_on_origin",
             Self::AlignTo { .. } => "align_to",
+            Self::ScaleToFit { .. } => "scale_to_fit",
             Self::Rename { .. } => "rename",
             Self::DeleteSolid { .. } => "delete_solid",
             Self::Extrude { .. } => "extrude",
@@ -639,6 +646,24 @@ pub fn command_schemas() -> Vec<CommandSchema> {
                     ty: "solid_id",
                     required: true,
                     doc: "Solid whose centroid is the alignment target (read-only).",
+                },
+            ],
+        },
+        CommandSchema {
+            op: "scale_to_fit",
+            description: "Uniformly scale a solid about its centroid so its largest bbox extent equals target_size.",
+            params: &[
+                ParamSchema {
+                    name: "id",
+                    ty: "solid_id",
+                    required: true,
+                    doc: "Solid to scale.",
+                },
+                ParamSchema {
+                    name: "target_size",
+                    ty: "number",
+                    required: true,
+                    doc: "Desired largest bbox extent (must be > 0).",
                 },
             ],
         },

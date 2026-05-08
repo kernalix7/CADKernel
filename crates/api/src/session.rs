@@ -461,6 +461,7 @@ impl Session {
             }
             Command::CenterOnOrigin { id } => self.center_on_origin(*id),
             Command::AlignTo { id, target_id } => self.align_to(*id, *target_id),
+            Command::ScaleToFit { id, target_size } => self.scale_to_fit(*id, *target_size),
             Command::Rename { id, label } => self.rename(*id, label.clone()),
             Command::DeleteSolid { id } => {
                 if self.document.remove(*id) {
@@ -724,6 +725,31 @@ impl Session {
             v.point = Point3::new(v.point.x + dx, v.point.y + dy, v.point.z + dz);
         }
         Ok(Outcome::SolidModified { id })
+    }
+
+    fn scale_to_fit(&mut self, id: SolidId, target_size: f64) -> ApiResult<Outcome> {
+        if target_size <= 0.0 {
+            return Err(ApiError::InvalidArgument(format!(
+                "target_size must be > 0, got {target_size}"
+            )));
+        }
+        let bbox = self
+            .document
+            .bounding_box(id)
+            .ok_or_else(|| ApiError::UnknownSolid(format!("{id}")))?;
+        let extents = [
+            bbox.max[0] - bbox.min[0],
+            bbox.max[1] - bbox.min[1],
+            bbox.max[2] - bbox.min[2],
+        ];
+        let max_extent = extents.iter().cloned().fold(0.0_f64, f64::max);
+        if max_extent <= 0.0 {
+            return Err(ApiError::InvalidArgument(format!(
+                "{id} has degenerate bounding box (max extent {max_extent})"
+            )));
+        }
+        let factor = target_size / max_extent;
+        self.scale_uniform(id, factor)
     }
 
     fn rename(&mut self, id: SolidId, label: String) -> ApiResult<Outcome> {
@@ -1041,6 +1067,9 @@ fn history_description(cmd: &Command, outcome: &Outcome) -> String {
         }
         (Command::CenterOnOrigin { id }, _) => format!("CenterOnOrigin {id}"),
         (Command::AlignTo { id, target_id }, _) => format!("AlignTo {id} -> {target_id}"),
+        (Command::ScaleToFit { id, target_size }, _) => {
+            format!("ScaleToFit {id} target_size={target_size}")
+        }
         (Command::Rename { id, label }, _) => format!("Rename {id} → {label:?}"),
         (Command::DeleteSolid { id }, _) => format!("Delete {id}"),
         (

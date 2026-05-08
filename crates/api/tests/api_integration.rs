@@ -438,6 +438,10 @@ fn command_schemas_cover_every_op_name() {
             id: cadkernel_api::SolidId(0),
             target_id: cadkernel_api::SolidId(1),
         },
+        Command::ScaleToFit {
+            id: cadkernel_api::SolidId(0),
+            target_size: 1.0,
+        },
         Command::Rename {
             id: cadkernel_api::SolidId(0),
             label: "x".into(),
@@ -2256,4 +2260,78 @@ fn align_to_command_undo_restores_original_position() {
     if let Outcome::Measured { centroid, .. } = s.execute(Command::Measure { id: SolidId(0) }).unwrap() {
         for i in 0..3 { assert!((before[i] - centroid[i]).abs() < 1e-9); }
     } else { panic!("expected Measured"); }
+}
+
+#[test]
+fn scale_to_fit_command_normalises_largest_extent_to_target_size() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 2.0, dy: 4.0, dz: 8.0 }).unwrap();
+    let outcome = s.execute(Command::ScaleToFit { id: SolidId(0), target_size: 1.0 }).unwrap();
+    assert!(matches!(outcome, Outcome::SolidModified { id } if id == SolidId(0)));
+    if let Outcome::Measured { bbox_min, bbox_max, .. } =
+        s.execute(Command::Measure { id: SolidId(0) }).unwrap()
+    {
+        let extents = [
+            bbox_max[0] - bbox_min[0],
+            bbox_max[1] - bbox_min[1],
+            bbox_max[2] - bbox_min[2],
+        ];
+        let max_extent = extents.iter().cloned().fold(0.0_f64, f64::max);
+        assert!((max_extent - 1.0).abs() < 1e-9, "got {max_extent}");
+        // Aspect ratios preserved: 2:4:8 -> 0.25:0.5:1.0
+        assert!((extents[0] - 0.25).abs() < 1e-9);
+        assert!((extents[1] - 0.5).abs() < 1e-9);
+        assert!((extents[2] - 1.0).abs() < 1e-9);
+    } else { panic!("expected Measured"); }
+}
+
+#[test]
+fn scale_to_fit_command_rejects_non_positive_target_size() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let err = s.execute(Command::ScaleToFit { id: SolidId(0), target_size: 0.0 }).unwrap_err();
+    assert!(matches!(err, ApiError::InvalidArgument(_)));
+    let err2 = s.execute(Command::ScaleToFit { id: SolidId(0), target_size: -2.0 }).unwrap_err();
+    assert!(matches!(err2, ApiError::InvalidArgument(_)));
+}
+
+#[test]
+fn scale_to_fit_command_returns_unknown_solid_for_invalid_id() {
+    let mut s = Session::new();
+    let err = s.execute(Command::ScaleToFit { id: SolidId(7), target_size: 1.0 }).unwrap_err();
+    assert!(matches!(err, ApiError::UnknownSolid(_)));
+}
+
+#[test]
+fn scale_to_fit_command_round_trips_through_json() {
+    let cmd = Command::ScaleToFit { id: SolidId(3), target_size: 5.5 };
+    let json = serde_json::to_string(&cmd).unwrap();
+    assert!(json.contains("\"op\":\"scale_to_fit\""));
+    let back: Command = serde_json::from_str(&json).unwrap();
+    match back {
+        Command::ScaleToFit { id, target_size } => {
+            assert_eq!(id, SolidId(3));
+            assert!((target_size - 5.5).abs() < 1e-12);
+        }
+        _ => panic!("expected ScaleToFit"),
+    }
+}
+
+#[test]
+fn scale_to_fit_command_undo_restores_original_size() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 4.0, dy: 4.0, dz: 4.0 }).unwrap();
+    let before = if let Outcome::Measured { bbox_min, bbox_max, .. } =
+        s.execute(Command::Measure { id: SolidId(0) }).unwrap()
+    { (bbox_min, bbox_max) } else { panic!() };
+    s.execute(Command::ScaleToFit { id: SolidId(0), target_size: 1.0 }).unwrap();
+    s.undo().unwrap();
+    if let Outcome::Measured { bbox_min, bbox_max, .. } =
+        s.execute(Command::Measure { id: SolidId(0) }).unwrap()
+    {
+        for i in 0..3 {
+            assert!((before.0[i] - bbox_min[i]).abs() < 1e-9);
+            assert!((before.1[i] - bbox_max[i]).abs() < 1e-9);
+        }
+    } else { panic!(); }
 }
