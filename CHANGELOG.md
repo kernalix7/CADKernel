@@ -11,6 +11,15 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::TranslateTo` move centroid to arbitrary point (2026-05-08)
+- **New `Command::TranslateTo { id, point }`** — translates a solid so its centroid coincides with `point` (in world coordinates). Generalisation of `CenterOnOrigin` (= `TranslateTo [0,0,0]`) and `AlignTo` (= `TranslateTo target.centroid`). Equivalent to `Translate` by `point - centroid` but expressed as a single command.
+- **Validation**: unknown id rejected with `UnknownSolid`; the slot must already have a populated `Solid` handle.
+- **`CommandSchema` entry** documents the contract.
+- **Implementation**: `Session::translate_to()` extracts centroid via `solid_mass_properties`, then translates every vertex by `point - centroid`. Returns `Outcome::SolidModified`; fully undoable.
+- **5 new regression tests**: centroid lands on target, size preserved (volume invariant), unknown id rejected, JSON round-trip (`op: "translate_to"`), undo restoration.
+- **`command_schemas_cover_every_op_name`** updated.
+- **2,976 / 0 / 0** tests (+5 vs. ScaleToFit slice); strict `clippy --all-targets --all-features -D warnings` clean.
+
 #### API — `Command::ScaleToFit` normalise largest bbox extent (2026-05-08)
 - **New `Command::ScaleToFit { id, target_size }`** — uniformly scales a solid about its centroid so that the largest axis-aligned bbox extent equals `target_size`. Convenience for AI / scripts that want to normalise an imported part to a canonical size without first measuring its bbox. Aspect ratios are preserved.
 - **Validation**: `target_size` must be > 0 (`InvalidArgument`); degenerate (zero-extent) bboxes rejected; unknown id rejected with `UnknownSolid`.

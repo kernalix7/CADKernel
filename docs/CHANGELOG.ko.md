@@ -11,6 +11,15 @@
 
 ### 추가됨
 
+#### API — `Command::TranslateTo` centroid를 임의 좌표로 이동 (2026-05-08)
+- **`Command::TranslateTo { id, point }` 신규 추가** — 솔리드의 centroid를 월드 좌표 `point`에 일치시키는 translate. `CenterOnOrigin`(= `TranslateTo [0,0,0]`)과 `AlignTo`(= `TranslateTo target.centroid`)의 일반화. `Translate` by `point - centroid` 동가이지만 단일 명령으로 표현.
+- **검증**: unknown id는 `UnknownSolid`. `Solid` handle 필요.
+- **`CommandSchema` 엔트리** 추가.
+- **구현**: `Session::translate_to()`이 `solid_mass_properties`로 centroid 추출 → 모든 정점을 `point - centroid` 만큼 translate. log/cursor로 완전 undo.
+- **회귀 테스트 5개**: centroid 타겟 도달 / 크기 보존(volume 불변) / 잘못된 id 거절 / JSON 라운드트립 / undo 복원.
+- `command_schemas_cover_every_op_name` 업데이트.
+- 테스트 **2,976 / 0 / 0** (ScaleToFit 대비 +5), `clippy --all-targets --all-features -D warnings` 무경고.
+
 #### API — `Command::ScaleToFit` 최대 bbox 경건 정규화 (2026-05-08)
 - **`Command::ScaleToFit { id, target_size }` 신규 추가** — 원점(centroid) 기준 단일 명령으로 솔리드의 최대 축 범위가 `target_size`가 되도록 귬일스케일. Aspect ratio 유지. 임포트한 부품을 권장 크기로 정규화할 때 유용.
 - **검증**: `target_size > 0` 아니면 `InvalidArgument`; 퇴화된 bbox(경원 0) 거절; 잘못된 id는 `UnknownSolid`.

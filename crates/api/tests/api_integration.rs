@@ -442,6 +442,10 @@ fn command_schemas_cover_every_op_name() {
             id: cadkernel_api::SolidId(0),
             target_size: 1.0,
         },
+        Command::TranslateTo {
+            id: cadkernel_api::SolidId(0),
+            point: [0.0, 0.0, 0.0],
+        },
         Command::Rename {
             id: cadkernel_api::SolidId(0),
             label: "x".into(),
@@ -2333,5 +2337,70 @@ fn scale_to_fit_command_undo_restores_original_size() {
             assert!((before.0[i] - bbox_min[i]).abs() < 1e-9);
             assert!((before.1[i] - bbox_max[i]).abs() < 1e-9);
         }
+    } else { panic!(); }
+}
+
+#[test]
+fn translate_to_command_moves_centroid_to_target_point() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
+    let outcome = s.execute(Command::TranslateTo { id: SolidId(0), point: [10.0, -5.0, 3.5] }).unwrap();
+    assert!(matches!(outcome, Outcome::SolidModified { id } if id == SolidId(0)));
+    if let Outcome::Measured { centroid, .. } = s.execute(Command::Measure { id: SolidId(0) }).unwrap() {
+        assert!((centroid[0] - 10.0).abs() < 1e-9);
+        assert!((centroid[1] - (-5.0)).abs() < 1e-9);
+        assert!((centroid[2] - 3.5).abs() < 1e-9);
+    } else { panic!("expected Measured"); }
+}
+
+#[test]
+fn translate_to_command_preserves_size() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 2.0, dy: 4.0, dz: 6.0 }).unwrap();
+    let before = if let Outcome::Measured { volume, .. } =
+        s.execute(Command::Measure { id: SolidId(0) }).unwrap()
+    { volume } else { panic!() };
+    s.execute(Command::TranslateTo { id: SolidId(0), point: [100.0, 200.0, 300.0] }).unwrap();
+    if let Outcome::Measured { volume, .. } = s.execute(Command::Measure { id: SolidId(0) }).unwrap() {
+        assert!((volume - before).abs() < 1e-9);
+    } else { panic!("expected Measured"); }
+}
+
+#[test]
+fn translate_to_command_returns_unknown_solid_for_invalid_id() {
+    let mut s = Session::new();
+    let err = s.execute(Command::TranslateTo { id: SolidId(7), point: [0.0, 0.0, 0.0] }).unwrap_err();
+    assert!(matches!(err, ApiError::UnknownSolid(_)));
+}
+
+#[test]
+fn translate_to_command_round_trips_through_json() {
+    let cmd = Command::TranslateTo { id: SolidId(4), point: [1.5, -2.5, 9.0] };
+    let json = serde_json::to_string(&cmd).unwrap();
+    assert!(json.contains("\"op\":\"translate_to\""));
+    let back: Command = serde_json::from_str(&json).unwrap();
+    match back {
+        Command::TranslateTo { id, point } => {
+            assert_eq!(id, SolidId(4));
+            assert!((point[0] - 1.5).abs() < 1e-12);
+            assert!((point[1] - (-2.5)).abs() < 1e-12);
+            assert!((point[2] - 9.0).abs() < 1e-12);
+        }
+        _ => panic!("expected TranslateTo"),
+    }
+}
+
+#[test]
+fn translate_to_command_undo_restores_original_centroid() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::Translate { id: SolidId(0), dx: 7.0, dy: 8.0, dz: 9.0 }).unwrap();
+    let before = if let Outcome::Measured { centroid, .. } =
+        s.execute(Command::Measure { id: SolidId(0) }).unwrap()
+    { centroid } else { panic!() };
+    s.execute(Command::TranslateTo { id: SolidId(0), point: [0.0, 0.0, 0.0] }).unwrap();
+    s.undo().unwrap();
+    if let Outcome::Measured { centroid, .. } = s.execute(Command::Measure { id: SolidId(0) }).unwrap() {
+        for i in 0..3 { assert!((before[i] - centroid[i]).abs() < 1e-9); }
     } else { panic!(); }
 }

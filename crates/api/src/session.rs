@@ -462,6 +462,7 @@ impl Session {
             Command::CenterOnOrigin { id } => self.center_on_origin(*id),
             Command::AlignTo { id, target_id } => self.align_to(*id, *target_id),
             Command::ScaleToFit { id, target_size } => self.scale_to_fit(*id, *target_size),
+            Command::TranslateTo { id, point } => self.translate_to(*id, *point),
             Command::Rename { id, label } => self.rename(*id, label.clone()),
             Command::DeleteSolid { id } => {
                 if self.document.remove(*id) {
@@ -750,6 +751,28 @@ impl Session {
         }
         let factor = target_size / max_extent;
         self.scale_uniform(id, factor)
+    }
+
+    fn translate_to(&mut self, id: SolidId, point: [f64; 3]) -> ApiResult<Outcome> {
+        let centroid = {
+            let slot = self
+                .document
+                .get_slot(id)
+                .ok_or_else(|| ApiError::UnknownSolid(format!("{id}")))?;
+            let handle = slot
+                .handle
+                .ok_or_else(|| ApiError::UnknownSolid(format!("{id} has no solid handle")))?;
+            let mp = solid_mass_properties(&slot.model, handle)?;
+            mp.centroid
+        };
+        let dx = point[0] - centroid.x;
+        let dy = point[1] - centroid.y;
+        let dz = point[2] - centroid.z;
+        let slot = slot_mut(&mut self.document, id)?;
+        for (_h, v) in slot.model.vertices.iter_mut() {
+            v.point = Point3::new(v.point.x + dx, v.point.y + dy, v.point.z + dz);
+        }
+        Ok(Outcome::SolidModified { id })
     }
 
     fn rename(&mut self, id: SolidId, label: String) -> ApiResult<Outcome> {
@@ -1069,6 +1092,9 @@ fn history_description(cmd: &Command, outcome: &Outcome) -> String {
         (Command::AlignTo { id, target_id }, _) => format!("AlignTo {id} -> {target_id}"),
         (Command::ScaleToFit { id, target_size }, _) => {
             format!("ScaleToFit {id} target_size={target_size}")
+        }
+        (Command::TranslateTo { id, point }, _) => {
+            format!("TranslateTo {id} -> [{}, {}, {}]", point[0], point[1], point[2])
         }
         (Command::Rename { id, label }, _) => format!("Rename {id} → {label:?}"),
         (Command::DeleteSolid { id }, _) => format!("Delete {id}"),

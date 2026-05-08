@@ -80,6 +80,13 @@ pub enum Command {
     /// canonical size without first measuring its bbox. `target_size`
     /// must be > 0; degenerate (zero-extent) bboxes are rejected.
     ScaleToFit { id: SolidId, target_size: f64 },
+    /// Translate `id` so that its centroid coincides with `point`
+    /// (in world coordinates). Generalisation of `CenterOnOrigin`
+    /// (which is `TranslateTo` `[0, 0, 0]`) and `AlignTo`
+    /// (which is `TranslateTo target.centroid`). Equivalent to
+    /// `Translate` by `point - centroid` but expressed as a single
+    /// command — saves AI / scripts an explicit `Measure` round-trip.
+    TranslateTo { id: SolidId, point: [f64; 3] },
     /// Rename a solid (does not change its [`SolidId`]).
     Rename { id: SolidId, label: String },
     /// Delete a solid.
@@ -203,6 +210,7 @@ impl Command {
             Self::CenterOnOrigin { .. } => "center_on_origin",
             Self::AlignTo { .. } => "align_to",
             Self::ScaleToFit { .. } => "scale_to_fit",
+            Self::TranslateTo { .. } => "translate_to",
             Self::Rename { .. } => "rename",
             Self::DeleteSolid { .. } => "delete_solid",
             Self::Extrude { .. } => "extrude",
@@ -664,6 +672,24 @@ pub fn command_schemas() -> Vec<CommandSchema> {
                     ty: "number",
                     required: true,
                     doc: "Desired largest bbox extent (must be > 0).",
+                },
+            ],
+        },
+        CommandSchema {
+            op: "translate_to",
+            description: "Translate a solid so its centroid coincides with `point`. Generalises CenterOnOrigin/AlignTo.",
+            params: &[
+                ParamSchema {
+                    name: "id",
+                    ty: "solid_id",
+                    required: true,
+                    doc: "Solid to move.",
+                },
+                ParamSchema {
+                    name: "point",
+                    ty: "[f64; 3]",
+                    required: true,
+                    doc: "World-coordinate target for the solid's centroid.",
                 },
             ],
         },
