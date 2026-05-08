@@ -11,6 +11,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::Volume` + `Command::SurfaceArea` single-scalar observers (2026-05-08)
+- **New `Command::Volume { id }` (9th observer)** + `Outcome::Volume { id, volume }` + `OutcomeKind::Volume` tag — returns just the volume, skipping the surface-area / centroid / bbox traversal that `Measure` performs.
+- **New `Command::SurfaceArea { id }` (10th observer)** + `Outcome::SurfaceArea { id, surface_area }` + `OutcomeKind::SurfaceArea` tag — symmetric single-scalar surface-area observer.
+- **Observer fast-path widened** to 10 variants. Both observers reuse `Document::measure_solid` internally; the wire surface stays minimal so AI / scripts that only need one number don't pay for the full measurement payload.
+- **`CommandSchema` entries** for both ops added.
+- **8 new regression tests**: 2×3×4 box volume = 24, 2×3×4 box surface area = 52, both reject unknown id with `UnknownSolid`, both leave history untouched, and both JSON round-trip (`op: "volume"`, `op: "surface_area"`).
+- **2,994 / 0 / 0** tests (+8 vs. Distance slice); strict `clippy --all-targets --all-features -D warnings` clean.
+
 #### API — `Command::Distance` + `Outcome::Distance` centroid-to-centroid observer (2026-05-08)
 - **New `Command::Distance { id_a, id_b }` (8th observer)** + new `Outcome::Distance { id_a, id_b, distance, delta }` + `OutcomeKind::Distance` tag. Returns the Euclidean distance between two solid centroids together with the per-axis delta `centroid_b - centroid_a`. Self-distance (`id_a == id_b`) is `0` with zero delta.
 - **Observer fast-path widened** to 8 variants: `Measure | Validate | ListSolids | FindByLabel | HistoryEvents | Stats | Bounds | Distance` — none mutate state nor append history.

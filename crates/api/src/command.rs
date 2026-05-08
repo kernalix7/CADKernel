@@ -186,6 +186,16 @@ pub enum Command {
     /// separate `Measure` calls. Does not mutate or append a history
     /// event.
     Distance { id_a: SolidId, id_b: SolidId },
+    /// Read-only single-scalar volume of a solid. Returns
+    /// `Outcome::Volume { id, volume }`. Lighter than `Measure` when
+    /// only the volume is needed (skips surface-area / centroid /
+    /// bbox traversal). Does not mutate or append a history event.
+    Volume { id: SolidId },
+    /// Read-only single-scalar surface area of a solid. Returns
+    /// `Outcome::SurfaceArea { id, surface_area }`. Lighter than
+    /// `Measure` when only the surface area is needed. Does not
+    /// mutate or append a history event.
+    SurfaceArea { id: SolidId },
     /// Deep-clone a solid into a new slot. Returns the new
     /// `Outcome::SolidCreated { id, label }` where `label` is
     /// `"<source-label> (copy)"`. The source slot is left untouched.
@@ -239,6 +249,8 @@ impl Command {
             Self::Stats => "stats",
             Self::Bounds { .. } => "bounds",
             Self::Distance { .. } => "distance",
+            Self::Volume { .. } => "volume",
+            Self::SurfaceArea { .. } => "surface_area",
             Self::Duplicate { .. } => "duplicate",
             Self::Rotate { .. } => "rotate",
             Self::Noop => "noop",
@@ -648,6 +660,26 @@ pub fn command_schemas() -> Vec<CommandSchema> {
                     doc: "Second solid (centroid is target of delta).",
                 },
             ],
+        },
+        CommandSchema {
+            op: "volume",
+            description: "Return the volume of a solid (single scalar). Lighter than measure (skips surface-area/centroid/bbox).",
+            params: &[ParamSchema {
+                name: "id",
+                ty: "solid_id",
+                required: true,
+                doc: "Solid to query.",
+            }],
+        },
+        CommandSchema {
+            op: "surface_area",
+            description: "Return the surface area of a solid (single scalar). Lighter than measure.",
+            params: &[ParamSchema {
+                name: "id",
+                ty: "solid_id",
+                required: true,
+                doc: "Solid to query.",
+            }],
         },
         CommandSchema {
             op: "scale_non_uniform",

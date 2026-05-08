@@ -294,7 +294,7 @@ impl Session {
         // because they don't mutate the document.
         if matches!(
             command,
-            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. } | Command::HistoryEvents | Command::Stats | Command::Bounds { .. } | Command::Distance { .. }
+            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. } | Command::HistoryEvents | Command::Stats | Command::Bounds { .. } | Command::Distance { .. } | Command::Volume { .. } | Command::SurfaceArea { .. }
         ) {
             return self.dispatch(&command);
         }
@@ -566,6 +566,20 @@ impl Session {
                     distance,
                     delta,
                 })
+            }
+            Command::Volume { id } => {
+                let m = self
+                    .document
+                    .measure_solid(*id)
+                    .ok_or_else(|| ApiError::UnknownSolid(format!("{id}")))?;
+                Ok(Outcome::Volume { id: *id, volume: m.volume })
+            }
+            Command::SurfaceArea { id } => {
+                let m = self
+                    .document
+                    .measure_solid(*id)
+                    .ok_or_else(|| ApiError::UnknownSolid(format!("{id}")))?;
+                Ok(Outcome::SurfaceArea { id: *id, surface_area: m.surface_area })
             }
             Command::Rotate {
                 id,
@@ -1154,6 +1168,8 @@ fn history_description(cmd: &Command, outcome: &Outcome) -> String {
         (Command::Stats, _) => "Stats".into(),
         (Command::Bounds { id }, _) => format!("Bounds {id}"),
         (Command::Distance { id_a, id_b }, _) => format!("Distance {id_a} <-> {id_b}"),
+        (Command::Volume { id }, _) => format!("Volume {id}"),
+        (Command::SurfaceArea { id }, _) => format!("SurfaceArea {id}"),
         (Command::Duplicate { id }, _) => format!("Duplicate {id}"),
         (Command::Rotate { id, angle_rad, .. }, _) => {
             format!("Rotate {id} ({angle_rad} rad)")

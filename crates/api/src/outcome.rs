@@ -97,6 +97,14 @@ pub enum Outcome {
         distance: f64,
         delta: [f64; 3],
     },
+    /// Read-only single-scalar volume of a solid (`Command::Volume`).
+    /// Lighter than `Measure` when only the volume is needed (skips the
+    /// surface-area / centroid / bbox traversal).
+    Volume { id: SolidId, volume: f64 },
+    /// Read-only single-scalar surface area of a solid
+    /// (`Command::SurfaceArea`). Lighter than `Measure` when only the
+    /// surface area is needed.
+    SurfaceArea { id: SolidId, surface_area: f64 },
     /// Nothing happened (`Command::Noop`).
     Empty,
 }
@@ -126,6 +134,8 @@ pub enum OutcomeKind {
     Stats,
     Bounds,
     Distance,
+    Volume,
+    SurfaceArea,
     Empty,
 }
 
@@ -146,6 +156,8 @@ impl Outcome {
             Self::Stats { .. } => OutcomeKind::Stats,
             Self::Bounds { .. } => OutcomeKind::Bounds,
             Self::Distance { .. } => OutcomeKind::Distance,
+            Self::Volume { .. } => OutcomeKind::Volume,
+            Self::SurfaceArea { .. } => OutcomeKind::SurfaceArea,
             Self::Empty => OutcomeKind::Empty,
         }
     }

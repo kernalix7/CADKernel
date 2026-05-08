@@ -489,6 +489,12 @@ fn command_schemas_cover_every_op_name() {
             id_a: cadkernel_api::SolidId(0),
             id_b: cadkernel_api::SolidId(1),
         },
+        Command::Volume {
+            id: cadkernel_api::SolidId(0),
+        },
+        Command::SurfaceArea {
+            id: cadkernel_api::SolidId(0),
+        },
         Command::Duplicate {
             id: cadkernel_api::SolidId(0),
         },
@@ -2524,5 +2530,84 @@ fn distance_command_round_trips_through_json() {
             assert_eq!(id_b, SolidId(5));
         }
         _ => panic!("expected Distance"),
+    }
+}
+
+#[test]
+fn volume_command_returns_box_volume() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 2.0, dy: 3.0, dz: 4.0 }).unwrap();
+    let outcome = s.execute(Command::Volume { id: SolidId(0) }).unwrap();
+    if let Outcome::Volume { id, volume } = outcome {
+        assert_eq!(id, SolidId(0));
+        assert!((volume - 24.0).abs() < 1e-9, "got {volume}");
+    } else { panic!("expected Volume, got {outcome:?}"); }
+}
+
+#[test]
+fn volume_command_returns_unknown_solid_for_invalid_id() {
+    let mut s = Session::new();
+    let err = s.execute(Command::Volume { id: SolidId(7) }).unwrap_err();
+    assert!(matches!(err, ApiError::UnknownSolid(_)));
+}
+
+#[test]
+fn volume_command_does_not_append_history_event() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let before = s.document().history().len();
+    s.execute(Command::Volume { id: SolidId(0) }).unwrap();
+    assert_eq!(s.document().history().len(), before);
+}
+
+#[test]
+fn volume_command_round_trips_through_json() {
+    let cmd = Command::Volume { id: SolidId(3) };
+    let json = serde_json::to_string(&cmd).unwrap();
+    assert!(json.contains("\"op\":\"volume\""));
+    let back: Command = serde_json::from_str(&json).unwrap();
+    match back {
+        Command::Volume { id } => assert_eq!(id, SolidId(3)),
+        _ => panic!("expected Volume"),
+    }
+}
+
+#[test]
+fn surface_area_command_returns_box_area() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 2.0, dy: 3.0, dz: 4.0 }).unwrap();
+    let outcome = s.execute(Command::SurfaceArea { id: SolidId(0) }).unwrap();
+    if let Outcome::SurfaceArea { id, surface_area } = outcome {
+        assert_eq!(id, SolidId(0));
+        // 2*(2*3 + 3*4 + 2*4) = 2*(6 + 12 + 8) = 52
+        assert!((surface_area - 52.0).abs() < 1e-9, "got {surface_area}");
+    } else { panic!("expected SurfaceArea, got {outcome:?}"); }
+}
+
+#[test]
+fn surface_area_command_returns_unknown_solid_for_invalid_id() {
+    let mut s = Session::new();
+    let err = s.execute(Command::SurfaceArea { id: SolidId(7) }).unwrap_err();
+    assert!(matches!(err, ApiError::UnknownSolid(_)));
+}
+
+#[test]
+fn surface_area_command_does_not_append_history_event() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let before = s.document().history().len();
+    s.execute(Command::SurfaceArea { id: SolidId(0) }).unwrap();
+    assert_eq!(s.document().history().len(), before);
+}
+
+#[test]
+fn surface_area_command_round_trips_through_json() {
+    let cmd = Command::SurfaceArea { id: SolidId(4) };
+    let json = serde_json::to_string(&cmd).unwrap();
+    assert!(json.contains("\"op\":\"surface_area\""));
+    let back: Command = serde_json::from_str(&json).unwrap();
+    match back {
+        Command::SurfaceArea { id } => assert_eq!(id, SolidId(4)),
+        _ => panic!("expected SurfaceArea"),
     }
 }

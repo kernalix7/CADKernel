@@ -11,6 +11,13 @@
 
 ### 추가됨
 
+#### API — `Command::Volume` + `Command::SurfaceArea` 단일 스칼라 올서버 (2026-05-08)
+- **`Command::Volume { id }` (9번째 올서버) 신규** + `Outcome::Volume` + `OutcomeKind::Volume` — `Measure`의 표면적/centroid/bbox 순회를 건너뛰고 부피만 반환.
+- **`Command::SurfaceArea { id }` (10번째 올서버) 신규** + `Outcome::SurfaceArea` + `OutcomeKind::SurfaceArea` — 대칭형 단일 스칼라 표면적 올서버.
+- **올서버 fast-path 10개로 확장**. 둘 다 내부적으로 `Document::measure_solid` 재사용. AI/스크립트가 숫자 하나만 필요할 때 전체 measurement 페이로드를 받지 않도록 와이어 노출만 최소화.
+- **회귀 테스트 8개**: 2×3×4 박스 부피 24 / 표면적 52 / 양쪽 모두 잘못된 id `UnknownSolid` / history 미추가 / JSON 라운드트립.
+- **2,994 / 0 / 0** 테스트, clippy strict clean.
+
 #### API — `Command::Distance` + `Outcome::Distance` centroid-to-centroid 올서버 (2026-05-08)
 - **`Command::Distance { id_a, id_b }` (8번째 올서버) 신규** + `Outcome::Distance { id_a, id_b, distance, delta }` + `OutcomeKind::Distance` 태그. 두 솔리드 centroid 사이의 유클리드 거리와 축별 차이 `centroid_b - centroid_a`를 반환. 자기 자신과의 거리(`id_a == id_b`)는 0.
 - **올서버 fast-path 8개로 확장**: `Measure | Validate | ListSolids | FindByLabel | HistoryEvents | Stats | Bounds | Distance` — 상태 변경 없음, history 추가 없음.
