@@ -11,6 +11,14 @@
 
 ### 추가됨
 
+#### API — `Command::FindByLabel` 대소문자 무시 라벨 검색 (2026-05-08)
+- **`Command::FindByLabel { query }` 신규 추가** — 4번째 순수 observer 명령. 라벨에 `query`가 대소문자 무시 substring으로 포함되는 모든 솔리드를 `Outcome::SolidsListed { entries }`로 반환. 빈 query는 모든 솔리드 매칭(`ListSolids`와 동일). 기존 `SolidsListed` outcome shape 재사용 — AI/스크립트가 list/search 응답을 동일하게 다룰 수 있음. Document mutation/history 이벤트 없음.
+- **구현**: needle 한 번 lower-case, `Document::solid_ids()` 순회, 각 라벨 lower-case 후 `contains()`. 빈 query fast-path로 `ListSolids`와 의미 일관성 유지.
+- **`CommandSchema` 엔트리** 추가.
+- **회귀 테스트 5개 추가** — "SPH" → "MySphere"만 매칭 / 빈 query → 전체 / 매칭 없음 → 빈 entries / history 미증가 / JSON 라운드트립.
+- `command_schemas_cover_every_op_name` 에 FindByLabel 포함.
+- 테스트 **2,940 / 0 / 0** (Rotate 슬라이스 대비 +5), `clippy --all-targets --all-features -D warnings` 무경고.
+
 #### API — `Command::Rotate` 임의 축 쿼터니언 회전 (2026-05-08)
 - **`Command::Rotate { id, axis, angle_rad, point }` 신규 추가** — translate/scale 외 첫 기하학적 mutation 명령. `point` 피벗을 중심으로 임의 `axis`(자동 정규화) 주위로 `angle_rad` 회전. `cadkernel_math::Quaternion::from_axis_angle` + `q.rotate_vec(rel)`로 정점별 변환. Topology 보존, `Outcome::SolidModified` 반환, 표준 log/cursor를 통해 완전히 undo 가능.
 - **검증**: 영벡터 축은 mutation 전에 `ApiError::InvalidArgument`로 거부, unknown id 는 `ApiError::UnknownSolid`.

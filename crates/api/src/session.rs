@@ -294,7 +294,7 @@ impl Session {
         // because they don't mutate the document.
         if matches!(
             command,
-            Command::Measure { .. } | Command::Validate | Command::ListSolids
+            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. }
         ) {
             return self.dispatch(&command);
         }
@@ -497,6 +497,27 @@ impl Session {
                     })
                     .collect(),
             }),
+            Command::FindByLabel { query } => {
+                let needle = query.to_lowercase();
+                Ok(Outcome::SolidsListed {
+                    entries: self
+                        .document
+                        .solid_ids()
+                        .into_iter()
+                        .filter_map(|id| {
+                            let label = self.document.solid_label(id).unwrap_or("");
+                            if needle.is_empty() || label.to_lowercase().contains(&needle) {
+                                Some(crate::outcome::SolidEntry {
+                                    id,
+                                    label: label.to_string(),
+                                })
+                            } else {
+                                None
+                            }
+                        })
+                        .collect(),
+                })
+            }
             Command::Duplicate { id } => self.duplicate(*id),
             Command::Rotate {
                 id,
@@ -938,6 +959,7 @@ fn history_description(cmd: &Command, outcome: &Outcome) -> String {
         (Command::Measure { id }, _) => format!("Measure {id}"),
         (Command::Validate, _) => "Validate".into(),
         (Command::ListSolids, _) => "ListSolids".into(),
+        (Command::FindByLabel { query }, _) => format!("FindByLabel '{query}'"),
         (Command::Duplicate { id }, _) => format!("Duplicate {id}"),
         (Command::Rotate { id, angle_rad, .. }, _) => {
             format!("Rotate {id} ({angle_rad} rad)")

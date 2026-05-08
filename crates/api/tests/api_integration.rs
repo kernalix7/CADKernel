@@ -457,6 +457,9 @@ fn command_schemas_cover_every_op_name() {
         },
         Command::Validate,
         Command::ListSolids,
+        Command::FindByLabel {
+            query: "box".into(),
+        },
         Command::Duplicate {
             id: cadkernel_api::SolidId(0),
         },
@@ -1765,4 +1768,72 @@ fn rotate_command_undo_restores_original_geometry() {
     let after = session.document().bounding_box(id).unwrap();
     assert_eq!(before.min, after.min);
     assert_eq!(before.max, after.max);
+}
+
+#[test]
+fn find_by_label_command_returns_only_matching_solids_case_insensitive() {
+    use cadkernel_api::{Command, Outcome, Session, SolidId};
+    let mut session = Session::new();
+    session.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    session.execute(Command::CreateSphere { radius: 1.0 }).unwrap();
+    session.execute(Command::CreateCylinder { radius: 1.0, height: 1.0 }).unwrap();
+    session.execute(Command::Rename { id: SolidId(1), label: "MySphere".into() }).unwrap();
+    let outcome = session.execute(Command::FindByLabel { query: "SPH".into() }).unwrap();
+    match outcome {
+        Outcome::SolidsListed { entries } => {
+            assert_eq!(entries.len(), 1);
+            assert_eq!(entries[0].id, SolidId(1));
+            assert_eq!(entries[0].label, "MySphere");
+        }
+        other => panic!("expected SolidsListed, got {other:?}"),
+    }
+}
+
+#[test]
+fn find_by_label_command_with_empty_query_returns_every_solid() {
+    use cadkernel_api::{Command, Outcome, Session};
+    let mut session = Session::new();
+    session.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    session.execute(Command::CreateSphere { radius: 1.0 }).unwrap();
+    let outcome = session.execute(Command::FindByLabel { query: String::new() }).unwrap();
+    match outcome {
+        Outcome::SolidsListed { entries } => assert_eq!(entries.len(), 2),
+        other => panic!("expected SolidsListed, got {other:?}"),
+    }
+}
+
+#[test]
+fn find_by_label_command_returns_empty_when_no_match() {
+    use cadkernel_api::{Command, Outcome, Session};
+    let mut session = Session::new();
+    session.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let outcome = session.execute(Command::FindByLabel { query: "nonexistent".into() }).unwrap();
+    match outcome {
+        Outcome::SolidsListed { entries } => assert!(entries.is_empty()),
+        other => panic!("expected SolidsListed, got {other:?}"),
+    }
+}
+
+#[test]
+fn find_by_label_command_does_not_append_history() {
+    use cadkernel_api::{Command, Session};
+    let mut session = Session::new();
+    session.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let history_len_before = session.document().history().len();
+    session.execute(Command::FindByLabel { query: "Box".into() }).unwrap();
+    assert_eq!(session.document().history().len(), history_len_before);
+}
+
+#[test]
+fn find_by_label_command_round_trips_through_json() {
+    use cadkernel_api::Command;
+    let cmd = Command::FindByLabel { query: "myPart".into() };
+    let json = serde_json::to_value(&cmd).unwrap();
+    assert_eq!(json["op"], "find_by_label");
+    assert_eq!(json["query"], "myPart");
+    let back: Command = serde_json::from_value(json).unwrap();
+    match back {
+        Command::FindByLabel { query } => assert_eq!(query, "myPart"),
+        other => panic!("expected FindByLabel, got {other:?}"),
+    }
 }

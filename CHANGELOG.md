@@ -11,6 +11,19 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::FindByLabel` case-insensitive label search (2026-05-08)
+- **New `Command::FindByLabel { query }`** — fourth pure-observer command. Returns `Outcome::SolidsListed { entries }` containing every solid whose label contains `query` as a case-insensitive substring. An empty query matches every solid (equivalent to `ListSolids`). Reuses the existing `SolidsListed` outcome shape so AI consumers can treat list / search responses uniformly. Does not mutate the document or append a history event.
+- **Implementation**: lower-cases the needle once, iterates `Document::solid_ids()`, lower-cases each label and runs `contains()`. Empty-query fast-path keeps semantics consistent with `ListSolids`.
+- **`CommandSchema` entry** documents the contract.
+- **5 new regression tests** in `crates/api/tests/api_integration.rs`:
+  - `find_by_label_command_returns_only_matching_solids_case_insensitive` — "SPH" matches "MySphere" but not Box / Cylinder.
+  - `find_by_label_command_with_empty_query_returns_every_solid` — empty-query fast-path.
+  - `find_by_label_command_returns_empty_when_no_match` — clean empty result.
+  - `find_by_label_command_does_not_append_history` — observer guarantee.
+  - `find_by_label_command_round_trips_through_json` — wire format with `op: "find_by_label"`.
+- **`command_schemas_cover_every_op_name`** updated to include FindByLabel.
+- **2,940 / 0 / 0** tests (+5 vs. Rotate slice); strict `clippy --all-targets --all-features -D warnings` clean.
+
 #### API — `Command::Rotate` arbitrary-axis quaternion rotation (2026-05-08)
 - **New `Command::Rotate { id, axis, angle_rad, point }`** — first non-translation/scale geometric mutation in the command surface. Rotates a solid by `angle_rad` around an arbitrary `axis` (auto-normalised) about a pivot `point`. Per-vertex transform via `cadkernel_math::Quaternion::from_axis_angle` + `q.rotate_vec(rel)`. Topology is preserved, returns `Outcome::SolidModified`, and the operation is fully undoable through the standard log/cursor pipeline.
 - **Validation**: zero-length axis rejected with `ApiError::InvalidArgument` before any mutation occurs; unknown id rejected with `ApiError::UnknownSolid`.

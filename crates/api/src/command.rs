@@ -121,6 +121,12 @@ pub enum Command {
     /// `Outcome::SolidsListed { entries: [{ id, label }, ...] }`. Does
     /// not mutate the document or append a history event.
     ListSolids,
+    /// Read-only label-based lookup. Returns
+    /// `Outcome::SolidsListed { entries }` containing every solid whose
+    /// label contains `query` (case-insensitive substring match).
+    /// An empty `query` matches every solid (equivalent to `ListSolids`).
+    /// Does not mutate the document or append a history event.
+    FindByLabel { query: String },
     /// Deep-clone a solid into a new slot. Returns the new
     /// `Outcome::SolidCreated { id, label }` where `label` is
     /// `"<source-label> (copy)"`. The source slot is left untouched.
@@ -164,6 +170,7 @@ impl Command {
             Self::Measure { .. } => "measure",
             Self::Validate => "validate",
             Self::ListSolids => "list_solids",
+            Self::FindByLabel { .. } => "find_by_label",
             Self::Duplicate { .. } => "duplicate",
             Self::Rotate { .. } => "rotate",
             Self::Noop => "noop",
@@ -524,6 +531,16 @@ pub fn command_schemas() -> Vec<CommandSchema> {
                 ty: "solid_id",
                 required: true,
                 doc: "Source solid to clone.",
+            }],
+        },
+        CommandSchema {
+            op: "find_by_label",
+            description: "Case-insensitive substring search by label. Returns Outcome::SolidsListed with the matching rows. Empty query returns every solid.",
+            params: &[ParamSchema {
+                name: "query",
+                ty: "string",
+                required: true,
+                doc: "Substring to match against each solid's label (case-insensitive).",
             }],
         },
         CommandSchema {
