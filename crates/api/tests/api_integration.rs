@@ -3,7 +3,7 @@
 //! These tests exercise the same surface an AI agent or external test
 //! harness would see. They are the canonical "does the API work?" check.
 
-use cadkernel_api::{ApiError, Command, Outcome, OutcomeKind, Session, command_schemas};
+use cadkernel_api::{ApiError, Command, Outcome, OutcomeKind, Session, SolidId, command_schemas};
 
 #[test]
 fn empty_session_has_empty_document_and_log() {
@@ -433,6 +433,10 @@ fn command_schemas_cover_every_op_name() {
         },
         Command::CenterOnOrigin {
             id: cadkernel_api::SolidId(0),
+        },
+        Command::AlignTo {
+            id: cadkernel_api::SolidId(0),
+            target_id: cadkernel_api::SolidId(1),
         },
         Command::Rename {
             id: cadkernel_api::SolidId(0),
@@ -2175,6 +2179,79 @@ fn center_on_origin_command_undo_restores_original_position() {
     let before = if let Outcome::Measured { centroid, .. } =
         s.execute(Command::Measure { id: SolidId(0) }).unwrap() { centroid } else { panic!() };
     s.execute(Command::CenterOnOrigin { id: SolidId(0) }).unwrap();
+    s.undo().unwrap();
+    if let Outcome::Measured { centroid, .. } = s.execute(Command::Measure { id: SolidId(0) }).unwrap() {
+        for i in 0..3 { assert!((before[i] - centroid[i]).abs() < 1e-9); }
+    } else { panic!("expected Measured"); }
+}
+
+#[test]
+fn align_to_command_translates_source_centroid_onto_target_centroid() {
+    let mut s = Session::new();
+    // source: 1×1×1 box at origin, centroid (0.5, 0.5, 0.5)
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    // target: 1×1×1 box translated to (10, 20, 30), centroid (10.5, 20.5, 30.5)
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::Translate { id: SolidId(1), dx: 10.0, dy: 20.0, dz: 30.0 }).unwrap();
+    let target_c = if let Outcome::Measured { centroid, .. } =
+        s.execute(Command::Measure { id: SolidId(1) }).unwrap()
+    { centroid } else { panic!("expected Measured") };
+    let outcome = s.execute(Command::AlignTo { id: SolidId(0), target_id: SolidId(1) }).unwrap();
+    assert!(matches!(outcome, Outcome::SolidModified { id } if id == SolidId(0)));
+    if let Outcome::Measured { centroid, .. } = s.execute(Command::Measure { id: SolidId(0) }).unwrap() {
+        for i in 0..3 { assert!((centroid[i] - target_c[i]).abs() < 1e-9); }
+    } else { panic!("expected Measured"); }
+}
+
+#[test]
+fn align_to_command_self_alignment_is_noop() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 2.0, dy: 4.0, dz: 6.0 }).unwrap();
+    s.execute(Command::Translate { id: SolidId(0), dx: 5.0, dy: -3.0, dz: 7.0 }).unwrap();
+    let before = if let Outcome::Measured { centroid, .. } =
+        s.execute(Command::Measure { id: SolidId(0) }).unwrap()
+    { centroid } else { panic!("expected Measured") };
+    s.execute(Command::AlignTo { id: SolidId(0), target_id: SolidId(0) }).unwrap();
+    if let Outcome::Measured { centroid, .. } = s.execute(Command::Measure { id: SolidId(0) }).unwrap() {
+        for i in 0..3 { assert!((before[i] - centroid[i]).abs() < 1e-12); }
+    } else { panic!("expected Measured"); }
+}
+
+#[test]
+fn align_to_command_returns_unknown_solid_for_invalid_source_or_target() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let err = s.execute(Command::AlignTo { id: SolidId(0), target_id: SolidId(7) }).unwrap_err();
+    assert!(matches!(err, ApiError::UnknownSolid(_)));
+    let err2 = s.execute(Command::AlignTo { id: SolidId(7), target_id: SolidId(0) }).unwrap_err();
+    assert!(matches!(err2, ApiError::UnknownSolid(_)));
+}
+
+#[test]
+fn align_to_command_round_trips_through_json() {
+    let cmd = Command::AlignTo { id: SolidId(2), target_id: SolidId(5) };
+    let json = serde_json::to_string(&cmd).unwrap();
+    assert!(json.contains("\"op\":\"align_to\""));
+    let back: Command = serde_json::from_str(&json).unwrap();
+    match back {
+        Command::AlignTo { id, target_id } => {
+            assert_eq!(id, SolidId(2));
+            assert_eq!(target_id, SolidId(5));
+        }
+        _ => panic!("expected AlignTo"),
+    }
+}
+
+#[test]
+fn align_to_command_undo_restores_original_position() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::Translate { id: SolidId(1), dx: 100.0, dy: 0.0, dz: 0.0 }).unwrap();
+    let before = if let Outcome::Measured { centroid, .. } =
+        s.execute(Command::Measure { id: SolidId(0) }).unwrap()
+    { centroid } else { panic!("expected Measured") };
+    s.execute(Command::AlignTo { id: SolidId(0), target_id: SolidId(1) }).unwrap();
     s.undo().unwrap();
     if let Outcome::Measured { centroid, .. } = s.execute(Command::Measure { id: SolidId(0) }).unwrap() {
         for i in 0..3 { assert!((before[i] - centroid[i]).abs() < 1e-9); }

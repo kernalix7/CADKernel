@@ -11,6 +11,16 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::AlignTo` two-solid centroid alignment (2026-05-08)
+- **New `Command::AlignTo { id, target_id }`** — translates `id` so its centroid coincides with the centroid of `target_id`. Two-solid alignment convenience. Equivalent to `Translate` by `target_centroid - source_centroid` but expressed as a single command (and one undo step).
+- **Self-alignment is a no-op** when `id == target_id` (returns `Outcome::SolidModified` without touching geometry).
+- **Validation**: unknown source or target id rejected with `ApiError::UnknownSolid`. Both slots must already have populated `Solid` handles.
+- **`CommandSchema` entry** documents the contract.
+- **Implementation**: `Session::align_to()` extracts both centroids via `solid_mass_properties` (target slot read-only, source slot mutated), then translates every vertex by the centroid delta. Returns `Outcome::SolidModified`; fully undoable.
+- **5 new regression tests**: source-onto-target alignment, self-alignment idempotency, unknown source/target rejection, JSON round-trip (`op: "align_to"`), undo restoration.
+- **`command_schemas_cover_every_op_name`** updated.
+- **2,966 / 0 / 0** tests (+5 vs. CenterOnOrigin slice); strict `clippy --all-targets --all-features -D warnings` clean.
+
 #### API — `Command::CenterOnOrigin` centroid-driven re-centring (2026-05-08)
 - **New `Command::CenterOnOrigin { id }`** — translates a solid so its centroid lands on the world origin. AI / scripts no longer need to call `Measure` first to grab the centroid before translating; this collapses the common "re-centre an imported part" workflow into a single dispatch. Equivalent to `Translate` by `-centroid` but expressed as one command (and one undo step).
 - **Validation**: unknown id rejected with `ApiError::UnknownSolid`. The slot must already have a populated `Solid` handle (mass-properties calculation requires it).

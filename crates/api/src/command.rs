@@ -67,6 +67,13 @@ pub enum Command {
     /// imported part without first measuring its centroid. Equivalent
     /// to `Translate` by `-centroid` but expressed as a single command.
     CenterOnOrigin { id: SolidId },
+    /// Translate `id` so that its centroid coincides with the centroid
+    /// of `target_id`. Two-solid alignment convenience for AI / scripts
+    /// that want to snap one part to another without first measuring
+    /// either centroid. Equivalent to `Translate` by
+    /// `target_centroid - source_centroid` but expressed as a single
+    /// command. The target slot is read-only.
+    AlignTo { id: SolidId, target_id: SolidId },
     /// Rename a solid (does not change its [`SolidId`]).
     Rename { id: SolidId, label: String },
     /// Delete a solid.
@@ -188,6 +195,7 @@ impl Command {
             Self::Scale { .. } => "scale",
             Self::ScaleNonUniform { .. } => "scale_non_uniform",
             Self::CenterOnOrigin { .. } => "center_on_origin",
+            Self::AlignTo { .. } => "align_to",
             Self::Rename { .. } => "rename",
             Self::DeleteSolid { .. } => "delete_solid",
             Self::Extrude { .. } => "extrude",
@@ -615,6 +623,24 @@ pub fn command_schemas() -> Vec<CommandSchema> {
                 required: true,
                 doc: "Solid to re-centre.",
             }],
+        },
+        CommandSchema {
+            op: "align_to",
+            description: "Translate `id` so its centroid coincides with the centroid of `target_id`. Two-solid alignment convenience.",
+            params: &[
+                ParamSchema {
+                    name: "id",
+                    ty: "solid_id",
+                    required: true,
+                    doc: "Solid to move.",
+                },
+                ParamSchema {
+                    name: "target_id",
+                    ty: "solid_id",
+                    required: true,
+                    doc: "Solid whose centroid is the alignment target (read-only).",
+                },
+            ],
         },
         CommandSchema {
             op: "rotate",

@@ -11,6 +11,16 @@
 
 ### 추가됨
 
+#### API — `Command::AlignTo` 두 솔리드 간 centroid 정렬 (2026-05-08)
+- **`Command::AlignTo { id, target_id }` 신규 추가** — `id`의 centroid를 `target_id`의 centroid와 일치시킬. 두 솔리드 정렬 컴팡스. `Translate` by `target_centroid - source_centroid` 동가이지만 단일 명령/undo로 표현.
+- **자기 정렬**(`id == target_id`)은 no-op (`Outcome::SolidModified` 그대로 반환, 기하 수정 없음).
+- **검증**: 소스 또는 타겟이 unknown이면 `ApiError::UnknownSolid`. 두 슬롯 모두 `Solid` handle 필요.
+- **`CommandSchema` 엔트리** 추가.
+- **구현**: `Session::align_to()`이 양쪽 centroid를 `solid_mass_properties`로 추출(타겟 읽기 전용, 소스 수정) 후 delta로 translate. log/cursor로 완전 undo.
+- **회귀 테스트 5개**: 소스 → 타겟 정렬 / 자기 정렬 idempotent / 소스·타겟 잘못된 id 거절 / JSON 라운드트립 / undo 복원.
+- `command_schemas_cover_every_op_name` 업데이트.
+- 테스트 **2,966 / 0 / 0** (CenterOnOrigin 대비 +5), `clippy --all-targets --all-features -D warnings` 무경고.
+
 #### API — `Command::CenterOnOrigin` centroid 기반 재중심 (2026-05-08)
 - **`Command::CenterOnOrigin { id }` 신규 추가** — 솔리드를 centroid가 월드 원점에 오도록 translate. AI/스크립트가 `Measure`로 centroid 때린 후 translate해야 했던 "임포트된 부품 재중심" 패턴을 단일 dispatch로 축소. `Translate` by `-centroid` 동가이지만 한 명령(그리고 undo 한 번)으로 표현.
 - **검증**: unknown id는 `ApiError::UnknownSolid`. 슬롯이 이미 `Solid` handle 보유 필요(mass-properties 계산).

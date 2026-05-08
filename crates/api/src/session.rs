@@ -460,6 +460,7 @@ impl Session {
                 self.scale_non_uniform(*id, *factors, *point)
             }
             Command::CenterOnOrigin { id } => self.center_on_origin(*id),
+            Command::AlignTo { id, target_id } => self.align_to(*id, *target_id),
             Command::Rename { id, label } => self.rename(*id, label.clone()),
             Command::DeleteSolid { id } => {
                 if self.document.remove(*id) {
@@ -685,6 +686,42 @@ impl Session {
                 v.point.y - centroid.y,
                 v.point.z - centroid.z,
             );
+        }
+        Ok(Outcome::SolidModified { id })
+    }
+
+    fn align_to(&mut self, id: SolidId, target_id: SolidId) -> ApiResult<Outcome> {
+        if id == target_id {
+            return Ok(Outcome::SolidModified { id });
+        }
+        let target_centroid = {
+            let slot = self
+                .document
+                .get_slot(target_id)
+                .ok_or_else(|| ApiError::UnknownSolid(format!("{target_id}")))?;
+            let handle = slot.handle.ok_or_else(|| {
+                ApiError::UnknownSolid(format!("{target_id} has no solid handle"))
+            })?;
+            let mp = solid_mass_properties(&slot.model, handle)?;
+            mp.centroid
+        };
+        let source_centroid = {
+            let slot = self
+                .document
+                .get_slot(id)
+                .ok_or_else(|| ApiError::UnknownSolid(format!("{id}")))?;
+            let handle = slot
+                .handle
+                .ok_or_else(|| ApiError::UnknownSolid(format!("{id} has no solid handle")))?;
+            let mp = solid_mass_properties(&slot.model, handle)?;
+            mp.centroid
+        };
+        let dx = target_centroid.x - source_centroid.x;
+        let dy = target_centroid.y - source_centroid.y;
+        let dz = target_centroid.z - source_centroid.z;
+        let slot = slot_mut(&mut self.document, id)?;
+        for (_h, v) in slot.model.vertices.iter_mut() {
+            v.point = Point3::new(v.point.x + dx, v.point.y + dy, v.point.z + dz);
         }
         Ok(Outcome::SolidModified { id })
     }
@@ -1003,6 +1040,7 @@ fn history_description(cmd: &Command, outcome: &Outcome) -> String {
             format!("ScaleNonUniform {id} [{},{},{}]", factors[0], factors[1], factors[2])
         }
         (Command::CenterOnOrigin { id }, _) => format!("CenterOnOrigin {id}"),
+        (Command::AlignTo { id, target_id }, _) => format!("AlignTo {id} -> {target_id}"),
         (Command::Rename { id, label }, _) => format!("Rename {id} → {label:?}"),
         (Command::DeleteSolid { id }, _) => format!("Delete {id}"),
         (
