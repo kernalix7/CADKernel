@@ -117,6 +117,10 @@ pub enum Command {
     /// document is clean). Does not mutate the document or append a
     /// history event — second pure-observer command alongside `Measure`.
     Validate,
+    /// Read-only enumeration of every solid in the document. Returns
+    /// `Outcome::SolidsListed { entries: [{ id, label }, ...] }`. Does
+    /// not mutate the document or append a history event.
+    ListSolids,
     /// No-op. Used by tests to verify the round-trip without side effects.
     Noop,
 }
@@ -143,6 +147,7 @@ impl Command {
             Self::NewDocument => "new_document",
             Self::Measure { .. } => "measure",
             Self::Validate => "validate",
+            Self::ListSolids => "list_solids",
             Self::Noop => "noop",
         }
     }
@@ -486,6 +491,11 @@ pub fn command_schemas() -> Vec<CommandSchema> {
         CommandSchema {
             op: "validate",
             description: "Read-only: run Document::validate() and return any DocumentIssues as Outcome::Validated. Does not mutate the document or append history.",
+            params: &[],
+        },
+        CommandSchema {
+            op: "list_solids",
+            description: "Read-only: enumerate every solid in the document as Outcome::SolidsListed { entries: [{ id, label }, ...] }. Does not mutate the document or append history.",
             params: &[],
         },
         CommandSchema {

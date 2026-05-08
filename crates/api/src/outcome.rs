@@ -54,8 +54,24 @@ pub enum Outcome {
     Validated {
         issues: Vec<DocumentIssue>,
     },
+    /// Read-only enumeration of every solid in the document
+    /// (`Command::ListSolids`). Pairs each `SolidId` with its label so
+    /// AI / test consumers can render a tree view or pick targets for
+    /// follow-up commands without juggling `Document::solid_ids()` and
+    /// `Document::solid_label()` separately.
+    SolidsListed {
+        entries: Vec<SolidEntry>,
+    },
     /// Nothing happened (`Command::Noop`).
     Empty,
+}
+
+/// One row in [`Outcome::SolidsListed`]. Keeps the wire format flat for
+/// JSON consumers (`{"id": 0, "label": "Box"}`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SolidEntry {
+    pub id: SolidId,
+    pub label: String,
 }
 
 /// Coarse-grained tag, useful for AI/test branching without pattern matching.
@@ -70,6 +86,7 @@ pub enum OutcomeKind {
     DocumentReset,
     Measured,
     Validated,
+    SolidsListed,
     Empty,
 }
 
@@ -85,6 +102,7 @@ impl Outcome {
             Self::DocumentReset => OutcomeKind::DocumentReset,
             Self::Measured { .. } => OutcomeKind::Measured,
             Self::Validated { .. } => OutcomeKind::Validated,
+            Self::SolidsListed { .. } => OutcomeKind::SolidsListed,
             Self::Empty => OutcomeKind::Empty,
         }
     }

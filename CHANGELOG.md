@@ -11,6 +11,20 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::ListSolids` + `Outcome::SolidsListed` (2026-05-08)
+- **New `Command::ListSolids`** — third pure-observer command (after `Measure` and `Validate`). Returns `Outcome::SolidsListed { entries: Vec<SolidEntry { id, label }> }` by joining `Document::solid_ids()` with `Document::solid_label()` in a single round-trip. Useful for AI / test consumers that need to render a tree view or pick targets for follow-up commands without juggling two separate Document API calls.
+- **New `SolidEntry { id, label }`** — flat row type re-exported from `cadkernel_api::SolidEntry`. JSON wire format: `{"id": 0, "label": "Box"}`.
+- **Observer fast-path** in `Session::execute` widened to include `ListSolids` alongside `Measure` and `Validate`.
+- **`CommandSchema` entry**: `"Read-only: enumerate every solid in the document as Outcome::SolidsListed { entries: [{ id, label }, ...] }. Does not mutate the document or append history."`
+- **5 new regression tests** in `crates/api/tests/api_integration.rs`:
+  - `list_solids_command_returns_empty_for_fresh_session` — baseline empty case.
+  - `list_solids_command_enumerates_ids_and_labels_in_creation_order` — Box/Sphere/Cylinder labels + sequential SolidIds.
+  - `list_solids_command_does_not_mutate_log_or_history` — idempotent observer.
+  - `list_solids_outcome_serializes_with_kind_solids_listed_and_flat_entries` — JSON wire-format check (`kind: "solids_listed"`, flat entry rows).
+  - `list_solids_command_round_trips_through_json` — unit-variant `{"op":"list_solids"}` JSON round-trip.
+- **`command_schemas_cover_every_op_name`** updated to include the new ListSolids variant.
+- **2,923 / 0 / 0** tests (+5 vs. Validate slice); strict `clippy --all-targets --all-features -D warnings` clean.
+
 #### API — `Command::Validate` + `Outcome::Validated` (2026-05-08)
 - **New `Command::Validate`** — second pure-observer command after `Measure`. Returns `Outcome::Validated { issues: Vec<DocumentIssue> }` by delegating to the existing `Document::validate()`. AI / test consumers can now run a one-call health check through the same `execute(Command)` channel they use for everything else — e.g. after a long replay, branch on `issues.is_empty()` to decide whether to surface a warning UI.
 - **Observer fast-path widened** — the `matches!` filter in `Session::execute` now covers `Validate` alongside `Measure`, so the new command is also non-recorded, non-coalesced, and non-undoable.

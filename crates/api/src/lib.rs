@@ -55,7 +55,7 @@ pub mod cadk;
 
 pub use command::{Command, ExtrudeKind, command_schemas};
 pub use document::{AabbSummary, Document, DocumentIssue, HistoryEvent, MeasureSummary, SolidId};
-pub use outcome::{Outcome, OutcomeKind};
+pub use outcome::{Outcome, OutcomeKind, SolidEntry};
 pub use session::{Session, SessionSnapshot};
 
 /// Result type returned by the API surface.

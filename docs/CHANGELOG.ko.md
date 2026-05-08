@@ -11,6 +11,15 @@
 
 ### 추가됨
 
+#### API — `Command::ListSolids` + `Outcome::SolidsListed` (2026-05-08)
+- **`Command::ListSolids` 신규 추가** — `Measure`·`Validate`에 이은 세 번째 순수 observer 명령. `Document::solid_ids()`와 `Document::solid_label()`를 단일 왕복으로 결합하여 `Outcome::SolidsListed { entries: Vec<SolidEntry { id, label }> }`를 반환. AI/테스트 소비자가 Document API 두 개를 따로 잡을 필요 없이 트리 뷰를 그리거나 후속 명령의 타겟을 고르는 용도에 적합.
+- **`SolidEntry { id, label }` 구조체** — `cadkernel_api::SolidEntry`로 재내보내기. JSON 와이어 포맷: `{"id": 0, "label": "Box"}`.
+- **observer 빠른 경로 확장** — `Session::execute`의 `matches!`가 `ListSolids`도 포함.
+- **`CommandSchema` 엔트리** 추가: 읽기 전용 계약 문서화.
+- **회귀 테스트 5개 추가** — 빈 세션 / 3개 솔리드 열거 / log·history 무변경 / JSON 와이어 포맷(`kind: "solids_listed"`) / 단일 변형 JSON 왕복.
+- `command_schemas_cover_every_op_name` 도 ListSolids 포함하도록 업데이트.
+- 테스트 **2,923 / 0 / 0** (Validate 슬라이스 대비 +5), `clippy --all-targets --all-features -D warnings` 무경고.
+
 #### API — `Command::Validate` + `Outcome::Validated` (2026-05-08)
 - **`Command::Validate` 신규 추가** — `Measure`에 이어 두 번째 순수 observer 명령. 기존 `Document::validate()`로 위임하여 `Outcome::Validated { issues: Vec<DocumentIssue> }`를 반환. AI/테스트 소비자는 긴 리플레이 후 `issues.is_empty()`로 경고 UI 노출 여부를 판단하는 용도로 동일한 `execute(Command)` 채널을 사용 가능.
 - **observer 빠른 경로 확장** — `Session::execute`의 `matches!` 필터가 `Measure`와 함께 `Validate`도 포함. 이 명령도 로그 롭·coalesce 대상 아님·undo 불가.

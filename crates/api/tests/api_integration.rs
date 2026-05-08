@@ -456,6 +456,7 @@ fn command_schemas_cover_every_op_name() {
             id: cadkernel_api::SolidId(0),
         },
         Command::Validate,
+        Command::ListSolids,
         Command::NewDocument,
         Command::Noop,
     ];
@@ -1406,4 +1407,85 @@ fn validate_command_round_trips_through_json() {
     assert_eq!(json["op"], "validate");
     let back: Command = serde_json::from_value(json).unwrap();
     assert!(matches!(back, Command::Validate));
+}
+
+#[test]
+fn list_solids_command_returns_empty_for_fresh_session() {
+    use cadkernel_api::{Command, Outcome, Session};
+    let mut session = Session::new();
+    match session.execute(Command::ListSolids).unwrap() {
+        Outcome::SolidsListed { entries } => assert!(entries.is_empty()),
+        other => panic!("expected SolidsListed, got {other:?}"),
+    }
+}
+
+#[test]
+fn list_solids_command_enumerates_ids_and_labels_in_creation_order() {
+    use cadkernel_api::{Command, Outcome, Session};
+    let mut session = Session::new();
+    session
+        .execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 })
+        .unwrap();
+    session
+        .execute(Command::CreateSphere { radius: 0.5 })
+        .unwrap();
+    session
+        .execute(Command::CreateCylinder { radius: 1.0, height: 2.0 })
+        .unwrap();
+    match session.execute(Command::ListSolids).unwrap() {
+        Outcome::SolidsListed { entries } => {
+            assert_eq!(entries.len(), 3);
+            assert_eq!(entries[0].label, "Box");
+            assert_eq!(entries[1].label, "Sphere");
+            assert_eq!(entries[2].label, "Cylinder");
+            assert_eq!(entries[0].id.0, 0);
+            assert_eq!(entries[1].id.0, 1);
+            assert_eq!(entries[2].id.0, 2);
+        }
+        other => panic!("expected SolidsListed, got {other:?}"),
+    }
+}
+
+#[test]
+fn list_solids_command_does_not_mutate_log_or_history() {
+    use cadkernel_api::{Command, Session};
+    let mut session = Session::new();
+    session
+        .execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 })
+        .unwrap();
+    let log_len = session.log().len();
+    let history_len = session.document().history().len();
+    let _ = session.execute(Command::ListSolids).unwrap();
+    let _ = session.execute(Command::ListSolids).unwrap();
+    assert_eq!(session.log().len(), log_len);
+    assert_eq!(session.document().history().len(), history_len);
+}
+
+#[test]
+fn list_solids_outcome_serializes_with_kind_solids_listed_and_flat_entries() {
+    use cadkernel_api::{Outcome, SolidEntry, SolidId};
+    let outcome = Outcome::SolidsListed {
+        entries: vec![
+            SolidEntry { id: SolidId(0), label: "Box".into() },
+            SolidEntry { id: SolidId(1), label: "Sphere".into() },
+        ],
+    };
+    let json = serde_json::to_value(&outcome).unwrap();
+    assert_eq!(json["kind"], "solids_listed");
+    let entries = json["entries"].as_array().unwrap();
+    assert_eq!(entries.len(), 2);
+    assert_eq!(entries[0]["id"], 0);
+    assert_eq!(entries[0]["label"], "Box");
+    assert_eq!(entries[1]["id"], 1);
+    assert_eq!(entries[1]["label"], "Sphere");
+}
+
+#[test]
+fn list_solids_command_round_trips_through_json() {
+    use cadkernel_api::Command;
+    let cmd = Command::ListSolids;
+    let json = serde_json::to_value(&cmd).unwrap();
+    assert_eq!(json["op"], "list_solids");
+    let back: Command = serde_json::from_value(json).unwrap();
+    assert!(matches!(back, Command::ListSolids));
 }
