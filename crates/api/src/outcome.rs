@@ -87,6 +87,16 @@ pub enum Outcome {
         min: [f64; 3],
         max: [f64; 3],
     },
+    /// Read-only centroid-to-centroid distance between two solids
+    /// (`Command::Distance`). Returns the Euclidean distance plus the
+    /// per-axis delta `b - a` for downstream calculations (AI / scripts
+    /// often want both magnitude and direction).
+    Distance {
+        id_a: SolidId,
+        id_b: SolidId,
+        distance: f64,
+        delta: [f64; 3],
+    },
     /// Nothing happened (`Command::Noop`).
     Empty,
 }
@@ -115,6 +125,7 @@ pub enum OutcomeKind {
     HistoryListed,
     Stats,
     Bounds,
+    Distance,
     Empty,
 }
 
@@ -134,6 +145,7 @@ impl Outcome {
             Self::HistoryListed { .. } => OutcomeKind::HistoryListed,
             Self::Stats { .. } => OutcomeKind::Stats,
             Self::Bounds { .. } => OutcomeKind::Bounds,
+            Self::Distance { .. } => OutcomeKind::Distance,
             Self::Empty => OutcomeKind::Empty,
         }
     }

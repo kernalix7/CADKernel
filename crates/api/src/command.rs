@@ -179,6 +179,13 @@ pub enum Command {
     /// frustum culling, layout, snapping). Does not mutate or
     /// append a history event.
     Bounds { id: SolidId },
+    /// Read-only centroid-to-centroid distance between two solids.
+    /// Returns `Outcome::Distance { id_a, id_b, distance, delta }`
+    /// where `delta = centroid_b - centroid_a`. Convenience for AI /
+    /// scripts that need both magnitude and direction without two
+    /// separate `Measure` calls. Does not mutate or append a history
+    /// event.
+    Distance { id_a: SolidId, id_b: SolidId },
     /// Deep-clone a solid into a new slot. Returns the new
     /// `Outcome::SolidCreated { id, label }` where `label` is
     /// `"<source-label> (copy)"`. The source slot is left untouched.
@@ -231,6 +238,7 @@ impl Command {
             Self::HistoryEvents => "history_events",
             Self::Stats => "stats",
             Self::Bounds { .. } => "bounds",
+            Self::Distance { .. } => "distance",
             Self::Duplicate { .. } => "duplicate",
             Self::Rotate { .. } => "rotate",
             Self::Noop => "noop",
@@ -622,6 +630,24 @@ pub fn command_schemas() -> Vec<CommandSchema> {
                 required: true,
                 doc: "Solid to query.",
             }],
+        },
+        CommandSchema {
+            op: "distance",
+            description: "Return centroid-to-centroid distance and per-axis delta (b - a) between two solids.",
+            params: &[
+                ParamSchema {
+                    name: "id_a",
+                    ty: "solid_id",
+                    required: true,
+                    doc: "First solid (centroid is origin of delta).",
+                },
+                ParamSchema {
+                    name: "id_b",
+                    ty: "solid_id",
+                    required: true,
+                    doc: "Second solid (centroid is target of delta).",
+                },
+            ],
         },
         CommandSchema {
             op: "scale_non_uniform",

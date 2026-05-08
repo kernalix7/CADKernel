@@ -11,6 +11,14 @@
 
 ### 추가됨
 
+#### API — `Command::Distance` + `Outcome::Distance` centroid-to-centroid 올서버 (2026-05-08)
+- **`Command::Distance { id_a, id_b }` (8번째 올서버) 신규** + `Outcome::Distance { id_a, id_b, distance, delta }` + `OutcomeKind::Distance` 태그. 두 솔리드 centroid 사이의 유클리드 거리와 축별 차이 `centroid_b - centroid_a`를 반환. 자기 자신과의 거리(`id_a == id_b`)는 0.
+- **올서버 fast-path 8개로 확장**: `Measure | Validate | ListSolids | FindByLabel | HistoryEvents | Stats | Bounds | Distance` — 상태 변경 없음, history 추가 없음.
+- **검증**: 어느 한쪽 id 누락 시 `UnknownSolid`.
+- **구현**: `Session::dispatch`의 Distance 분기가 `Document::measure_solid`로 양쪽 centroid를 가져와 `delta`와 `sqrt(dot(delta, delta))` 계산.
+- **회귀 테스트 5개**: 3-4-5 거리 검증 / 자기 거리 0 / 잘못된 id 양방향 거절 / history 미추가 / JSON 라운드트립.
+- **2,986 / 0 / 0** 테스트, clippy strict clean.
+
 #### API — `Command::Bounds` + `Outcome::Bounds` 경량 AABB 올서버 (2026-05-08)
 - **`Command::Bounds { id }` (7번째 올서버) 신규 추가** + `Outcome::Bounds { id, min, max }` + `OutcomeKind::Bounds` 태그. `Measure`가 수행하는 volume/표면적/centroid 순회를 건너뛰고 월드 공간 AABB만 반환. AABB만 필요한 경우(frustum culling, 레이아웃, 스냅, UI fitting) 용.
 - **올서버 fast-path 7개로 확장**: `Measure | Validate | ListSolids | FindByLabel | HistoryEvents | Stats | Bounds` — 상태 변경 없음, history 추가 없음.

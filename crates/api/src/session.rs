@@ -294,7 +294,7 @@ impl Session {
         // because they don't mutate the document.
         if matches!(
             command,
-            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. } | Command::HistoryEvents | Command::Stats | Command::Bounds { .. }
+            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. } | Command::HistoryEvents | Command::Stats | Command::Bounds { .. } | Command::Distance { .. }
         ) {
             return self.dispatch(&command);
         }
@@ -542,6 +542,29 @@ impl Session {
                     id: *id,
                     min: bbox.min,
                     max: bbox.max,
+                })
+            }
+            Command::Distance { id_a, id_b } => {
+                let a = self
+                    .document
+                    .measure_solid(*id_a)
+                    .ok_or_else(|| ApiError::UnknownSolid(format!("{id_a}")))?;
+                let b = self
+                    .document
+                    .measure_solid(*id_b)
+                    .ok_or_else(|| ApiError::UnknownSolid(format!("{id_b}")))?;
+                let delta = [
+                    b.centroid[0] - a.centroid[0],
+                    b.centroid[1] - a.centroid[1],
+                    b.centroid[2] - a.centroid[2],
+                ];
+                let distance =
+                    (delta[0] * delta[0] + delta[1] * delta[1] + delta[2] * delta[2]).sqrt();
+                Ok(Outcome::Distance {
+                    id_a: *id_a,
+                    id_b: *id_b,
+                    distance,
+                    delta,
                 })
             }
             Command::Rotate {
@@ -1130,6 +1153,7 @@ fn history_description(cmd: &Command, outcome: &Outcome) -> String {
         (Command::HistoryEvents, _) => "HistoryEvents".into(),
         (Command::Stats, _) => "Stats".into(),
         (Command::Bounds { id }, _) => format!("Bounds {id}"),
+        (Command::Distance { id_a, id_b }, _) => format!("Distance {id_a} <-> {id_b}"),
         (Command::Duplicate { id }, _) => format!("Duplicate {id}"),
         (Command::Rotate { id, angle_rad, .. }, _) => {
             format!("Rotate {id} ({angle_rad} rad)")

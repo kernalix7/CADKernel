@@ -11,6 +11,15 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::Distance` + `Outcome::Distance` centroid-to-centroid observer (2026-05-08)
+- **New `Command::Distance { id_a, id_b }` (8th observer)** + new `Outcome::Distance { id_a, id_b, distance, delta }` + `OutcomeKind::Distance` tag. Returns the Euclidean distance between two solid centroids together with the per-axis delta `centroid_b - centroid_a`. Self-distance (`id_a == id_b`) is `0` with zero delta.
+- **Observer fast-path widened** to 8 variants: `Measure | Validate | ListSolids | FindByLabel | HistoryEvents | Stats | Bounds | Distance` — none mutate state nor append history.
+- **Validation**: either id missing → `UnknownSolid`.
+- **Implementation**: `Session::dispatch` Distance arm queries `Document::measure_solid` for both solids, computes `delta` and `sqrt(dot(delta, delta))` — pure observer, no model handles needed.
+- **5 new regression tests**: 3-4-5 triangle distance check, self-distance is zero, unknown id rejected (both sides), no history event appended, JSON round-trip (`op: "distance"`).
+- **`command_schemas_cover_every_op_name`** updated with the 2-param Distance schema.
+- **2,986 / 0 / 0** tests (+5 vs. Bounds slice); strict `clippy --all-targets --all-features -D warnings` clean.
+
 #### API — `Command::Bounds` + `Outcome::Bounds` cheap AABB observer (2026-05-08)
 - **New `Command::Bounds { id }` (7th observer)** + new `Outcome::Bounds { id, min, max }` + `OutcomeKind::Bounds` tag. Returns the world-space axis-aligned bounding box of a solid without paying the volume / surface-area / centroid traversal that `Measure` performs. Use this when only the AABB is needed (frustum culling, layout, snapping, UI fitting).
 - **Observer fast-path widened** to 7 variants: `Measure | Validate | ListSolids | FindByLabel | HistoryEvents | Stats | Bounds` — these never mutate state nor append history events.

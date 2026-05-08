@@ -485,6 +485,10 @@ fn command_schemas_cover_every_op_name() {
         Command::Bounds {
             id: cadkernel_api::SolidId(0),
         },
+        Command::Distance {
+            id_a: cadkernel_api::SolidId(0),
+            id_b: cadkernel_api::SolidId(1),
+        },
         Command::Duplicate {
             id: cadkernel_api::SolidId(0),
         },
@@ -2456,4 +2460,69 @@ fn bounds_outcome_kind_is_bounds() {
     s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
     let outcome = s.execute(Command::Bounds { id: SolidId(0) }).unwrap();
     assert_eq!(outcome.kind(), OutcomeKind::Bounds);
+}
+
+#[test]
+fn distance_command_returns_centroid_distance_and_delta() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::Translate { id: SolidId(1), dx: 3.0, dy: 4.0, dz: 0.0 }).unwrap();
+    let outcome = s.execute(Command::Distance { id_a: SolidId(0), id_b: SolidId(1) }).unwrap();
+    if let Outcome::Distance { id_a, id_b, distance, delta } = outcome {
+        assert_eq!(id_a, SolidId(0));
+        assert_eq!(id_b, SolidId(1));
+        // Both 1×1×1 at origin and (3,4,0) → centroids (0.5,0.5,0.5) and (3.5,4.5,0.5)
+        // delta = (3,4,0), distance = 5
+        assert!((delta[0] - 3.0).abs() < 1e-9);
+        assert!((delta[1] - 4.0).abs() < 1e-9);
+        assert!((delta[2] - 0.0).abs() < 1e-9);
+        assert!((distance - 5.0).abs() < 1e-9);
+    } else { panic!("expected Distance, got {outcome:?}"); }
+}
+
+#[test]
+fn distance_command_self_distance_is_zero() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
+    let outcome = s.execute(Command::Distance { id_a: SolidId(0), id_b: SolidId(0) }).unwrap();
+    if let Outcome::Distance { distance, delta, .. } = outcome {
+        assert!(distance.abs() < 1e-12);
+        for d in delta { assert!(d.abs() < 1e-12); }
+    } else { panic!(); }
+}
+
+#[test]
+fn distance_command_returns_unknown_solid_for_invalid_id() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let err = s.execute(Command::Distance { id_a: SolidId(0), id_b: SolidId(7) }).unwrap_err();
+    assert!(matches!(err, ApiError::UnknownSolid(_)));
+    let err2 = s.execute(Command::Distance { id_a: SolidId(7), id_b: SolidId(0) }).unwrap_err();
+    assert!(matches!(err2, ApiError::UnknownSolid(_)));
+}
+
+#[test]
+fn distance_command_does_not_append_history_event() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let before = s.document().history().len();
+    s.execute(Command::Distance { id_a: SolidId(0), id_b: SolidId(1) }).unwrap();
+    assert_eq!(s.document().history().len(), before);
+}
+
+#[test]
+fn distance_command_round_trips_through_json() {
+    let cmd = Command::Distance { id_a: SolidId(2), id_b: SolidId(5) };
+    let json = serde_json::to_string(&cmd).unwrap();
+    assert!(json.contains("\"op\":\"distance\""));
+    let back: Command = serde_json::from_str(&json).unwrap();
+    match back {
+        Command::Distance { id_a, id_b } => {
+            assert_eq!(id_a, SolidId(2));
+            assert_eq!(id_b, SolidId(5));
+        }
+        _ => panic!("expected Distance"),
+    }
 }
