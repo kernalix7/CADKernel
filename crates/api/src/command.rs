@@ -125,6 +125,18 @@ pub enum Command {
     /// `Outcome::SolidCreated { id, label }` where `label` is
     /// `"<source-label> (copy)"`. The source slot is left untouched.
     Duplicate { id: SolidId },
+    /// Rotate a solid in place around an arbitrary axis through a pivot
+    /// point. `axis` is the rotation axis in world space (need not be
+    /// unit-length — the dispatcher normalises), `angle_rad` is the
+    /// signed rotation angle in radians (right-hand rule), and `point`
+    /// is the pivot in world coordinates. The slot's vertex positions
+    /// are rewritten in place; topology is preserved.
+    Rotate {
+        id: SolidId,
+        axis: [f64; 3],
+        angle_rad: f64,
+        point: [f64; 3],
+    },
     /// No-op. Used by tests to verify the round-trip without side effects.
     Noop,
 }
@@ -153,6 +165,7 @@ impl Command {
             Self::Validate => "validate",
             Self::ListSolids => "list_solids",
             Self::Duplicate { .. } => "duplicate",
+            Self::Rotate { .. } => "rotate",
             Self::Noop => "noop",
         }
     }
@@ -512,6 +525,36 @@ pub fn command_schemas() -> Vec<CommandSchema> {
                 required: true,
                 doc: "Source solid to clone.",
             }],
+        },
+        CommandSchema {
+            op: "rotate",
+            description: "Rotate a solid in place around an arbitrary axis through a pivot point. Vertex positions are rewritten; topology is preserved.",
+            params: &[
+                ParamSchema {
+                    name: "id",
+                    ty: "solid_id",
+                    required: true,
+                    doc: "Solid to rotate.",
+                },
+                ParamSchema {
+                    name: "axis",
+                    ty: "[f64; 3]",
+                    required: true,
+                    doc: "Rotation axis in world space (does not need to be unit-length).",
+                },
+                ParamSchema {
+                    name: "angle_rad",
+                    ty: "f64",
+                    required: true,
+                    doc: "Signed rotation angle in radians (right-hand rule).",
+                },
+                ParamSchema {
+                    name: "point",
+                    ty: "[f64; 3]",
+                    required: true,
+                    doc: "Pivot point in world coordinates.",
+                },
+            ],
         },
         CommandSchema {
             op: "noop",

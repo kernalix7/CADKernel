@@ -460,6 +460,12 @@ fn command_schemas_cover_every_op_name() {
         Command::Duplicate {
             id: cadkernel_api::SolidId(0),
         },
+        Command::Rotate {
+            id: cadkernel_api::SolidId(0),
+            axis: [0.0, 0.0, 1.0],
+            angle_rad: 0.0,
+            point: [0.0, 0.0, 0.0],
+        },
         Command::NewDocument,
         Command::Noop,
     ];
@@ -1608,4 +1614,155 @@ fn duplicate_command_returns_unknown_solid_for_invalid_id() {
         .execute(Command::Duplicate { id: SolidId(999) })
         .unwrap_err();
     assert!(matches!(err, ApiError::UnknownSolid(_)), "got {err:?}");
+}
+
+#[test]
+fn rotate_command_90deg_around_z_swaps_x_and_y_extents_for_unit_box_at_origin() {
+    use cadkernel_api::{Command, Outcome, Session};
+    use std::f64::consts::FRAC_PI_2;
+    let mut session = Session::new();
+    let id = match session
+        .execute(Command::CreateBox { dx: 2.0, dy: 4.0, dz: 6.0 })
+        .unwrap()
+    {
+        Outcome::SolidCreated { id, .. } => id,
+        other => panic!("expected SolidCreated, got {other:?}"),
+    };
+    // Centre at origin so the rotation produces a clean swap.
+    session
+        .execute(Command::Translate { id, dx: -1.0, dy: -2.0, dz: -3.0 })
+        .unwrap();
+    let before = session.document().bounding_box(id).unwrap();
+    assert!((before.size()[0] - 2.0).abs() < 1e-9);
+    assert!((before.size()[1] - 4.0).abs() < 1e-9);
+    let outcome = session
+        .execute(Command::Rotate {
+            id,
+            axis: [0.0, 0.0, 1.0],
+            angle_rad: FRAC_PI_2,
+            point: [0.0, 0.0, 0.0],
+        })
+        .unwrap();
+    assert!(matches!(outcome, Outcome::SolidModified { .. }));
+    let after = session.document().bounding_box(id).unwrap();
+    let size = after.size();
+    assert!((size[0] - 4.0).abs() < 1e-6, "x-extent now matches old y, got {size:?}");
+    assert!((size[1] - 2.0).abs() < 1e-6, "y-extent now matches old x, got {size:?}");
+    assert!((size[2] - 6.0).abs() < 1e-9, "z unchanged");
+}
+
+#[test]
+fn rotate_command_preserves_volume() {
+    use cadkernel_api::{Command, Outcome, Session};
+    use std::f64::consts::PI;
+    let mut session = Session::new();
+    let id = match session
+        .execute(Command::CreateBox { dx: 3.0, dy: 5.0, dz: 7.0 })
+        .unwrap()
+    {
+        Outcome::SolidCreated { id, .. } => id,
+        other => panic!("expected SolidCreated, got {other:?}"),
+    };
+    let v_before = session.document().measure_solid(id).unwrap().volume;
+    session
+        .execute(Command::Rotate {
+            id,
+            axis: [1.0, 1.0, 0.0],
+            angle_rad: PI / 3.0,
+            point: [1.5, 2.5, 3.5],
+        })
+        .unwrap();
+    let v_after = session.document().measure_solid(id).unwrap().volume;
+    assert!((v_before - v_after).abs() < 1e-6, "volume must be preserved by rotation");
+}
+
+#[test]
+fn rotate_command_with_zero_axis_is_rejected() {
+    use cadkernel_api::{ApiError, Command, Outcome, Session};
+    let mut session = Session::new();
+    let id = match session
+        .execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 })
+        .unwrap()
+    {
+        Outcome::SolidCreated { id, .. } => id,
+        other => panic!("expected SolidCreated, got {other:?}"),
+    };
+    let err = session
+        .execute(Command::Rotate {
+            id,
+            axis: [0.0, 0.0, 0.0],
+            angle_rad: 1.0,
+            point: [0.0, 0.0, 0.0],
+        })
+        .unwrap_err();
+    assert!(matches!(err, ApiError::InvalidArgument(_)), "got {err:?}");
+}
+
+#[test]
+fn rotate_command_returns_unknown_solid_for_invalid_id() {
+    use cadkernel_api::{ApiError, Command, Session, SolidId};
+    let mut session = Session::new();
+    let err = session
+        .execute(Command::Rotate {
+            id: SolidId(999),
+            axis: [0.0, 0.0, 1.0],
+            angle_rad: 1.0,
+            point: [0.0, 0.0, 0.0],
+        })
+        .unwrap_err();
+    assert!(matches!(err, ApiError::UnknownSolid(_)), "got {err:?}");
+}
+
+#[test]
+fn rotate_command_round_trips_through_json() {
+    use cadkernel_api::{Command, SolidId};
+    let cmd = Command::Rotate {
+        id: SolidId(7),
+        axis: [0.0, 1.0, 0.0],
+        angle_rad: std::f64::consts::FRAC_PI_2,
+        point: [1.0, 2.0, 3.0],
+    };
+    let json = serde_json::to_value(&cmd).unwrap();
+    assert_eq!(json["op"], "rotate");
+    assert_eq!(json["id"], 7);
+    assert_eq!(json["axis"], serde_json::json!([0.0, 1.0, 0.0]));
+    assert_eq!(json["angle_rad"], std::f64::consts::FRAC_PI_2);
+    assert_eq!(json["point"], serde_json::json!([1.0, 2.0, 3.0]));
+    let back: Command = serde_json::from_value(json).unwrap();
+    match back {
+        Command::Rotate { id, axis, angle_rad, point } => {
+            assert_eq!(id, SolidId(7));
+            assert_eq!(axis, [0.0, 1.0, 0.0]);
+            assert_eq!(angle_rad, std::f64::consts::FRAC_PI_2);
+            assert_eq!(point, [1.0, 2.0, 3.0]);
+        }
+        other => panic!("expected Rotate, got {other:?}"),
+    }
+}
+
+#[test]
+fn rotate_command_undo_restores_original_geometry() {
+    use cadkernel_api::{Command, Outcome, Session};
+    use std::f64::consts::FRAC_PI_2;
+    let mut session = Session::new();
+    let id = match session
+        .execute(Command::CreateBox { dx: 2.0, dy: 4.0, dz: 6.0 })
+        .unwrap()
+    {
+        Outcome::SolidCreated { id, .. } => id,
+        other => panic!("expected SolidCreated, got {other:?}"),
+    };
+    let before = session.document().bounding_box(id).unwrap();
+    session
+        .execute(Command::Rotate {
+            id,
+            axis: [0.0, 0.0, 1.0],
+            angle_rad: FRAC_PI_2,
+            point: [1.0, 2.0, 3.0],
+        })
+        .unwrap();
+    session.undo().unwrap();
+    let after = session.document().bounding_box(id).unwrap();
+    assert_eq!(before.min, after.min);
+    assert_eq!(before.max, after.max);
 }

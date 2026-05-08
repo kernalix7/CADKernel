@@ -11,6 +11,14 @@
 
 ### 추가됨
 
+#### API — `Command::Rotate` 임의 축 쿼터니언 회전 (2026-05-08)
+- **`Command::Rotate { id, axis, angle_rad, point }` 신규 추가** — translate/scale 외 첫 기하학적 mutation 명령. `point` 피벗을 중심으로 임의 `axis`(자동 정규화) 주위로 `angle_rad` 회전. `cadkernel_math::Quaternion::from_axis_angle` + `q.rotate_vec(rel)`로 정점별 변환. Topology 보존, `Outcome::SolidModified` 반환, 표준 log/cursor를 통해 완전히 undo 가능.
+- **검증**: 영벡터 축은 mutation 전에 `ApiError::InvalidArgument`로 거부, unknown id 는 `ApiError::UnknownSolid`.
+- **`CommandSchema` 엔트리**: 4개 ParamSchema (id, axis, angle_rad, point).
+- **회귀 테스트 6개 추가** — Z축 90° 회전 시 단위 박스의 X·Y extent 교환 / 임의 축 [1,1,0] PI/3 회전에서 volume 보존 / 영벡터 축 거부 / 잘못된 id / JSON 라운드트립 (`op: "rotate"`) / undo 시 원본 정점 좌표 정확 복원.
+- `command_schemas_cover_every_op_name` 에 Rotate 포함.
+- 테스트 **2,935 / 0 / 0** (Duplicate 슬라이스 대비 +6), `clippy --all-targets --all-features -D warnings` 무경고.
+
 #### API — `Command::Duplicate` 심층 복제 명령 (2026-05-08)
 - **`Command::Duplicate { id }` 신규 추가** — 솔리드를 새 슬롯으로 심층 복제. 표준 `Outcome::SolidCreated { id, label }`를 반환하며 `label = "<원본라벨> (copy)"`. 원본 슬롯은 보존되고, 새 복사본은 완전히 독립적이며(기존 `BRepModel: Clone`로 topology 전체 deep clone), 일반 log/cursor 파이프라인을 통해 완전히 undo 가능(observer가 아닌 mutation 명령). 이제 AI/스크립트가 형제 인스턴스를 원할 때 원시형부터 다시 생성할 필요 없음.
 - **구현**: `Session::duplicate(src_id)`가 슬롯의 `BRepModel`을 clone하고, 원래 `Handle<SolidData>`를 그대로 재사용(복제된 모델 내에서도 generational arena 인덱스가 유효), 기존 `Document::insert()` 경로로 새 슬롯을 삽입해 순차적으로 새 SolidId를 발급.

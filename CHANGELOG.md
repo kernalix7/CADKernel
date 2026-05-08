@@ -11,6 +11,20 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::Rotate` arbitrary-axis quaternion rotation (2026-05-08)
+- **New `Command::Rotate { id, axis, angle_rad, point }`** — first non-translation/scale geometric mutation in the command surface. Rotates a solid by `angle_rad` around an arbitrary `axis` (auto-normalised) about a pivot `point`. Per-vertex transform via `cadkernel_math::Quaternion::from_axis_angle` + `q.rotate_vec(rel)`. Topology is preserved, returns `Outcome::SolidModified`, and the operation is fully undoable through the standard log/cursor pipeline.
+- **Validation**: zero-length axis rejected with `ApiError::InvalidArgument` before any mutation occurs; unknown id rejected with `ApiError::UnknownSolid`.
+- **`CommandSchema` entry**: 4 ParamSchema entries (id, axis, angle_rad, point) document the contract.
+- **6 new regression tests**:
+  - `rotate_command_90deg_around_z_swaps_x_and_y_extents_for_unit_box_at_origin` — geometry correctness.
+  - `rotate_command_preserves_volume` — uses arbitrary axis [1,1,0] at PI/3.
+  - `rotate_command_with_zero_axis_is_rejected` — `InvalidArgument`.
+  - `rotate_command_returns_unknown_solid_for_invalid_id` — `UnknownSolid`.
+  - `rotate_command_round_trips_through_json` — JSON wire format with `op: "rotate"`.
+  - `rotate_command_undo_restores_original_geometry` — full undo restores vertex positions exactly.
+- **`command_schemas_cover_every_op_name`** updated with the Rotate variant.
+- **2,935 / 0 / 0** tests (+6 vs. Duplicate slice); strict `clippy --all-targets --all-features -D warnings` clean.
+
 #### API — `Command::Duplicate` deep-clone command (2026-05-08)
 - **New `Command::Duplicate { id }`** — deep-clones a solid into a new slot. Returns the standard `Outcome::SolidCreated { id, label }` where `label = "<source-label> (copy)"`. The source slot is preserved, the new copy is fully independent (per-vertex topology is cloned via the existing `BRepModel: Clone` impl), and the command is fully undoable through the regular log/cursor pipeline (mutation command, not an observer). Closes the gap that previously forced AI / scripts to re-create a primitive from scratch when they wanted a sibling instance.
 - **Implementation**: `Session::duplicate(src_id)` clones the slot's `BRepModel`, reuses the original `Handle<SolidData>` (which is a generational arena index into the cloned model and therefore still valid), and inserts a fresh slot through the existing `Document::insert()` path so the new SolidId is sequentially assigned.

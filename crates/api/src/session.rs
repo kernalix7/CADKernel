@@ -14,7 +14,7 @@
 //! to JSON and reloaded; this is the foundation on which Phase 3's `.cadk`
 //! native format will be built.
 
-use cadkernel_math::{Point3, Vec3};
+use cadkernel_math::{Point3, Quaternion, Vec3};
 use cadkernel_modeling::measure::solid_mass_properties;
 use cadkernel_modeling::quick::{
     quick_box, quick_cone, quick_cylinder, quick_intersect, quick_sphere, quick_subtract,
@@ -498,6 +498,12 @@ impl Session {
                     .collect(),
             }),
             Command::Duplicate { id } => self.duplicate(*id),
+            Command::Rotate {
+                id,
+                axis,
+                angle_rad,
+                point,
+            } => self.rotate(*id, *axis, *angle_rad, *point),
             Command::NewDocument => {
                 self.document = Document::new();
                 self.log.clear();
@@ -641,6 +647,33 @@ impl Session {
         };
         let new_id = self.document.insert(model, handle, label.clone());
         Ok(Outcome::SolidCreated { id: new_id, label })
+    }
+
+    fn rotate(
+        &mut self,
+        id: SolidId,
+        axis: [f64; 3],
+        angle_rad: f64,
+        point: [f64; 3],
+    ) -> ApiResult<Outcome> {
+        let axis_vec = Vec3::new(axis[0], axis[1], axis[2]);
+        let len_sq = axis_vec.x * axis_vec.x + axis_vec.y * axis_vec.y + axis_vec.z * axis_vec.z;
+        if len_sq <= f64::EPSILON {
+            return Err(ApiError::InvalidArgument(format!(
+                "rotation axis must have non-zero length, got {axis:?}"
+            )));
+        }
+        let inv_len = 1.0 / len_sq.sqrt();
+        let unit_axis = Vec3::new(axis_vec.x * inv_len, axis_vec.y * inv_len, axis_vec.z * inv_len);
+        let q = Quaternion::from_axis_angle(unit_axis, angle_rad);
+        let pivot = Point3::new(point[0], point[1], point[2]);
+        let slot = slot_mut(&mut self.document, id)?;
+        for (_h, v) in slot.model.vertices.iter_mut() {
+            let rel = Vec3::new(v.point.x - pivot.x, v.point.y - pivot.y, v.point.z - pivot.z);
+            let rotated = q.rotate_vec(rel);
+            v.point = Point3::new(pivot.x + rotated.x, pivot.y + rotated.y, pivot.z + rotated.z);
+        }
+        Ok(Outcome::SolidModified { id })
     }
 
     fn extrude_profile(
@@ -906,6 +939,9 @@ fn history_description(cmd: &Command, outcome: &Outcome) -> String {
         (Command::Validate, _) => "Validate".into(),
         (Command::ListSolids, _) => "ListSolids".into(),
         (Command::Duplicate { id }, _) => format!("Duplicate {id}"),
+        (Command::Rotate { id, angle_rad, .. }, _) => {
+            format!("Rotate {id} ({angle_rad} rad)")
+        }
         (Command::NewDocument, _) => "New document".into(),
         (Command::Noop, _) => "Noop".into(),
     }
