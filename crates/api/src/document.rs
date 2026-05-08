@@ -168,6 +168,39 @@ impl Document {
             centroid: [mp.centroid.x, mp.centroid.y, mp.centroid.z],
         })
     }
+
+    /// Returns the axis-aligned bounding box of a solid in world coordinates,
+    /// computed by walking the underlying `BRepModel` vertex store. Returns
+    /// `None` if the slot is missing, has no handle, or contains no vertices.
+    ///
+    /// This is intended for AI / test consumers that need a quick spatial
+    /// extent check without tessellating the solid — e.g. asserting a
+    /// `MidPlane` extrusion is centered on z=0, or that a translation
+    /// shifted a part by the expected delta.
+    pub fn bounding_box(&self, id: SolidId) -> Option<AabbSummary> {
+        let slot = self.get_slot(id)?;
+        // Note: we don't strictly need `handle` to compute the bbox, but we
+        // require it to match the rest of the Document API contract — a
+        // solid without a handle is considered a dangling slot and returns
+        // None for measurements.
+        let _ = slot.handle?;
+        let mut iter = slot.model.vertices.iter();
+        let (_h, first) = iter.next()?;
+        let mut min = [first.point.x, first.point.y, first.point.z];
+        let mut max = min;
+        for (_h, v) in iter {
+            let p = [v.point.x, v.point.y, v.point.z];
+            for axis in 0..3 {
+                if p[axis] < min[axis] {
+                    min[axis] = p[axis];
+                }
+                if p[axis] > max[axis] {
+                    max[axis] = p[axis];
+                }
+            }
+        }
+        Some(AabbSummary { id, min, max })
+    }
 }
 
 /// A document-level health issue surfaced by [`Document::validate`].
@@ -190,6 +223,35 @@ pub struct MeasureSummary {
     pub surface_area: f64,
     /// `[x, y, z]` centroid in world coordinates.
     pub centroid: [f64; 3],
+}
+
+/// Axis-aligned bounding box returned by [`Document::bounding_box`]. Both
+/// corners are in world coordinates and `min[i] <= max[i]` is guaranteed.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AabbSummary {
+    pub id: SolidId,
+    pub min: [f64; 3],
+    pub max: [f64; 3],
+}
+
+impl AabbSummary {
+    /// `[dx, dy, dz]` size along each axis.
+    pub fn size(&self) -> [f64; 3] {
+        [
+            self.max[0] - self.min[0],
+            self.max[1] - self.min[1],
+            self.max[2] - self.min[2],
+        ]
+    }
+
+    /// Geometric center (midpoint of `min` and `max`).
+    pub fn center(&self) -> [f64; 3] {
+        [
+            (self.min[0] + self.max[0]) * 0.5,
+            (self.min[1] + self.max[1]) * 0.5,
+            (self.min[2] + self.max[2]) * 0.5,
+        ]
+    }
 }
 
 /// One entry in [`Document::history`]. Recorded by [`Session`](crate::Session)

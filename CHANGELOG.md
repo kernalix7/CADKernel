@@ -9,6 +9,19 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ## [Unreleased]
 
+### Added
+
+#### API — `Document::bounding_box()` + `AabbSummary` (2026-05-08)
+- **New `Document::bounding_box(id) -> Option<AabbSummary>`** computes the axis-aligned bounding box of a solid in world coordinates by walking the underlying `BRepModel` vertex store. Complements the existing `measure_solid()` (volume / surface_area / centroid) for AI / test consumers that need a quick spatial extent without tessellating the solid — e.g. asserting a `MidPlane` extrusion is centered on z=0, or that a translation shifted a part by the expected delta.
+- **New `AabbSummary { id, min, max }`** with helper methods `size() -> [f64;3]` and `center() -> [f64;3]`. JSON-serializable via `serde`.
+- **Re-exported from `cadkernel_api::AabbSummary`** for downstream tooling.
+- **4 new regression tests** in `crates/api/tests/api_integration.rs`:
+  - `bounding_box_of_unit_box_matches_creation_dimensions` — size/center match `CreateBox` parameters.
+  - `bounding_box_tracks_translation_delta` — verifies the bbox follows a `Translate` command exactly.
+  - `bounding_box_returns_none_for_unknown_solid_id` — covers the missing-slot path.
+  - `bounding_box_summary_serializes_with_id_min_max` — JSON wire-format check (`id`, `min[3]`, `max[3]`).
+- **2,910 / 0 / 0** tests (+4 vs. A2 #3 partial); strict `clippy --all-targets --all-features -D warnings` clean.
+
 ### Changed
 
 #### API — A2 #3 (partial): `Mirror.merge` (2026-05-07)

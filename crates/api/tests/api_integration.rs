@@ -1185,3 +1185,83 @@ fn mirror_without_merge_keeps_both_solids_and_omits_merge_from_json() {
         other => panic!("expected Mirror, got {other:?}"),
     }
 }
+
+#[test]
+fn bounding_box_of_unit_box_matches_creation_dimensions() {
+    use cadkernel_api::{Command, Outcome, Session};
+
+    let mut session = Session::new();
+    let id = match session
+        .execute(Command::CreateBox { dx: 4.0, dy: 6.0, dz: 8.0 })
+        .unwrap()
+    {
+        Outcome::SolidCreated { id, .. } => id,
+        other => panic!("expected SolidCreated, got {other:?}"),
+    };
+
+    let bbox = session
+        .document()
+        .bounding_box(id)
+        .expect("box must have a measurable bbox");
+    assert_eq!(bbox.id, id);
+    let size = bbox.size();
+    assert!((size[0] - 4.0).abs() < 1e-9, "size x: {}", size[0]);
+    assert!((size[1] - 6.0).abs() < 1e-9, "size y: {}", size[1]);
+    assert!((size[2] - 8.0).abs() < 1e-9, "size z: {}", size[2]);
+    let c = bbox.center();
+    assert!((c[0] - 2.0).abs() < 1e-9);
+    assert!((c[1] - 3.0).abs() < 1e-9);
+    assert!((c[2] - 4.0).abs() < 1e-9);
+}
+
+#[test]
+fn bounding_box_tracks_translation_delta() {
+    use cadkernel_api::{Command, Outcome, Session};
+
+    let mut session = Session::new();
+    let id = match session
+        .execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 })
+        .unwrap()
+    {
+        Outcome::SolidCreated { id, .. } => id,
+        other => panic!("expected SolidCreated, got {other:?}"),
+    };
+    let before = session.document().bounding_box(id).unwrap();
+    session
+        .execute(Command::Translate { id, dx: 5.0, dy: -3.0, dz: 1.5 })
+        .unwrap();
+    let after = session.document().bounding_box(id).unwrap();
+    assert!((after.min[0] - (before.min[0] + 5.0)).abs() < 1e-9);
+    assert!((after.min[1] - (before.min[1] - 3.0)).abs() < 1e-9);
+    assert!((after.min[2] - (before.min[2] + 1.5)).abs() < 1e-9);
+    assert!((after.max[0] - (before.max[0] + 5.0)).abs() < 1e-9);
+    assert!((after.max[1] - (before.max[1] - 3.0)).abs() < 1e-9);
+    assert!((after.max[2] - (before.max[2] + 1.5)).abs() < 1e-9);
+}
+
+#[test]
+fn bounding_box_returns_none_for_unknown_solid_id() {
+    use cadkernel_api::{Session, SolidId};
+    let session = Session::new();
+    assert!(session.document().bounding_box(SolidId(999)).is_none());
+}
+
+#[test]
+fn bounding_box_summary_serializes_with_id_min_max() {
+    use cadkernel_api::{Command, Outcome, Session};
+    let mut session = Session::new();
+    let id = match session
+        .execute(Command::CreateBox { dx: 1.0, dy: 2.0, dz: 3.0 })
+        .unwrap()
+    {
+        Outcome::SolidCreated { id, .. } => id,
+        other => panic!("expected SolidCreated, got {other:?}"),
+    };
+    let bbox = session.document().bounding_box(id).unwrap();
+    let json = serde_json::to_value(&bbox).unwrap();
+    assert_eq!(json["id"], serde_json::json!(id.0));
+    assert!(json["min"].is_array());
+    assert!(json["max"].is_array());
+    assert_eq!(json["min"].as_array().unwrap().len(), 3);
+    assert_eq!(json["max"].as_array().unwrap().len(), 3);
+}

@@ -9,6 +9,15 @@
 
 ## [Unreleased]
 
+### 추가됨
+
+#### API — `Document::bounding_box()` + `AabbSummary` (2026-05-08)
+- **`Document::bounding_box(id) -> Option<AabbSummary>` 신규 추가** — 솔리드의 축 정렬 바운딩 박스를 구하는 API. `BRepModel`의 vertex store를 순회해 월드 좌표로 반환. 기존 `measure_solid()`(volume/surface_area/centroid)를 보완 — AI/테스트 소비자가 테셀레이션 없이 공간 범위를 빠르게 검증하는 용도(예: MidPlane 출소가 z=0 중심인지, Translate 후 델타가 기대값과 일치하는지).
+- **`AabbSummary { id, min, max }` 구조체** — `size()`, `center()` 헬퍼 메서드 제공. serde JSON 직렬화 가능.
+- **`cadkernel_api::AabbSummary`로 재내보내기**.
+- **회귀 테스트 4개 추가** — 박스 치수 일치 / Translate 델타 추적 / 미존재하는 SolidId에 None / JSON 와이어 포맷.
+- 테스트 **2,910 / 0 / 0** (A2 #3 부분 대비 +4), `clippy --all-targets --all-features -D warnings` 무경고.
+
 ### 변경됨
 
 #### API — A2 #3 (부분): `Mirror.merge` (2026-05-07)

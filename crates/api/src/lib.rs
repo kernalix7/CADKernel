@@ -54,7 +54,7 @@ mod session;
 pub mod cadk;
 
 pub use command::{Command, ExtrudeKind, command_schemas};
-pub use document::{Document, DocumentIssue, HistoryEvent, MeasureSummary, SolidId};
+pub use document::{AabbSummary, Document, DocumentIssue, HistoryEvent, MeasureSummary, SolidId};
 pub use outcome::{Outcome, OutcomeKind};
 pub use session::{Session, SessionSnapshot};
 
