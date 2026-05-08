@@ -456,6 +456,9 @@ impl Session {
             }
             Command::Translate { id, dx, dy, dz } => self.translate(*id, *dx, *dy, *dz),
             Command::Scale { id, factor } => self.scale_uniform(*id, *factor),
+            Command::ScaleNonUniform { id, factors, point } => {
+                self.scale_non_uniform(*id, *factors, *point)
+            }
             Command::Rename { id, label } => self.rename(*id, label.clone()),
             Command::DeleteSolid { id } => {
                 if self.document.remove(*id) {
@@ -632,6 +635,31 @@ impl Session {
                 centroid.x + (v.point.x - centroid.x) * factor,
                 centroid.y + (v.point.y - centroid.y) * factor,
                 centroid.z + (v.point.z - centroid.z) * factor,
+            );
+        }
+        Ok(Outcome::SolidModified { id })
+    }
+
+    fn scale_non_uniform(
+        &mut self,
+        id: SolidId,
+        factors: [f64; 3],
+        point: [f64; 3],
+    ) -> ApiResult<Outcome> {
+        if factors[0] <= 0.0 || factors[1] <= 0.0 || factors[2] <= 0.0 {
+            return Err(ApiError::InvalidArgument(format!(
+                "scale factors must all be > 0, got [{}, {}, {}]",
+                factors[0], factors[1], factors[2]
+            )));
+        }
+        let slot = slot_mut(&mut self.document, id)?;
+        let [sx, sy, sz] = factors;
+        let [px, py, pz] = point;
+        for (_h, v) in slot.model.vertices.iter_mut() {
+            v.point = Point3::new(
+                px + (v.point.x - px) * sx,
+                py + (v.point.y - py) * sy,
+                pz + (v.point.z - pz) * sz,
             );
         }
         Ok(Outcome::SolidModified { id })
@@ -947,6 +975,9 @@ fn history_description(cmd: &Command, outcome: &Outcome) -> String {
             format!("Translate {id} ({dx}, {dy}, {dz})")
         }
         (Command::Scale { id, factor }, _) => format!("Scale {id} ×{factor}"),
+        (Command::ScaleNonUniform { id, factors, .. }, _) => {
+            format!("ScaleNonUniform {id} [{},{},{}]", factors[0], factors[1], factors[2])
+        }
         (Command::Rename { id, label }, _) => format!("Rename {id} → {label:?}"),
         (Command::DeleteSolid { id }, _) => format!("Delete {id}"),
         (

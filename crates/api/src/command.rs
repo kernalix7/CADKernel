@@ -53,6 +53,15 @@ pub enum Command {
     },
     /// Uniformly scale a solid about its centroid.
     Scale { id: SolidId, factor: f64 },
+    /// Non-uniform per-axis scale of a solid about an explicit pivot
+    /// `point`. `factors = [sx, sy, sz]` are the per-axis multipliers;
+    /// every component must be > 0. Vertex positions are rewritten;
+    /// topology is preserved.
+    ScaleNonUniform {
+        id: SolidId,
+        factors: [f64; 3],
+        point: [f64; 3],
+    },
     /// Rename a solid (does not change its [`SolidId`]).
     Rename { id: SolidId, label: String },
     /// Delete a solid.
@@ -172,6 +181,7 @@ impl Command {
             Self::BooleanIntersect { .. } => "boolean_intersect",
             Self::Translate { .. } => "translate",
             Self::Scale { .. } => "scale",
+            Self::ScaleNonUniform { .. } => "scale_non_uniform",
             Self::Rename { .. } => "rename",
             Self::DeleteSolid { .. } => "delete_solid",
             Self::Extrude { .. } => "extrude",
@@ -565,6 +575,30 @@ pub fn command_schemas() -> Vec<CommandSchema> {
             op: "stats",
             description: "Return cheap O(1) document statistics: solid_count and history_count. Read-only.",
             params: &[],
+        },
+        CommandSchema {
+            op: "scale_non_uniform",
+            description: "Non-uniform per-axis scale of a solid about an explicit pivot. Vertex positions are rewritten; topology is preserved.",
+            params: &[
+                ParamSchema {
+                    name: "id",
+                    ty: "solid_id",
+                    required: true,
+                    doc: "Solid to scale.",
+                },
+                ParamSchema {
+                    name: "factors",
+                    ty: "[f64; 3]",
+                    required: true,
+                    doc: "Per-axis multipliers [sx, sy, sz]; every component must be > 0.",
+                },
+                ParamSchema {
+                    name: "point",
+                    ty: "[f64; 3]",
+                    required: true,
+                    doc: "Pivot point in world coordinates.",
+                },
+            ],
         },
         CommandSchema {
             op: "rotate",

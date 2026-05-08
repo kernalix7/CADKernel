@@ -426,6 +426,11 @@ fn command_schemas_cover_every_op_name() {
             id: cadkernel_api::SolidId(0),
             factor: 1.0,
         },
+        Command::ScaleNonUniform {
+            id: cadkernel_api::SolidId(0),
+            factors: [1.0, 1.0, 1.0],
+            point: [0.0, 0.0, 0.0],
+        },
         Command::Rename {
             id: cadkernel_api::SolidId(0),
             label: "x".into(),
@@ -1986,5 +1991,122 @@ fn stats_command_round_trips_through_json() {
             assert_eq!(history_count, 1);
         }
         other => panic!("expected Stats, got {other:?}"),
+    }
+}
+
+#[test]
+fn scale_non_uniform_command_stretches_unit_box_per_axis() {
+    use cadkernel_api::{Command, Outcome, Session, SolidId};
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let outcome = s.execute(Command::ScaleNonUniform {
+        id: SolidId(0),
+        factors: [2.0, 3.0, 4.0],
+        point: [0.0, 0.0, 0.0],
+    }).unwrap();
+    assert!(matches!(outcome, Outcome::SolidModified { id } if id == SolidId(0)));
+    if let Outcome::Measured { bbox_min, bbox_max, .. } = s.execute(Command::Measure { id: SolidId(0) }).unwrap() {
+        let dx = bbox_max[0] - bbox_min[0];
+        let dy = bbox_max[1] - bbox_min[1];
+        let dz = bbox_max[2] - bbox_min[2];
+        assert!((dx - 2.0).abs() < 1e-9, "dx={dx}");
+        assert!((dy - 3.0).abs() < 1e-9, "dy={dy}");
+        assert!((dz - 4.0).abs() < 1e-9, "dz={dz}");
+    } else {
+        panic!("expected Measured");
+    }
+}
+
+#[test]
+fn scale_non_uniform_command_with_pivot_holds_pivot_point_invariant() {
+    use cadkernel_api::{Command, Outcome, Session, SolidId};
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
+    s.execute(Command::ScaleNonUniform {
+        id: SolidId(0),
+        factors: [3.0, 3.0, 3.0],
+        point: [0.0, 0.0, 0.0],
+    }).unwrap();
+    if let Outcome::Measured { bbox_min, bbox_max, .. } = s.execute(Command::Measure { id: SolidId(0) }).unwrap() {
+        assert!((bbox_min[0] - 0.0).abs() < 1e-9);
+        assert!((bbox_max[0] - 6.0).abs() < 1e-9);
+    } else {
+        panic!("expected Measured");
+    }
+}
+
+#[test]
+fn scale_non_uniform_command_rejects_zero_or_negative_factor() {
+    use cadkernel_api::{ApiError, Command, Session, SolidId};
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let err = s.execute(Command::ScaleNonUniform {
+        id: SolidId(0),
+        factors: [1.0, 0.0, 1.0],
+        point: [0.0, 0.0, 0.0],
+    }).unwrap_err();
+    assert!(matches!(err, ApiError::InvalidArgument(_)));
+    let err = s.execute(Command::ScaleNonUniform {
+        id: SolidId(0),
+        factors: [1.0, 1.0, -2.0],
+        point: [0.0, 0.0, 0.0],
+    }).unwrap_err();
+    assert!(matches!(err, ApiError::InvalidArgument(_)));
+}
+
+#[test]
+fn scale_non_uniform_command_returns_unknown_solid_for_invalid_id() {
+    use cadkernel_api::{ApiError, Command, Session, SolidId};
+    let mut s = Session::new();
+    let err = s.execute(Command::ScaleNonUniform {
+        id: SolidId(99),
+        factors: [2.0, 2.0, 2.0],
+        point: [0.0, 0.0, 0.0],
+    }).unwrap_err();
+    assert!(matches!(err, ApiError::UnknownSolid(_)));
+}
+
+#[test]
+fn scale_non_uniform_command_round_trips_through_json() {
+    use cadkernel_api::{Command, SolidId};
+    let cmd = Command::ScaleNonUniform {
+        id: SolidId(3),
+        factors: [1.5, 2.5, 0.5],
+        point: [1.0, 2.0, 3.0],
+    };
+    let json = serde_json::to_value(&cmd).unwrap();
+    assert_eq!(json["op"], "scale_non_uniform");
+    assert_eq!(json["id"], 3);
+    let back: Command = serde_json::from_value(json).unwrap();
+    match back {
+        Command::ScaleNonUniform { id, factors, point } => {
+            assert_eq!(id, SolidId(3));
+            assert_eq!(factors, [1.5, 2.5, 0.5]);
+            assert_eq!(point, [1.0, 2.0, 3.0]);
+        }
+        other => panic!("expected ScaleNonUniform, got {other:?}"),
+    }
+}
+
+#[test]
+fn scale_non_uniform_command_undo_restores_original_geometry() {
+    use cadkernel_api::{Command, Outcome, Session, SolidId};
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
+    let before = if let Outcome::Measured { bbox_min, bbox_max, .. } =
+        s.execute(Command::Measure { id: SolidId(0) }).unwrap()
+    { (bbox_min, bbox_max) } else { panic!() };
+    s.execute(Command::ScaleNonUniform {
+        id: SolidId(0),
+        factors: [5.0, 0.5, 2.0],
+        point: [0.0, 0.0, 0.0],
+    }).unwrap();
+    s.undo().unwrap();
+    let after = if let Outcome::Measured { bbox_min, bbox_max, .. } =
+        s.execute(Command::Measure { id: SolidId(0) }).unwrap()
+    { (bbox_min, bbox_max) } else { panic!() };
+    for i in 0..3 {
+        assert!((before.0[i] - after.0[i]).abs() < 1e-9);
+        assert!((before.1[i] - after.1[i]).abs() < 1e-9);
     }
 }

@@ -11,6 +11,21 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::ScaleNonUniform` per-axis scaling around an explicit pivot (2026-05-08)
+- **New `Command::ScaleNonUniform { id, factors, point }`** — first non-uniform geometric mutation. Per-axis multipliers `factors = [sx, sy, sz]` (each must be `> 0`) applied around an explicit pivot `point` in world coordinates. Vertex positions are rewritten; topology is preserved. Complement to the existing uniform `Command::Scale` (which scales about the centroid).
+- **Validation**: any factor `<= 0` is rejected with `ApiError::InvalidArgument` before any mutation; unknown id rejected with `ApiError::UnknownSolid`.
+- **`CommandSchema` entry**: 3 ParamSchema entries (id, factors, point).
+- **Implementation**: `Session::scale_non_uniform()` iterates `slot.model.vertices.iter_mut()` and rewrites each `v.point` as `pivot + (v.point - pivot) * factor` per axis.
+- **6 new regression tests**:
+  - `scale_non_uniform_command_stretches_unit_box_per_axis` — unit box → [2,3,4] extents.
+  - `scale_non_uniform_command_with_pivot_holds_pivot_point_invariant` — pivot at origin keeps min[0]=0 after 3x scale.
+  - `scale_non_uniform_command_rejects_zero_or_negative_factor` — [1,0,1] and [1,1,-2] both `InvalidArgument`.
+  - `scale_non_uniform_command_returns_unknown_solid_for_invalid_id` — `UnknownSolid`.
+  - `scale_non_uniform_command_round_trips_through_json` — wire format `op: "scale_non_uniform"`.
+  - `scale_non_uniform_command_undo_restores_original_geometry` — full undo restores bbox.
+- **`command_schemas_cover_every_op_name`** updated.
+- **2,956 / 0 / 0** tests (+6 vs. Stats slice); strict `clippy --all-targets --all-features -D warnings` clean.
+
 #### API — `Command::Stats` + `Outcome::Stats` (2026-05-08)
 - **New `Command::Stats`** — sixth pure-observer command. Returns `Outcome::Stats { solid_count: u32, history_count: u32 }` for cheap O(1) document statistics (no mesh / volume traversal). Useful for HUD badges, AI sanity checks, and "how big is this document" probes.
 - **New `Outcome::Stats`** + matching `OutcomeKind::Stats` tag.

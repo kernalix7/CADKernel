@@ -11,6 +11,15 @@
 
 ### 추가됨
 
+#### API — `Command::ScaleNonUniform` 명시적 피보을 중심으로 설정한 축별 스케일링 (2026-05-08)
+- **`Command::ScaleNonUniform { id, factors, point }` 신규 추가** — 첫 비균등 기하학적 mutation. 축별 승수 `factors = [sx, sy, sz]`(각 성분 `> 0`)를 월드 좌표의 명시적 피보 `point` 주위로 적용. 정점 좌표 재작성, topology 보존. 기존 균등 `Command::Scale`(centroid 기준) 보완.
+- **검증**: 하나라도 `<= 0`이면 mutation 이전에 `ApiError::InvalidArgument`로 거절; unknown id는 `ApiError::UnknownSolid`.
+- **`CommandSchema` 엔트리**: ParamSchema 3개 (id, factors, point).
+- **구현**: `Session::scale_non_uniform()`가 `slot.model.vertices.iter_mut()` 순회하며 각 `v.point`을 `pivot + (v.point - pivot) * factor`로 축별 재작성.
+- **회귀 테스트 6개 추가** — 단위 박스 → [2,3,4] extent / 원점 pivot에서 3x → min[0]=0 불변 / 0 또는 음수 거절 / 잘못된 id / JSON 라운드트립 / undo 후 bbox 복원.
+- `command_schemas_cover_every_op_name` 업데이트.
+- 테스트 **2,956 / 0 / 0** (Stats 슬라이스 대비 +6), `clippy --all-targets --all-features -D warnings` 무경고.
+
 #### API — `Command::Stats` + `Outcome::Stats` (2026-05-08)
 - **`Command::Stats` 신규 추가** — 6번째 순수 observer. `Outcome::Stats { solid_count, history_count }`로 O(1) 문서 통계(mesh/volume 순회 없음) 반환. HUD 배지 / AI sanity check / "이 문서가 얼마나 큰가" 프로브에 유용.
 - **`Outcome::Stats` + `OutcomeKind::Stats` 태그 추가**.
