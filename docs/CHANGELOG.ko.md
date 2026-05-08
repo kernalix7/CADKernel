@@ -11,6 +11,15 @@
 
 ### 추가됨
 
+#### API — `Command::Stats` + `Outcome::Stats` (2026-05-08)
+- **`Command::Stats` 신규 추가** — 6번째 순수 observer. `Outcome::Stats { solid_count, history_count }`로 O(1) 문서 통계(mesh/volume 순회 없음) 반환. HUD 배지 / AI sanity check / "이 문서가 얼마나 큰가" 프로브에 유용.
+- **`Outcome::Stats` + `OutcomeKind::Stats` 태그 추가**.
+- **`CommandSchema` 엔트리** 추가 (매개변수 없음).
+- **구현**: `Document::solid_count()` + `Document::history().len()` 래퍼. observer fast-path 으로 log/cursor/history 부작용 없음. `solid_count`는 현재 점유 슬롯 수이고 `history_count`는 누적 이벤트 수 — `delete_solid`은 전자는 감소시키고 후자는 증가시킴.
+- **회귀 테스트 5개 추가** — 빈 세션 / 3 create → 3+3 / delete 후 (1, 3) / observer 불변성 / Command+Outcome JSON 라운드트립.
+- `command_schemas_cover_every_op_name` 에 Stats 포함.
+- 테스트 **2,950 / 0 / 0** (HistoryEvents 슬라이스 대비 +5), `clippy --all-targets --all-features -D warnings` 무경고.
+
 #### API — `Command::HistoryEvents` + `Outcome::HistoryListed` (2026-05-08)
 - **`Command::HistoryEvents` 신규 추가** — 5번째 순수 observer 명령. 실행 순서의 기록된 모든 `HistoryEvent`를 `Outcome::HistoryListed { events }`로 반환. `session.document().history().to_vec()` 동가이지만 command surface를 통해 접근 가능 — AI/스크립트가 `Document` 직접 호출 없이 단일 dispatch로 디스패치 가능.
 - **`Outcome::HistoryListed { events }` + `OutcomeKind::HistoryListed` 태그 추가.

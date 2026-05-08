@@ -71,6 +71,13 @@ pub enum Outcome {
     HistoryListed {
         events: Vec<HistoryEvent>,
     },
+    /// Read-only document statistics (`Command::Stats`). Reports the
+    /// number of populated solid slots and the total recorded history
+    /// event count. Cheap to compute (no mesh / volume traversal).
+    Stats {
+        solid_count: u32,
+        history_count: u32,
+    },
     /// Nothing happened (`Command::Noop`).
     Empty,
 }
@@ -97,6 +104,7 @@ pub enum OutcomeKind {
     Validated,
     SolidsListed,
     HistoryListed,
+    Stats,
     Empty,
 }
 
@@ -114,6 +122,7 @@ impl Outcome {
             Self::Validated { .. } => OutcomeKind::Validated,
             Self::SolidsListed { .. } => OutcomeKind::SolidsListed,
             Self::HistoryListed { .. } => OutcomeKind::HistoryListed,
+            Self::Stats { .. } => OutcomeKind::Stats,
             Self::Empty => OutcomeKind::Empty,
         }
     }

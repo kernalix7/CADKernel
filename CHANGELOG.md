@@ -11,6 +11,20 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::Stats` + `Outcome::Stats` (2026-05-08)
+- **New `Command::Stats`** — sixth pure-observer command. Returns `Outcome::Stats { solid_count: u32, history_count: u32 }` for cheap O(1) document statistics (no mesh / volume traversal). Useful for HUD badges, AI sanity checks, and "how big is this document" probes.
+- **New `Outcome::Stats`** + matching `OutcomeKind::Stats` tag.
+- **`CommandSchema` entry** documents the contract (zero parameters).
+- **Implementation**: trivial — wraps `Document::solid_count()` + `Document::history().len()`. Observer fast-path means no log/cursor/history side effects. Note that `solid_count` reflects currently-populated slots while `history_count` reflects the total recorded events (so `delete_solid` decreases the former but increases the latter).
+- **5 new regression tests**:
+  - `stats_command_reports_zero_on_fresh_session` — fresh-session edge case.
+  - `stats_command_reflects_solid_and_history_counts` — 3 creates produce 3+3.
+  - `stats_command_after_delete_decreases_solid_count_but_keeps_history` — delete behaviour.
+  - `stats_command_does_not_append_history` — observer guarantee.
+  - `stats_command_round_trips_through_json` — both Command and Outcome JSON shapes.
+- **`command_schemas_cover_every_op_name`** updated to include Stats.
+- **2,950 / 0 / 0** tests (+5 vs. HistoryEvents slice); strict `clippy --all-targets --all-features -D warnings` clean.
+
 #### API — `Command::HistoryEvents` + `Outcome::HistoryListed` (2026-05-08)
 - **New `Command::HistoryEvents`** — fifth pure-observer command. Returns `Outcome::HistoryListed { events: Vec<HistoryEvent> }` containing every recorded event in execution order. Equivalent to `session.document().history().to_vec()` but available through the command surface so AI / scripts can introspect history with a single dispatch (no need to call into `Document` directly).
 - **New `Outcome::HistoryListed { events }`** + matching `OutcomeKind::HistoryListed` tag.

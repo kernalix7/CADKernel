@@ -461,6 +461,7 @@ fn command_schemas_cover_every_op_name() {
             query: "box".into(),
         },
         Command::HistoryEvents,
+        Command::Stats,
         Command::Duplicate {
             id: cadkernel_api::SolidId(0),
         },
@@ -1905,5 +1906,85 @@ fn history_events_outcome_round_trips_through_json() {
             assert_eq!(events[0].op, "create_box");
         }
         other => panic!("expected HistoryListed, got {other:?}"),
+    }
+}
+
+#[test]
+fn stats_command_reports_zero_on_fresh_session() {
+    use cadkernel_api::{Command, Outcome, Session};
+    let mut s = Session::new();
+    let outcome = s.execute(Command::Stats).unwrap();
+    match outcome {
+        Outcome::Stats { solid_count, history_count } => {
+            assert_eq!(solid_count, 0);
+            assert_eq!(history_count, 0);
+        }
+        other => panic!("expected Stats, got {other:?}"),
+    }
+}
+
+#[test]
+fn stats_command_reflects_solid_and_history_counts() {
+    use cadkernel_api::{Command, Outcome, Session};
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateSphere { radius: 1.0 }).unwrap();
+    s.execute(Command::CreateCylinder { radius: 1.0, height: 1.0 }).unwrap();
+    let outcome = s.execute(Command::Stats).unwrap();
+    match outcome {
+        Outcome::Stats { solid_count, history_count } => {
+            assert_eq!(solid_count, 3);
+            assert_eq!(history_count, 3);
+        }
+        other => panic!("expected Stats, got {other:?}"),
+    }
+}
+
+#[test]
+fn stats_command_after_delete_decreases_solid_count_but_keeps_history() {
+    use cadkernel_api::{Command, Outcome, Session, SolidId};
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateSphere { radius: 1.0 }).unwrap();
+    s.execute(Command::DeleteSolid { id: SolidId(0) }).unwrap();
+    let outcome = s.execute(Command::Stats).unwrap();
+    match outcome {
+        Outcome::Stats { solid_count, history_count } => {
+            assert_eq!(solid_count, 1);
+            assert_eq!(history_count, 3);
+        }
+        other => panic!("expected Stats, got {other:?}"),
+    }
+}
+
+#[test]
+fn stats_command_does_not_append_history() {
+    use cadkernel_api::{Command, Session};
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let len = s.document().history().len();
+    s.execute(Command::Stats).unwrap();
+    s.execute(Command::Stats).unwrap();
+    assert_eq!(s.document().history().len(), len);
+}
+
+#[test]
+fn stats_command_round_trips_through_json() {
+    use cadkernel_api::{Command, Outcome, Session};
+    let cmd = Command::Stats;
+    let cjson = serde_json::to_value(&cmd).unwrap();
+    assert_eq!(cjson["op"], "stats");
+    let _: Command = serde_json::from_value(cjson).unwrap();
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let outcome = s.execute(Command::Stats).unwrap();
+    let ojson = serde_json::to_value(&outcome).unwrap();
+    let back: Outcome = serde_json::from_value(ojson).unwrap();
+    match back {
+        Outcome::Stats { solid_count, history_count } => {
+            assert_eq!(solid_count, 1);
+            assert_eq!(history_count, 1);
+        }
+        other => panic!("expected Stats, got {other:?}"),
     }
 }

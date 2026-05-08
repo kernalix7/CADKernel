@@ -294,7 +294,7 @@ impl Session {
         // because they don't mutate the document.
         if matches!(
             command,
-            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. } | Command::HistoryEvents
+            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. } | Command::HistoryEvents | Command::Stats
         ) {
             return self.dispatch(&command);
         }
@@ -521,6 +521,10 @@ impl Session {
             Command::Duplicate { id } => self.duplicate(*id),
             Command::HistoryEvents => Ok(Outcome::HistoryListed {
                 events: self.document.history().to_vec(),
+            }),
+            Command::Stats => Ok(Outcome::Stats {
+                solid_count: self.document.solid_count() as u32,
+                history_count: self.document.history().len() as u32,
             }),
             Command::Rotate {
                 id,
@@ -964,6 +968,7 @@ fn history_description(cmd: &Command, outcome: &Outcome) -> String {
         (Command::ListSolids, _) => "ListSolids".into(),
         (Command::FindByLabel { query }, _) => format!("FindByLabel '{query}'"),
         (Command::HistoryEvents, _) => "HistoryEvents".into(),
+        (Command::Stats, _) => "Stats".into(),
         (Command::Duplicate { id }, _) => format!("Duplicate {id}"),
         (Command::Rotate { id, angle_rad, .. }, _) => {
             format!("Rotate {id} ({angle_rad} rad)")

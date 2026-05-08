@@ -134,6 +134,10 @@ pub enum Command {
     /// the command surface so AI/scripts can introspect history with a
     /// single dispatch. Does not mutate or append a history event.
     HistoryEvents,
+    /// Read-only document statistics. Returns
+    /// `Outcome::Stats { solid_count, history_count }`. Cheap O(1)
+    /// counts — no mesh / volume traversal.
+    Stats,
     /// Deep-clone a solid into a new slot. Returns the new
     /// `Outcome::SolidCreated { id, label }` where `label` is
     /// `"<source-label> (copy)"`. The source slot is left untouched.
@@ -179,6 +183,7 @@ impl Command {
             Self::ListSolids => "list_solids",
             Self::FindByLabel { .. } => "find_by_label",
             Self::HistoryEvents => "history_events",
+            Self::Stats => "stats",
             Self::Duplicate { .. } => "duplicate",
             Self::Rotate { .. } => "rotate",
             Self::Noop => "noop",
@@ -554,6 +559,11 @@ pub fn command_schemas() -> Vec<CommandSchema> {
         CommandSchema {
             op: "history_events",
             description: "Return every recorded HistoryEvent in execution order. Read-only; does not append a new event.",
+            params: &[],
+        },
+        CommandSchema {
+            op: "stats",
+            description: "Return cheap O(1) document statistics: solid_count and history_count. Read-only.",
             params: &[],
         },
         CommandSchema {
