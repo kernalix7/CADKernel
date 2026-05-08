@@ -455,6 +455,7 @@ fn command_schemas_cover_every_op_name() {
         Command::Measure {
             id: cadkernel_api::SolidId(0),
         },
+        Command::Validate,
         Command::NewDocument,
         Command::Noop,
     ];
@@ -1355,4 +1356,54 @@ fn measure_outcome_serializes_with_kind_measured() {
     assert_eq!(json["surface_area"], 24.0);
     assert_eq!(json["bbox_min"], serde_json::json!([0.0, 0.0, 0.0]));
     assert_eq!(json["bbox_max"], serde_json::json!([1.0, 1.0, 1.0]));
+}
+
+#[test]
+fn validate_command_returns_empty_issues_for_clean_document() {
+    use cadkernel_api::{Command, Outcome, Session};
+    let mut session = Session::new();
+    session
+        .execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 })
+        .unwrap();
+    match session.execute(Command::Validate).unwrap() {
+        Outcome::Validated { issues } => {
+            assert!(issues.is_empty(), "expected clean document, got {issues:?}");
+        }
+        other => panic!("expected Outcome::Validated, got {other:?}"),
+    }
+}
+
+#[test]
+fn validate_command_does_not_mutate_log_or_history() {
+    use cadkernel_api::{Command, Session};
+    let mut session = Session::new();
+    session
+        .execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 })
+        .unwrap();
+    let log_len = session.log().len();
+    let history_len = session.document().history().len();
+    let _ = session.execute(Command::Validate).unwrap();
+    let _ = session.execute(Command::Validate).unwrap();
+    assert_eq!(session.log().len(), log_len);
+    assert_eq!(session.document().history().len(), history_len);
+}
+
+#[test]
+fn validate_outcome_serializes_with_kind_validated_and_issues_array() {
+    use cadkernel_api::Outcome;
+    let outcome = Outcome::Validated { issues: Vec::new() };
+    let json = serde_json::to_value(&outcome).unwrap();
+    assert_eq!(json["kind"], "validated");
+    assert!(json["issues"].is_array());
+    assert_eq!(json["issues"].as_array().unwrap().len(), 0);
+}
+
+#[test]
+fn validate_command_round_trips_through_json() {
+    use cadkernel_api::Command;
+    let cmd = Command::Validate;
+    let json = serde_json::to_value(&cmd).unwrap();
+    assert_eq!(json["op"], "validate");
+    let back: Command = serde_json::from_value(json).unwrap();
+    assert!(matches!(back, Command::Validate));
 }

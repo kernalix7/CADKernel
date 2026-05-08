@@ -112,6 +112,11 @@ pub enum Command {
     /// Does not mutate the document or append a history event — the only
     /// command in the surface that is a pure observer.
     Measure { id: SolidId },
+    /// Read-only document health check. Returns the list of
+    /// `DocumentIssue`s wrapped in `Outcome::Validated` (empty when the
+    /// document is clean). Does not mutate the document or append a
+    /// history event — second pure-observer command alongside `Measure`.
+    Validate,
     /// No-op. Used by tests to verify the round-trip without side effects.
     Noop,
 }
@@ -137,6 +142,7 @@ impl Command {
             Self::Mirror { .. } => "mirror",
             Self::NewDocument => "new_document",
             Self::Measure { .. } => "measure",
+            Self::Validate => "validate",
             Self::Noop => "noop",
         }
     }
@@ -476,6 +482,11 @@ pub fn command_schemas() -> Vec<CommandSchema> {
                 required: true,
                 doc: "Solid to measure.",
             }],
+        },
+        CommandSchema {
+            op: "validate",
+            description: "Read-only: run Document::validate() and return any DocumentIssues as Outcome::Validated. Does not mutate the document or append history.",
+            params: &[],
         },
         CommandSchema {
             op: "noop",

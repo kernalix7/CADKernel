@@ -292,7 +292,7 @@ impl Session {
         // Pure-observer commands: dispatch and return without touching
         // the log, cursor, or history. They cannot be undone/redone
         // because they don't mutate the document.
-        if matches!(command, Command::Measure { .. }) {
+        if matches!(command, Command::Measure { .. } | Command::Validate) {
             return self.dispatch(&command);
         }
 
@@ -476,6 +476,9 @@ impl Session {
             } => self.linear_pattern(*id, *direction, *spacing, *count, skip_instances),
             Command::Mirror { id, point, normal, merge } => self.mirror(*id, *point, *normal, *merge),
             Command::Measure { id } => self.measure(*id),
+            Command::Validate => Ok(Outcome::Validated {
+                issues: self.document.validate(),
+            }),
             Command::NewDocument => {
                 self.document = Document::new();
                 self.log.clear();
@@ -866,6 +869,7 @@ fn history_description(cmd: &Command, outcome: &Outcome) -> String {
         }
         (Command::Mirror { id, .. }, _) => format!("Mirror {id}"),
         (Command::Measure { id }, _) => format!("Measure {id}"),
+        (Command::Validate, _) => "Validate".into(),
         (Command::NewDocument, _) => "New document".into(),
         (Command::Noop, _) => "Noop".into(),
     }

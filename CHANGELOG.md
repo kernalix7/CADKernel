@@ -11,6 +11,18 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::Validate` + `Outcome::Validated` (2026-05-08)
+- **New `Command::Validate`** — second pure-observer command after `Measure`. Returns `Outcome::Validated { issues: Vec<DocumentIssue> }` by delegating to the existing `Document::validate()`. AI / test consumers can now run a one-call health check through the same `execute(Command)` channel they use for everything else — e.g. after a long replay, branch on `issues.is_empty()` to decide whether to surface a warning UI.
+- **Observer fast-path widened** — the `matches!` filter in `Session::execute` now covers `Validate` alongside `Measure`, so the new command is also non-recorded, non-coalesced, and non-undoable.
+- **`CommandSchema` entry**: `"Read-only: run Document::validate() and return any DocumentIssues as Outcome::Validated. Does not mutate the document or append history."`
+- **4 new regression tests** in `crates/api/tests/api_integration.rs`:
+  - `validate_command_returns_empty_issues_for_clean_document` — baseline clean state.
+  - `validate_command_does_not_mutate_log_or_history` — log/history unchanged after two consecutive Validate calls.
+  - `validate_outcome_serializes_with_kind_validated_and_issues_array` — JSON wire-format (`kind: "validated"`, `issues: []`).
+  - `validate_command_round_trips_through_json` — unit-variant `{"op":"validate"}` JSON round-trip.
+- **`command_schemas_cover_every_op_name`** updated to include the new Validate variant.
+- **2,918 / 0 / 0** tests (+4 vs. Measure slice); strict `clippy --all-targets --all-features -D warnings` clean.
+
 #### API — `Command::Measure` + `Outcome::Measured` (2026-05-08)
 - **New `Command::Measure { id }`** — first pure-observer command in the API surface. Returns `Outcome::Measured { id, volume, surface_area, centroid, bbox_min, bbox_max }` by combining `Document::measure_solid()` and the just-added `Document::bounding_box()` into a single AI/script-callable invocation. AI agents and Lua scripts can now ask "what are the geometric properties of solid N?" through the same `execute(Command)` channel they already use for mutations — no separate Document API plumbing required.
 - **Observer fast-path in `Session::execute`** — `Command::Measure` short-circuits before the log/cursor/history bookkeeping and is therefore *not* recorded, *not* coalesced, and *not* undoable. This preserves the invariant that the command log replays to a deterministic document state without observer side-channels polluting it.

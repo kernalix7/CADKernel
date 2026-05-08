@@ -11,6 +11,14 @@
 
 ### 추가됨
 
+#### API — `Command::Validate` + `Outcome::Validated` (2026-05-08)
+- **`Command::Validate` 신규 추가** — `Measure`에 이어 두 번째 순수 observer 명령. 기존 `Document::validate()`로 위임하여 `Outcome::Validated { issues: Vec<DocumentIssue> }`를 반환. AI/테스트 소비자는 긴 리플레이 후 `issues.is_empty()`로 경고 UI 노출 여부를 판단하는 용도로 동일한 `execute(Command)` 채널을 사용 가능.
+- **observer 빠른 경로 확장** — `Session::execute`의 `matches!` 필터가 `Measure`와 함께 `Validate`도 포함. 이 명령도 로그 롭·coalesce 대상 아님·undo 불가.
+- **`CommandSchema` 엔트리** 추가: 읽기 전용 계약 문서화.
+- **회귀 테스트 4개 추가** — 깨끗한 문서에서 빈 이슈 / 로그·히스토리 무변경 / JSON 와이어 포맷(`kind: "validated"`) / 단일 변형 `{"op":"validate"}` JSON 왕복.
+- `command_schemas_cover_every_op_name` 테스트도 Validate 포함하도록 업데이트.
+- 테스트 **2,918 / 0 / 0** (Measure 슬라이스 대비 +4), `clippy --all-targets --all-features -D warnings` 무경고.
+
 #### API — `Command::Measure` + `Outcome::Measured` (2026-05-08)
 - **`Command::Measure { id }` 신규 추가** — API 표면 최초의 순수 observer(읽기 전용) 명령. `Outcome::Measured { id, volume, surface_area, centroid, bbox_min, bbox_max }`를 반환. 기존 `Document::measure_solid()`와 방금 추가한 `Document::bounding_box()`를 하나의 AI/스크립트 호출 가능 명령으로 통합. AI 에이전트와 Lua 스크립트가 변형 명령과 동일한 `execute(Command)` 채널로 "솔리드 N의 기하 속성은?"을 질의 가능 — 별도 Document API 배선 불필요.
 - **`Session::execute`의 observer 빠른 경로** — `Command::Measure`는 log/cursor/history 처리 전에 단락(short-circuit)하므로 로그에 기록되지 않고, coalesce 대상도 아니며, undo도 불가. 명령 로그가 결정론적 문서 상태로 재생된다는 불변식을 유지.

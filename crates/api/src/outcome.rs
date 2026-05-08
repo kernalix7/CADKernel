@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::document::SolidId;
+use crate::document::{DocumentIssue, SolidId};
 
 /// Successful result of [`Session::execute`](crate::Session::execute).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -48,6 +48,12 @@ pub enum Outcome {
         bbox_min: [f64; 3],
         bbox_max: [f64; 3],
     },
+    /// Read-only document health report (`Command::Validate`). `issues`
+    /// is empty when the document is clean. AI / test consumers branch
+    /// on `issues.is_empty()` to decide whether to surface a warning.
+    Validated {
+        issues: Vec<DocumentIssue>,
+    },
     /// Nothing happened (`Command::Noop`).
     Empty,
 }
@@ -63,6 +69,7 @@ pub enum OutcomeKind {
     PatternCreated,
     DocumentReset,
     Measured,
+    Validated,
     Empty,
 }
 
@@ -77,6 +84,7 @@ impl Outcome {
             Self::PatternCreated { .. } => OutcomeKind::PatternCreated,
             Self::DocumentReset => OutcomeKind::DocumentReset,
             Self::Measured { .. } => OutcomeKind::Measured,
+            Self::Validated { .. } => OutcomeKind::Validated,
             Self::Empty => OutcomeKind::Empty,
         }
     }
