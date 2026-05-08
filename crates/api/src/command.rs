@@ -107,6 +107,11 @@ pub enum Command {
     /// and resets the [`Session`] log. Useful as the first command of a
     /// replay test or AI session reset.
     NewDocument,
+    /// Read-only measurement of a solid. Returns volume / surface area /
+    /// centroid / axis-aligned bounding box wrapped in `Outcome::Measured`.
+    /// Does not mutate the document or append a history event — the only
+    /// command in the surface that is a pure observer.
+    Measure { id: SolidId },
     /// No-op. Used by tests to verify the round-trip without side effects.
     Noop,
 }
@@ -131,6 +136,7 @@ impl Command {
             Self::LinearPattern { .. } => "linear_pattern",
             Self::Mirror { .. } => "mirror",
             Self::NewDocument => "new_document",
+            Self::Measure { .. } => "measure",
             Self::Noop => "noop",
         }
     }
@@ -460,6 +466,16 @@ pub fn command_schemas() -> Vec<CommandSchema> {
             op: "new_document",
             description: "Reset the session to an empty document. Clears the command log.",
             params: &[],
+        },
+        CommandSchema {
+            op: "measure",
+            description: "Read-only: return volume / surface area / centroid / bbox of a solid as Outcome::Measured. Does not mutate the document or append history.",
+            params: &[ParamSchema {
+                name: "id",
+                ty: "solid_id",
+                required: true,
+                doc: "Solid to measure.",
+            }],
         },
         CommandSchema {
             op: "noop",

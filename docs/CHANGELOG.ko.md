@@ -11,6 +11,14 @@
 
 ### 추가됨
 
+#### API — `Command::Measure` + `Outcome::Measured` (2026-05-08)
+- **`Command::Measure { id }` 신규 추가** — API 표면 최초의 순수 observer(읽기 전용) 명령. `Outcome::Measured { id, volume, surface_area, centroid, bbox_min, bbox_max }`를 반환. 기존 `Document::measure_solid()`와 방금 추가한 `Document::bounding_box()`를 하나의 AI/스크립트 호출 가능 명령으로 통합. AI 에이전트와 Lua 스크립트가 변형 명령과 동일한 `execute(Command)` 채널로 "솔리드 N의 기하 속성은?"을 질의 가능 — 별도 Document API 배선 불필요.
+- **`Session::execute`의 observer 빠른 경로** — `Command::Measure`는 log/cursor/history 처리 전에 단락(short-circuit)하므로 로그에 기록되지 않고, coalesce 대상도 아니며, undo도 불가. 명령 로그가 결정론적 문서 상태로 재생된다는 불변식을 유지.
+- **`CommandSchema` 엔트리** 추가: 읽기 전용 계약 문서화.
+- **회귀 테스트 4개 추가** — 2×4×6 박스 측정 검증 / log·history 무변경 / 미존재 id ⇒ `UnknownSolid` / JSON 와이어 포맷(`kind: "measured"` + 6 필드).
+- `command_schemas_cover_every_op_name` 테스트도 Measure 변형 포함하도록 업데이트.
+- 테스트 **2,914 / 0 / 0** (bbox 슬라이스 대비 +4), `clippy --all-targets --all-features -D warnings` 무경고.
+
 #### API — `Document::bounding_box()` + `AabbSummary` (2026-05-08)
 - **`Document::bounding_box(id) -> Option<AabbSummary>` 신규 추가** — 솔리드의 축 정렬 바운딩 박스를 구하는 API. `BRepModel`의 vertex store를 순회해 월드 좌표로 반환. 기존 `measure_solid()`(volume/surface_area/centroid)를 보완 — AI/테스트 소비자가 테셀레이션 없이 공간 범위를 빠르게 검증하는 용도(예: MidPlane 출소가 z=0 중심인지, Translate 후 델타가 기대값과 일치하는지).
 - **`AabbSummary { id, min, max }` 구조체** — `size()`, `center()` 헬퍼 메서드 제공. serde JSON 직렬화 가능.

@@ -452,6 +452,9 @@ fn command_schemas_cover_every_op_name() {
             normal: [1.0, 0.0, 0.0],
             merge: false,
         },
+        Command::Measure {
+            id: cadkernel_api::SolidId(0),
+        },
         Command::NewDocument,
         Command::Noop,
     ];
@@ -1264,4 +1267,92 @@ fn bounding_box_summary_serializes_with_id_min_max() {
     assert!(json["max"].is_array());
     assert_eq!(json["min"].as_array().unwrap().len(), 3);
     assert_eq!(json["max"].as_array().unwrap().len(), 3);
+}
+
+#[test]
+fn measure_command_returns_volume_surface_area_centroid_and_bbox() {
+    use cadkernel_api::{Command, Outcome, Session};
+    let mut session = Session::new();
+    let id = match session
+        .execute(Command::CreateBox { dx: 2.0, dy: 4.0, dz: 6.0 })
+        .unwrap()
+    {
+        Outcome::SolidCreated { id, .. } => id,
+        other => panic!("expected SolidCreated, got {other:?}"),
+    };
+    let measured = session.execute(Command::Measure { id }).unwrap();
+    match measured {
+        Outcome::Measured {
+            id: mid,
+            volume,
+            surface_area,
+            centroid,
+            bbox_min,
+            bbox_max,
+        } => {
+            assert_eq!(mid, id);
+            assert!((volume - 48.0).abs() < 1e-6, "volume = {volume}");
+            assert!((surface_area - 88.0).abs() < 1e-6, "surface_area = {surface_area}");
+            assert!(centroid[0].is_finite());
+            assert_eq!(bbox_min, [0.0, 0.0, 0.0]);
+            assert_eq!(bbox_max, [2.0, 4.0, 6.0]);
+        }
+        other => panic!("expected Outcome::Measured, got {other:?}"),
+    }
+}
+
+#[test]
+fn measure_command_does_not_mutate_log_or_history() {
+    use cadkernel_api::{Command, Outcome, Session};
+    let mut session = Session::new();
+    let id = match session
+        .execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 })
+        .unwrap()
+    {
+        Outcome::SolidCreated { id, .. } => id,
+        other => panic!("expected SolidCreated, got {other:?}"),
+    };
+    let log_len_before = session.log().len();
+    let history_len_before = session.document().history().len();
+    let _ = session.execute(Command::Measure { id }).unwrap();
+    assert_eq!(session.log().len(), log_len_before, "Measure must not append to log");
+    assert_eq!(
+        session.document().history().len(),
+        history_len_before,
+        "Measure must not append history event"
+    );
+    // Measure must not be undoable since it didn't mutate state.
+    assert!(matches!(
+        session.execute(Command::Measure { id }).unwrap(),
+        Outcome::Measured { .. }
+    ));
+}
+
+#[test]
+fn measure_command_returns_unknown_solid_for_invalid_id() {
+    use cadkernel_api::{ApiError, Command, Session, SolidId};
+    let mut session = Session::new();
+    let err = session.execute(Command::Measure { id: SolidId(999) }).unwrap_err();
+    assert!(matches!(err, ApiError::UnknownSolid(_)), "got {err:?}");
+}
+
+#[test]
+fn measure_outcome_serializes_with_kind_measured() {
+    use cadkernel_api::Outcome;
+    use cadkernel_api::SolidId;
+    let outcome = Outcome::Measured {
+        id: SolidId(1),
+        volume: 8.0,
+        surface_area: 24.0,
+        centroid: [0.5, 0.5, 0.5],
+        bbox_min: [0.0, 0.0, 0.0],
+        bbox_max: [1.0, 1.0, 1.0],
+    };
+    let json = serde_json::to_value(&outcome).unwrap();
+    assert_eq!(json["kind"], "measured");
+    assert_eq!(json["id"], 1);
+    assert_eq!(json["volume"], 8.0);
+    assert_eq!(json["surface_area"], 24.0);
+    assert_eq!(json["bbox_min"], serde_json::json!([0.0, 0.0, 0.0]));
+    assert_eq!(json["bbox_max"], serde_json::json!([1.0, 1.0, 1.0]));
 }

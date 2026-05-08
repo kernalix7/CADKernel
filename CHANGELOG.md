@@ -11,6 +11,18 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::Measure` + `Outcome::Measured` (2026-05-08)
+- **New `Command::Measure { id }`** — first pure-observer command in the API surface. Returns `Outcome::Measured { id, volume, surface_area, centroid, bbox_min, bbox_max }` by combining `Document::measure_solid()` and the just-added `Document::bounding_box()` into a single AI/script-callable invocation. AI agents and Lua scripts can now ask "what are the geometric properties of solid N?" through the same `execute(Command)` channel they already use for mutations — no separate Document API plumbing required.
+- **Observer fast-path in `Session::execute`** — `Command::Measure` short-circuits before the log/cursor/history bookkeeping and is therefore *not* recorded, *not* coalesced, and *not* undoable. This preserves the invariant that the command log replays to a deterministic document state without observer side-channels polluting it.
+- **`CommandSchema` entry** documents the read-only contract: `"Read-only: return volume / surface area / centroid / bbox of a solid as Outcome::Measured. Does not mutate the document or append history."`
+- **4 new regression tests** in `crates/api/tests/api_integration.rs`:
+  - `measure_command_returns_volume_surface_area_centroid_and_bbox` — 2×4×6 box ⇒ volume=48, surface_area=88, bbox=[0,0,0]→[2,4,6].
+  - `measure_command_does_not_mutate_log_or_history` — log length and history length unchanged after Measure.
+  - `measure_command_returns_unknown_solid_for_invalid_id` — `ApiError::UnknownSolid` on missing id.
+  - `measure_outcome_serializes_with_kind_measured` — JSON wire-format (`kind: "measured"`, six fields).
+- **`command_schemas_cover_every_op_name`** updated to include the new Measure variant.
+- **2,914 / 0 / 0** tests (+4 vs. bbox API slice); strict `clippy --all-targets --all-features -D warnings` clean.
+
 #### API — `Document::bounding_box()` + `AabbSummary` (2026-05-08)
 - **New `Document::bounding_box(id) -> Option<AabbSummary>`** computes the axis-aligned bounding box of a solid in world coordinates by walking the underlying `BRepModel` vertex store. Complements the existing `measure_solid()` (volume / surface_area / centroid) for AI / test consumers that need a quick spatial extent without tessellating the solid — e.g. asserting a `MidPlane` extrusion is centered on z=0, or that a translation shifted a part by the expected delta.
 - **New `AabbSummary { id, min, max }`** with helper methods `size() -> [f64;3]` and `center() -> [f64;3]`. JSON-serializable via `serde`.

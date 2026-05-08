@@ -289,6 +289,13 @@ impl Session {
     /// multiply, `Rename` labels are replaced. No new history event is
     /// emitted in that case.
     pub fn execute(&mut self, command: Command) -> ApiResult<Outcome> {
+        // Pure-observer commands: dispatch and return without touching
+        // the log, cursor, or history. They cannot be undone/redone
+        // because they don't mutate the document.
+        if matches!(command, Command::Measure { .. }) {
+            return self.dispatch(&command);
+        }
+
         // Discard the redo stack — a new branch starts here.
         self.log.truncate(self.cursor);
 
@@ -468,6 +475,7 @@ impl Session {
                 skip_instances,
             } => self.linear_pattern(*id, *direction, *spacing, *count, skip_instances),
             Command::Mirror { id, point, normal, merge } => self.mirror(*id, *point, *normal, *merge),
+            Command::Measure { id } => self.measure(*id),
             Command::NewDocument => {
                 self.document = Document::new();
                 self.log.clear();
@@ -577,6 +585,25 @@ impl Session {
         let slot = slot_mut(&mut self.document, id)?;
         slot.label = label;
         Ok(Outcome::SolidModified { id })
+    }
+
+    fn measure(&self, id: SolidId) -> ApiResult<Outcome> {
+        let m = self
+            .document
+            .measure_solid(id)
+            .ok_or_else(|| ApiError::UnknownSolid(format!("{id}")))?;
+        let bbox = self
+            .document
+            .bounding_box(id)
+            .ok_or_else(|| ApiError::UnknownSolid(format!("{id}")))?;
+        Ok(Outcome::Measured {
+            id,
+            volume: m.volume,
+            surface_area: m.surface_area,
+            centroid: m.centroid,
+            bbox_min: bbox.min,
+            bbox_max: bbox.max,
+        })
     }
 
     fn extrude_profile(
@@ -838,6 +865,7 @@ fn history_description(cmd: &Command, outcome: &Outcome) -> String {
             format!("LinearPattern {id} ×{count}")
         }
         (Command::Mirror { id, .. }, _) => format!("Mirror {id}"),
+        (Command::Measure { id }, _) => format!("Measure {id}"),
         (Command::NewDocument, _) => "New document".into(),
         (Command::Noop, _) => "Noop".into(),
     }

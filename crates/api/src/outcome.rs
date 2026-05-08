@@ -36,6 +36,18 @@ pub enum Outcome {
     },
     /// The document was reset (`Command::NewDocument`).
     DocumentReset,
+    /// Read-only measurement of a solid (`Command::Measure`). Carries the
+    /// volume / surface area / centroid / axis-aligned bounding box —
+    /// callers branch on this when scripting AI/test workflows that need
+    /// to assert on geometry without separately calling the Document API.
+    Measured {
+        id: SolidId,
+        volume: f64,
+        surface_area: f64,
+        centroid: [f64; 3],
+        bbox_min: [f64; 3],
+        bbox_max: [f64; 3],
+    },
     /// Nothing happened (`Command::Noop`).
     Empty,
 }
@@ -50,6 +62,7 @@ pub enum OutcomeKind {
     SolidModified,
     PatternCreated,
     DocumentReset,
+    Measured,
     Empty,
 }
 
@@ -63,6 +76,7 @@ impl Outcome {
             Self::SolidModified { .. } => OutcomeKind::SolidModified,
             Self::PatternCreated { .. } => OutcomeKind::PatternCreated,
             Self::DocumentReset => OutcomeKind::DocumentReset,
+            Self::Measured { .. } => OutcomeKind::Measured,
             Self::Empty => OutcomeKind::Empty,
         }
     }
@@ -75,6 +89,7 @@ impl Outcome {
             Self::Booleaned { result, .. } => Some(*result),
             Self::SolidModified { id } => Some(*id),
             Self::PatternCreated { ids, .. } => ids.first().copied(),
+            Self::Measured { id, .. } => Some(*id),
             _ => None,
         }
     }
