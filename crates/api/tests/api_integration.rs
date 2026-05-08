@@ -457,6 +457,9 @@ fn command_schemas_cover_every_op_name() {
         },
         Command::Validate,
         Command::ListSolids,
+        Command::Duplicate {
+            id: cadkernel_api::SolidId(0),
+        },
         Command::NewDocument,
         Command::Noop,
     ];
@@ -1488,4 +1491,121 @@ fn list_solids_command_round_trips_through_json() {
     assert_eq!(json["op"], "list_solids");
     let back: Command = serde_json::from_value(json).unwrap();
     assert!(matches!(back, Command::ListSolids));
+}
+
+#[test]
+fn duplicate_command_creates_new_solid_with_copy_suffix_label() {
+    use cadkernel_api::{Command, Outcome, Session};
+    let mut session = Session::new();
+    let src_id = match session
+        .execute(Command::CreateBox { dx: 2.0, dy: 3.0, dz: 4.0 })
+        .unwrap()
+    {
+        Outcome::SolidCreated { id, .. } => id,
+        other => panic!("expected SolidCreated, got {other:?}"),
+    };
+    let dup = session.execute(Command::Duplicate { id: src_id }).unwrap();
+    match dup {
+        Outcome::SolidCreated { id, label } => {
+            assert_ne!(id, src_id, "duplicate must produce a fresh SolidId");
+            assert_eq!(label, "Box (copy)");
+        }
+        other => panic!("expected SolidCreated, got {other:?}"),
+    }
+    assert_eq!(session.document().solid_count(), 2);
+}
+
+#[test]
+fn duplicate_command_preserves_geometry_volume_and_bbox() {
+    use cadkernel_api::{Command, Outcome, Session};
+    let mut session = Session::new();
+    let src_id = match session
+        .execute(Command::CreateBox { dx: 2.0, dy: 4.0, dz: 6.0 })
+        .unwrap()
+    {
+        Outcome::SolidCreated { id, .. } => id,
+        other => panic!("expected SolidCreated, got {other:?}"),
+    };
+    let dup_id = match session.execute(Command::Duplicate { id: src_id }).unwrap() {
+        Outcome::SolidCreated { id, .. } => id,
+        other => panic!("expected SolidCreated, got {other:?}"),
+    };
+    let src_m = session.document().measure_solid(src_id).unwrap();
+    let dup_m = session.document().measure_solid(dup_id).unwrap();
+    assert!((src_m.volume - dup_m.volume).abs() < 1e-9);
+    assert!((src_m.surface_area - dup_m.surface_area).abs() < 1e-9);
+    let src_b = session.document().bounding_box(src_id).unwrap();
+    let dup_b = session.document().bounding_box(dup_id).unwrap();
+    assert_eq!(src_b.min, dup_b.min);
+    assert_eq!(src_b.max, dup_b.max);
+}
+
+#[test]
+fn duplicate_command_creates_independent_copy_translate_does_not_affect_source() {
+    use cadkernel_api::{Command, Outcome, Session};
+    let mut session = Session::new();
+    let src_id = match session
+        .execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 })
+        .unwrap()
+    {
+        Outcome::SolidCreated { id, .. } => id,
+        other => panic!("expected SolidCreated, got {other:?}"),
+    };
+    let dup_id = match session.execute(Command::Duplicate { id: src_id }).unwrap() {
+        Outcome::SolidCreated { id, .. } => id,
+        other => panic!("expected SolidCreated, got {other:?}"),
+    };
+    session
+        .execute(Command::Translate { id: dup_id, dx: 10.0, dy: 0.0, dz: 0.0 })
+        .unwrap();
+    let src_b = session.document().bounding_box(src_id).unwrap();
+    let dup_b = session.document().bounding_box(dup_id).unwrap();
+    assert!(src_b.min[0] < 5.0, "source must not move");
+    assert!(dup_b.min[0] >= 10.0, "duplicate must shift, got {:?}", dup_b.min);
+}
+
+#[test]
+fn duplicate_command_appends_history_event() {
+    use cadkernel_api::{Command, Outcome, Session};
+    let mut session = Session::new();
+    let src_id = match session
+        .execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 })
+        .unwrap()
+    {
+        Outcome::SolidCreated { id, .. } => id,
+        other => panic!("expected SolidCreated, got {other:?}"),
+    };
+    let history_len = session.document().history().len();
+    let _ = session.execute(Command::Duplicate { id: src_id }).unwrap();
+    let new_history = session.document().history();
+    assert_eq!(new_history.len(), history_len + 1);
+    assert_eq!(new_history.last().unwrap().op, "duplicate");
+}
+
+#[test]
+fn duplicate_command_undo_removes_only_the_copy() {
+    use cadkernel_api::{Command, Outcome, Session};
+    let mut session = Session::new();
+    let src_id = match session
+        .execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 })
+        .unwrap()
+    {
+        Outcome::SolidCreated { id, .. } => id,
+        other => panic!("expected SolidCreated, got {other:?}"),
+    };
+    session.execute(Command::Duplicate { id: src_id }).unwrap();
+    assert_eq!(session.document().solid_count(), 2);
+    session.undo().unwrap();
+    assert_eq!(session.document().solid_count(), 1);
+    assert!(session.document().solid_label(src_id).is_some());
+}
+
+#[test]
+fn duplicate_command_returns_unknown_solid_for_invalid_id() {
+    use cadkernel_api::{ApiError, Command, Session, SolidId};
+    let mut session = Session::new();
+    let err = session
+        .execute(Command::Duplicate { id: SolidId(999) })
+        .unwrap_err();
+    assert!(matches!(err, ApiError::UnknownSolid(_)), "got {err:?}");
 }

@@ -497,6 +497,7 @@ impl Session {
                     })
                     .collect(),
             }),
+            Command::Duplicate { id } => self.duplicate(*id),
             Command::NewDocument => {
                 self.document = Document::new();
                 self.log.clear();
@@ -625,6 +626,21 @@ impl Session {
             bbox_min: bbox.min,
             bbox_max: bbox.max,
         })
+    }
+
+    fn duplicate(&mut self, src_id: SolidId) -> ApiResult<Outcome> {
+        let (model, handle, label) = {
+            let slot = self
+                .document
+                .get_slot(src_id)
+                .ok_or_else(|| ApiError::UnknownSolid(format!("{src_id}")))?;
+            let handle = slot
+                .handle
+                .ok_or_else(|| ApiError::UnknownSolid(format!("{src_id} has no solid handle")))?;
+            (slot.model.clone(), handle, format!("{} (copy)", slot.label))
+        };
+        let new_id = self.document.insert(model, handle, label.clone());
+        Ok(Outcome::SolidCreated { id: new_id, label })
     }
 
     fn extrude_profile(
@@ -889,6 +905,7 @@ fn history_description(cmd: &Command, outcome: &Outcome) -> String {
         (Command::Measure { id }, _) => format!("Measure {id}"),
         (Command::Validate, _) => "Validate".into(),
         (Command::ListSolids, _) => "ListSolids".into(),
+        (Command::Duplicate { id }, _) => format!("Duplicate {id}"),
         (Command::NewDocument, _) => "New document".into(),
         (Command::Noop, _) => "Noop".into(),
     }

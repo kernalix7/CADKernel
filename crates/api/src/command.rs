@@ -121,6 +121,10 @@ pub enum Command {
     /// `Outcome::SolidsListed { entries: [{ id, label }, ...] }`. Does
     /// not mutate the document or append a history event.
     ListSolids,
+    /// Deep-clone a solid into a new slot. Returns the new
+    /// `Outcome::SolidCreated { id, label }` where `label` is
+    /// `"<source-label> (copy)"`. The source slot is left untouched.
+    Duplicate { id: SolidId },
     /// No-op. Used by tests to verify the round-trip without side effects.
     Noop,
 }
@@ -148,6 +152,7 @@ impl Command {
             Self::Measure { .. } => "measure",
             Self::Validate => "validate",
             Self::ListSolids => "list_solids",
+            Self::Duplicate { .. } => "duplicate",
             Self::Noop => "noop",
         }
     }
@@ -497,6 +502,16 @@ pub fn command_schemas() -> Vec<CommandSchema> {
             op: "list_solids",
             description: "Read-only: enumerate every solid in the document as Outcome::SolidsListed { entries: [{ id, label }, ...] }. Does not mutate the document or append history.",
             params: &[],
+        },
+        CommandSchema {
+            op: "duplicate",
+            description: "Deep-clone a solid into a new slot. Returns Outcome::SolidCreated with the new id and a '<source> (copy)' label. The source slot is preserved.",
+            params: &[ParamSchema {
+                name: "id",
+                ty: "solid_id",
+                required: true,
+                doc: "Source solid to clone.",
+            }],
         },
         CommandSchema {
             op: "noop",

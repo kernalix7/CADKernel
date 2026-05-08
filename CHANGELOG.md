@@ -11,6 +11,20 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::Duplicate` deep-clone command (2026-05-08)
+- **New `Command::Duplicate { id }`** — deep-clones a solid into a new slot. Returns the standard `Outcome::SolidCreated { id, label }` where `label = "<source-label> (copy)"`. The source slot is preserved, the new copy is fully independent (per-vertex topology is cloned via the existing `BRepModel: Clone` impl), and the command is fully undoable through the regular log/cursor pipeline (mutation command, not an observer). Closes the gap that previously forced AI / scripts to re-create a primitive from scratch when they wanted a sibling instance.
+- **Implementation**: `Session::duplicate(src_id)` clones the slot's `BRepModel`, reuses the original `Handle<SolidData>` (which is a generational arena index into the cloned model and therefore still valid), and inserts a fresh slot through the existing `Document::insert()` path so the new SolidId is sequentially assigned.
+- **`CommandSchema` entry**: documents the contract — "Deep-clone a solid into a new slot. Returns Outcome::SolidCreated with the new id and a '<source> (copy)' label. The source slot is preserved."
+- **6 new regression tests** in `crates/api/tests/api_integration.rs`:
+  - `duplicate_command_creates_new_solid_with_copy_suffix_label` — fresh SolidId + `"Box (copy)"` label.
+  - `duplicate_command_preserves_geometry_volume_and_bbox` — measure_solid + bounding_box match exactly.
+  - `duplicate_command_creates_independent_copy_translate_does_not_affect_source` — mutating the copy leaves the source untouched.
+  - `duplicate_command_appends_history_event` — history event with `op: "duplicate"`.
+  - `duplicate_command_undo_removes_only_the_copy` — undo reverts only the copy, source survives.
+  - `duplicate_command_returns_unknown_solid_for_invalid_id` — `ApiError::UnknownSolid` on missing source.
+- **`command_schemas_cover_every_op_name`** updated to include the new Duplicate variant.
+- **2,929 / 0 / 0** tests (+6 vs. ListSolids slice); strict `clippy --all-targets --all-features -D warnings` clean.
+
 #### API — `Command::ListSolids` + `Outcome::SolidsListed` (2026-05-08)
 - **New `Command::ListSolids`** — third pure-observer command (after `Measure` and `Validate`). Returns `Outcome::SolidsListed { entries: Vec<SolidEntry { id, label }> }` by joining `Document::solid_ids()` with `Document::solid_label()` in a single round-trip. Useful for AI / test consumers that need to render a tree view or pick targets for follow-up commands without juggling two separate Document API calls.
 - **New `SolidEntry { id, label }`** — flat row type re-exported from `cadkernel_api::SolidEntry`. JSON wire format: `{"id": 0, "label": "Box"}`.

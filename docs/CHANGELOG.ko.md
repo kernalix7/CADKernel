@@ -11,6 +11,14 @@
 
 ### 추가됨
 
+#### API — `Command::Duplicate` 심층 복제 명령 (2026-05-08)
+- **`Command::Duplicate { id }` 신규 추가** — 솔리드를 새 슬롯으로 심층 복제. 표준 `Outcome::SolidCreated { id, label }`를 반환하며 `label = "<원본라벨> (copy)"`. 원본 슬롯은 보존되고, 새 복사본은 완전히 독립적이며(기존 `BRepModel: Clone`로 topology 전체 deep clone), 일반 log/cursor 파이프라인을 통해 완전히 undo 가능(observer가 아닌 mutation 명령). 이제 AI/스크립트가 형제 인스턴스를 원할 때 원시형부터 다시 생성할 필요 없음.
+- **구현**: `Session::duplicate(src_id)`가 슬롯의 `BRepModel`을 clone하고, 원래 `Handle<SolidData>`를 그대로 재사용(복제된 모델 내에서도 generational arena 인덱스가 유효), 기존 `Document::insert()` 경로로 새 슬롯을 삽입해 순차적으로 새 SolidId를 발급.
+- **`CommandSchema` 엔트리** 추가: 계약 문서화.
+- **회귀 테스트 6개 추가** — 새 SolidId + "(copy)" 라벨 / volume·bbox 일치 / 독립성(translate 후 원본 불변) / history 이벤트 추가 / undo로 복사본만 제거 / unknown id 는 `UnknownSolid`.
+- `command_schemas_cover_every_op_name` 도 Duplicate 포함하도록 업데이트.
+- 테스트 **2,929 / 0 / 0** (ListSolids 슬라이스 대비 +6), `clippy --all-targets --all-features -D warnings` 무경고.
+
 #### API — `Command::ListSolids` + `Outcome::SolidsListed` (2026-05-08)
 - **`Command::ListSolids` 신규 추가** — `Measure`·`Validate`에 이은 세 번째 순수 observer 명령. `Document::solid_ids()`와 `Document::solid_label()`를 단일 왕복으로 결합하여 `Outcome::SolidsListed { entries: Vec<SolidEntry { id, label }> }`를 반환. AI/테스트 소비자가 Document API 두 개를 따로 잡을 필요 없이 트리 뷰를 그리거나 후속 명령의 타겟을 고르는 용도에 적합.
 - **`SolidEntry { id, label }` 구조체** — `cadkernel_api::SolidEntry`로 재내보내기. JSON 와이어 포맷: `{"id": 0, "label": "Box"}`.
