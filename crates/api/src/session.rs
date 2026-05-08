@@ -459,6 +459,7 @@ impl Session {
             Command::ScaleNonUniform { id, factors, point } => {
                 self.scale_non_uniform(*id, *factors, *point)
             }
+            Command::CenterOnOrigin { id } => self.center_on_origin(*id),
             Command::Rename { id, label } => self.rename(*id, label.clone()),
             Command::DeleteSolid { id } => {
                 if self.document.remove(*id) {
@@ -660,6 +661,29 @@ impl Session {
                 px + (v.point.x - px) * sx,
                 py + (v.point.y - py) * sy,
                 pz + (v.point.z - pz) * sz,
+            );
+        }
+        Ok(Outcome::SolidModified { id })
+    }
+
+    fn center_on_origin(&mut self, id: SolidId) -> ApiResult<Outcome> {
+        let centroid = {
+            let slot = self
+                .document
+                .get_slot(id)
+                .ok_or_else(|| ApiError::UnknownSolid(format!("{id}")))?;
+            let handle = slot
+                .handle
+                .ok_or_else(|| ApiError::UnknownSolid(format!("{id} has no solid handle")))?;
+            let mp = solid_mass_properties(&slot.model, handle)?;
+            mp.centroid
+        };
+        let slot = slot_mut(&mut self.document, id)?;
+        for (_h, v) in slot.model.vertices.iter_mut() {
+            v.point = Point3::new(
+                v.point.x - centroid.x,
+                v.point.y - centroid.y,
+                v.point.z - centroid.z,
             );
         }
         Ok(Outcome::SolidModified { id })
@@ -978,6 +1002,7 @@ fn history_description(cmd: &Command, outcome: &Outcome) -> String {
         (Command::ScaleNonUniform { id, factors, .. }, _) => {
             format!("ScaleNonUniform {id} [{},{},{}]", factors[0], factors[1], factors[2])
         }
+        (Command::CenterOnOrigin { id }, _) => format!("CenterOnOrigin {id}"),
         (Command::Rename { id, label }, _) => format!("Rename {id} → {label:?}"),
         (Command::DeleteSolid { id }, _) => format!("Delete {id}"),
         (

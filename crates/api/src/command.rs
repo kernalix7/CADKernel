@@ -62,6 +62,11 @@ pub enum Command {
         factors: [f64; 3],
         point: [f64; 3],
     },
+    /// Translate a solid so that its centroid lands on the world
+    /// origin. Convenience for AI / scripts that want to re-centre an
+    /// imported part without first measuring its centroid. Equivalent
+    /// to `Translate` by `-centroid` but expressed as a single command.
+    CenterOnOrigin { id: SolidId },
     /// Rename a solid (does not change its [`SolidId`]).
     Rename { id: SolidId, label: String },
     /// Delete a solid.
@@ -182,6 +187,7 @@ impl Command {
             Self::Translate { .. } => "translate",
             Self::Scale { .. } => "scale",
             Self::ScaleNonUniform { .. } => "scale_non_uniform",
+            Self::CenterOnOrigin { .. } => "center_on_origin",
             Self::Rename { .. } => "rename",
             Self::DeleteSolid { .. } => "delete_solid",
             Self::Extrude { .. } => "extrude",
@@ -599,6 +605,16 @@ pub fn command_schemas() -> Vec<CommandSchema> {
                     doc: "Pivot point in world coordinates.",
                 },
             ],
+        },
+        CommandSchema {
+            op: "center_on_origin",
+            description: "Translate a solid so its centroid lands on the world origin. Convenience equivalent to Translate by -centroid.",
+            params: &[ParamSchema {
+                name: "id",
+                ty: "solid_id",
+                required: true,
+                doc: "Solid to re-centre.",
+            }],
         },
         CommandSchema {
             op: "rotate",

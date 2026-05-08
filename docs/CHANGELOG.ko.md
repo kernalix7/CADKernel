@@ -11,6 +11,15 @@
 
 ### 추가됨
 
+#### API — `Command::CenterOnOrigin` centroid 기반 재중심 (2026-05-08)
+- **`Command::CenterOnOrigin { id }` 신규 추가** — 솔리드를 centroid가 월드 원점에 오도록 translate. AI/스크립트가 `Measure`로 centroid 때린 후 translate해야 했던 "임포트된 부품 재중심" 패턴을 단일 dispatch로 축소. `Translate` by `-centroid` 동가이지만 한 명령(그리고 undo 한 번)으로 표현.
+- **검증**: unknown id는 `ApiError::UnknownSolid`. 슬롯이 이미 `Solid` handle 보유 필요(mass-properties 계산).
+- **`CommandSchema` 엔트리** 추가.
+- **구현**: `Session::center_on_origin()`이 `Scale`이 쓰는 `solid_mass_properties` 경로를 재사용해 centroid 획득 후 모든 정점에서 centroid를 뺀. `Outcome::SolidModified` 반환, log/cursor로 완전 undo.
+- **회귀 테스트 5개 추가** — (10,20,30) translate 후 원점 복귀 / 이미 중심의 박스 idempotent / 잘못된 id 거절 / JSON 라운드트립 / undo 시 centroid 복원.
+- `command_schemas_cover_every_op_name` 업데이트.
+- 테스트 **2,961 / 0 / 0** (ScaleNonUniform 슬라이스 대비 +5), `clippy --all-targets --all-features -D warnings` 무경고.
+
 #### API — `Command::ScaleNonUniform` 명시적 피보을 중심으로 설정한 축별 스케일링 (2026-05-08)
 - **`Command::ScaleNonUniform { id, factors, point }` 신규 추가** — 첫 비균등 기하학적 mutation. 축별 승수 `factors = [sx, sy, sz]`(각 성분 `> 0`)를 월드 좌표의 명시적 피보 `point` 주위로 적용. 정점 좌표 재작성, topology 보존. 기존 균등 `Command::Scale`(centroid 기준) 보완.
 - **검증**: 하나라도 `<= 0`이면 mutation 이전에 `ApiError::InvalidArgument`로 거절; unknown id는 `ApiError::UnknownSolid`.

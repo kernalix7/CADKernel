@@ -11,6 +11,20 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::CenterOnOrigin` centroid-driven re-centring (2026-05-08)
+- **New `Command::CenterOnOrigin { id }`** — translates a solid so its centroid lands on the world origin. AI / scripts no longer need to call `Measure` first to grab the centroid before translating; this collapses the common "re-centre an imported part" workflow into a single dispatch. Equivalent to `Translate` by `-centroid` but expressed as one command (and one undo step).
+- **Validation**: unknown id rejected with `ApiError::UnknownSolid`. The slot must already have a populated `Solid` handle (mass-properties calculation requires it).
+- **`CommandSchema` entry** documents the contract.
+- **Implementation**: `Session::center_on_origin()` reuses the same `solid_mass_properties` path that `Scale` uses to obtain the centroid, then rewrites every vertex by subtracting the centroid. Returns `Outcome::SolidModified`; fully undoable via the standard log/cursor pipeline.
+- **5 new regression tests**:
+  - `center_on_origin_command_moves_translated_box_back_to_origin` — box translated to (10,20,30) re-centred to origin.
+  - `center_on_origin_command_already_centered_box_stays_at_origin` — idempotent on already-centred geometry.
+  - `center_on_origin_command_returns_unknown_solid_for_invalid_id` — `UnknownSolid`.
+  - `center_on_origin_command_round_trips_through_json` — wire format `op: "center_on_origin"`.
+  - `center_on_origin_command_undo_restores_original_position` — full undo restores centroid.
+- **`command_schemas_cover_every_op_name`** updated.
+- **2,961 / 0 / 0** tests (+5 vs. ScaleNonUniform slice); strict `clippy --all-targets --all-features -D warnings` clean.
+
 #### API — `Command::ScaleNonUniform` per-axis scaling around an explicit pivot (2026-05-08)
 - **New `Command::ScaleNonUniform { id, factors, point }`** — first non-uniform geometric mutation. Per-axis multipliers `factors = [sx, sy, sz]` (each must be `> 0`) applied around an explicit pivot `point` in world coordinates. Vertex positions are rewritten; topology is preserved. Complement to the existing uniform `Command::Scale` (which scales about the centroid).
 - **Validation**: any factor `<= 0` is rejected with `ApiError::InvalidArgument` before any mutation; unknown id rejected with `ApiError::UnknownSolid`.

@@ -431,6 +431,9 @@ fn command_schemas_cover_every_op_name() {
             factors: [1.0, 1.0, 1.0],
             point: [0.0, 0.0, 0.0],
         },
+        Command::CenterOnOrigin {
+            id: cadkernel_api::SolidId(0),
+        },
         Command::Rename {
             id: cadkernel_api::SolidId(0),
             label: "x".into(),
@@ -2109,4 +2112,71 @@ fn scale_non_uniform_command_undo_restores_original_geometry() {
         assert!((before.0[i] - after.0[i]).abs() < 1e-9);
         assert!((before.1[i] - after.1[i]).abs() < 1e-9);
     }
+}
+
+#[test]
+fn center_on_origin_command_moves_translated_box_back_to_origin() {
+    use cadkernel_api::{Command, Outcome, Session, SolidId};
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
+    s.execute(Command::Translate { id: SolidId(0), dx: 10.0, dy: 20.0, dz: 30.0 }).unwrap();
+    let outcome = s.execute(Command::CenterOnOrigin { id: SolidId(0) }).unwrap();
+    assert!(matches!(outcome, Outcome::SolidModified { id } if id == SolidId(0)));
+    if let Outcome::Measured { centroid, .. } = s.execute(Command::Measure { id: SolidId(0) }).unwrap() {
+        assert!(centroid[0].abs() < 1e-9, "x={}", centroid[0]);
+        assert!(centroid[1].abs() < 1e-9, "y={}", centroid[1]);
+        assert!(centroid[2].abs() < 1e-9, "z={}", centroid[2]);
+    } else { panic!("expected Measured"); }
+}
+
+#[test]
+fn center_on_origin_command_already_centered_box_stays_at_origin() {
+    use cadkernel_api::{Command, Outcome, Session, SolidId};
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::Translate { id: SolidId(0), dx: -0.5, dy: -0.5, dz: -0.5 }).unwrap();
+    s.execute(Command::CenterOnOrigin { id: SolidId(0) }).unwrap();
+    if let Outcome::Measured { bbox_min, bbox_max, .. } = s.execute(Command::Measure { id: SolidId(0) }).unwrap() {
+        for i in 0..3 {
+            assert!((bbox_min[i] + 0.5).abs() < 1e-9);
+            assert!((bbox_max[i] - 0.5).abs() < 1e-9);
+        }
+    } else { panic!("expected Measured"); }
+}
+
+#[test]
+fn center_on_origin_command_returns_unknown_solid_for_invalid_id() {
+    use cadkernel_api::{ApiError, Command, Session, SolidId};
+    let mut s = Session::new();
+    let err = s.execute(Command::CenterOnOrigin { id: SolidId(7) }).unwrap_err();
+    assert!(matches!(err, ApiError::UnknownSolid(_)));
+}
+
+#[test]
+fn center_on_origin_command_round_trips_through_json() {
+    use cadkernel_api::{Command, SolidId};
+    let cmd = Command::CenterOnOrigin { id: SolidId(5) };
+    let json = serde_json::to_value(&cmd).unwrap();
+    assert_eq!(json["op"], "center_on_origin");
+    assert_eq!(json["id"], 5);
+    let back: Command = serde_json::from_value(json).unwrap();
+    match back {
+        Command::CenterOnOrigin { id } => assert_eq!(id, SolidId(5)),
+        other => panic!("expected CenterOnOrigin, got {other:?}"),
+    }
+}
+
+#[test]
+fn center_on_origin_command_undo_restores_original_position() {
+    use cadkernel_api::{Command, Outcome, Session, SolidId};
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::Translate { id: SolidId(0), dx: 5.0, dy: 0.0, dz: 0.0 }).unwrap();
+    let before = if let Outcome::Measured { centroid, .. } =
+        s.execute(Command::Measure { id: SolidId(0) }).unwrap() { centroid } else { panic!() };
+    s.execute(Command::CenterOnOrigin { id: SolidId(0) }).unwrap();
+    s.undo().unwrap();
+    if let Outcome::Measured { centroid, .. } = s.execute(Command::Measure { id: SolidId(0) }).unwrap() {
+        for i in 0..3 { assert!((before[i] - centroid[i]).abs() < 1e-9); }
+    } else { panic!("expected Measured"); }
 }
