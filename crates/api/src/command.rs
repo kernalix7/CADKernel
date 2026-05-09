@@ -260,6 +260,12 @@ pub enum Command {
     /// display name (avoids the full `ListSolids` allocation).
     /// Does not mutate or append a history event.
     SolidLabel { id: SolidId },
+    /// Read-only document-emptiness predicate. Returns
+    /// `Outcome::IsEmpty { is_empty }` where
+    /// `is_empty = solid_count() == 0`. Cheaper than `Stats` when
+    /// the consumer only needs the boolean (skips the history
+    /// length). Does not mutate or append a history event.
+    IsEmpty,
     /// `Outcome::SolidCreated { id, label }` where `label` is
     /// `"<source-label> (copy)"`. The source slot is left untouched.
     Duplicate { id: SolidId },
@@ -323,6 +329,7 @@ impl Command {
             Self::ContainsAabb { .. } => "contains_aabb",
             Self::AabbCorners { .. } => "aabb_corners",
             Self::SolidLabel { .. } => "solid_label",
+            Self::IsEmpty => "is_empty",
             Self::Duplicate { .. } => "duplicate",
             Self::Rotate { .. } => "rotate",
             Self::Noop => "noop",
@@ -858,6 +865,11 @@ pub fn command_schemas() -> Vec<CommandSchema> {
                 required: true,
                 doc: "Solid to query.",
             }],
+        },
+        CommandSchema {
+            op: "is_empty",
+            description: "Document-emptiness predicate. True iff the document contains no solids.",
+            params: &[],
         },
         CommandSchema {
             op: "scale_non_uniform",

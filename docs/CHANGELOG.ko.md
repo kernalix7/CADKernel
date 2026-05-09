@@ -11,6 +11,12 @@
 
 ### 추가됨
 
+#### API — `Command::IsEmpty` 문서 비어있음 술어 (2026-05-09)
+- **`Command::IsEmpty` (20번째 올서버) 신규** + `Outcome::IsEmpty` + `OutcomeKind::IsEmpty` — 문서에 솔리드가 없으면 `is_empty = true`. `Stats`보다 저렴 (history 길이 필드 생략).
+- **연결**: `Session::execute` 읽기 전용 fast-path에 20번째 변형으로 추가. `Document::solid_count() == 0`을 그대로 반환. history 불변.
+- **스키마**: `command_schemas()`에 `op = "is_empty"` (파라미터 없음) 추가.
+- **테스트**: `crates/api/tests/api_integration.rs`에 5개 회귀 테스트 추가 (초기 세션 → true, `CreateBox` 후 → false, 단일 솔리드 삭제 후 → true, history 불변, JSON 라운드트립) + 스키마 커버리지 확장.
+
 #### API — `Command::SolidLabel` 단일 솔리드 라벨 올서버 (2026-05-09)
 - **`Command::SolidLabel { id }` (19번째 올서버) 신규** + `Outcome::SolidLabel` + `OutcomeKind::SolidLabel` — 한 슬롯의 라벨만 새로 할당된 `String`으로 반환. `ListSolids`의 `Vec<SolidEntry>` 할당을 건너뛰는 저렴한 옵서버. id를 이미 알고 표시명만 필요한 AI/스크립트용.
 - **연결**: `Session::execute` 읽기 전용 fast-path에 19번째 변형으로 추가. `Document::solid_label(id)`로 라벨 조회 후 차용된 문자열을 복제하여 반환. 잘못된 id에는 `UnknownSolid`. history 불변.

@@ -168,6 +168,11 @@ pub enum Outcome {
     /// would produce. Useful for AI/scripts that already know the
     /// id and only need its display name.
     SolidLabel { id: SolidId, label: String },
+    /// Read-only document-emptiness predicate (`Command::IsEmpty`).
+    /// `is_empty = true` iff `solid_count() == 0`. Cheaper than
+    /// `Stats` when the consumer only needs the boolean (skips the
+    /// history-length field).
+    IsEmpty { is_empty: bool },
     /// Nothing happened (`Command::Noop`).
     Empty,
 }
@@ -208,6 +213,7 @@ pub enum OutcomeKind {
     AabbContainment,
     AabbCorners,
     SolidLabel,
+    IsEmpty,
     Empty,
 }
 
@@ -239,6 +245,7 @@ impl Outcome {
             Self::AabbContainment { .. } => OutcomeKind::AabbContainment,
             Self::AabbCorners { .. } => OutcomeKind::AabbCorners,
             Self::SolidLabel { .. } => OutcomeKind::SolidLabel,
+            Self::IsEmpty { .. } => OutcomeKind::IsEmpty,
             Self::Empty => OutcomeKind::Empty,
         }
     }

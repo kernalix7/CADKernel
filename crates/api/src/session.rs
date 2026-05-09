@@ -294,7 +294,7 @@ impl Session {
         // because they don't mutate the document.
         if matches!(
             command,
-            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. } | Command::HistoryEvents | Command::Stats | Command::Bounds { .. } | Command::Distance { .. } | Command::Volume { .. } | Command::SurfaceArea { .. } | Command::Centroid { .. } | Command::IntersectsAabb { .. } | Command::Exists { .. } | Command::Diagonal { .. } | Command::AabbCenter { .. } | Command::AabbVolume { .. } | Command::ContainsAabb { .. } | Command::AabbCorners { .. } | Command::SolidLabel { .. }
+            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. } | Command::HistoryEvents | Command::Stats | Command::Bounds { .. } | Command::Distance { .. } | Command::Volume { .. } | Command::SurfaceArea { .. } | Command::Centroid { .. } | Command::IntersectsAabb { .. } | Command::Exists { .. } | Command::Diagonal { .. } | Command::AabbCenter { .. } | Command::AabbVolume { .. } | Command::ContainsAabb { .. } | Command::AabbCorners { .. } | Command::SolidLabel { .. } | Command::IsEmpty
         ) {
             return self.dispatch(&command);
         }
@@ -706,6 +706,9 @@ impl Session {
                     .to_string();
                 Ok(Outcome::SolidLabel { id: *id, label })
             }
+            Command::IsEmpty => Ok(Outcome::IsEmpty {
+                is_empty: self.document.solid_count() == 0,
+            }),
             Command::Rotate {
                 id,
                 axis,
@@ -1306,6 +1309,7 @@ fn history_description(cmd: &Command, outcome: &Outcome) -> String {
         }
         (Command::AabbCorners { id }, _) => format!("AabbCorners {id}"),
         (Command::SolidLabel { id }, _) => format!("SolidLabel {id}"),
+        (Command::IsEmpty, _) => "IsEmpty".to_string(),
         (Command::Duplicate { id }, _) => format!("Duplicate {id}"),
         (Command::Rotate { id, angle_rad, .. }, _) => {
             format!("Rotate {id} ({angle_rad} rad)")

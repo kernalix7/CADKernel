@@ -11,6 +11,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::IsEmpty` document-emptiness predicate (2026-05-09)
+- **New `Command::IsEmpty` (20th observer)** + `Outcome::IsEmpty { is_empty }` + `OutcomeKind::IsEmpty` tag — `is_empty = true` iff the document contains no solids. Cheaper than `Stats` when the consumer only needs the boolean (skips the history-length field).
+- **Wiring**: routed through the read-only fast path in `Session::execute` (now 20 fast-pathed observer variants); dispatch reuses `Document::solid_count() == 0`. No history event is appended.
+- **Schema**: `command_schemas()` exposes `op = "is_empty"` with no parameters so AI/MCP clients can discover the surface.
+- **Tests**: 5 new regression tests in `crates/api/tests/api_integration.rs` (fresh session → true, after `CreateBox` → false, after deleting the only solid → true, history-untouched, JSON round-trip with `"op":"is_empty"`) + schema-coverage fixture extended.
+
 #### API — `Command::SolidLabel` single-solid label observer (2026-05-09)
 - **New `Command::SolidLabel { id }` (19th observer)** + `Outcome::SolidLabel { id, label }` + `OutcomeKind::SolidLabel` tag — cheap observer that returns just one slot's label as a freshly-allocated `String`, without paying for the full `Vec<SolidEntry>` allocation `ListSolids` would produce. Useful for AI / scripts that already know the id and only need its display name.
 - **Wiring**: routed through the read-only fast path in `Session::execute` (now 19 fast-pathed observer variants); dispatch fetches `Document::solid_label(id)`, surfaces `UnknownSolid` for missing ids, and clones the borrowed string into the outcome. No history event is appended.

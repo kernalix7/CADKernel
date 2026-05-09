@@ -524,6 +524,7 @@ fn command_schemas_cover_every_op_name() {
         Command::SolidLabel {
             id: cadkernel_api::SolidId(0),
         },
+        Command::IsEmpty,
         Command::Duplicate {
             id: cadkernel_api::SolidId(0),
         },
@@ -3210,4 +3211,52 @@ fn solid_label_command_round_trips_through_json() {
         Command::SolidLabel { id } => assert_eq!(id, SolidId(4)),
         _ => panic!("expected SolidLabel"),
     }
+}
+
+#[test]
+fn is_empty_command_true_on_fresh_session() {
+    let mut s = Session::new();
+    let outcome = s.execute(Command::IsEmpty).unwrap();
+    if let Outcome::IsEmpty { is_empty } = outcome {
+        assert!(is_empty);
+    } else { panic!("expected IsEmpty, got {outcome:?}"); }
+}
+
+#[test]
+fn is_empty_command_false_after_create_box() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let outcome = s.execute(Command::IsEmpty).unwrap();
+    if let Outcome::IsEmpty { is_empty } = outcome {
+        assert!(!is_empty);
+    } else { panic!(); }
+}
+
+#[test]
+fn is_empty_command_true_after_delete_only_solid() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::DeleteSolid { id: SolidId(0) }).unwrap();
+    let outcome = s.execute(Command::IsEmpty).unwrap();
+    if let Outcome::IsEmpty { is_empty } = outcome {
+        assert!(is_empty);
+    } else { panic!(); }
+}
+
+#[test]
+fn is_empty_command_does_not_append_history_event() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let before = s.document().history().len();
+    s.execute(Command::IsEmpty).unwrap();
+    assert_eq!(s.document().history().len(), before);
+}
+
+#[test]
+fn is_empty_command_round_trips_through_json() {
+    let cmd = Command::IsEmpty;
+    let json = serde_json::to_string(&cmd).unwrap();
+    assert!(json.contains("\"op\":\"is_empty\""), "json = {json}");
+    let back: Command = serde_json::from_str(&json).unwrap();
+    assert!(matches!(back, Command::IsEmpty));
 }
