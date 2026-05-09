@@ -11,6 +11,12 @@
 
 ### 추가됨
 
+#### API — `Command::SolidLabel` 단일 솔리드 라벨 올서버 (2026-05-09)
+- **`Command::SolidLabel { id }` (19번째 올서버) 신규** + `Outcome::SolidLabel` + `OutcomeKind::SolidLabel` — 한 슬롯의 라벨만 새로 할당된 `String`으로 반환. `ListSolids`의 `Vec<SolidEntry>` 할당을 건너뛰는 저렴한 옵서버. id를 이미 알고 표시명만 필요한 AI/스크립트용.
+- **연결**: `Session::execute` 읽기 전용 fast-path에 19번째 변형으로 추가. `Document::solid_label(id)`로 라벨 조회 후 차용된 문자열을 복제하여 반환. 잘못된 id에는 `UnknownSolid`. history 불변.
+- **스키마**: `command_schemas()`에 `op = "solid_label"` (필수 `id` 1개) 추가.
+- **테스트**: `crates/api/tests/api_integration.rs`에 5개 회귀 테스트 추가 (기본 박스 라벨 비어있지 않음, `Rename` 후 라벨 반영, 잘못된 id → `UnknownSolid`, history 불변, JSON 라운드트립) + 스키마 커버리지 확장.
+
 #### API — `Command::AabbCorners` AABB 꼭짓점 열거 (2026-05-09)
 - **`Command::AabbCorners { id }` (18번째 올서버) 신규** + `Outcome::AabbCorners` + `OutcomeKind::AabbCorners` — 월드 공간 경계 상자의 8개 꼭짓점을 표준 순서(x → y → z, 작은 값부터 큰 값으로)로 반환. 카메라 핏 프레이밍, 디버그 와이어프레임, broad-phase 교차 시드용.
 - **연결**: `Session::execute` 읽기 전용 fast-path에 18번째 변형으로 추가. `Document::bounding_box`를 재사용하여 `bbox.min`/`bbox.max`에서 8개 꼭짓점을 직접 조립. 잘못된 id에는 `UnknownSolid`. history 불변.

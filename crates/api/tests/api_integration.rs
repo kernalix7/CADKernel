@@ -521,6 +521,9 @@ fn command_schemas_cover_every_op_name() {
         Command::AabbCorners {
             id: cadkernel_api::SolidId(0),
         },
+        Command::SolidLabel {
+            id: cadkernel_api::SolidId(0),
+        },
         Command::Duplicate {
             id: cadkernel_api::SolidId(0),
         },
@@ -3157,4 +3160,54 @@ fn aabb_corners_command_tracks_translation() {
         assert!((corners[7][1] - 22.0).abs() < 1e-9);
         assert!((corners[7][2] - 32.0).abs() < 1e-9);
     } else { panic!(); }
+}
+
+#[test]
+fn solid_label_command_returns_default_box_label() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let outcome = s.execute(Command::SolidLabel { id: SolidId(0) }).unwrap();
+    if let Outcome::SolidLabel { id, label } = outcome {
+        assert_eq!(id, SolidId(0));
+        assert!(!label.is_empty(), "label should not be empty");
+    } else { panic!("expected SolidLabel, got {outcome:?}"); }
+}
+
+#[test]
+fn solid_label_command_reflects_rename() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::Rename { id: SolidId(0), label: "MyPart".to_string() }).unwrap();
+    let outcome = s.execute(Command::SolidLabel { id: SolidId(0) }).unwrap();
+    if let Outcome::SolidLabel { label, .. } = outcome {
+        assert_eq!(label, "MyPart");
+    } else { panic!(); }
+}
+
+#[test]
+fn solid_label_command_returns_unknown_solid_for_invalid_id() {
+    let mut s = Session::new();
+    let err = s.execute(Command::SolidLabel { id: SolidId(9) }).unwrap_err();
+    assert!(matches!(err, ApiError::UnknownSolid(_)));
+}
+
+#[test]
+fn solid_label_command_does_not_append_history_event() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let before = s.document().history().len();
+    s.execute(Command::SolidLabel { id: SolidId(0) }).unwrap();
+    assert_eq!(s.document().history().len(), before);
+}
+
+#[test]
+fn solid_label_command_round_trips_through_json() {
+    let cmd = Command::SolidLabel { id: SolidId(4) };
+    let json = serde_json::to_string(&cmd).unwrap();
+    assert!(json.contains("\"op\":\"solid_label\""), "json = {json}");
+    let back: Command = serde_json::from_str(&json).unwrap();
+    match back {
+        Command::SolidLabel { id } => assert_eq!(id, SolidId(4)),
+        _ => panic!("expected SolidLabel"),
+    }
 }

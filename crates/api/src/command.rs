@@ -253,6 +253,13 @@ pub enum Command {
     /// seeding broad-phase intersection setups. Does not mutate
     /// or append a history event.
     AabbCorners { id: SolidId },
+    /// Read-only label of a single solid. Returns
+    /// `Outcome::SolidLabel { id, label }` where `label` is a
+    /// freshly-allocated copy of the slot's label. Cheap observer
+    /// for AI / scripts that already know the id and only need its
+    /// display name (avoids the full `ListSolids` allocation).
+    /// Does not mutate or append a history event.
+    SolidLabel { id: SolidId },
     /// `Outcome::SolidCreated { id, label }` where `label` is
     /// `"<source-label> (copy)"`. The source slot is left untouched.
     Duplicate { id: SolidId },
@@ -315,6 +322,7 @@ impl Command {
             Self::AabbVolume { .. } => "aabb_volume",
             Self::ContainsAabb { .. } => "contains_aabb",
             Self::AabbCorners { .. } => "aabb_corners",
+            Self::SolidLabel { .. } => "solid_label",
             Self::Duplicate { .. } => "duplicate",
             Self::Rotate { .. } => "rotate",
             Self::Noop => "noop",
@@ -834,6 +842,16 @@ pub fn command_schemas() -> Vec<CommandSchema> {
         CommandSchema {
             op: "aabb_corners",
             description: "Eight corner points of the world-space AABB in canonical order (low→high in x, then y, then z).",
+            params: &[ParamSchema {
+                name: "id",
+                ty: "solid_id",
+                required: true,
+                doc: "Solid to query.",
+            }],
+        },
+        CommandSchema {
+            op: "solid_label",
+            description: "Single-solid label observer. Returns the slot's display name without the ListSolids allocation.",
             params: &[ParamSchema {
                 name: "id",
                 ty: "solid_id",

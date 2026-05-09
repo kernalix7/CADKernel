@@ -162,6 +162,12 @@ pub enum Outcome {
     /// for camera-fit framing, debug-visualization wireframes, and
     /// seeding broad-phase intersection setups.
     AabbCorners { id: SolidId, corners: [[f64; 3]; 8] },
+    /// Read-only label of a single solid (`Command::SolidLabel`).
+    /// Cheap observer that returns just the label string for one
+    /// id, without the `Vec<SolidEntry>` allocation `ListSolids`
+    /// would produce. Useful for AI/scripts that already know the
+    /// id and only need its display name.
+    SolidLabel { id: SolidId, label: String },
     /// Nothing happened (`Command::Noop`).
     Empty,
 }
@@ -201,6 +207,7 @@ pub enum OutcomeKind {
     AabbVolume,
     AabbContainment,
     AabbCorners,
+    SolidLabel,
     Empty,
 }
 
@@ -231,6 +238,7 @@ impl Outcome {
             Self::AabbVolume { .. } => OutcomeKind::AabbVolume,
             Self::AabbContainment { .. } => OutcomeKind::AabbContainment,
             Self::AabbCorners { .. } => OutcomeKind::AabbCorners,
+            Self::SolidLabel { .. } => OutcomeKind::SolidLabel,
             Self::Empty => OutcomeKind::Empty,
         }
     }

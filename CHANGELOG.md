@@ -11,6 +11,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::SolidLabel` single-solid label observer (2026-05-09)
+- **New `Command::SolidLabel { id }` (19th observer)** + `Outcome::SolidLabel { id, label }` + `OutcomeKind::SolidLabel` tag — cheap observer that returns just one slot's label as a freshly-allocated `String`, without paying for the full `Vec<SolidEntry>` allocation `ListSolids` would produce. Useful for AI / scripts that already know the id and only need its display name.
+- **Wiring**: routed through the read-only fast path in `Session::execute` (now 19 fast-pathed observer variants); dispatch fetches `Document::solid_label(id)`, surfaces `UnknownSolid` for missing ids, and clones the borrowed string into the outcome. No history event is appended.
+- **Schema**: `command_schemas()` exposes `op = "solid_label"` with a single required `id: solid_id` parameter so AI/MCP clients can discover the surface.
+- **Tests**: 5 new regression tests in `crates/api/tests/api_integration.rs` (default box label is non-empty, `Rename` round-trip reflected through `SolidLabel`, unknown id → `UnknownSolid`, history-untouched, JSON round-trip with `"op":"solid_label"`) + schema-coverage fixture extended.
+
 #### API — `Command::AabbCorners` AABB-corner enumeration (2026-05-09)
 - **New `Command::AabbCorners { id }` (18th observer)** + `Outcome::AabbCorners { id, corners }` + `OutcomeKind::AabbCorners` tag — returns the eight corner points of the world-space bounding box in canonical order (low→high in x, then y, then z): `(min,min,min), (max,min,min), (min,max,min), (max,max,min), (min,min,max), (max,min,max), (min,max,max), (max,max,max)`. Useful for camera-fit framing, debug-visualization wireframes, and seeding broad-phase intersection setups.
 - **Wiring**: routed through the read-only fast path in `Session::execute` (now 18 fast-pathed observer variants); dispatch reuses `Document::bounding_box` and assembles the eight corners directly from `bbox.min`/`bbox.max`. `UnknownSolid` surfaces for missing ids; no history event is appended.
