@@ -196,6 +196,11 @@ pub enum Command {
     /// `Measure` when only the surface area is needed. Does not
     /// mutate or append a history event.
     SurfaceArea { id: SolidId },
+    /// Read-only centroid of a solid. Returns
+    /// `Outcome::Centroid { id, centroid }`. Lighter than `Measure`
+    /// when only the centroid is needed. Does not mutate or append a
+    /// history event.
+    Centroid { id: SolidId },
     /// Deep-clone a solid into a new slot. Returns the new
     /// `Outcome::SolidCreated { id, label }` where `label` is
     /// `"<source-label> (copy)"`. The source slot is left untouched.
@@ -251,6 +256,7 @@ impl Command {
             Self::Distance { .. } => "distance",
             Self::Volume { .. } => "volume",
             Self::SurfaceArea { .. } => "surface_area",
+            Self::Centroid { .. } => "centroid",
             Self::Duplicate { .. } => "duplicate",
             Self::Rotate { .. } => "rotate",
             Self::Noop => "noop",
@@ -674,6 +680,16 @@ pub fn command_schemas() -> Vec<CommandSchema> {
         CommandSchema {
             op: "surface_area",
             description: "Return the surface area of a solid (single scalar). Lighter than measure.",
+            params: &[ParamSchema {
+                name: "id",
+                ty: "solid_id",
+                required: true,
+                doc: "Solid to query.",
+            }],
+        },
+        CommandSchema {
+            op: "centroid",
+            description: "Return the centroid of a solid (3-vector). Lighter than measure (skips volume/surface-area/bbox).",
             params: &[ParamSchema {
                 name: "id",
                 ty: "solid_id",

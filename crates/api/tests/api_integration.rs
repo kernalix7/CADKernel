@@ -495,6 +495,9 @@ fn command_schemas_cover_every_op_name() {
         Command::SurfaceArea {
             id: cadkernel_api::SolidId(0),
         },
+        Command::Centroid {
+            id: cadkernel_api::SolidId(0),
+        },
         Command::Duplicate {
             id: cadkernel_api::SolidId(0),
         },
@@ -2610,4 +2613,56 @@ fn surface_area_command_round_trips_through_json() {
         Command::SurfaceArea { id } => assert_eq!(id, SolidId(4)),
         _ => panic!("expected SurfaceArea"),
     }
+}
+
+#[test]
+fn centroid_command_returns_box_centroid() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 2.0, dy: 4.0, dz: 6.0 }).unwrap();
+    let outcome = s.execute(Command::Centroid { id: SolidId(0) }).unwrap();
+    if let Outcome::Centroid { id, centroid } = outcome {
+        assert_eq!(id, SolidId(0));
+        assert!((centroid[0] - 1.0).abs() < 1e-9);
+        assert!((centroid[1] - 2.0).abs() < 1e-9);
+        assert!((centroid[2] - 3.0).abs() < 1e-9);
+    } else { panic!("expected Centroid, got {outcome:?}"); }
+}
+
+#[test]
+fn centroid_command_returns_unknown_solid_for_invalid_id() {
+    let mut s = Session::new();
+    let err = s.execute(Command::Centroid { id: SolidId(7) }).unwrap_err();
+    assert!(matches!(err, ApiError::UnknownSolid(_)));
+}
+
+#[test]
+fn centroid_command_does_not_append_history_event() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let before = s.document().history().len();
+    s.execute(Command::Centroid { id: SolidId(0) }).unwrap();
+    assert_eq!(s.document().history().len(), before);
+}
+
+#[test]
+fn centroid_command_round_trips_through_json() {
+    let cmd = Command::Centroid { id: SolidId(5) };
+    let json = serde_json::to_string(&cmd).unwrap();
+    assert!(json.contains("\"op\":\"centroid\""));
+    let back: Command = serde_json::from_str(&json).unwrap();
+    match back {
+        Command::Centroid { id } => assert_eq!(id, SolidId(5)),
+        _ => panic!("expected Centroid"),
+    }
+}
+
+#[test]
+fn centroid_command_tracks_translation() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
+    s.execute(Command::Translate { id: SolidId(0), dx: 10.0, dy: 0.0, dz: 0.0 }).unwrap();
+    let outcome = s.execute(Command::Centroid { id: SolidId(0) }).unwrap();
+    if let Outcome::Centroid { centroid, .. } = outcome {
+        assert!((centroid[0] - 11.0).abs() < 1e-9, "got {}", centroid[0]);
+    } else { panic!(); }
 }

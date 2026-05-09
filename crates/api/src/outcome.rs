@@ -105,6 +105,10 @@ pub enum Outcome {
     /// (`Command::SurfaceArea`). Lighter than `Measure` when only the
     /// surface area is needed.
     SurfaceArea { id: SolidId, surface_area: f64 },
+    /// Read-only centroid of a solid (`Command::Centroid`). Lighter
+    /// than `Measure` when only the centroid is needed (skips
+    /// surface-area / volume / bbox traversal).
+    Centroid { id: SolidId, centroid: [f64; 3] },
     /// Nothing happened (`Command::Noop`).
     Empty,
 }
@@ -136,6 +140,7 @@ pub enum OutcomeKind {
     Distance,
     Volume,
     SurfaceArea,
+    Centroid,
     Empty,
 }
 
@@ -158,6 +163,7 @@ impl Outcome {
             Self::Distance { .. } => OutcomeKind::Distance,
             Self::Volume { .. } => OutcomeKind::Volume,
             Self::SurfaceArea { .. } => OutcomeKind::SurfaceArea,
+            Self::Centroid { .. } => OutcomeKind::Centroid,
             Self::Empty => OutcomeKind::Empty,
         }
     }

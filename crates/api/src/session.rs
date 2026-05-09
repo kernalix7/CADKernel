@@ -294,7 +294,7 @@ impl Session {
         // because they don't mutate the document.
         if matches!(
             command,
-            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. } | Command::HistoryEvents | Command::Stats | Command::Bounds { .. } | Command::Distance { .. } | Command::Volume { .. } | Command::SurfaceArea { .. }
+            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. } | Command::HistoryEvents | Command::Stats | Command::Bounds { .. } | Command::Distance { .. } | Command::Volume { .. } | Command::SurfaceArea { .. } | Command::Centroid { .. }
         ) {
             return self.dispatch(&command);
         }
@@ -580,6 +580,13 @@ impl Session {
                     .measure_solid(*id)
                     .ok_or_else(|| ApiError::UnknownSolid(format!("{id}")))?;
                 Ok(Outcome::SurfaceArea { id: *id, surface_area: m.surface_area })
+            }
+            Command::Centroid { id } => {
+                let m = self
+                    .document
+                    .measure_solid(*id)
+                    .ok_or_else(|| ApiError::UnknownSolid(format!("{id}")))?;
+                Ok(Outcome::Centroid { id: *id, centroid: m.centroid })
             }
             Command::Rotate {
                 id,
@@ -1170,6 +1177,7 @@ fn history_description(cmd: &Command, outcome: &Outcome) -> String {
         (Command::Distance { id_a, id_b }, _) => format!("Distance {id_a} <-> {id_b}"),
         (Command::Volume { id }, _) => format!("Volume {id}"),
         (Command::SurfaceArea { id }, _) => format!("SurfaceArea {id}"),
+        (Command::Centroid { id }, _) => format!("Centroid {id}"),
         (Command::Duplicate { id }, _) => format!("Duplicate {id}"),
         (Command::Rotate { id, angle_rad, .. }, _) => {
             format!("Rotate {id} ({angle_rad} rad)")

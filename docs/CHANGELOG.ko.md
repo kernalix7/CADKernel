@@ -11,6 +11,13 @@
 
 ### 추가됨
 
+#### API — `Command::Centroid` 단일 벡터 올서버 (2026-05-09)
+- **`Command::Centroid { id }` (11번째 올서버) 신규** + `Outcome::Centroid` + `OutcomeKind::Centroid` — `Measure`의 부피/표면적/bbox 순회를 건너뛰고 centroid(3-벡터)만 반환.
+- `Measure`의 필드별 분해 완료: `Volume` / `SurfaceArea` / `Centroid` / `Bounds`가 모두 개별 경량 올서버.
+- **올서버 fast-path 11개로 확장**.
+- **회귀 테스트 5개**: 2×4×6 박스 centroid = (1,2,3) / 잘못된 id `UnknownSolid` / history 미추가 / JSON 라운드트립 / translation 추적.
+- **2,999 / 0 / 0** 테스트, clippy strict clean.
+
 #### API — `Command::Volume` + `Command::SurfaceArea` 단일 스칼라 올서버 (2026-05-08)
 - **`Command::Volume { id }` (9번째 올서버) 신규** + `Outcome::Volume` + `OutcomeKind::Volume` — `Measure`의 표면적/centroid/bbox 순회를 건너뛰고 부피만 반환.
 - **`Command::SurfaceArea { id }` (10번째 올서버) 신규** + `Outcome::SurfaceArea` + `OutcomeKind::SurfaceArea` — 대칭형 단일 스칼라 표면적 올서버.

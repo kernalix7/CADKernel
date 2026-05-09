@@ -11,6 +11,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::Centroid` single-vector observer (2026-05-09)
+- **New `Command::Centroid { id }` (11th observer)** + `Outcome::Centroid { id, centroid }` + `OutcomeKind::Centroid` tag — returns just the centroid (3-vector), skipping the volume / surface-area / bbox traversal that `Measure` performs.
+- Completes the per-field decomposition of `Measure`: `Volume` / `SurfaceArea` / `Centroid` / `Bounds` are now individual cheap observers.
+- **Observer fast-path widened** to 11 variants. Reuses `Document::measure_solid` internally.
+- **`CommandSchema` entry** for `centroid` added.
+- **5 new regression tests**: 2×4×6 box centroid = (1,2,3), unknown id rejected, no history append, JSON round-trip (`op: "centroid"`), tracks translation correctly.
+- **2,999 / 0 / 0** tests (+5 vs. Volume/SurfaceArea slice); strict `clippy --all-targets --all-features -D warnings` clean.
+
 #### API — `Command::Volume` + `Command::SurfaceArea` single-scalar observers (2026-05-08)
 - **New `Command::Volume { id }` (9th observer)** + `Outcome::Volume { id, volume }` + `OutcomeKind::Volume` tag — returns just the volume, skipping the surface-area / centroid / bbox traversal that `Measure` performs.
 - **New `Command::SurfaceArea { id }` (10th observer)** + `Outcome::SurfaceArea { id, surface_area }` + `OutcomeKind::SurfaceArea` tag — symmetric single-scalar surface-area observer.
