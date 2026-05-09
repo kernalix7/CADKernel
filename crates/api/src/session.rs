@@ -294,7 +294,7 @@ impl Session {
         // because they don't mutate the document.
         if matches!(
             command,
-            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. } | Command::HistoryEvents | Command::Stats | Command::Bounds { .. } | Command::Distance { .. } | Command::Volume { .. } | Command::SurfaceArea { .. } | Command::Centroid { .. }
+            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. } | Command::HistoryEvents | Command::Stats | Command::Bounds { .. } | Command::Distance { .. } | Command::Volume { .. } | Command::SurfaceArea { .. } | Command::Centroid { .. } | Command::IntersectsAabb { .. }
         ) {
             return self.dispatch(&command);
         }
@@ -587,6 +587,37 @@ impl Session {
                     .measure_solid(*id)
                     .ok_or_else(|| ApiError::UnknownSolid(format!("{id}")))?;
                 Ok(Outcome::Centroid { id: *id, centroid: m.centroid })
+            }
+            Command::IntersectsAabb { id_a, id_b } => {
+                let a = self
+                    .document
+                    .bounding_box(*id_a)
+                    .ok_or_else(|| ApiError::UnknownSolid(format!("{id_a}")))?;
+                let b = self
+                    .document
+                    .bounding_box(*id_b)
+                    .ok_or_else(|| ApiError::UnknownSolid(format!("{id_b}")))?;
+                let mut intersects = true;
+                let mut omin = [0.0; 3];
+                let mut omax = [0.0; 3];
+                for i in 0..3 {
+                    let lo = a.min[i].max(b.min[i]);
+                    let hi = a.max[i].min(b.max[i]);
+                    if lo > hi { intersects = false; }
+                    omin[i] = lo;
+                    omax[i] = hi;
+                }
+                if !intersects {
+                    omin = [0.0; 3];
+                    omax = [0.0; 3];
+                }
+                Ok(Outcome::AabbIntersection {
+                    id_a: *id_a,
+                    id_b: *id_b,
+                    intersects,
+                    overlap_min: omin,
+                    overlap_max: omax,
+                })
             }
             Command::Rotate {
                 id,
@@ -1178,6 +1209,7 @@ fn history_description(cmd: &Command, outcome: &Outcome) -> String {
         (Command::Volume { id }, _) => format!("Volume {id}"),
         (Command::SurfaceArea { id }, _) => format!("SurfaceArea {id}"),
         (Command::Centroid { id }, _) => format!("Centroid {id}"),
+        (Command::IntersectsAabb { id_a, id_b }, _) => format!("IntersectsAabb {id_a} <-> {id_b}"),
         (Command::Duplicate { id }, _) => format!("Duplicate {id}"),
         (Command::Rotate { id, angle_rad, .. }, _) => {
             format!("Rotate {id} ({angle_rad} rad)")

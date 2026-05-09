@@ -11,6 +11,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::IntersectsAabb` AABB-overlap predicate (2026-05-09)
+- **New `Command::IntersectsAabb { id_a, id_b }` (12th observer)** + `Outcome::AabbIntersection { id_a, id_b, intersects, overlap_min, overlap_max }` + `OutcomeKind::AabbIntersection` tag — cheap broad-phase collision predicate using world-space bounding boxes only. Touching boxes count as intersecting (closed-interval overlap). When intersecting, `overlap_min` / `overlap_max` carry the intersection AABB; when disjoint, both arrays are zeroed.
+- **Observer fast-path widened** to 12 variants. Reuses `Document::bounding_box` for both solids (no mesh traversal).
+- **Validation**: either id missing → `UnknownSolid`. Self-intersection (`id_a == id_b`) is always true.
+- **`CommandSchema` entry** added.
+- **7 new regression tests**: overlapping boxes report correct intersection AABB, disjoint boxes return zeroed overlap, self-intersection is true, touching boxes count as intersecting, both id sides reject unknown id, no history append, JSON round-trip (`op: "intersects_aabb"`).
+- **3,006 / 0 / 0** tests (+7 vs. Centroid slice; **crossed the 3,000-test threshold**); strict `clippy --all-targets --all-features -D warnings` clean.
+
 #### API — `Command::Centroid` single-vector observer (2026-05-09)
 - **New `Command::Centroid { id }` (11th observer)** + `Outcome::Centroid { id, centroid }` + `OutcomeKind::Centroid` tag — returns just the centroid (3-vector), skipping the volume / surface-area / bbox traversal that `Measure` performs.
 - Completes the per-field decomposition of `Measure`: `Volume` / `SurfaceArea` / `Centroid` / `Bounds` are now individual cheap observers.

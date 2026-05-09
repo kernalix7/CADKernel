@@ -498,6 +498,10 @@ fn command_schemas_cover_every_op_name() {
         Command::Centroid {
             id: cadkernel_api::SolidId(0),
         },
+        Command::IntersectsAabb {
+            id_a: cadkernel_api::SolidId(0),
+            id_b: cadkernel_api::SolidId(1),
+        },
         Command::Duplicate {
             id: cadkernel_api::SolidId(0),
         },
@@ -2665,4 +2669,96 @@ fn centroid_command_tracks_translation() {
     if let Outcome::Centroid { centroid, .. } = outcome {
         assert!((centroid[0] - 11.0).abs() < 1e-9, "got {}", centroid[0]);
     } else { panic!(); }
+}
+
+#[test]
+fn intersects_aabb_command_returns_true_for_overlapping_boxes() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
+    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
+    // Box 0 spans [0,2]^3; box 1 translated to [1,3]^3 → overlap [1,2]^3.
+    s.execute(Command::Translate { id: SolidId(1), dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let outcome = s.execute(Command::IntersectsAabb { id_a: SolidId(0), id_b: SolidId(1) }).unwrap();
+    if let Outcome::AabbIntersection { intersects, overlap_min, overlap_max, .. } = outcome {
+        assert!(intersects);
+        for i in 0..3 {
+            assert!((overlap_min[i] - 1.0).abs() < 1e-9);
+            assert!((overlap_max[i] - 2.0).abs() < 1e-9);
+        }
+    } else { panic!("expected AabbIntersection, got {outcome:?}"); }
+}
+
+#[test]
+fn intersects_aabb_command_returns_false_for_disjoint_boxes() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::Translate { id: SolidId(1), dx: 5.0, dy: 0.0, dz: 0.0 }).unwrap();
+    let outcome = s.execute(Command::IntersectsAabb { id_a: SolidId(0), id_b: SolidId(1) }).unwrap();
+    if let Outcome::AabbIntersection { intersects, overlap_min, overlap_max, .. } = outcome {
+        assert!(!intersects);
+        // Disjoint → zero intervals.
+        for i in 0..3 {
+            assert_eq!(overlap_min[i], 0.0);
+            assert_eq!(overlap_max[i], 0.0);
+        }
+    } else { panic!(); }
+}
+
+#[test]
+fn intersects_aabb_command_self_intersection_is_true() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
+    let outcome = s.execute(Command::IntersectsAabb { id_a: SolidId(0), id_b: SolidId(0) }).unwrap();
+    if let Outcome::AabbIntersection { intersects, .. } = outcome {
+        assert!(intersects);
+    } else { panic!(); }
+}
+
+#[test]
+fn intersects_aabb_command_touching_boxes_count_as_intersecting() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    // Box 0: [0,1]^3, box 1 translated to [1,2]^3 → share face at x=1.
+    s.execute(Command::Translate { id: SolidId(1), dx: 1.0, dy: 0.0, dz: 0.0 }).unwrap();
+    let outcome = s.execute(Command::IntersectsAabb { id_a: SolidId(0), id_b: SolidId(1) }).unwrap();
+    if let Outcome::AabbIntersection { intersects, .. } = outcome {
+        assert!(intersects, "touching boxes should count as intersecting");
+    } else { panic!(); }
+}
+
+#[test]
+fn intersects_aabb_command_returns_unknown_solid_for_invalid_id() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let err = s.execute(Command::IntersectsAabb { id_a: SolidId(0), id_b: SolidId(7) }).unwrap_err();
+    assert!(matches!(err, ApiError::UnknownSolid(_)));
+    let err2 = s.execute(Command::IntersectsAabb { id_a: SolidId(7), id_b: SolidId(0) }).unwrap_err();
+    assert!(matches!(err2, ApiError::UnknownSolid(_)));
+}
+
+#[test]
+fn intersects_aabb_command_does_not_append_history_event() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let before = s.document().history().len();
+    s.execute(Command::IntersectsAabb { id_a: SolidId(0), id_b: SolidId(1) }).unwrap();
+    assert_eq!(s.document().history().len(), before);
+}
+
+#[test]
+fn intersects_aabb_command_round_trips_through_json() {
+    let cmd = Command::IntersectsAabb { id_a: SolidId(2), id_b: SolidId(5) };
+    let json = serde_json::to_string(&cmd).unwrap();
+    assert!(json.contains("\"op\":\"intersects_aabb\""));
+    let back: Command = serde_json::from_str(&json).unwrap();
+    match back {
+        Command::IntersectsAabb { id_a, id_b } => {
+            assert_eq!(id_a, SolidId(2));
+            assert_eq!(id_b, SolidId(5));
+        }
+        _ => panic!("expected IntersectsAabb"),
+    }
 }

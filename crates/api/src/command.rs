@@ -201,6 +201,12 @@ pub enum Command {
     /// when only the centroid is needed. Does not mutate or append a
     /// history event.
     Centroid { id: SolidId },
+    /// Read-only AABB-overlap predicate between two solids. Returns
+    /// `Outcome::AabbIntersection { id_a, id_b, intersects, overlap_min, overlap_max }`.
+    /// Cheap broad-phase collision check that only consults the
+    /// world-space bounding boxes; touching boxes count as
+    /// intersecting. Does not mutate or append a history event.
+    IntersectsAabb { id_a: SolidId, id_b: SolidId },
     /// Deep-clone a solid into a new slot. Returns the new
     /// `Outcome::SolidCreated { id, label }` where `label` is
     /// `"<source-label> (copy)"`. The source slot is left untouched.
@@ -257,6 +263,7 @@ impl Command {
             Self::Volume { .. } => "volume",
             Self::SurfaceArea { .. } => "surface_area",
             Self::Centroid { .. } => "centroid",
+            Self::IntersectsAabb { .. } => "intersects_aabb",
             Self::Duplicate { .. } => "duplicate",
             Self::Rotate { .. } => "rotate",
             Self::Noop => "noop",
@@ -696,6 +703,24 @@ pub fn command_schemas() -> Vec<CommandSchema> {
                 required: true,
                 doc: "Solid to query.",
             }],
+        },
+        CommandSchema {
+            op: "intersects_aabb",
+            description: "AABB-overlap predicate between two solids (cheap broad-phase). Touching boxes count as intersecting.",
+            params: &[
+                ParamSchema {
+                    name: "id_a",
+                    ty: "solid_id",
+                    required: true,
+                    doc: "First solid.",
+                },
+                ParamSchema {
+                    name: "id_b",
+                    ty: "solid_id",
+                    required: true,
+                    doc: "Second solid.",
+                },
+            ],
         },
         CommandSchema {
             op: "scale_non_uniform",

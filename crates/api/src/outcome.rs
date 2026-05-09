@@ -109,6 +109,19 @@ pub enum Outcome {
     /// than `Measure` when only the centroid is needed (skips
     /// surface-area / volume / bbox traversal).
     Centroid { id: SolidId, centroid: [f64; 3] },
+    /// Read-only AABB-overlap predicate (`Command::IntersectsAabb`).
+    /// Cheap broad-phase collision check using only the world-space
+    /// bounding boxes of two solids. `intersects = true` iff every
+    /// axis interval overlaps (touching counts). When intersecting,
+    /// `overlap_min` / `overlap_max` carry the intersection AABB;
+    /// otherwise they hold zero-length intervals at `[0,0,0]`.
+    AabbIntersection {
+        id_a: SolidId,
+        id_b: SolidId,
+        intersects: bool,
+        overlap_min: [f64; 3],
+        overlap_max: [f64; 3],
+    },
     /// Nothing happened (`Command::Noop`).
     Empty,
 }
@@ -141,6 +154,7 @@ pub enum OutcomeKind {
     Volume,
     SurfaceArea,
     Centroid,
+    AabbIntersection,
     Empty,
 }
 
@@ -164,6 +178,7 @@ impl Outcome {
             Self::Volume { .. } => OutcomeKind::Volume,
             Self::SurfaceArea { .. } => OutcomeKind::SurfaceArea,
             Self::Centroid { .. } => OutcomeKind::Centroid,
+            Self::AabbIntersection { .. } => OutcomeKind::AabbIntersection,
             Self::Empty => OutcomeKind::Empty,
         }
     }

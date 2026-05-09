@@ -11,6 +11,13 @@
 
 ### 추가됨
 
+#### API — `Command::IntersectsAabb` AABB 겹침 predicate (2026-05-09)
+- **`Command::IntersectsAabb { id_a, id_b }` (12번째 올서버) 신규** + `Outcome::AabbIntersection` + `OutcomeKind::AabbIntersection` — 월드 AABB만으로 broad-phase 충돌 판정. 닫힌 구간 겹침이므로 면 접촉도 intersects=true. 겹칠 때 `overlap_min`/`overlap_max`로 교집합 AABB 반환, 비겹침 시 0으로 초기화.
+- **올서버 fast-path 12개로 확장**. 양쪽 모두 `Document::bounding_box` 재사용(메시 순회 없음).
+- **검증**: 어느 한쪽 id 누락 시 `UnknownSolid`. 자기 자신과의 교차는 항상 true.
+- **회귀 테스트 7개**: 겹치는 박스 교집합 AABB / 비겹침 시 0 / 자기교차 true / 면접촉 true / 양쪽 id `UnknownSolid` / history 미추가 / JSON 라운드트립.
+- **3,006 / 0 / 0** 테스트 (3,000 돌파), clippy strict clean.
+
 #### API — `Command::Centroid` 단일 벡터 올서버 (2026-05-09)
 - **`Command::Centroid { id }` (11번째 올서버) 신규** + `Outcome::Centroid` + `OutcomeKind::Centroid` — `Measure`의 부피/표면적/bbox 순회를 건너뛰고 centroid(3-벡터)만 반환.
 - `Measure`의 필드별 분해 완료: `Volume` / `SurfaceArea` / `Centroid` / `Bounds`가 모두 개별 경량 올서버.
