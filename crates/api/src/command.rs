@@ -245,6 +245,14 @@ pub enum Command {
         id_outer: SolidId,
         id_inner: SolidId,
     },
+    /// Read-only AABB corner enumeration. Returns
+    /// `Outcome::AabbCorners { id, corners }` where `corners`
+    /// holds the eight bounding-box corner points in canonical
+    /// order (low→high in x, then y, then z). Useful for
+    /// camera-fit framing, debug-visualization wireframes, and
+    /// seeding broad-phase intersection setups. Does not mutate
+    /// or append a history event.
+    AabbCorners { id: SolidId },
     /// `Outcome::SolidCreated { id, label }` where `label` is
     /// `"<source-label> (copy)"`. The source slot is left untouched.
     Duplicate { id: SolidId },
@@ -306,6 +314,7 @@ impl Command {
             Self::AabbCenter { .. } => "aabb_center",
             Self::AabbVolume { .. } => "aabb_volume",
             Self::ContainsAabb { .. } => "contains_aabb",
+            Self::AabbCorners { .. } => "aabb_corners",
             Self::Duplicate { .. } => "duplicate",
             Self::Rotate { .. } => "rotate",
             Self::Noop => "noop",
@@ -821,6 +830,16 @@ pub fn command_schemas() -> Vec<CommandSchema> {
                     doc: "Inner solid (potential containee).",
                 },
             ],
+        },
+        CommandSchema {
+            op: "aabb_corners",
+            description: "Eight corner points of the world-space AABB in canonical order (low→high in x, then y, then z).",
+            params: &[ParamSchema {
+                name: "id",
+                ty: "solid_id",
+                required: true,
+                doc: "Solid to query.",
+            }],
         },
         CommandSchema {
             op: "scale_non_uniform",

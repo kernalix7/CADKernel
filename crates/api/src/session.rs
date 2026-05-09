@@ -294,7 +294,7 @@ impl Session {
         // because they don't mutate the document.
         if matches!(
             command,
-            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. } | Command::HistoryEvents | Command::Stats | Command::Bounds { .. } | Command::Distance { .. } | Command::Volume { .. } | Command::SurfaceArea { .. } | Command::Centroid { .. } | Command::IntersectsAabb { .. } | Command::Exists { .. } | Command::Diagonal { .. } | Command::AabbCenter { .. } | Command::AabbVolume { .. } | Command::ContainsAabb { .. }
+            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. } | Command::HistoryEvents | Command::Stats | Command::Bounds { .. } | Command::Distance { .. } | Command::Volume { .. } | Command::SurfaceArea { .. } | Command::Centroid { .. } | Command::IntersectsAabb { .. } | Command::Exists { .. } | Command::Diagonal { .. } | Command::AabbCenter { .. } | Command::AabbVolume { .. } | Command::ContainsAabb { .. } | Command::AabbCorners { .. }
         ) {
             return self.dispatch(&command);
         }
@@ -678,6 +678,25 @@ impl Session {
                     id_inner: *id_inner,
                     contains,
                 })
+            }
+            Command::AabbCorners { id } => {
+                let bbox = self
+                    .document
+                    .bounding_box(*id)
+                    .ok_or_else(|| ApiError::UnknownSolid(format!("{id}")))?;
+                let lo = bbox.min;
+                let hi = bbox.max;
+                let corners = [
+                    [lo[0], lo[1], lo[2]],
+                    [hi[0], lo[1], lo[2]],
+                    [lo[0], hi[1], lo[2]],
+                    [hi[0], hi[1], lo[2]],
+                    [lo[0], lo[1], hi[2]],
+                    [hi[0], lo[1], hi[2]],
+                    [lo[0], hi[1], hi[2]],
+                    [hi[0], hi[1], hi[2]],
+                ];
+                Ok(Outcome::AabbCorners { id: *id, corners })
             }
             Command::Rotate {
                 id,
@@ -1277,6 +1296,7 @@ fn history_description(cmd: &Command, outcome: &Outcome) -> String {
         (Command::ContainsAabb { id_outer, id_inner }, _) => {
             format!("ContainsAabb {id_outer} ⊇ {id_inner}")
         }
+        (Command::AabbCorners { id }, _) => format!("AabbCorners {id}"),
         (Command::Duplicate { id }, _) => format!("Duplicate {id}"),
         (Command::Rotate { id, angle_rad, .. }, _) => {
             format!("Rotate {id} ({angle_rad} rad)")

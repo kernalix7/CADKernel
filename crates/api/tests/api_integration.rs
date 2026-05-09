@@ -518,6 +518,9 @@ fn command_schemas_cover_every_op_name() {
             id_outer: cadkernel_api::SolidId(0),
             id_inner: cadkernel_api::SolidId(0),
         },
+        Command::AabbCorners {
+            id: cadkernel_api::SolidId(0),
+        },
         Command::Duplicate {
             id: cadkernel_api::SolidId(0),
         },
@@ -3080,4 +3083,78 @@ fn contains_aabb_command_round_trips_through_json() {
         }
         _ => panic!("expected ContainsAabb"),
     }
+}
+
+#[test]
+fn aabb_corners_command_returns_eight_canonical_corners() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 4.0, dy: 6.0, dz: 8.0 }).unwrap();
+    let outcome = s.execute(Command::AabbCorners { id: SolidId(0) }).unwrap();
+    if let Outcome::AabbCorners { id, corners } = outcome {
+        assert_eq!(id, SolidId(0));
+        // The CreateBox dispatch produces a box with min at origin
+        // and max at (dx, dy, dz). So the eight corners are the
+        // cartesian product of {0, 4} x {0, 6} x {0, 8}, in
+        // canonical low->high order across x, then y, then z.
+        let expected = [
+            [0.0, 0.0, 0.0],
+            [4.0, 0.0, 0.0],
+            [0.0, 6.0, 0.0],
+            [4.0, 6.0, 0.0],
+            [0.0, 0.0, 8.0],
+            [4.0, 0.0, 8.0],
+            [0.0, 6.0, 8.0],
+            [4.0, 6.0, 8.0],
+        ];
+        for (got, want) in corners.iter().zip(expected.iter()) {
+            for axis in 0..3 {
+                assert!((got[axis] - want[axis]).abs() < 1e-9, "got={got:?} want={want:?}");
+            }
+        }
+    } else { panic!("expected AabbCorners, got {outcome:?}"); }
+}
+
+#[test]
+fn aabb_corners_command_returns_unknown_solid_for_invalid_id() {
+    let mut s = Session::new();
+    let err = s.execute(Command::AabbCorners { id: SolidId(9) }).unwrap_err();
+    assert!(matches!(err, ApiError::UnknownSolid(_)));
+}
+
+#[test]
+fn aabb_corners_command_does_not_append_history_event() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let before = s.document().history().len();
+    s.execute(Command::AabbCorners { id: SolidId(0) }).unwrap();
+    assert_eq!(s.document().history().len(), before);
+}
+
+#[test]
+fn aabb_corners_command_round_trips_through_json() {
+    let cmd = Command::AabbCorners { id: SolidId(5) };
+    let json = serde_json::to_string(&cmd).unwrap();
+    assert!(json.contains("\"op\":\"aabb_corners\""), "json = {json}");
+    let back: Command = serde_json::from_str(&json).unwrap();
+    match back {
+        Command::AabbCorners { id } => assert_eq!(id, SolidId(5)),
+        _ => panic!("expected AabbCorners"),
+    }
+}
+
+#[test]
+fn aabb_corners_command_tracks_translation() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
+    s.execute(Command::Translate { id: SolidId(0), dx: 10.0, dy: 20.0, dz: 30.0 }).unwrap();
+    let outcome = s.execute(Command::AabbCorners { id: SolidId(0) }).unwrap();
+    if let Outcome::AabbCorners { corners, .. } = outcome {
+        // First corner is the (min,min,min) corner; last is (max,max,max).
+        assert!((corners[0][0] - 10.0).abs() < 1e-9);
+        assert!((corners[0][1] - 20.0).abs() < 1e-9);
+        assert!((corners[0][2] - 30.0).abs() < 1e-9);
+        assert!((corners[7][0] - 12.0).abs() < 1e-9);
+        assert!((corners[7][1] - 22.0).abs() < 1e-9);
+        assert!((corners[7][2] - 32.0).abs() < 1e-9);
+    } else { panic!(); }
 }

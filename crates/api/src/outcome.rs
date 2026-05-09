@@ -154,6 +154,14 @@ pub enum Outcome {
         id_inner: SolidId,
         contains: bool,
     },
+    /// Read-only AABB corner enumeration (`Command::AabbCorners`).
+    /// Returns the eight corner points of the world-space bounding
+    /// box in canonical order: `(min,min,min)`, `(max,min,min)`,
+    /// `(min,max,min)`, `(max,max,min)`, `(min,min,max)`,
+    /// `(max,min,max)`, `(min,max,max)`, `(max,max,max)`. Useful
+    /// for camera-fit framing, debug-visualization wireframes, and
+    /// seeding broad-phase intersection setups.
+    AabbCorners { id: SolidId, corners: [[f64; 3]; 8] },
     /// Nothing happened (`Command::Noop`).
     Empty,
 }
@@ -192,6 +200,7 @@ pub enum OutcomeKind {
     AabbCenter,
     AabbVolume,
     AabbContainment,
+    AabbCorners,
     Empty,
 }
 
@@ -221,6 +230,7 @@ impl Outcome {
             Self::AabbCenter { .. } => OutcomeKind::AabbCenter,
             Self::AabbVolume { .. } => OutcomeKind::AabbVolume,
             Self::AabbContainment { .. } => OutcomeKind::AabbContainment,
+            Self::AabbCorners { .. } => OutcomeKind::AabbCorners,
             Self::Empty => OutcomeKind::Empty,
         }
     }

@@ -11,6 +11,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::AabbCorners` AABB-corner enumeration (2026-05-09)
+- **New `Command::AabbCorners { id }` (18th observer)** + `Outcome::AabbCorners { id, corners }` + `OutcomeKind::AabbCorners` tag — returns the eight corner points of the world-space bounding box in canonical order (low→high in x, then y, then z): `(min,min,min), (max,min,min), (min,max,min), (max,max,min), (min,min,max), (max,min,max), (min,max,max), (max,max,max)`. Useful for camera-fit framing, debug-visualization wireframes, and seeding broad-phase intersection setups.
+- **Wiring**: routed through the read-only fast path in `Session::execute` (now 18 fast-pathed observer variants); dispatch reuses `Document::bounding_box` and assembles the eight corners directly from `bbox.min`/`bbox.max`. `UnknownSolid` surfaces for missing ids; no history event is appended.
+- **Schema**: `command_schemas()` exposes `op = "aabb_corners"` with a single required `id: solid_id` parameter so AI/MCP clients can discover the surface.
+- **Tests**: 5 new regression tests in `crates/api/tests/api_integration.rs` (4×6×8 box → expected canonical corner array, unknown id → `UnknownSolid`, history-untouched, JSON round-trip with `"op":"aabb_corners"`, translation tracking via first/last corners) + schema-coverage fixture extended.
+
 #### API — `Command::ContainsAabb` AABB-containment predicate (2026-05-09)
 - **New `Command::ContainsAabb { id_outer, id_inner }` (17th observer)** + `Outcome::AabbContainment { id_outer, id_inner, contains }` + `OutcomeKind::AabbContainment` tag — `contains = true` iff outer's bounding box fully covers inner's bounding box (closed intervals; touching faces count as contained). Cheap broad-phase containment test that avoids the per-face SAT/boolean machinery of the full geometric check.
 - **Wiring**: routed through the read-only fast path in `Session::execute` (now 17 fast-pathed observer variants); dispatch fetches both AABBs via `Document::bounding_box` and folds `outer.min[i] <= inner.min[i] && inner.max[i] <= outer.max[i]` across the three axes. `UnknownSolid` surfaces for missing ids on either side; no history event is appended.
