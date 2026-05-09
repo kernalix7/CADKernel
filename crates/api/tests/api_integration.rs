@@ -511,6 +511,9 @@ fn command_schemas_cover_every_op_name() {
         Command::AabbCenter {
             id: cadkernel_api::SolidId(0),
         },
+        Command::AabbVolume {
+            id: cadkernel_api::SolidId(0),
+        },
         Command::Duplicate {
             id: cadkernel_api::SolidId(0),
         },
@@ -2938,4 +2941,62 @@ fn aabb_center_command_tracks_translation() {
         assert!((center[1] - 21.0).abs() < 1e-9);
         assert!((center[2] - 31.0).abs() < 1e-9);
     } else { panic!(); }
+}
+
+#[test]
+fn aabb_volume_command_returns_box_extent_product() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 4.0, dy: 6.0, dz: 8.0 }).unwrap();
+    let outcome = s.execute(Command::AabbVolume { id: SolidId(0) }).unwrap();
+    if let Outcome::AabbVolume { id, volume } = outcome {
+        assert_eq!(id, SolidId(0));
+        assert!((volume - 4.0 * 6.0 * 8.0).abs() < 1e-9, "volume = {volume}");
+    } else {
+        panic!("expected AabbVolume, got {outcome:?}");
+    }
+}
+
+#[test]
+fn aabb_volume_command_returns_unknown_solid_for_invalid_id() {
+    let mut s = Session::new();
+    let err = s.execute(Command::AabbVolume { id: SolidId(9) }).unwrap_err();
+    assert!(matches!(err, ApiError::UnknownSolid(_)));
+}
+
+#[test]
+fn aabb_volume_command_does_not_append_history_event() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let before = s.document().history().len();
+    s.execute(Command::AabbVolume { id: SolidId(0) }).unwrap();
+    assert_eq!(s.document().history().len(), before);
+}
+
+#[test]
+fn aabb_volume_command_round_trips_through_json() {
+    let cmd = Command::AabbVolume { id: SolidId(3) };
+    let json = serde_json::to_string(&cmd).unwrap();
+    assert!(json.contains("\"op\":\"aabb_volume\""), "json = {json}");
+    let back: Command = serde_json::from_str(&json).unwrap();
+    match back {
+        Command::AabbVolume { id } => assert_eq!(id, SolidId(3)),
+        _ => panic!("expected AabbVolume"),
+    }
+}
+
+#[test]
+fn aabb_volume_command_is_invariant_under_translation() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 2.0, dy: 3.0, dz: 5.0 }).unwrap();
+    let v0 = match s.execute(Command::AabbVolume { id: SolidId(0) }).unwrap() {
+        Outcome::AabbVolume { volume, .. } => volume,
+        other => panic!("expected AabbVolume, got {other:?}"),
+    };
+    s.execute(Command::Translate { id: SolidId(0), dx: 10.0, dy: -20.0, dz: 30.0 }).unwrap();
+    let v1 = match s.execute(Command::AabbVolume { id: SolidId(0) }).unwrap() {
+        Outcome::AabbVolume { volume, .. } => volume,
+        other => panic!("expected AabbVolume, got {other:?}"),
+    };
+    assert!((v0 - v1).abs() < 1e-9, "v0={v0} v1={v1}");
+    assert!((v0 - 30.0).abs() < 1e-9);
 }

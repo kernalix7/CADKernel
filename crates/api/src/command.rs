@@ -226,7 +226,14 @@ pub enum Command {
     /// snapping, and gizmo positioning. Does not mutate or append a
     /// history event.
     AabbCenter { id: SolidId },
-    /// Deep-clone a solid into a new slot. Returns the new
+    /// Read-only AABB volume of a solid. Returns
+    /// `Outcome::AabbVolume { id, volume }` where
+    /// `volume = dx * dy * dz` (product of per-axis extents). Cheap
+    /// upper bound on mass volume; useful for LOD heuristics and
+    /// proportional thresholds without paying for the mass-volume
+    /// traversal performed by `Volume` / `Measure`. Does not mutate
+    /// or append a history event.
+    AabbVolume { id: SolidId },
     /// `Outcome::SolidCreated { id, label }` where `label` is
     /// `"<source-label> (copy)"`. The source slot is left untouched.
     Duplicate { id: SolidId },
@@ -286,6 +293,7 @@ impl Command {
             Self::Exists { .. } => "exists",
             Self::Diagonal { .. } => "diagonal",
             Self::AabbCenter { .. } => "aabb_center",
+            Self::AabbVolume { .. } => "aabb_volume",
             Self::Duplicate { .. } => "duplicate",
             Self::Rotate { .. } => "rotate",
             Self::Noop => "noop",
@@ -767,6 +775,16 @@ pub fn command_schemas() -> Vec<CommandSchema> {
         CommandSchema {
             op: "aabb_center",
             description: "AABB center (bbox.min + bbox.max) * 0.5. Distinct from centroid (mass centroid).",
+            params: &[ParamSchema {
+                name: "id",
+                ty: "solid_id",
+                required: true,
+                doc: "Solid to query.",
+            }],
+        },
+        CommandSchema {
+            op: "aabb_volume",
+            description: "AABB volume dx * dy * dz (cheap upper bound on mass volume; uses bounding box only).",
             params: &[ParamSchema {
                 name: "id",
                 ty: "solid_id",

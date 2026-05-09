@@ -137,6 +137,12 @@ pub enum Outcome {
     /// (which is the mass centroid). Useful for placement, grid
     /// snapping, and gizmo positioning.
     AabbCenter { id: SolidId, center: [f64; 3] },
+    /// Read-only AABB volume of a solid (`Command::AabbVolume`).
+    /// Returns `dx * dy * dz` (product of per-axis extents). Cheap
+    /// upper bound on the solid's volume; useful for LOD heuristics
+    /// and proportional thresholds without paying for the mass-volume
+    /// traversal performed by `Volume` / `Measure`.
+    AabbVolume { id: SolidId, volume: f64 },
     /// Nothing happened (`Command::Noop`).
     Empty,
 }
@@ -173,6 +179,7 @@ pub enum OutcomeKind {
     Exists,
     Diagonal,
     AabbCenter,
+    AabbVolume,
     Empty,
 }
 
@@ -200,6 +207,7 @@ impl Outcome {
             Self::Exists { .. } => OutcomeKind::Exists,
             Self::Diagonal { .. } => OutcomeKind::Diagonal,
             Self::AabbCenter { .. } => OutcomeKind::AabbCenter,
+            Self::AabbVolume { .. } => OutcomeKind::AabbVolume,
             Self::Empty => OutcomeKind::Empty,
         }
     }

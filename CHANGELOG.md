@@ -11,6 +11,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::AabbVolume` AABB-volume observer (2026-05-09)
+- **New `Command::AabbVolume { id }` (16th observer)** + `Outcome::AabbVolume { id, volume }` + `OutcomeKind::AabbVolume` tag — returns `dx * dy * dz` (product of per-axis bounding-box extents). Cheap upper bound on the solid's mass volume; useful for LOD heuristics and proportional thresholds without paying for the mass-volume traversal performed by `Volume` / `Measure`.
+- **Wiring**: routed through the read-only fast path in `Session::execute` (now 16 fast-pathed observer variants); dispatch reuses `Document::bounding_box`, computes the extent product, and returns `Outcome::AabbVolume { id, volume }`. `UnknownSolid` surfaces for missing ids; no history event is appended.
+- **Schema**: `command_schemas()` exposes `op = "aabb_volume"` with a single required `id: solid_id` parameter so AI/MCP clients can discover the surface.
+- **Tests**: 5 new regression tests in `crates/api/tests/api_integration.rs` (4×6×8 box → volume 192, unknown id → `UnknownSolid`, history-untouched, JSON round-trip with `"op":"aabb_volume"`, translation-invariance) + schema-coverage fixture extended.
+
 #### API — `Command::AabbCenter` AABB center observer (2026-05-09)
 - **New `Command::AabbCenter { id }` (15th observer)** + `Outcome::AabbCenter { id, center }` + `OutcomeKind::AabbCenter` tag — returns `(bbox.min + bbox.max) * 0.5`. Distinct from `Centroid` (which is the mass centroid). Useful for placement, grid snapping, and gizmo positioning.
 - **Observer fast-path widened** to 15 variants. Reuses `Document::bounding_box`.

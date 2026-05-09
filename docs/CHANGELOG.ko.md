@@ -11,6 +11,12 @@
 
 ### 추가됨
 
+#### API — `Command::AabbVolume` AABB 부피 올서버 (2026-05-09)
+- **`Command::AabbVolume { id }` (16번째 올서버) 신규** + `Outcome::AabbVolume` + `OutcomeKind::AabbVolume` — `dx * dy * dz` (축별 경계 상자 길이의 곱) 반환. 질량 부피의 저렴한 상한값으로 LOD 휴리스틱 및 비례 임계값에 유용. `Volume` / `Measure`의 질량-부피 순회를 건너뜀.
+- **연결**: `Session::execute` 읽기 전용 fast-path에 16번째 변형으로 추가. `Document::bounding_box`를 재사용하여 길이 곱을 계산하고 `Outcome::AabbVolume`을 반환. 잘못된 id에는 `UnknownSolid`를 반환하고 history에 이벤트를 추가하지 않음.
+- **스키마**: `command_schemas()`에 `op = "aabb_volume"` (필수 `id` 1개) 추가.
+- **테스트**: `crates/api/tests/api_integration.rs`에 5개 회귀 테스트 추가 (4×6×8 박스 → 192, 잘못된 id → `UnknownSolid`, history 불변, JSON 라운드트립, 평행이동 불변) + 스키마 커버리지 확장.
+
 #### API — `Command::AabbCenter` AABB 중심 올서버 (2026-05-09)
 - **`Command::AabbCenter { id }` (15번째 올서버) 신규** + `Outcome::AabbCenter` + `OutcomeKind::AabbCenter` — `(bbox.min + bbox.max) * 0.5` 반환. `Centroid`(질량 중심)와 구분되는 AABB 중심. 배치, 그리드 스냅, 기즈모 위치 결정용.
 - **올서버 fast-path 15개로 확장**. `Document::bounding_box` 재사용.
