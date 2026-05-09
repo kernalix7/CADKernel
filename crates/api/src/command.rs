@@ -281,6 +281,12 @@ pub enum Command {
     /// when only the count is needed. Does not mutate or append a
     /// history event.
     SolidCount,
+    /// Read-only history-count observer. Returns
+    /// `Outcome::HistoryCount { count }` where `count` is the
+    /// number of recorded history events as a `u32`. Cheaper than
+    /// `Stats` when only the history length is needed. Does not
+    /// mutate or append a history event.
+    HistoryCount,
     /// `Outcome::SolidCreated { id, label }` where `label` is
     /// `"<source-label> (copy)"`. The source slot is left untouched.
     Duplicate { id: SolidId },
@@ -347,6 +353,7 @@ impl Command {
             Self::IsEmpty => "is_empty",
             Self::AabbSurfaceArea { .. } => "aabb_surface_area",
             Self::SolidCount => "solid_count",
+            Self::HistoryCount => "history_count",
             Self::Duplicate { .. } => "duplicate",
             Self::Rotate { .. } => "rotate",
             Self::Noop => "noop",
@@ -901,6 +908,11 @@ pub fn command_schemas() -> Vec<CommandSchema> {
         CommandSchema {
             op: "solid_count",
             description: "Solid-count observer. Returns the number of populated solid slots as a u32.",
+            params: &[],
+        },
+        CommandSchema {
+            op: "history_count",
+            description: "History-count observer. Returns the number of recorded history events as a u32.",
             params: &[],
         },
         CommandSchema {

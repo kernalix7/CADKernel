@@ -11,6 +11,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::HistoryCount` history-count observer (2026-05-09)
+- **New `Command::HistoryCount` (23rd observer)** + `Outcome::HistoryCount { count: u32 }` + `OutcomeKind::HistoryCount` tag — returns the number of recorded history events as a single `u32`. Cheaper than `Stats` when only the history length is needed (skips the solid-count field). Companion to `Command::SolidCount`.
+- **Wiring**: routed through the read-only fast path in `Session::execute` (now 23 fast-pathed observer variants); dispatch reuses `Document::history().len()` and casts to `u32`. No history event is appended.
+- **Schema**: `command_schemas()` exposes `op = "history_count"` with no parameters.
+- **Tests**: 5 new regression tests in `crates/api/tests/api_integration.rs` (zero on fresh session, grows from 2 → 3 across creates+delete, history-untouched, JSON round-trip with `"op":"history_count"`, agrees with `Stats::history_count`) + schema-coverage fixture extended.
+
 #### API — `Command::SolidCount` solid-count observer (2026-05-09)
 - **New `Command::SolidCount` (22nd observer)** + `Outcome::SolidCount { count: u32 }` + `OutcomeKind::SolidCount` tag — returns the number of populated solid slots as a single `u32`. Cheaper than `Stats` when only the solid count is needed (skips the history-length field and avoids the broader `Stats` outcome wrapper).
 - **Wiring**: routed through the read-only fast path in `Session::execute` (now 22 fast-pathed observer variants); dispatch reuses `Document::solid_count()` and casts to `u32`. No history event is appended.

@@ -11,6 +11,12 @@
 
 ### 추가됨
 
+#### API — `Command::HistoryCount` history 개수 옵서버 (2026-05-09)
+- **`Command::HistoryCount` (23번째 옵서버) 신규** + `Outcome::HistoryCount { count: u32 }` + `OutcomeKind::HistoryCount` — 기록된 history 이벤트 개수를 단일 `u32`로 반환. history 길이만 필요할 때 `Stats`보다 저렴. `Command::SolidCount`의 대칭 카운터파트.
+- **연결**: `Session::execute` 읽기 전용 fast-path에 23번째 변형으로 추가. `Document::history().len()`를 `u32`로 캐스트. history 불변.
+- **스키마**: `command_schemas()`에 `op = "history_count"` (파라미터 없음) 추가.
+- **테스트**: `crates/api/tests/api_integration.rs`에 5개 회귀 테스트 추가 (초기 세션 → 0, 생성+삭제를 거쳐 2 → 3, history 불변, JSON 라운드트립, `Stats::history_count`와 일치) + 스키마 커버리지 확장.
+
 #### API — `Command::SolidCount` 솔리드 개수 옵서버 (2026-05-09)
 - **`Command::SolidCount` (22번째 옵서버) 신규** + `Outcome::SolidCount { count: u32 }` + `OutcomeKind::SolidCount` — 채워진 솔리드 슬롯 개수를 단일 `u32`로 반환. 솔리드 개수만 필요할 때 `Stats`보다 저렴 (history 길이 필드 생략).
 - **연결**: `Session::execute` 읽기 전용 fast-path에 22번째 변형으로 추가. `Document::solid_count()`를 `u32`로 캐스트. history 불변.

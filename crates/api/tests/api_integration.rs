@@ -529,6 +529,7 @@ fn command_schemas_cover_every_op_name() {
             id: cadkernel_api::SolidId(0),
         },
         Command::SolidCount,
+        Command::HistoryCount,
         Command::Duplicate {
             id: cadkernel_api::SolidId(0),
         },
@@ -3383,4 +3384,65 @@ fn solid_count_command_agrees_with_stats() {
         _ => panic!(),
     };
     assert_eq!(solid_count, stats_count);
+}
+
+#[test]
+fn history_count_command_zero_on_fresh_session() {
+    let mut s = Session::new();
+    let outcome = s.execute(Command::HistoryCount).unwrap();
+    if let Outcome::HistoryCount { count } = outcome {
+        assert_eq!(count, 0);
+    } else { panic!("expected HistoryCount, got {outcome:?}"); }
+}
+
+#[test]
+fn history_count_command_grows_with_mutations() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let after_two = match s.execute(Command::HistoryCount).unwrap() {
+        Outcome::HistoryCount { count } => count,
+        _ => panic!(),
+    };
+    assert_eq!(after_two, 2);
+    s.execute(Command::DeleteSolid { id: SolidId(0) }).unwrap();
+    let after_delete = match s.execute(Command::HistoryCount).unwrap() {
+        Outcome::HistoryCount { count } => count,
+        _ => panic!(),
+    };
+    assert_eq!(after_delete, 3);
+}
+
+#[test]
+fn history_count_command_does_not_append_history_event() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let before = s.document().history().len();
+    s.execute(Command::HistoryCount).unwrap();
+    assert_eq!(s.document().history().len(), before);
+}
+
+#[test]
+fn history_count_command_round_trips_through_json() {
+    let cmd = Command::HistoryCount;
+    let json = serde_json::to_string(&cmd).unwrap();
+    assert!(json.contains("\"op\":\"history_count\""), "json = {json}");
+    let back: Command = serde_json::from_str(&json).unwrap();
+    assert!(matches!(back, Command::HistoryCount));
+}
+
+#[test]
+fn history_count_command_agrees_with_stats() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let history_count = match s.execute(Command::HistoryCount).unwrap() {
+        Outcome::HistoryCount { count } => count,
+        _ => panic!(),
+    };
+    let stats_history = match s.execute(Command::Stats).unwrap() {
+        Outcome::Stats { history_count, .. } => history_count,
+        _ => panic!(),
+    };
+    assert_eq!(history_count, stats_history);
 }

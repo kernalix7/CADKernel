@@ -294,7 +294,7 @@ impl Session {
         // because they don't mutate the document.
         if matches!(
             command,
-            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. } | Command::HistoryEvents | Command::Stats | Command::Bounds { .. } | Command::Distance { .. } | Command::Volume { .. } | Command::SurfaceArea { .. } | Command::Centroid { .. } | Command::IntersectsAabb { .. } | Command::Exists { .. } | Command::Diagonal { .. } | Command::AabbCenter { .. } | Command::AabbVolume { .. } | Command::ContainsAabb { .. } | Command::AabbCorners { .. } | Command::SolidLabel { .. } | Command::IsEmpty | Command::AabbSurfaceArea { .. } | Command::SolidCount
+            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. } | Command::HistoryEvents | Command::Stats | Command::Bounds { .. } | Command::Distance { .. } | Command::Volume { .. } | Command::SurfaceArea { .. } | Command::Centroid { .. } | Command::IntersectsAabb { .. } | Command::Exists { .. } | Command::Diagonal { .. } | Command::AabbCenter { .. } | Command::AabbVolume { .. } | Command::ContainsAabb { .. } | Command::AabbCorners { .. } | Command::SolidLabel { .. } | Command::IsEmpty | Command::AabbSurfaceArea { .. } | Command::SolidCount | Command::HistoryCount
         ) {
             return self.dispatch(&command);
         }
@@ -722,6 +722,9 @@ impl Session {
             }
             Command::SolidCount => Ok(Outcome::SolidCount {
                 count: self.document.solid_count() as u32,
+            }),
+            Command::HistoryCount => Ok(Outcome::HistoryCount {
+                count: self.document.history().len() as u32,
             }),
             Command::Rotate {
                 id,
@@ -1326,6 +1329,7 @@ fn history_description(cmd: &Command, outcome: &Outcome) -> String {
         (Command::IsEmpty, _) => "IsEmpty".to_string(),
         (Command::AabbSurfaceArea { id }, _) => format!("AabbSurfaceArea {id}"),
         (Command::SolidCount, _) => "SolidCount".to_string(),
+        (Command::HistoryCount, _) => "HistoryCount".to_string(),
         (Command::Duplicate { id }, _) => format!("Duplicate {id}"),
         (Command::Rotate { id, angle_rad, .. }, _) => {
             format!("Rotate {id} ({angle_rad} rad)")

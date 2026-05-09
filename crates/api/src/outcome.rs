@@ -186,6 +186,10 @@ pub enum Outcome {
     /// than `Stats` when the consumer only needs the count (skips
     /// the history-length field).
     SolidCount { count: u32 },
+    /// Read-only history-count observer (`Command::HistoryCount`).
+    /// Returns the number of recorded history events as a `u32`.
+    /// Cheaper than `Stats` when only the history length is needed.
+    HistoryCount { count: u32 },
     /// Nothing happened (`Command::Noop`).
     Empty,
 }
@@ -229,6 +233,7 @@ pub enum OutcomeKind {
     IsEmpty,
     AabbSurfaceArea,
     SolidCount,
+    HistoryCount,
     Empty,
 }
 
@@ -263,6 +268,7 @@ impl Outcome {
             Self::IsEmpty { .. } => OutcomeKind::IsEmpty,
             Self::AabbSurfaceArea { .. } => OutcomeKind::AabbSurfaceArea,
             Self::SolidCount { .. } => OutcomeKind::SolidCount,
+            Self::HistoryCount { .. } => OutcomeKind::HistoryCount,
             Self::Empty => OutcomeKind::Empty,
         }
     }
