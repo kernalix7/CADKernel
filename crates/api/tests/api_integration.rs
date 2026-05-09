@@ -505,6 +505,9 @@ fn command_schemas_cover_every_op_name() {
         Command::Exists {
             id: cadkernel_api::SolidId(0),
         },
+        Command::Diagonal {
+            id: cadkernel_api::SolidId(0),
+        },
         Command::Duplicate {
             id: cadkernel_api::SolidId(0),
         },
@@ -2819,4 +2822,63 @@ fn exists_command_round_trips_through_json() {
         Command::Exists { id } => assert_eq!(id, SolidId(7)),
         _ => panic!("expected Exists"),
     }
+}
+
+#[test]
+fn diagonal_command_returns_345_box_diagonal() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 3.0, dy: 4.0, dz: 12.0 }).unwrap();
+    let outcome = s.execute(Command::Diagonal { id: SolidId(0) }).unwrap();
+    if let Outcome::Diagonal { id, length, extents } = outcome {
+        assert_eq!(id, SolidId(0));
+        assert!((extents[0] - 3.0).abs() < 1e-9);
+        assert!((extents[1] - 4.0).abs() < 1e-9);
+        assert!((extents[2] - 12.0).abs() < 1e-9);
+        // sqrt(9 + 16 + 144) = sqrt(169) = 13
+        assert!((length - 13.0).abs() < 1e-9, "got {length}");
+    } else { panic!("expected Diagonal, got {outcome:?}"); }
+}
+
+#[test]
+fn diagonal_command_returns_unknown_solid_for_invalid_id() {
+    let mut s = Session::new();
+    let err = s.execute(Command::Diagonal { id: SolidId(7) }).unwrap_err();
+    assert!(matches!(err, ApiError::UnknownSolid(_)));
+}
+
+#[test]
+fn diagonal_command_does_not_append_history_event() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let before = s.document().history().len();
+    s.execute(Command::Diagonal { id: SolidId(0) }).unwrap();
+    assert_eq!(s.document().history().len(), before);
+}
+
+#[test]
+fn diagonal_command_round_trips_through_json() {
+    let cmd = Command::Diagonal { id: SolidId(8) };
+    let json = serde_json::to_string(&cmd).unwrap();
+    assert!(json.contains("\"op\":\"diagonal\""));
+    let back: Command = serde_json::from_str(&json).unwrap();
+    match back {
+        Command::Diagonal { id } => assert_eq!(id, SolidId(8)),
+        _ => panic!("expected Diagonal"),
+    }
+}
+
+#[test]
+fn diagonal_command_invariant_under_translation() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
+    let before = match s.execute(Command::Diagonal { id: SolidId(0) }).unwrap() {
+        Outcome::Diagonal { length, .. } => length,
+        _ => panic!(),
+    };
+    s.execute(Command::Translate { id: SolidId(0), dx: 100.0, dy: -50.0, dz: 7.5 }).unwrap();
+    let after = match s.execute(Command::Diagonal { id: SolidId(0) }).unwrap() {
+        Outcome::Diagonal { length, .. } => length,
+        _ => panic!(),
+    };
+    assert!((before - after).abs() < 1e-9, "diagonal must be translation-invariant");
 }

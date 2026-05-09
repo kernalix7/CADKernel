@@ -127,6 +127,11 @@ pub enum Outcome {
     /// Cheap probe AI / scripts use to test whether an id is still
     /// valid without paying for `UnknownSolid` exception handling.
     Exists { id: SolidId, exists: bool },
+    /// Read-only AABB-diagonal length of a solid (`Command::Diagonal`).
+    /// Returns `length(bbox.max - bbox.min)` together with the raw
+    /// per-axis extents `[dx, dy, dz]`. Cheap heuristic used by
+    /// camera-fit, level-of-detail thresholds, and tolerance scaling.
+    Diagonal { id: SolidId, length: f64, extents: [f64; 3] },
     /// Nothing happened (`Command::Noop`).
     Empty,
 }
@@ -161,6 +166,7 @@ pub enum OutcomeKind {
     Centroid,
     AabbIntersection,
     Exists,
+    Diagonal,
     Empty,
 }
 
@@ -186,6 +192,7 @@ impl Outcome {
             Self::Centroid { .. } => OutcomeKind::Centroid,
             Self::AabbIntersection { .. } => OutcomeKind::AabbIntersection,
             Self::Exists { .. } => OutcomeKind::Exists,
+            Self::Diagonal { .. } => OutcomeKind::Diagonal,
             Self::Empty => OutcomeKind::Empty,
         }
     }

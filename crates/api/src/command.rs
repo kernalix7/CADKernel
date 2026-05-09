@@ -213,6 +213,12 @@ pub enum Command {
     /// AI / scripts use to test ids without paying for `UnknownSolid`
     /// exception handling. Does not mutate or append a history event.
     Exists { id: SolidId },
+    /// Read-only AABB-diagonal length of a solid. Returns
+    /// `Outcome::Diagonal { id, length, extents }` where
+    /// `extents = bbox.max - bbox.min` and `length = ||extents||`.
+    /// Cheap heuristic for camera-fit, LOD thresholds, and tolerance
+    /// scaling. Does not mutate or append a history event.
+    Diagonal { id: SolidId },
     /// Deep-clone a solid into a new slot. Returns the new
     /// `Outcome::SolidCreated { id, label }` where `label` is
     /// `"<source-label> (copy)"`. The source slot is left untouched.
@@ -271,6 +277,7 @@ impl Command {
             Self::Centroid { .. } => "centroid",
             Self::IntersectsAabb { .. } => "intersects_aabb",
             Self::Exists { .. } => "exists",
+            Self::Diagonal { .. } => "diagonal",
             Self::Duplicate { .. } => "duplicate",
             Self::Rotate { .. } => "rotate",
             Self::Noop => "noop",
@@ -737,6 +744,16 @@ pub fn command_schemas() -> Vec<CommandSchema> {
                 ty: "solid_id",
                 required: true,
                 doc: "Solid to probe.",
+            }],
+        },
+        CommandSchema {
+            op: "diagonal",
+            description: "AABB diagonal length and per-axis extents (cheap; uses bounding box only).",
+            params: &[ParamSchema {
+                name: "id",
+                ty: "solid_id",
+                required: true,
+                doc: "Solid to query.",
             }],
         },
         CommandSchema {

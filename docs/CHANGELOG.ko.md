@@ -11,6 +11,13 @@
 
 ### 추가됨
 
+#### API — `Command::Diagonal` AABB 대각선 길이 올서버 (2026-05-09)
+- **`Command::Diagonal { id }` (14번째 올서버) 신규** + `Outcome::Diagonal { id, length, extents }` + `OutcomeKind::Diagonal` — `extents = bbox.max - bbox.min` 및 `length = ||extents||` 반환. 카메라 fit, LOD 임계값, 허용오차 스케일링용 경량 휴리스틱.
+- **올서버 fast-path 14개로 확장**. `Document::bounding_box` 재사용.
+- **검증**: 잘못된 id `UnknownSolid`. translation 불변(테스트로 확인).
+- **회귀 테스트 5개**: 3-4-12 박스 대각선 = 13 / 잘못된 id `UnknownSolid` / history 미추가 / JSON 라운드트립 / translation 불변.
+- **3,016 / 0 / 0** 테스트, clippy strict clean.
+
 #### API — `Command::Exists` 무예외 존재 predicate (2026-05-09)
 - **`Command::Exists { id }` (13번째 올서버) 신규** + `Outcome::Exists` + `OutcomeKind::Exists` — **누락 id에 대해서도 에러를 내지 않고** `exists = false` 반환. AI/스크립트가 `UnknownSolid` 예외 처리 없이 id 유효성을 싸게 확인할 때 사용.
 - **올서버 fast-path 13개로 확장**. `Document::solid_label(id).is_some()`로 구현 — 할당 없음, 메시 접근 없음.

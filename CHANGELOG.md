@@ -11,6 +11,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::Diagonal` AABB-diagonal length observer (2026-05-09)
+- **New `Command::Diagonal { id }` (14th observer)** + `Outcome::Diagonal { id, length, extents }` + `OutcomeKind::Diagonal` tag — returns `extents = bbox.max - bbox.min` and `length = ||extents||`. Cheap heuristic for camera-fit, level-of-detail thresholds, and tolerance scaling.
+- **Observer fast-path widened** to 14 variants. Reuses `Document::bounding_box`.
+- **Validation**: unknown id rejected with `UnknownSolid`. Translation-invariant (verified by test).
+- **`CommandSchema` entry** added.
+- **5 new regression tests**: 3-4-12 box diagonal = 13, unknown id rejected, no history append, JSON round-trip (`op: "diagonal"`), translation-invariance.
+- **3,016 / 0 / 0** tests (+5 vs. Exists slice); strict `clippy --all-targets --all-features -D warnings` clean.
+
 #### API — `Command::Exists` non-throwing existence predicate (2026-05-09)
 - **New `Command::Exists { id }` (13th observer)** + `Outcome::Exists { id, exists }` + `OutcomeKind::Exists` tag — returns a boolean predicate that **never errors** on a missing id (reports `exists = false` instead). Cheap probe AI / scripts use to test ids without paying for `UnknownSolid` exception handling.
 - **Observer fast-path widened** to 13 variants. Implemented as `Document::solid_label(id).is_some()` — no allocation, no mesh access.

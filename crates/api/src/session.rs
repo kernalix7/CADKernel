@@ -294,7 +294,7 @@ impl Session {
         // because they don't mutate the document.
         if matches!(
             command,
-            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. } | Command::HistoryEvents | Command::Stats | Command::Bounds { .. } | Command::Distance { .. } | Command::Volume { .. } | Command::SurfaceArea { .. } | Command::Centroid { .. } | Command::IntersectsAabb { .. } | Command::Exists { .. }
+            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. } | Command::HistoryEvents | Command::Stats | Command::Bounds { .. } | Command::Distance { .. } | Command::Volume { .. } | Command::SurfaceArea { .. } | Command::Centroid { .. } | Command::IntersectsAabb { .. } | Command::Exists { .. } | Command::Diagonal { .. }
         ) {
             return self.dispatch(&command);
         }
@@ -622,6 +622,22 @@ impl Session {
             Command::Exists { id } => {
                 let exists = self.document.solid_label(*id).is_some();
                 Ok(Outcome::Exists { id: *id, exists })
+            }
+            Command::Diagonal { id } => {
+                let bbox = self
+                    .document
+                    .bounding_box(*id)
+                    .ok_or_else(|| ApiError::UnknownSolid(format!("{id}")))?;
+                let extents = [
+                    bbox.max[0] - bbox.min[0],
+                    bbox.max[1] - bbox.min[1],
+                    bbox.max[2] - bbox.min[2],
+                ];
+                let length = (extents[0] * extents[0]
+                    + extents[1] * extents[1]
+                    + extents[2] * extents[2])
+                    .sqrt();
+                Ok(Outcome::Diagonal { id: *id, length, extents })
             }
             Command::Rotate {
                 id,
@@ -1215,6 +1231,7 @@ fn history_description(cmd: &Command, outcome: &Outcome) -> String {
         (Command::Centroid { id }, _) => format!("Centroid {id}"),
         (Command::IntersectsAabb { id_a, id_b }, _) => format!("IntersectsAabb {id_a} <-> {id_b}"),
         (Command::Exists { id }, _) => format!("Exists {id}"),
+        (Command::Diagonal { id }, _) => format!("Diagonal {id}"),
         (Command::Duplicate { id }, _) => format!("Duplicate {id}"),
         (Command::Rotate { id, angle_rad, .. }, _) => {
             format!("Rotate {id} ({angle_rad} rad)")
