@@ -532,6 +532,7 @@ fn command_schemas_cover_every_op_name() {
         Command::HistoryCount,
         Command::HasLabel { query: "x".into() },
         Command::SolidIds,
+        Command::AabbExtents { id: cadkernel_api::SolidId(0) },
         Command::Duplicate {
             id: cadkernel_api::SolidId(0),
         },
@@ -3577,4 +3578,75 @@ fn solid_ids_command_agrees_with_list_solids() {
         _ => panic!(),
     };
     assert_eq!(ids, listed);
+}
+
+#[test]
+fn aabb_extents_command_returns_box_dimensions() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 4.0, dy: 6.0, dz: 8.0 }).unwrap();
+    let outcome = s.execute(Command::AabbExtents { id: SolidId(0) }).unwrap();
+    if let Outcome::AabbExtents { id, extents } = outcome {
+        assert_eq!(id, SolidId(0));
+        assert!((extents[0] - 4.0).abs() < 1e-9);
+        assert!((extents[1] - 6.0).abs() < 1e-9);
+        assert!((extents[2] - 8.0).abs() < 1e-9);
+    } else { panic!("expected AabbExtents, got {outcome:?}"); }
+}
+
+#[test]
+fn aabb_extents_command_unknown_solid() {
+    let mut s = Session::new();
+    let err = s.execute(Command::AabbExtents { id: SolidId(99) }).unwrap_err();
+    assert!(matches!(err, ApiError::UnknownSolid(_)));
+}
+
+#[test]
+fn aabb_extents_command_translation_invariant() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 2.0, dy: 3.0, dz: 5.0 }).unwrap();
+    let before = match s.execute(Command::AabbExtents { id: SolidId(0) }).unwrap() {
+        Outcome::AabbExtents { extents, .. } => extents,
+        _ => panic!(),
+    };
+    s.execute(Command::Translate { id: SolidId(0), dx: 100.0, dy: -50.0, dz: 7.0 }).unwrap();
+    let after = match s.execute(Command::AabbExtents { id: SolidId(0) }).unwrap() {
+        Outcome::AabbExtents { extents, .. } => extents,
+        _ => panic!(),
+    };
+    for i in 0..3 { assert!((before[i] - after[i]).abs() < 1e-9); }
+}
+
+#[test]
+fn aabb_extents_command_does_not_append_history_event() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let before = s.document().history().len();
+    s.execute(Command::AabbExtents { id: SolidId(0) }).unwrap();
+    assert_eq!(s.document().history().len(), before);
+}
+
+#[test]
+fn aabb_extents_command_round_trips_through_json() {
+    let cmd = Command::AabbExtents { id: SolidId(0) };
+    let json = serde_json::to_string(&cmd).unwrap();
+    assert!(json.contains("\"op\":\"aabb_extents\""), "json = {json}");
+    let back: Command = serde_json::from_str(&json).unwrap();
+    assert!(matches!(back, Command::AabbExtents { id: SolidId(0) }));
+}
+
+#[test]
+fn aabb_extents_command_diagonal_consistent() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 3.0, dy: 4.0, dz: 12.0 }).unwrap();
+    let extents = match s.execute(Command::AabbExtents { id: SolidId(0) }).unwrap() {
+        Outcome::AabbExtents { extents, .. } => extents,
+        _ => panic!(),
+    };
+    let diag = match s.execute(Command::Diagonal { id: SolidId(0) }).unwrap() {
+        Outcome::Diagonal { length, .. } => length,
+        _ => panic!(),
+    };
+    let computed = (extents[0]*extents[0] + extents[1]*extents[1] + extents[2]*extents[2]).sqrt();
+    assert!((diag - computed).abs() < 1e-9);
+    assert!((diag - 13.0).abs() < 1e-9);
 }

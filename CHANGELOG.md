@@ -11,6 +11,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::AabbExtents` AABB-extents observer (2026-05-09)
+- **New `Command::AabbExtents { id }` (26th observer)** + `Outcome::AabbExtents { id, extents }` + `OutcomeKind::AabbExtents` tag — returns the per-axis bounding-box extents `[dx, dy, dz]` where `dx = max.x - min.x`, etc. Cheaper than `Bounds` (skips min/max points) and a raw companion to `Diagonal` (which returns `sqrt(dx*dx + dy*dy + dz*dz)`).
+- **Wiring**: routed through the read-only fast path in `Session::execute` (now 26 fast-pathed observer variants); dispatch reuses `Document::bounding_box` and computes axis-wise differences. `UnknownSolid` surfaces for missing ids; no history event is appended.
+- **Schema**: `command_schemas()` exposes `op = "aabb_extents"` with a single required `id: solid_id` parameter.
+- **Tests**: 6 new regression tests in `crates/api/tests/api_integration.rs` (4×6×8 box → `[4, 6, 8]`, unknown id → `UnknownSolid`, translation-invariance, history-untouched, JSON round-trip with `"op":"aabb_extents"`, 3×4×12 box → diagonal `13.0` consistent with `Diagonal`) + schema-coverage fixture extended.
+
 #### API — `Command::SolidIds` solid-id enumeration (2026-05-09)
 - **New `Command::SolidIds` (25th observer)** + `Outcome::SolidIds { ids }` + `OutcomeKind::SolidIds` tag — returns just the populated `Vec<SolidId>` without labels. Cheaper than `ListSolids` when the consumer only needs ids (skips per-slot label cloning).
 - **Wiring**: routed through the read-only fast path in `Session::execute` (now 25 fast-pathed observer variants); dispatch reuses `Document::solid_ids()`. No history event is appended.

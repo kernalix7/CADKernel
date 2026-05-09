@@ -200,6 +200,12 @@ pub enum Outcome {
     /// without labels. Cheaper than `ListSolids` when the consumer
     /// only needs ids (skips per-slot label cloning).
     SolidIds { ids: Vec<SolidId> },
+    /// Read-only AABB-extents observer (`Command::AabbExtents`).
+    /// Returns the per-axis bounding-box extents `[dx, dy, dz]`
+    /// where `dx = max.x - min.x` etc. Cheaper than `Bounds`
+    /// (skips the min/max points) and a raw companion to
+    /// `Diagonal` (which returns `sqrt(dx*dx + dy*dy + dz*dz)`).
+    AabbExtents { id: SolidId, extents: [f64; 3] },
     /// Nothing happened (`Command::Noop`).
     Empty,
 }
@@ -246,6 +252,7 @@ pub enum OutcomeKind {
     HistoryCount,
     HasLabel,
     SolidIds,
+    AabbExtents,
     Empty,
 }
 
@@ -283,6 +290,7 @@ impl Outcome {
             Self::HistoryCount { .. } => OutcomeKind::HistoryCount,
             Self::HasLabel { .. } => OutcomeKind::HasLabel,
             Self::SolidIds { .. } => OutcomeKind::SolidIds,
+            Self::AabbExtents { .. } => OutcomeKind::AabbExtents,
             Self::Empty => OutcomeKind::Empty,
         }
     }

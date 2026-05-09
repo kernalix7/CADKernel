@@ -294,7 +294,7 @@ impl Session {
         // because they don't mutate the document.
         if matches!(
             command,
-            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. } | Command::HistoryEvents | Command::Stats | Command::Bounds { .. } | Command::Distance { .. } | Command::Volume { .. } | Command::SurfaceArea { .. } | Command::Centroid { .. } | Command::IntersectsAabb { .. } | Command::Exists { .. } | Command::Diagonal { .. } | Command::AabbCenter { .. } | Command::AabbVolume { .. } | Command::ContainsAabb { .. } | Command::AabbCorners { .. } | Command::SolidLabel { .. } | Command::IsEmpty | Command::AabbSurfaceArea { .. } | Command::SolidCount | Command::HistoryCount | Command::HasLabel { .. } | Command::SolidIds
+            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. } | Command::HistoryEvents | Command::Stats | Command::Bounds { .. } | Command::Distance { .. } | Command::Volume { .. } | Command::SurfaceArea { .. } | Command::Centroid { .. } | Command::IntersectsAabb { .. } | Command::Exists { .. } | Command::Diagonal { .. } | Command::AabbCenter { .. } | Command::AabbVolume { .. } | Command::ContainsAabb { .. } | Command::AabbCorners { .. } | Command::SolidLabel { .. } | Command::IsEmpty | Command::AabbSurfaceArea { .. } | Command::SolidCount | Command::HistoryCount | Command::HasLabel { .. } | Command::SolidIds | Command::AabbExtents { .. }
         ) {
             return self.dispatch(&command);
         }
@@ -744,6 +744,20 @@ impl Session {
             Command::SolidIds => Ok(Outcome::SolidIds {
                 ids: self.document.solid_ids(),
             }),
+            Command::AabbExtents { id } => {
+                let bbox = self
+                    .document
+                    .bounding_box(*id)
+                    .ok_or_else(|| ApiError::UnknownSolid(format!("{id}")))?;
+                Ok(Outcome::AabbExtents {
+                    id: *id,
+                    extents: [
+                        bbox.max[0] - bbox.min[0],
+                        bbox.max[1] - bbox.min[1],
+                        bbox.max[2] - bbox.min[2],
+                    ],
+                })
+            }
             Command::Rotate {
                 id,
                 axis,
@@ -1350,6 +1364,7 @@ fn history_description(cmd: &Command, outcome: &Outcome) -> String {
         (Command::HistoryCount, _) => "HistoryCount".to_string(),
         (Command::HasLabel { query }, _) => format!("HasLabel '{query}'"),
         (Command::SolidIds, _) => "SolidIds".to_string(),
+        (Command::AabbExtents { id }, _) => format!("AabbExtents {id:?}"),
         (Command::Duplicate { id }, _) => format!("Duplicate {id}"),
         (Command::Rotate { id, angle_rad, .. }, _) => {
             format!("Rotate {id} ({angle_rad} rad)")

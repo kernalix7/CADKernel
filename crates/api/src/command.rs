@@ -301,6 +301,13 @@ pub enum Command {
     /// consumer only needs ids (skips per-slot label cloning).
     /// Does not mutate or append a history event.
     SolidIds,
+    /// Read-only AABB-extents observer. Returns
+    /// `Outcome::AabbExtents { id, extents }` where
+    /// `extents = [max.x - min.x, max.y - min.y, max.z - min.z]`.
+    /// Cheaper than `Bounds` (skips min/max points) and a raw
+    /// companion to `Diagonal`. Does not mutate or append a
+    /// history event.
+    AabbExtents { id: SolidId },
     /// `Outcome::SolidCreated { id, label }` where `label` is
     /// `"<source-label> (copy)"`. The source slot is left untouched.
     Duplicate { id: SolidId },
@@ -370,6 +377,7 @@ impl Command {
             Self::HistoryCount => "history_count",
             Self::HasLabel { .. } => "has_label",
             Self::SolidIds => "solid_ids",
+            Self::AabbExtents { .. } => "aabb_extents",
             Self::Duplicate { .. } => "duplicate",
             Self::Rotate { .. } => "rotate",
             Self::Noop => "noop",
@@ -945,6 +953,16 @@ pub fn command_schemas() -> Vec<CommandSchema> {
             op: "solid_ids",
             description: "Solid-id enumeration. Returns the populated SolidIds without labels (cheaper than list_solids).",
             params: &[],
+        },
+        CommandSchema {
+            op: "aabb_extents",
+            description: "AABB-extents observer. Returns the per-axis bounding-box extents [dx, dy, dz].",
+            params: &[ParamSchema {
+                name: "id",
+                ty: "solid_id",
+                required: true,
+                doc: "Solid to query.",
+            }],
         },
         CommandSchema {
             op: "scale_non_uniform",

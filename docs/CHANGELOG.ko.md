@@ -11,6 +11,12 @@
 
 ### 추가됨
 
+#### API — `Command::AabbExtents` AABB 길이 옵서버 (2026-05-09)
+- **`Command::AabbExtents { id }` (26번째 옵서버) 신규** + `Outcome::AabbExtents { id, extents }` + `OutcomeKind::AabbExtents` — 축별 경계 상자 길이 `[dx, dy, dz]` 반환. `Bounds`보다 저렴 (min/max 점 생략), `Diagonal`의 원시 카운터파트.
+- **연결**: `Session::execute` 읽기 전용 fast-path에 26번째 변형으로 추가. `Document::bounding_box` 재사용. 잘못된 id에는 `UnknownSolid`. history 불변.
+- **스키마**: `command_schemas()`에 `op = "aabb_extents"` (필수 `id` 1개) 추가.
+- **테스트**: `crates/api/tests/api_integration.rs`에 6개 회귀 테스트 추가 (4×6×8 박스 → `[4,6,8]`, 잘못된 id, 평행이동 불변, history 불변, JSON 라운드트립, 3×4×12 박스 → `Diagonal` 13.0 일치) + 스키마 커버리지 확장.
+
 #### API — `Command::SolidIds` 솔리드 id 열거 (2026-05-09)
 - **`Command::SolidIds` (25번째 옵서버) 신규** + `Outcome::SolidIds { ids }` + `OutcomeKind::SolidIds` — 라벨 없이 채워진 `Vec<SolidId>`만 반환. id만 필요할 때 `ListSolids`보다 저렴 (라벨 복제 생략).
 - **연결**: `Session::execute` 읽기 전용 fast-path에 25번째 변형으로 추가. `Document::solid_ids()` 재사용. history 불변.
