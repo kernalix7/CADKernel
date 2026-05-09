@@ -11,6 +11,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::SolidIds` solid-id enumeration (2026-05-09)
+- **New `Command::SolidIds` (25th observer)** + `Outcome::SolidIds { ids }` + `OutcomeKind::SolidIds` tag — returns just the populated `Vec<SolidId>` without labels. Cheaper than `ListSolids` when the consumer only needs ids (skips per-slot label cloning).
+- **Wiring**: routed through the read-only fast path in `Session::execute` (now 25 fast-pathed observer variants); dispatch reuses `Document::solid_ids()`. No history event is appended.
+- **Schema**: `command_schemas()` exposes `op = "solid_ids"` with no parameters.
+- **Tests**: 6 new regression tests in `crates/api/tests/api_integration.rs` (empty on fresh session, lists 3 ids after creates, skips deleted slot, history-untouched, JSON round-trip with `"op":"solid_ids"`, agrees with `ListSolids` projection) + schema-coverage fixture extended.
+
 #### API — `Command::HasLabel` label-existence predicate (2026-05-09)
 - **New `Command::HasLabel { query }` (24th observer)** + `Outcome::HasLabel { query, has_label }` + `OutcomeKind::HasLabel` tag — `has_label = true` iff at least one solid's label matches the case-insensitive substring `query`. Cheaper than `FindByLabel` when only the boolean is needed (skips the `Vec<SolidEntry>` allocation). Empty query returns `false` (matches the `FindByLabel` empty-needle convention but inverted, since a predicate "is there any matching solid" is unambiguously false when no needle is given).
 - **Wiring**: routed through the read-only fast path in `Session::execute` (now 24 fast-pathed observer variants); dispatch reuses `Document::solid_ids()` + `Document::solid_label()` and short-circuits via `Iterator::any`. No history event is appended.

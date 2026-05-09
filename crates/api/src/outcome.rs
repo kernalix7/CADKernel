@@ -195,6 +195,11 @@ pub enum Outcome {
     /// the query (case-insensitive substring). Cheaper than
     /// `FindByLabel` when only the boolean is needed.
     HasLabel { query: String, has_label: bool },
+    /// Read-only solid-id enumeration (`Command::SolidIds`).
+    /// Returns just the populated `SolidId`s as a `Vec<SolidId>`,
+    /// without labels. Cheaper than `ListSolids` when the consumer
+    /// only needs ids (skips per-slot label cloning).
+    SolidIds { ids: Vec<SolidId> },
     /// Nothing happened (`Command::Noop`).
     Empty,
 }
@@ -240,6 +245,7 @@ pub enum OutcomeKind {
     SolidCount,
     HistoryCount,
     HasLabel,
+    SolidIds,
     Empty,
 }
 
@@ -276,6 +282,7 @@ impl Outcome {
             Self::SolidCount { .. } => OutcomeKind::SolidCount,
             Self::HistoryCount { .. } => OutcomeKind::HistoryCount,
             Self::HasLabel { .. } => OutcomeKind::HasLabel,
+            Self::SolidIds { .. } => OutcomeKind::SolidIds,
             Self::Empty => OutcomeKind::Empty,
         }
     }

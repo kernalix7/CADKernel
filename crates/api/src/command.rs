@@ -295,6 +295,12 @@ pub enum Command {
     /// `Vec<SolidEntry>` allocation). Does not mutate or append
     /// a history event.
     HasLabel { query: String },
+    /// Read-only solid-id enumeration. Returns
+    /// `Outcome::SolidIds { ids }` with the populated `SolidId`s
+    /// only — no labels. Cheaper than `ListSolids` when the
+    /// consumer only needs ids (skips per-slot label cloning).
+    /// Does not mutate or append a history event.
+    SolidIds,
     /// `Outcome::SolidCreated { id, label }` where `label` is
     /// `"<source-label> (copy)"`. The source slot is left untouched.
     Duplicate { id: SolidId },
@@ -363,6 +369,7 @@ impl Command {
             Self::SolidCount => "solid_count",
             Self::HistoryCount => "history_count",
             Self::HasLabel { .. } => "has_label",
+            Self::SolidIds => "solid_ids",
             Self::Duplicate { .. } => "duplicate",
             Self::Rotate { .. } => "rotate",
             Self::Noop => "noop",
@@ -933,6 +940,11 @@ pub fn command_schemas() -> Vec<CommandSchema> {
                 required: true,
                 doc: "Case-insensitive substring to search for in solid labels.",
             }],
+        },
+        CommandSchema {
+            op: "solid_ids",
+            description: "Solid-id enumeration. Returns the populated SolidIds without labels (cheaper than list_solids).",
+            params: &[],
         },
         CommandSchema {
             op: "scale_non_uniform",

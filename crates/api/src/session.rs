@@ -294,7 +294,7 @@ impl Session {
         // because they don't mutate the document.
         if matches!(
             command,
-            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. } | Command::HistoryEvents | Command::Stats | Command::Bounds { .. } | Command::Distance { .. } | Command::Volume { .. } | Command::SurfaceArea { .. } | Command::Centroid { .. } | Command::IntersectsAabb { .. } | Command::Exists { .. } | Command::Diagonal { .. } | Command::AabbCenter { .. } | Command::AabbVolume { .. } | Command::ContainsAabb { .. } | Command::AabbCorners { .. } | Command::SolidLabel { .. } | Command::IsEmpty | Command::AabbSurfaceArea { .. } | Command::SolidCount | Command::HistoryCount | Command::HasLabel { .. }
+            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. } | Command::HistoryEvents | Command::Stats | Command::Bounds { .. } | Command::Distance { .. } | Command::Volume { .. } | Command::SurfaceArea { .. } | Command::Centroid { .. } | Command::IntersectsAabb { .. } | Command::Exists { .. } | Command::Diagonal { .. } | Command::AabbCenter { .. } | Command::AabbVolume { .. } | Command::ContainsAabb { .. } | Command::AabbCorners { .. } | Command::SolidLabel { .. } | Command::IsEmpty | Command::AabbSurfaceArea { .. } | Command::SolidCount | Command::HistoryCount | Command::HasLabel { .. } | Command::SolidIds
         ) {
             return self.dispatch(&command);
         }
@@ -741,6 +741,9 @@ impl Session {
                     has_label,
                 })
             }
+            Command::SolidIds => Ok(Outcome::SolidIds {
+                ids: self.document.solid_ids(),
+            }),
             Command::Rotate {
                 id,
                 axis,
@@ -1346,6 +1349,7 @@ fn history_description(cmd: &Command, outcome: &Outcome) -> String {
         (Command::SolidCount, _) => "SolidCount".to_string(),
         (Command::HistoryCount, _) => "HistoryCount".to_string(),
         (Command::HasLabel { query }, _) => format!("HasLabel '{query}'"),
+        (Command::SolidIds, _) => "SolidIds".to_string(),
         (Command::Duplicate { id }, _) => format!("Duplicate {id}"),
         (Command::Rotate { id, angle_rad, .. }, _) => {
             format!("Rotate {id} ({angle_rad} rad)")

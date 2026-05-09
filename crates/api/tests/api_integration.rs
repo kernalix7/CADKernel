@@ -531,6 +531,7 @@ fn command_schemas_cover_every_op_name() {
         Command::SolidCount,
         Command::HistoryCount,
         Command::HasLabel { query: "x".into() },
+        Command::SolidIds,
         Command::Duplicate {
             id: cadkernel_api::SolidId(0),
         },
@@ -3506,4 +3507,74 @@ fn has_label_command_round_trips_through_json() {
     assert!(json.contains("\"query\":\"Widget\""), "json = {json}");
     let back: Command = serde_json::from_str(&json).unwrap();
     assert!(matches!(back, Command::HasLabel { query } if query == "Widget"));
+}
+
+#[test]
+fn solid_ids_command_empty_on_fresh_session() {
+    let mut s = Session::new();
+    let outcome = s.execute(Command::SolidIds).unwrap();
+    if let Outcome::SolidIds { ids } = outcome {
+        assert!(ids.is_empty());
+    } else { panic!("expected SolidIds, got {outcome:?}"); }
+}
+
+#[test]
+fn solid_ids_command_lists_all_after_creates() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let ids = match s.execute(Command::SolidIds).unwrap() {
+        Outcome::SolidIds { ids } => ids,
+        _ => panic!(),
+    };
+    assert_eq!(ids, vec![SolidId(0), SolidId(1), SolidId(2)]);
+}
+
+#[test]
+fn solid_ids_command_skips_deleted() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::DeleteSolid { id: SolidId(1) }).unwrap();
+    let ids = match s.execute(Command::SolidIds).unwrap() {
+        Outcome::SolidIds { ids } => ids,
+        _ => panic!(),
+    };
+    assert_eq!(ids, vec![SolidId(0), SolidId(2)]);
+}
+
+#[test]
+fn solid_ids_command_does_not_append_history_event() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let before = s.document().history().len();
+    s.execute(Command::SolidIds).unwrap();
+    assert_eq!(s.document().history().len(), before);
+}
+
+#[test]
+fn solid_ids_command_round_trips_through_json() {
+    let cmd = Command::SolidIds;
+    let json = serde_json::to_string(&cmd).unwrap();
+    assert!(json.contains("\"op\":\"solid_ids\""), "json = {json}");
+    let back: Command = serde_json::from_str(&json).unwrap();
+    assert!(matches!(back, Command::SolidIds));
+}
+
+#[test]
+fn solid_ids_command_agrees_with_list_solids() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let ids = match s.execute(Command::SolidIds).unwrap() {
+        Outcome::SolidIds { ids } => ids,
+        _ => panic!(),
+    };
+    let listed: Vec<SolidId> = match s.execute(Command::ListSolids).unwrap() {
+        Outcome::SolidsListed { entries } => entries.into_iter().map(|e| e.id).collect(),
+        _ => panic!(),
+    };
+    assert_eq!(ids, listed);
 }

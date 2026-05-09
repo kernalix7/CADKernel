@@ -11,6 +11,12 @@
 
 ### 추가됨
 
+#### API — `Command::SolidIds` 솔리드 id 열거 (2026-05-09)
+- **`Command::SolidIds` (25번째 옵서버) 신규** + `Outcome::SolidIds { ids }` + `OutcomeKind::SolidIds` — 라벨 없이 채워진 `Vec<SolidId>`만 반환. id만 필요할 때 `ListSolids`보다 저렴 (라벨 복제 생략).
+- **연결**: `Session::execute` 읽기 전용 fast-path에 25번째 변형으로 추가. `Document::solid_ids()` 재사용. history 불변.
+- **스키마**: `command_schemas()`에 `op = "solid_ids"` (파라미터 없음) 추가.
+- **테스트**: `crates/api/tests/api_integration.rs`에 6개 회귀 테스트 추가 (초기 세션 → 빈 배열, 생성 3개 후 id 나열, 삭제 슬롯 제외, history 불변, JSON 라운드트립, `ListSolids` 결과와 일치) + 스키마 커버리지 확장.
+
 #### API — `Command::HasLabel` 라벨 존재 술어 (2026-05-09)
 - **`Command::HasLabel { query }` (24번째 옵서버) 신규** + `Outcome::HasLabel { query, has_label }` + `OutcomeKind::HasLabel` — 쿼리가 하나라도 라벨과 대소문자 무시 부분문자열 일치하면 `has_label = true`. 불린결과만 필요할 때 `FindByLabel`보다 저렴. 빈 쿼리는 false.
 - **연결**: `Session::execute` 읽기 전용 fast-path에 24번째 변형으로 추가. `Document::solid_ids()` + `Document::solid_label()` 재사용, `Iterator::any`로 단락. history 불변.
