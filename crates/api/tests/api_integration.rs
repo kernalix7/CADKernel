@@ -530,6 +530,7 @@ fn command_schemas_cover_every_op_name() {
         },
         Command::SolidCount,
         Command::HistoryCount,
+        Command::HasLabel { query: "x".into() },
         Command::Duplicate {
             id: cadkernel_api::SolidId(0),
         },
@@ -3445,4 +3446,64 @@ fn history_count_command_agrees_with_stats() {
         _ => panic!(),
     };
     assert_eq!(history_count, stats_history);
+}
+
+#[test]
+fn has_label_command_false_on_empty_session() {
+    let mut s = Session::new();
+    let outcome = s.execute(Command::HasLabel { query: "Box".into() }).unwrap();
+    if let Outcome::HasLabel { query, has_label } = outcome {
+        assert_eq!(query, "Box");
+        assert!(!has_label);
+    } else { panic!("expected HasLabel, got {outcome:?}"); }
+}
+
+#[test]
+fn has_label_command_finds_default_box() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let outcome = s.execute(Command::HasLabel { query: "box".into() }).unwrap();
+    if let Outcome::HasLabel { has_label, .. } = outcome {
+        assert!(has_label);
+    } else { panic!(); }
+}
+
+#[test]
+fn has_label_command_case_insensitive() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::Rename { id: SolidId(0), label: "Widget".into() }).unwrap();
+    let upper = s.execute(Command::HasLabel { query: "WIDGET".into() }).unwrap();
+    let lower = s.execute(Command::HasLabel { query: "widg".into() }).unwrap();
+    let miss = s.execute(Command::HasLabel { query: "Gadget".into() }).unwrap();
+    assert!(matches!(upper, Outcome::HasLabel { has_label: true, .. }));
+    assert!(matches!(lower, Outcome::HasLabel { has_label: true, .. }));
+    assert!(matches!(miss, Outcome::HasLabel { has_label: false, .. }));
+}
+
+#[test]
+fn has_label_command_empty_query_returns_false() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let outcome = s.execute(Command::HasLabel { query: "".into() }).unwrap();
+    assert!(matches!(outcome, Outcome::HasLabel { has_label: false, .. }));
+}
+
+#[test]
+fn has_label_command_does_not_append_history_event() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let before = s.document().history().len();
+    s.execute(Command::HasLabel { query: "Box".into() }).unwrap();
+    assert_eq!(s.document().history().len(), before);
+}
+
+#[test]
+fn has_label_command_round_trips_through_json() {
+    let cmd = Command::HasLabel { query: "Widget".into() };
+    let json = serde_json::to_string(&cmd).unwrap();
+    assert!(json.contains("\"op\":\"has_label\""), "json = {json}");
+    assert!(json.contains("\"query\":\"Widget\""), "json = {json}");
+    let back: Command = serde_json::from_str(&json).unwrap();
+    assert!(matches!(back, Command::HasLabel { query } if query == "Widget"));
 }

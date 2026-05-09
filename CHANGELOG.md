@@ -11,6 +11,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::HasLabel` label-existence predicate (2026-05-09)
+- **New `Command::HasLabel { query }` (24th observer)** + `Outcome::HasLabel { query, has_label }` + `OutcomeKind::HasLabel` tag — `has_label = true` iff at least one solid's label matches the case-insensitive substring `query`. Cheaper than `FindByLabel` when only the boolean is needed (skips the `Vec<SolidEntry>` allocation). Empty query returns `false` (matches the `FindByLabel` empty-needle convention but inverted, since a predicate "is there any matching solid" is unambiguously false when no needle is given).
+- **Wiring**: routed through the read-only fast path in `Session::execute` (now 24 fast-pathed observer variants); dispatch reuses `Document::solid_ids()` + `Document::solid_label()` and short-circuits via `Iterator::any`. No history event is appended.
+- **Schema**: `command_schemas()` exposes `op = "has_label"` with a single required `query: string` parameter.
+- **Tests**: 6 new regression tests in `crates/api/tests/api_integration.rs` (false on empty session, finds default `"Box"` label case-insensitively, three-way case-insensitive matrix on a renamed `"Widget"`, empty query → false, history-untouched, JSON round-trip with `"op":"has_label"` + `"query":"Widget"`) + schema-coverage fixture extended.
+
 #### API — `Command::HistoryCount` history-count observer (2026-05-09)
 - **New `Command::HistoryCount` (23rd observer)** + `Outcome::HistoryCount { count: u32 }` + `OutcomeKind::HistoryCount` tag — returns the number of recorded history events as a single `u32`. Cheaper than `Stats` when only the history length is needed (skips the solid-count field). Companion to `Command::SolidCount`.
 - **Wiring**: routed through the read-only fast path in `Session::execute` (now 23 fast-pathed observer variants); dispatch reuses `Document::history().len()` and casts to `u32`. No history event is appended.

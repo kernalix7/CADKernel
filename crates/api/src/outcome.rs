@@ -190,6 +190,11 @@ pub enum Outcome {
     /// Returns the number of recorded history events as a `u32`.
     /// Cheaper than `Stats` when only the history length is needed.
     HistoryCount { count: u32 },
+    /// Read-only label-existence predicate (`Command::HasLabel`).
+    /// `has_label = true` iff at least one solid's label matches
+    /// the query (case-insensitive substring). Cheaper than
+    /// `FindByLabel` when only the boolean is needed.
+    HasLabel { query: String, has_label: bool },
     /// Nothing happened (`Command::Noop`).
     Empty,
 }
@@ -234,6 +239,7 @@ pub enum OutcomeKind {
     AabbSurfaceArea,
     SolidCount,
     HistoryCount,
+    HasLabel,
     Empty,
 }
 
@@ -269,6 +275,7 @@ impl Outcome {
             Self::AabbSurfaceArea { .. } => OutcomeKind::AabbSurfaceArea,
             Self::SolidCount { .. } => OutcomeKind::SolidCount,
             Self::HistoryCount { .. } => OutcomeKind::HistoryCount,
+            Self::HasLabel { .. } => OutcomeKind::HasLabel,
             Self::Empty => OutcomeKind::Empty,
         }
     }

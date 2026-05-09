@@ -11,6 +11,12 @@
 
 ### 추가됨
 
+#### API — `Command::HasLabel` 라벨 존재 술어 (2026-05-09)
+- **`Command::HasLabel { query }` (24번째 옵서버) 신규** + `Outcome::HasLabel { query, has_label }` + `OutcomeKind::HasLabel` — 쿼리가 하나라도 라벨과 대소문자 무시 부분문자열 일치하면 `has_label = true`. 불린결과만 필요할 때 `FindByLabel`보다 저렴. 빈 쿼리는 false.
+- **연결**: `Session::execute` 읽기 전용 fast-path에 24번째 변형으로 추가. `Document::solid_ids()` + `Document::solid_label()` 재사용, `Iterator::any`로 단락. history 불변.
+- **스키마**: `command_schemas()`에 `op = "has_label"` (필수 `query: string` 1개) 추가.
+- **테스트**: `crates/api/tests/api_integration.rs`에 6개 회귀 테스트 추가 (빈 세션 → false, 기본 "Box" 대소문자 무시 탐색, `Rename` 후 3개 대소문자 조합 매트릭스, 빈 쿼리 → false, history 불변, JSON 라운드트립) + 스키마 커버리지 확장.
+
 #### API — `Command::HistoryCount` history 개수 옵서버 (2026-05-09)
 - **`Command::HistoryCount` (23번째 옵서버) 신규** + `Outcome::HistoryCount { count: u32 }` + `OutcomeKind::HistoryCount` — 기록된 history 이벤트 개수를 단일 `u32`로 반환. history 길이만 필요할 때 `Stats`보다 저렴. `Command::SolidCount`의 대칭 카운터파트.
 - **연결**: `Session::execute` 읽기 전용 fast-path에 23번째 변형으로 추가. `Document::history().len()`를 `u32`로 캐스트. history 불변.

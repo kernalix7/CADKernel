@@ -287,6 +287,14 @@ pub enum Command {
     /// `Stats` when only the history length is needed. Does not
     /// mutate or append a history event.
     HistoryCount,
+    /// Read-only label-existence predicate. Returns
+    /// `Outcome::HasLabel { query, has_label }` where
+    /// `has_label = true` iff any solid's label matches the
+    /// case-insensitive substring `query`. Cheaper than
+    /// `FindByLabel` when only the boolean is needed (skips the
+    /// `Vec<SolidEntry>` allocation). Does not mutate or append
+    /// a history event.
+    HasLabel { query: String },
     /// `Outcome::SolidCreated { id, label }` where `label` is
     /// `"<source-label> (copy)"`. The source slot is left untouched.
     Duplicate { id: SolidId },
@@ -354,6 +362,7 @@ impl Command {
             Self::AabbSurfaceArea { .. } => "aabb_surface_area",
             Self::SolidCount => "solid_count",
             Self::HistoryCount => "history_count",
+            Self::HasLabel { .. } => "has_label",
             Self::Duplicate { .. } => "duplicate",
             Self::Rotate { .. } => "rotate",
             Self::Noop => "noop",
@@ -914,6 +923,16 @@ pub fn command_schemas() -> Vec<CommandSchema> {
             op: "history_count",
             description: "History-count observer. Returns the number of recorded history events as a u32.",
             params: &[],
+        },
+        CommandSchema {
+            op: "has_label",
+            description: "Label-existence predicate. Returns true iff any solid's label matches the case-insensitive substring query.",
+            params: &[ParamSchema {
+                name: "query",
+                ty: "string",
+                required: true,
+                doc: "Case-insensitive substring to search for in solid labels.",
+            }],
         },
         CommandSchema {
             op: "scale_non_uniform",
