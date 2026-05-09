@@ -294,7 +294,7 @@ impl Session {
         // because they don't mutate the document.
         if matches!(
             command,
-            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. } | Command::HistoryEvents | Command::Stats | Command::Bounds { .. } | Command::Distance { .. } | Command::Volume { .. } | Command::SurfaceArea { .. } | Command::Centroid { .. } | Command::IntersectsAabb { .. } | Command::Exists { .. } | Command::Diagonal { .. } | Command::AabbCenter { .. } | Command::AabbVolume { .. }
+            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. } | Command::HistoryEvents | Command::Stats | Command::Bounds { .. } | Command::Distance { .. } | Command::Volume { .. } | Command::SurfaceArea { .. } | Command::Centroid { .. } | Command::IntersectsAabb { .. } | Command::Exists { .. } | Command::Diagonal { .. } | Command::AabbCenter { .. } | Command::AabbVolume { .. } | Command::ContainsAabb { .. }
         ) {
             return self.dispatch(&command);
         }
@@ -660,6 +660,24 @@ impl Session {
                 let dy = bbox.max[1] - bbox.min[1];
                 let dz = bbox.max[2] - bbox.min[2];
                 Ok(Outcome::AabbVolume { id: *id, volume: dx * dy * dz })
+            }
+            Command::ContainsAabb { id_outer, id_inner } => {
+                let outer = self
+                    .document
+                    .bounding_box(*id_outer)
+                    .ok_or_else(|| ApiError::UnknownSolid(format!("{id_outer}")))?;
+                let inner = self
+                    .document
+                    .bounding_box(*id_inner)
+                    .ok_or_else(|| ApiError::UnknownSolid(format!("{id_inner}")))?;
+                let contains = (0..3).all(|i| {
+                    outer.min[i] <= inner.min[i] && inner.max[i] <= outer.max[i]
+                });
+                Ok(Outcome::AabbContainment {
+                    id_outer: *id_outer,
+                    id_inner: *id_inner,
+                    contains,
+                })
             }
             Command::Rotate {
                 id,
@@ -1256,6 +1274,9 @@ fn history_description(cmd: &Command, outcome: &Outcome) -> String {
         (Command::Diagonal { id }, _) => format!("Diagonal {id}"),
         (Command::AabbCenter { id }, _) => format!("AabbCenter {id}"),
         (Command::AabbVolume { id }, _) => format!("AabbVolume {id}"),
+        (Command::ContainsAabb { id_outer, id_inner }, _) => {
+            format!("ContainsAabb {id_outer} ⊇ {id_inner}")
+        }
         (Command::Duplicate { id }, _) => format!("Duplicate {id}"),
         (Command::Rotate { id, angle_rad, .. }, _) => {
             format!("Rotate {id} ({angle_rad} rad)")

@@ -11,6 +11,12 @@
 
 ### 추가됨
 
+#### API — `Command::ContainsAabb` AABB 포함 술어 (2026-05-09)
+- **`Command::ContainsAabb { id_outer, id_inner }` (17번째 올서버) 신규** + `Outcome::AabbContainment` + `OutcomeKind::AabbContainment` — outer의 경계 상자가 inner의 경계 상자를 완전히 덮으면 `contains = true` (닫힌 구간; 면이 닿아도 포함). 전체 기하 검사를 건너뛰는 저렴한 broad-phase 포함 테스트.
+- **연결**: `Session::execute` 읽기 전용 fast-path에 17번째 변형으로 추가. `Document::bounding_box`로 두 AABB를 가져와 3개 축 모두에서 `outer.min[i] <= inner.min[i] && inner.max[i] <= outer.max[i]` 조건을 검사. 어느 쪽 id가 없어도 `UnknownSolid`. history에 이벤트 추가하지 않음.
+- **스키마**: `command_schemas()`에 `op = "contains_aabb"` (필수 `id_outer` / `id_inner` 2개) 추가.
+- **테스트**: `crates/api/tests/api_integration.rs`에 7개 회귀 테스트 추가 (10×10×10 → 2×2×2 포함 true, 4×4×4 + 평행이동된 inner → false, 자기 포함 → true, 양쪽 id 모두 `UnknownSolid`, history 불변, JSON 라운드트립) + 스키마 커버리지 확장.
+
 #### API — `Command::AabbVolume` AABB 부피 올서버 (2026-05-09)
 - **`Command::AabbVolume { id }` (16번째 올서버) 신규** + `Outcome::AabbVolume` + `OutcomeKind::AabbVolume` — `dx * dy * dz` (축별 경계 상자 길이의 곱) 반환. 질량 부피의 저렴한 상한값으로 LOD 휴리스틱 및 비례 임계값에 유용. `Volume` / `Measure`의 질량-부피 순회를 건너뜀.
 - **연결**: `Session::execute` 읽기 전용 fast-path에 16번째 변형으로 추가. `Document::bounding_box`를 재사용하여 길이 곱을 계산하고 `Outcome::AabbVolume`을 반환. 잘못된 id에는 `UnknownSolid`를 반환하고 history에 이벤트를 추가하지 않음.

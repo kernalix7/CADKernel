@@ -234,6 +234,17 @@ pub enum Command {
     /// traversal performed by `Volume` / `Measure`. Does not mutate
     /// or append a history event.
     AabbVolume { id: SolidId },
+    /// Read-only AABB-containment predicate. Returns
+    /// `Outcome::AabbContainment { id_outer, id_inner, contains }`
+    /// where `contains = true` iff the bounding box of `id_outer`
+    /// fully covers the bounding box of `id_inner` (closed
+    /// intervals; touching faces count as contained). Cheap
+    /// broad-phase containment test using only the world-space
+    /// AABBs of both solids.
+    ContainsAabb {
+        id_outer: SolidId,
+        id_inner: SolidId,
+    },
     /// `Outcome::SolidCreated { id, label }` where `label` is
     /// `"<source-label> (copy)"`. The source slot is left untouched.
     Duplicate { id: SolidId },
@@ -294,6 +305,7 @@ impl Command {
             Self::Diagonal { .. } => "diagonal",
             Self::AabbCenter { .. } => "aabb_center",
             Self::AabbVolume { .. } => "aabb_volume",
+            Self::ContainsAabb { .. } => "contains_aabb",
             Self::Duplicate { .. } => "duplicate",
             Self::Rotate { .. } => "rotate",
             Self::Noop => "noop",
@@ -791,6 +803,24 @@ pub fn command_schemas() -> Vec<CommandSchema> {
                 required: true,
                 doc: "Solid to query.",
             }],
+        },
+        CommandSchema {
+            op: "contains_aabb",
+            description: "AABB-containment predicate. True iff outer's bounding box fully covers inner's bounding box (closed intervals).",
+            params: &[
+                ParamSchema {
+                    name: "id_outer",
+                    ty: "solid_id",
+                    required: true,
+                    doc: "Outer solid (potential container).",
+                },
+                ParamSchema {
+                    name: "id_inner",
+                    ty: "solid_id",
+                    required: true,
+                    doc: "Inner solid (potential containee).",
+                },
+            ],
         },
         CommandSchema {
             op: "scale_non_uniform",

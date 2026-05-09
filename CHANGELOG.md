@@ -11,6 +11,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::ContainsAabb` AABB-containment predicate (2026-05-09)
+- **New `Command::ContainsAabb { id_outer, id_inner }` (17th observer)** + `Outcome::AabbContainment { id_outer, id_inner, contains }` + `OutcomeKind::AabbContainment` tag — `contains = true` iff outer's bounding box fully covers inner's bounding box (closed intervals; touching faces count as contained). Cheap broad-phase containment test that avoids the per-face SAT/boolean machinery of the full geometric check.
+- **Wiring**: routed through the read-only fast path in `Session::execute` (now 17 fast-pathed observer variants); dispatch fetches both AABBs via `Document::bounding_box` and folds `outer.min[i] <= inner.min[i] && inner.max[i] <= outer.max[i]` across the three axes. `UnknownSolid` surfaces for missing ids on either side; no history event is appended.
+- **Schema**: `command_schemas()` exposes `op = "contains_aabb"` with two required `solid_id` parameters (`id_outer`, `id_inner`) so AI/MCP clients can discover the surface.
+- **Tests**: 7 new regression tests in `crates/api/tests/api_integration.rs` (10×10×10 outer covers translated 2×2×2 inner → true, 4×4×4 outer fails to contain inner translated by +5 → false, self-containment → true, `UnknownSolid` for both id sides, history-untouched, JSON round-trip with `"op":"contains_aabb"`) + schema-coverage fixture extended.
+
 #### API — `Command::AabbVolume` AABB-volume observer (2026-05-09)
 - **New `Command::AabbVolume { id }` (16th observer)** + `Outcome::AabbVolume { id, volume }` + `OutcomeKind::AabbVolume` tag — returns `dx * dy * dz` (product of per-axis bounding-box extents). Cheap upper bound on the solid's mass volume; useful for LOD heuristics and proportional thresholds without paying for the mass-volume traversal performed by `Volume` / `Measure`.
 - **Wiring**: routed through the read-only fast path in `Session::execute` (now 16 fast-pathed observer variants); dispatch reuses `Document::bounding_box`, computes the extent product, and returns `Outcome::AabbVolume { id, volume }`. `UnknownSolid` surfaces for missing ids; no history event is appended.

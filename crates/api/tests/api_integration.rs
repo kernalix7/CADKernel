@@ -514,6 +514,10 @@ fn command_schemas_cover_every_op_name() {
         Command::AabbVolume {
             id: cadkernel_api::SolidId(0),
         },
+        Command::ContainsAabb {
+            id_outer: cadkernel_api::SolidId(0),
+            id_inner: cadkernel_api::SolidId(0),
+        },
         Command::Duplicate {
             id: cadkernel_api::SolidId(0),
         },
@@ -2999,4 +3003,81 @@ fn aabb_volume_command_is_invariant_under_translation() {
     };
     assert!((v0 - v1).abs() < 1e-9, "v0={v0} v1={v1}");
     assert!((v0 - 30.0).abs() < 1e-9);
+}
+
+#[test]
+fn contains_aabb_command_true_when_outer_covers_inner() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 10.0, dy: 10.0, dz: 10.0 }).unwrap();
+    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
+    s.execute(Command::Translate { id: SolidId(1), dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let outcome = s.execute(Command::ContainsAabb { id_outer: SolidId(0), id_inner: SolidId(1) }).unwrap();
+    if let Outcome::AabbContainment { id_outer, id_inner, contains } = outcome {
+        assert_eq!(id_outer, SolidId(0));
+        assert_eq!(id_inner, SolidId(1));
+        assert!(contains);
+    } else { panic!("expected AabbContainment, got {outcome:?}"); }
+}
+
+#[test]
+fn contains_aabb_command_false_when_inner_pokes_out() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 4.0, dy: 4.0, dz: 4.0 }).unwrap();
+    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
+    s.execute(Command::Translate { id: SolidId(1), dx: 5.0, dy: 0.0, dz: 0.0 }).unwrap();
+    let outcome = s.execute(Command::ContainsAabb { id_outer: SolidId(0), id_inner: SolidId(1) }).unwrap();
+    if let Outcome::AabbContainment { contains, .. } = outcome {
+        assert!(!contains);
+    } else { panic!(); }
+}
+
+#[test]
+fn contains_aabb_command_self_contains_self() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 2.0, dz: 3.0 }).unwrap();
+    let outcome = s.execute(Command::ContainsAabb { id_outer: SolidId(0), id_inner: SolidId(0) }).unwrap();
+    if let Outcome::AabbContainment { contains, .. } = outcome {
+        assert!(contains, "self-containment must be true (closed intervals)");
+    } else { panic!(); }
+}
+
+#[test]
+fn contains_aabb_command_returns_unknown_solid_for_invalid_outer() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let err = s.execute(Command::ContainsAabb { id_outer: SolidId(9), id_inner: SolidId(0) }).unwrap_err();
+    assert!(matches!(err, ApiError::UnknownSolid(_)));
+}
+
+#[test]
+fn contains_aabb_command_returns_unknown_solid_for_invalid_inner() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let err = s.execute(Command::ContainsAabb { id_outer: SolidId(0), id_inner: SolidId(9) }).unwrap_err();
+    assert!(matches!(err, ApiError::UnknownSolid(_)));
+}
+
+#[test]
+fn contains_aabb_command_does_not_append_history_event() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 5.0, dy: 5.0, dz: 5.0 }).unwrap();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let before = s.document().history().len();
+    s.execute(Command::ContainsAabb { id_outer: SolidId(0), id_inner: SolidId(1) }).unwrap();
+    assert_eq!(s.document().history().len(), before);
+}
+
+#[test]
+fn contains_aabb_command_round_trips_through_json() {
+    let cmd = Command::ContainsAabb { id_outer: SolidId(2), id_inner: SolidId(7) };
+    let json = serde_json::to_string(&cmd).unwrap();
+    assert!(json.contains("\"op\":\"contains_aabb\""), "json = {json}");
+    let back: Command = serde_json::from_str(&json).unwrap();
+    match back {
+        Command::ContainsAabb { id_outer, id_inner } => {
+            assert_eq!(id_outer, SolidId(2));
+            assert_eq!(id_inner, SolidId(7));
+        }
+        _ => panic!("expected ContainsAabb"),
+    }
 }

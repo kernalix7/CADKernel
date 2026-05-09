@@ -143,6 +143,17 @@ pub enum Outcome {
     /// and proportional thresholds without paying for the mass-volume
     /// traversal performed by `Volume` / `Measure`.
     AabbVolume { id: SolidId, volume: f64 },
+    /// Read-only AABB-containment predicate (`Command::ContainsAabb`).
+    /// `contains = true` iff the bounding box of `id_outer` fully
+    /// covers the bounding box of `id_inner` (closed intervals;
+    /// touching faces count as contained). Cheap broad-phase test
+    /// that avoids the per-face boolean / SAT machinery of the full
+    /// containment check.
+    AabbContainment {
+        id_outer: SolidId,
+        id_inner: SolidId,
+        contains: bool,
+    },
     /// Nothing happened (`Command::Noop`).
     Empty,
 }
@@ -180,6 +191,7 @@ pub enum OutcomeKind {
     Diagonal,
     AabbCenter,
     AabbVolume,
+    AabbContainment,
     Empty,
 }
 
@@ -208,6 +220,7 @@ impl Outcome {
             Self::Diagonal { .. } => OutcomeKind::Diagonal,
             Self::AabbCenter { .. } => OutcomeKind::AabbCenter,
             Self::AabbVolume { .. } => OutcomeKind::AabbVolume,
+            Self::AabbContainment { .. } => OutcomeKind::AabbContainment,
             Self::Empty => OutcomeKind::Empty,
         }
     }
