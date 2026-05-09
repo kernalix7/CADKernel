@@ -207,6 +207,12 @@ pub enum Command {
     /// world-space bounding boxes; touching boxes count as
     /// intersecting. Does not mutate or append a history event.
     IntersectsAabb { id_a: SolidId, id_b: SolidId },
+    /// Read-only solid-existence predicate. Returns
+    /// `Outcome::Exists { id, exists }` and **never errors** on a
+    /// missing id — missing ids report `exists = false`. Cheap probe
+    /// AI / scripts use to test ids without paying for `UnknownSolid`
+    /// exception handling. Does not mutate or append a history event.
+    Exists { id: SolidId },
     /// Deep-clone a solid into a new slot. Returns the new
     /// `Outcome::SolidCreated { id, label }` where `label` is
     /// `"<source-label> (copy)"`. The source slot is left untouched.
@@ -264,6 +270,7 @@ impl Command {
             Self::SurfaceArea { .. } => "surface_area",
             Self::Centroid { .. } => "centroid",
             Self::IntersectsAabb { .. } => "intersects_aabb",
+            Self::Exists { .. } => "exists",
             Self::Duplicate { .. } => "duplicate",
             Self::Rotate { .. } => "rotate",
             Self::Noop => "noop",
@@ -721,6 +728,16 @@ pub fn command_schemas() -> Vec<CommandSchema> {
                     doc: "Second solid.",
                 },
             ],
+        },
+        CommandSchema {
+            op: "exists",
+            description: "Solid-existence predicate. Never errors on missing ids; returns exists = false instead.",
+            params: &[ParamSchema {
+                name: "id",
+                ty: "solid_id",
+                required: true,
+                doc: "Solid to probe.",
+            }],
         },
         CommandSchema {
             op: "scale_non_uniform",

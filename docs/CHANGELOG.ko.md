@@ -11,6 +11,12 @@
 
 ### 추가됨
 
+#### API — `Command::Exists` 무예외 존재 predicate (2026-05-09)
+- **`Command::Exists { id }` (13번째 올서버) 신규** + `Outcome::Exists` + `OutcomeKind::Exists` — **누락 id에 대해서도 에러를 내지 않고** `exists = false` 반환. AI/스크립트가 `UnknownSolid` 예외 처리 없이 id 유효성을 싸게 확인할 때 사용.
+- **올서버 fast-path 13개로 확장**. `Document::solid_label(id).is_some()`로 구현 — 할당 없음, 메시 접근 없음.
+- **회귀 테스트 5개**: 존재 id true / 누락 id false (에러 없음) / 삭제 후 false / history 미추가 / JSON 라운드트립.
+- **3,011 / 0 / 0** 테스트, clippy strict clean.
+
 #### API — `Command::IntersectsAabb` AABB 겹침 predicate (2026-05-09)
 - **`Command::IntersectsAabb { id_a, id_b }` (12번째 올서버) 신규** + `Outcome::AabbIntersection` + `OutcomeKind::AabbIntersection` — 월드 AABB만으로 broad-phase 충돌 판정. 닫힌 구간 겹침이므로 면 접촉도 intersects=true. 겹칠 때 `overlap_min`/`overlap_max`로 교집합 AABB 반환, 비겹침 시 0으로 초기화.
 - **올서버 fast-path 12개로 확장**. 양쪽 모두 `Document::bounding_box` 재사용(메시 순회 없음).

@@ -11,6 +11,13 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::Exists` non-throwing existence predicate (2026-05-09)
+- **New `Command::Exists { id }` (13th observer)** + `Outcome::Exists { id, exists }` + `OutcomeKind::Exists` tag — returns a boolean predicate that **never errors** on a missing id (reports `exists = false` instead). Cheap probe AI / scripts use to test ids without paying for `UnknownSolid` exception handling.
+- **Observer fast-path widened** to 13 variants. Implemented as `Document::solid_label(id).is_some()` — no allocation, no mesh access.
+- **`CommandSchema` entry** added.
+- **5 new regression tests**: present id reports true, missing id reports false (no error raised), deletion flips to false, history untouched on both present/missing probes, JSON round-trip (`op: "exists"`).
+- **3,011 / 0 / 0** tests (+5 vs. IntersectsAabb slice); strict `clippy --all-targets --all-features -D warnings` clean.
+
 #### API — `Command::IntersectsAabb` AABB-overlap predicate (2026-05-09)
 - **New `Command::IntersectsAabb { id_a, id_b }` (12th observer)** + `Outcome::AabbIntersection { id_a, id_b, intersects, overlap_min, overlap_max }` + `OutcomeKind::AabbIntersection` tag — cheap broad-phase collision predicate using world-space bounding boxes only. Touching boxes count as intersecting (closed-interval overlap). When intersecting, `overlap_min` / `overlap_max` carry the intersection AABB; when disjoint, both arrays are zeroed.
 - **Observer fast-path widened** to 12 variants. Reuses `Document::bounding_box` for both solids (no mesh traversal).

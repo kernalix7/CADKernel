@@ -122,6 +122,11 @@ pub enum Outcome {
         overlap_min: [f64; 3],
         overlap_max: [f64; 3],
     },
+    /// Read-only solid-existence predicate (`Command::Exists`).
+    /// Never errors on missing ids — returns `exists = false` instead.
+    /// Cheap probe AI / scripts use to test whether an id is still
+    /// valid without paying for `UnknownSolid` exception handling.
+    Exists { id: SolidId, exists: bool },
     /// Nothing happened (`Command::Noop`).
     Empty,
 }
@@ -155,6 +160,7 @@ pub enum OutcomeKind {
     SurfaceArea,
     Centroid,
     AabbIntersection,
+    Exists,
     Empty,
 }
 
@@ -179,6 +185,7 @@ impl Outcome {
             Self::SurfaceArea { .. } => OutcomeKind::SurfaceArea,
             Self::Centroid { .. } => OutcomeKind::Centroid,
             Self::AabbIntersection { .. } => OutcomeKind::AabbIntersection,
+            Self::Exists { .. } => OutcomeKind::Exists,
             Self::Empty => OutcomeKind::Empty,
         }
     }

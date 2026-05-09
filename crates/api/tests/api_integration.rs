@@ -502,6 +502,9 @@ fn command_schemas_cover_every_op_name() {
             id_a: cadkernel_api::SolidId(0),
             id_b: cadkernel_api::SolidId(1),
         },
+        Command::Exists {
+            id: cadkernel_api::SolidId(0),
+        },
         Command::Duplicate {
             id: cadkernel_api::SolidId(0),
         },
@@ -2760,5 +2763,60 @@ fn intersects_aabb_command_round_trips_through_json() {
             assert_eq!(id_b, SolidId(5));
         }
         _ => panic!("expected IntersectsAabb"),
+    }
+}
+
+#[test]
+fn exists_command_returns_true_for_present_solid() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let outcome = s.execute(Command::Exists { id: SolidId(0) }).unwrap();
+    if let Outcome::Exists { id, exists } = outcome {
+        assert_eq!(id, SolidId(0));
+        assert!(exists);
+    } else { panic!("expected Exists, got {outcome:?}"); }
+}
+
+#[test]
+fn exists_command_returns_false_for_missing_id_without_error() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let outcome = s.execute(Command::Exists { id: SolidId(7) }).unwrap();
+    if let Outcome::Exists { id, exists } = outcome {
+        assert_eq!(id, SolidId(7));
+        assert!(!exists, "missing id should report exists=false, not error");
+    } else { panic!(); }
+}
+
+#[test]
+fn exists_command_returns_false_after_delete() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::DeleteSolid { id: SolidId(0) }).unwrap();
+    let outcome = s.execute(Command::Exists { id: SolidId(0) }).unwrap();
+    if let Outcome::Exists { exists, .. } = outcome {
+        assert!(!exists);
+    } else { panic!(); }
+}
+
+#[test]
+fn exists_command_does_not_append_history_event() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let before = s.document().history().len();
+    s.execute(Command::Exists { id: SolidId(0) }).unwrap();
+    s.execute(Command::Exists { id: SolidId(99) }).unwrap();
+    assert_eq!(s.document().history().len(), before);
+}
+
+#[test]
+fn exists_command_round_trips_through_json() {
+    let cmd = Command::Exists { id: SolidId(7) };
+    let json = serde_json::to_string(&cmd).unwrap();
+    assert!(json.contains("\"op\":\"exists\""));
+    let back: Command = serde_json::from_str(&json).unwrap();
+    match back {
+        Command::Exists { id } => assert_eq!(id, SolidId(7)),
+        _ => panic!("expected Exists"),
     }
 }

@@ -294,7 +294,7 @@ impl Session {
         // because they don't mutate the document.
         if matches!(
             command,
-            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. } | Command::HistoryEvents | Command::Stats | Command::Bounds { .. } | Command::Distance { .. } | Command::Volume { .. } | Command::SurfaceArea { .. } | Command::Centroid { .. } | Command::IntersectsAabb { .. }
+            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. } | Command::HistoryEvents | Command::Stats | Command::Bounds { .. } | Command::Distance { .. } | Command::Volume { .. } | Command::SurfaceArea { .. } | Command::Centroid { .. } | Command::IntersectsAabb { .. } | Command::Exists { .. }
         ) {
             return self.dispatch(&command);
         }
@@ -618,6 +618,10 @@ impl Session {
                     overlap_min: omin,
                     overlap_max: omax,
                 })
+            }
+            Command::Exists { id } => {
+                let exists = self.document.solid_label(*id).is_some();
+                Ok(Outcome::Exists { id: *id, exists })
             }
             Command::Rotate {
                 id,
@@ -1210,6 +1214,7 @@ fn history_description(cmd: &Command, outcome: &Outcome) -> String {
         (Command::SurfaceArea { id }, _) => format!("SurfaceArea {id}"),
         (Command::Centroid { id }, _) => format!("Centroid {id}"),
         (Command::IntersectsAabb { id_a, id_b }, _) => format!("IntersectsAabb {id_a} <-> {id_b}"),
+        (Command::Exists { id }, _) => format!("Exists {id}"),
         (Command::Duplicate { id }, _) => format!("Duplicate {id}"),
         (Command::Rotate { id, angle_rad, .. }, _) => {
             format!("Rotate {id} ({angle_rad} rad)")
