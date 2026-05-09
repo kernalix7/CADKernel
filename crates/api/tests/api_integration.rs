@@ -528,6 +528,7 @@ fn command_schemas_cover_every_op_name() {
         Command::AabbSurfaceArea {
             id: cadkernel_api::SolidId(0),
         },
+        Command::SolidCount,
         Command::Duplicate {
             id: cadkernel_api::SolidId(0),
         },
@@ -3320,4 +3321,66 @@ fn aabb_surface_area_command_is_invariant_under_translation() {
     assert!((a0 - a1).abs() < 1e-9, "a0={a0} a1={a1}");
     // 2 * (2*3 + 3*5 + 5*2) = 2 * (6 + 15 + 10) = 62
     assert!((a0 - 62.0).abs() < 1e-9);
+}
+
+#[test]
+fn solid_count_command_zero_on_fresh_session() {
+    let mut s = Session::new();
+    let outcome = s.execute(Command::SolidCount).unwrap();
+    if let Outcome::SolidCount { count } = outcome {
+        assert_eq!(count, 0);
+    } else { panic!("expected SolidCount, got {outcome:?}"); }
+}
+
+#[test]
+fn solid_count_command_tracks_creates_and_deletes() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let after_three = match s.execute(Command::SolidCount).unwrap() {
+        Outcome::SolidCount { count } => count,
+        _ => panic!(),
+    };
+    assert_eq!(after_three, 3);
+    s.execute(Command::DeleteSolid { id: SolidId(1) }).unwrap();
+    let after_delete = match s.execute(Command::SolidCount).unwrap() {
+        Outcome::SolidCount { count } => count,
+        _ => panic!(),
+    };
+    assert_eq!(after_delete, 2);
+}
+
+#[test]
+fn solid_count_command_does_not_append_history_event() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let before = s.document().history().len();
+    s.execute(Command::SolidCount).unwrap();
+    assert_eq!(s.document().history().len(), before);
+}
+
+#[test]
+fn solid_count_command_round_trips_through_json() {
+    let cmd = Command::SolidCount;
+    let json = serde_json::to_string(&cmd).unwrap();
+    assert!(json.contains("\"op\":\"solid_count\""), "json = {json}");
+    let back: Command = serde_json::from_str(&json).unwrap();
+    assert!(matches!(back, Command::SolidCount));
+}
+
+#[test]
+fn solid_count_command_agrees_with_stats() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let solid_count = match s.execute(Command::SolidCount).unwrap() {
+        Outcome::SolidCount { count } => count,
+        _ => panic!(),
+    };
+    let stats_count = match s.execute(Command::Stats).unwrap() {
+        Outcome::Stats { solid_count, .. } => solid_count,
+        _ => panic!(),
+    };
+    assert_eq!(solid_count, stats_count);
 }

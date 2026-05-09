@@ -181,6 +181,11 @@ pub enum Outcome {
     /// proportional thresholds without paying for the per-face
     /// traversal performed by `SurfaceArea` / `Measure`.
     AabbSurfaceArea { id: SolidId, surface_area: f64 },
+    /// Read-only solid-count observer (`Command::SolidCount`).
+    /// Returns just the populated-slot count as a `u32`. Cheaper
+    /// than `Stats` when the consumer only needs the count (skips
+    /// the history-length field).
+    SolidCount { count: u32 },
     /// Nothing happened (`Command::Noop`).
     Empty,
 }
@@ -223,6 +228,7 @@ pub enum OutcomeKind {
     SolidLabel,
     IsEmpty,
     AabbSurfaceArea,
+    SolidCount,
     Empty,
 }
 
@@ -256,6 +262,7 @@ impl Outcome {
             Self::SolidLabel { .. } => OutcomeKind::SolidLabel,
             Self::IsEmpty { .. } => OutcomeKind::IsEmpty,
             Self::AabbSurfaceArea { .. } => OutcomeKind::AabbSurfaceArea,
+            Self::SolidCount { .. } => OutcomeKind::SolidCount,
             Self::Empty => OutcomeKind::Empty,
         }
     }

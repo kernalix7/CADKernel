@@ -11,6 +11,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::SolidCount` solid-count observer (2026-05-09)
+- **New `Command::SolidCount` (22nd observer)** + `Outcome::SolidCount { count: u32 }` + `OutcomeKind::SolidCount` tag — returns the number of populated solid slots as a single `u32`. Cheaper than `Stats` when only the solid count is needed (skips the history-length field and avoids the broader `Stats` outcome wrapper).
+- **Wiring**: routed through the read-only fast path in `Session::execute` (now 22 fast-pathed observer variants); dispatch reuses `Document::solid_count()` and casts to `u32`. No history event is appended.
+- **Schema**: `command_schemas()` exposes `op = "solid_count"` with no parameters so AI/MCP clients can discover the surface.
+- **Tests**: 5 new regression tests in `crates/api/tests/api_integration.rs` (zero on fresh session, tracks 3 creates + 1 delete → 2, history-untouched, JSON round-trip with `"op":"solid_count"`, agrees with `Stats::solid_count`) + schema-coverage fixture extended.
+
 #### API — `Command::AabbSurfaceArea` AABB-surface-area observer (2026-05-09)
 - **New `Command::AabbSurfaceArea { id }` (21st observer)** + `Outcome::AabbSurfaceArea { id, surface_area }` + `OutcomeKind::AabbSurfaceArea` tag — returns `2 * (dx*dy + dy*dz + dz*dx)` (sum of pairwise extent products, doubled). Cheap upper bound on the solid's true surface area; useful for LOD heuristics and proportional thresholds without paying for the per-face traversal performed by `SurfaceArea` / `Measure`. Symmetric counterpart to `AabbVolume`.
 - **Wiring**: routed through the read-only fast path in `Session::execute` (now 21 fast-pathed observer variants); dispatch reuses `Document::bounding_box`, computes the three pairwise products from the per-axis extents, and returns the doubled sum. `UnknownSolid` surfaces for missing ids; no history event is appended.

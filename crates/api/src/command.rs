@@ -275,6 +275,12 @@ pub enum Command {
     /// for the per-face traversal performed by `SurfaceArea` /
     /// `Measure`. Does not mutate or append a history event.
     AabbSurfaceArea { id: SolidId },
+    /// Read-only solid-count observer. Returns
+    /// `Outcome::SolidCount { count }` where `count` is the number
+    /// of populated solid slots as a `u32`. Cheaper than `Stats`
+    /// when only the count is needed. Does not mutate or append a
+    /// history event.
+    SolidCount,
     /// `Outcome::SolidCreated { id, label }` where `label` is
     /// `"<source-label> (copy)"`. The source slot is left untouched.
     Duplicate { id: SolidId },
@@ -340,6 +346,7 @@ impl Command {
             Self::SolidLabel { .. } => "solid_label",
             Self::IsEmpty => "is_empty",
             Self::AabbSurfaceArea { .. } => "aabb_surface_area",
+            Self::SolidCount => "solid_count",
             Self::Duplicate { .. } => "duplicate",
             Self::Rotate { .. } => "rotate",
             Self::Noop => "noop",
@@ -890,6 +897,11 @@ pub fn command_schemas() -> Vec<CommandSchema> {
                 required: true,
                 doc: "Solid to query.",
             }],
+        },
+        CommandSchema {
+            op: "solid_count",
+            description: "Solid-count observer. Returns the number of populated solid slots as a u32.",
+            params: &[],
         },
         CommandSchema {
             op: "scale_non_uniform",

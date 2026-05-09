@@ -294,7 +294,7 @@ impl Session {
         // because they don't mutate the document.
         if matches!(
             command,
-            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. } | Command::HistoryEvents | Command::Stats | Command::Bounds { .. } | Command::Distance { .. } | Command::Volume { .. } | Command::SurfaceArea { .. } | Command::Centroid { .. } | Command::IntersectsAabb { .. } | Command::Exists { .. } | Command::Diagonal { .. } | Command::AabbCenter { .. } | Command::AabbVolume { .. } | Command::ContainsAabb { .. } | Command::AabbCorners { .. } | Command::SolidLabel { .. } | Command::IsEmpty | Command::AabbSurfaceArea { .. }
+            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. } | Command::HistoryEvents | Command::Stats | Command::Bounds { .. } | Command::Distance { .. } | Command::Volume { .. } | Command::SurfaceArea { .. } | Command::Centroid { .. } | Command::IntersectsAabb { .. } | Command::Exists { .. } | Command::Diagonal { .. } | Command::AabbCenter { .. } | Command::AabbVolume { .. } | Command::ContainsAabb { .. } | Command::AabbCorners { .. } | Command::SolidLabel { .. } | Command::IsEmpty | Command::AabbSurfaceArea { .. } | Command::SolidCount
         ) {
             return self.dispatch(&command);
         }
@@ -720,6 +720,9 @@ impl Session {
                 let surface_area = 2.0 * (dx * dy + dy * dz + dz * dx);
                 Ok(Outcome::AabbSurfaceArea { id: *id, surface_area })
             }
+            Command::SolidCount => Ok(Outcome::SolidCount {
+                count: self.document.solid_count() as u32,
+            }),
             Command::Rotate {
                 id,
                 axis,
@@ -1322,6 +1325,7 @@ fn history_description(cmd: &Command, outcome: &Outcome) -> String {
         (Command::SolidLabel { id }, _) => format!("SolidLabel {id}"),
         (Command::IsEmpty, _) => "IsEmpty".to_string(),
         (Command::AabbSurfaceArea { id }, _) => format!("AabbSurfaceArea {id}"),
+        (Command::SolidCount, _) => "SolidCount".to_string(),
         (Command::Duplicate { id }, _) => format!("Duplicate {id}"),
         (Command::Rotate { id, angle_rad, .. }, _) => {
             format!("Rotate {id} ({angle_rad} rad)")
