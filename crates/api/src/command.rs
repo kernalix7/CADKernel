@@ -266,6 +266,15 @@ pub enum Command {
     /// the consumer only needs the boolean (skips the history
     /// length). Does not mutate or append a history event.
     IsEmpty,
+    /// Read-only AABB surface area of a solid. Returns
+    /// `Outcome::AabbSurfaceArea { id, surface_area }` where
+    /// `surface_area = 2 * (dx*dy + dy*dz + dz*dx)` and
+    /// `dx, dy, dz` are the per-axis bounding-box extents. Cheap
+    /// upper bound on the solid's true surface area; useful for
+    /// LOD heuristics and proportional thresholds without paying
+    /// for the per-face traversal performed by `SurfaceArea` /
+    /// `Measure`. Does not mutate or append a history event.
+    AabbSurfaceArea { id: SolidId },
     /// `Outcome::SolidCreated { id, label }` where `label` is
     /// `"<source-label> (copy)"`. The source slot is left untouched.
     Duplicate { id: SolidId },
@@ -330,6 +339,7 @@ impl Command {
             Self::AabbCorners { .. } => "aabb_corners",
             Self::SolidLabel { .. } => "solid_label",
             Self::IsEmpty => "is_empty",
+            Self::AabbSurfaceArea { .. } => "aabb_surface_area",
             Self::Duplicate { .. } => "duplicate",
             Self::Rotate { .. } => "rotate",
             Self::Noop => "noop",
@@ -870,6 +880,16 @@ pub fn command_schemas() -> Vec<CommandSchema> {
             op: "is_empty",
             description: "Document-emptiness predicate. True iff the document contains no solids.",
             params: &[],
+        },
+        CommandSchema {
+            op: "aabb_surface_area",
+            description: "AABB surface area 2 * (dx*dy + dy*dz + dz*dx) (cheap upper bound on mass surface area; uses bounding box only).",
+            params: &[ParamSchema {
+                name: "id",
+                ty: "solid_id",
+                required: true,
+                doc: "Solid to query.",
+            }],
         },
         CommandSchema {
             op: "scale_non_uniform",

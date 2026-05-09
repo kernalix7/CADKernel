@@ -525,6 +525,9 @@ fn command_schemas_cover_every_op_name() {
             id: cadkernel_api::SolidId(0),
         },
         Command::IsEmpty,
+        Command::AabbSurfaceArea {
+            id: cadkernel_api::SolidId(0),
+        },
         Command::Duplicate {
             id: cadkernel_api::SolidId(0),
         },
@@ -3259,4 +3262,62 @@ fn is_empty_command_round_trips_through_json() {
     assert!(json.contains("\"op\":\"is_empty\""), "json = {json}");
     let back: Command = serde_json::from_str(&json).unwrap();
     assert!(matches!(back, Command::IsEmpty));
+}
+
+#[test]
+fn aabb_surface_area_command_returns_box_surface_area() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 4.0, dy: 6.0, dz: 8.0 }).unwrap();
+    let outcome = s.execute(Command::AabbSurfaceArea { id: SolidId(0) }).unwrap();
+    if let Outcome::AabbSurfaceArea { id, surface_area } = outcome {
+        assert_eq!(id, SolidId(0));
+        // 2 * (4*6 + 6*8 + 8*4) = 2 * (24 + 48 + 32) = 208
+        assert!((surface_area - 208.0).abs() < 1e-9, "surface_area = {surface_area}");
+    } else { panic!("expected AabbSurfaceArea, got {outcome:?}"); }
+}
+
+#[test]
+fn aabb_surface_area_command_returns_unknown_solid_for_invalid_id() {
+    let mut s = Session::new();
+    let err = s.execute(Command::AabbSurfaceArea { id: SolidId(9) }).unwrap_err();
+    assert!(matches!(err, ApiError::UnknownSolid(_)));
+}
+
+#[test]
+fn aabb_surface_area_command_does_not_append_history_event() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let before = s.document().history().len();
+    s.execute(Command::AabbSurfaceArea { id: SolidId(0) }).unwrap();
+    assert_eq!(s.document().history().len(), before);
+}
+
+#[test]
+fn aabb_surface_area_command_round_trips_through_json() {
+    let cmd = Command::AabbSurfaceArea { id: SolidId(2) };
+    let json = serde_json::to_string(&cmd).unwrap();
+    assert!(json.contains("\"op\":\"aabb_surface_area\""), "json = {json}");
+    let back: Command = serde_json::from_str(&json).unwrap();
+    match back {
+        Command::AabbSurfaceArea { id } => assert_eq!(id, SolidId(2)),
+        _ => panic!("expected AabbSurfaceArea"),
+    }
+}
+
+#[test]
+fn aabb_surface_area_command_is_invariant_under_translation() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 2.0, dy: 3.0, dz: 5.0 }).unwrap();
+    let a0 = match s.execute(Command::AabbSurfaceArea { id: SolidId(0) }).unwrap() {
+        Outcome::AabbSurfaceArea { surface_area, .. } => surface_area,
+        other => panic!("expected AabbSurfaceArea, got {other:?}"),
+    };
+    s.execute(Command::Translate { id: SolidId(0), dx: 50.0, dy: -100.0, dz: 7.5 }).unwrap();
+    let a1 = match s.execute(Command::AabbSurfaceArea { id: SolidId(0) }).unwrap() {
+        Outcome::AabbSurfaceArea { surface_area, .. } => surface_area,
+        other => panic!("expected AabbSurfaceArea, got {other:?}"),
+    };
+    assert!((a0 - a1).abs() < 1e-9, "a0={a0} a1={a1}");
+    // 2 * (2*3 + 3*5 + 5*2) = 2 * (6 + 15 + 10) = 62
+    assert!((a0 - 62.0).abs() < 1e-9);
 }

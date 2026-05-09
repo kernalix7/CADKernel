@@ -173,6 +173,14 @@ pub enum Outcome {
     /// `Stats` when the consumer only needs the boolean (skips the
     /// history-length field).
     IsEmpty { is_empty: bool },
+    /// Read-only AABB surface area of a solid
+    /// (`Command::AabbSurfaceArea`). Returns
+    /// `2 * (dx*dy + dy*dz + dz*dx)` where `dx, dy, dz` are the
+    /// per-axis bounding-box extents. Cheap upper bound on the
+    /// solid's surface area; useful for LOD heuristics and
+    /// proportional thresholds without paying for the per-face
+    /// traversal performed by `SurfaceArea` / `Measure`.
+    AabbSurfaceArea { id: SolidId, surface_area: f64 },
     /// Nothing happened (`Command::Noop`).
     Empty,
 }
@@ -214,6 +222,7 @@ pub enum OutcomeKind {
     AabbCorners,
     SolidLabel,
     IsEmpty,
+    AabbSurfaceArea,
     Empty,
 }
 
@@ -246,6 +255,7 @@ impl Outcome {
             Self::AabbCorners { .. } => OutcomeKind::AabbCorners,
             Self::SolidLabel { .. } => OutcomeKind::SolidLabel,
             Self::IsEmpty { .. } => OutcomeKind::IsEmpty,
+            Self::AabbSurfaceArea { .. } => OutcomeKind::AabbSurfaceArea,
             Self::Empty => OutcomeKind::Empty,
         }
     }

@@ -294,7 +294,7 @@ impl Session {
         // because they don't mutate the document.
         if matches!(
             command,
-            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. } | Command::HistoryEvents | Command::Stats | Command::Bounds { .. } | Command::Distance { .. } | Command::Volume { .. } | Command::SurfaceArea { .. } | Command::Centroid { .. } | Command::IntersectsAabb { .. } | Command::Exists { .. } | Command::Diagonal { .. } | Command::AabbCenter { .. } | Command::AabbVolume { .. } | Command::ContainsAabb { .. } | Command::AabbCorners { .. } | Command::SolidLabel { .. } | Command::IsEmpty
+            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. } | Command::HistoryEvents | Command::Stats | Command::Bounds { .. } | Command::Distance { .. } | Command::Volume { .. } | Command::SurfaceArea { .. } | Command::Centroid { .. } | Command::IntersectsAabb { .. } | Command::Exists { .. } | Command::Diagonal { .. } | Command::AabbCenter { .. } | Command::AabbVolume { .. } | Command::ContainsAabb { .. } | Command::AabbCorners { .. } | Command::SolidLabel { .. } | Command::IsEmpty | Command::AabbSurfaceArea { .. }
         ) {
             return self.dispatch(&command);
         }
@@ -709,6 +709,17 @@ impl Session {
             Command::IsEmpty => Ok(Outcome::IsEmpty {
                 is_empty: self.document.solid_count() == 0,
             }),
+            Command::AabbSurfaceArea { id } => {
+                let bbox = self
+                    .document
+                    .bounding_box(*id)
+                    .ok_or_else(|| ApiError::UnknownSolid(format!("{id}")))?;
+                let dx = bbox.max[0] - bbox.min[0];
+                let dy = bbox.max[1] - bbox.min[1];
+                let dz = bbox.max[2] - bbox.min[2];
+                let surface_area = 2.0 * (dx * dy + dy * dz + dz * dx);
+                Ok(Outcome::AabbSurfaceArea { id: *id, surface_area })
+            }
             Command::Rotate {
                 id,
                 axis,
@@ -1310,6 +1321,7 @@ fn history_description(cmd: &Command, outcome: &Outcome) -> String {
         (Command::AabbCorners { id }, _) => format!("AabbCorners {id}"),
         (Command::SolidLabel { id }, _) => format!("SolidLabel {id}"),
         (Command::IsEmpty, _) => "IsEmpty".to_string(),
+        (Command::AabbSurfaceArea { id }, _) => format!("AabbSurfaceArea {id}"),
         (Command::Duplicate { id }, _) => format!("Duplicate {id}"),
         (Command::Rotate { id, angle_rad, .. }, _) => {
             format!("Rotate {id} ({angle_rad} rad)")

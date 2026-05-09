@@ -11,6 +11,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::AabbSurfaceArea` AABB-surface-area observer (2026-05-09)
+- **New `Command::AabbSurfaceArea { id }` (21st observer)** + `Outcome::AabbSurfaceArea { id, surface_area }` + `OutcomeKind::AabbSurfaceArea` tag — returns `2 * (dx*dy + dy*dz + dz*dx)` (sum of pairwise extent products, doubled). Cheap upper bound on the solid's true surface area; useful for LOD heuristics and proportional thresholds without paying for the per-face traversal performed by `SurfaceArea` / `Measure`. Symmetric counterpart to `AabbVolume`.
+- **Wiring**: routed through the read-only fast path in `Session::execute` (now 21 fast-pathed observer variants); dispatch reuses `Document::bounding_box`, computes the three pairwise products from the per-axis extents, and returns the doubled sum. `UnknownSolid` surfaces for missing ids; no history event is appended.
+- **Schema**: `command_schemas()` exposes `op = "aabb_surface_area"` with a single required `id: solid_id` parameter so AI/MCP clients can discover the surface.
+- **Tests**: 5 new regression tests in `crates/api/tests/api_integration.rs` (4×6×8 box → surface area 208, unknown id → `UnknownSolid`, history-untouched, JSON round-trip with `"op":"aabb_surface_area"`, translation-invariance with 2×3×5 → 62) + schema-coverage fixture extended.
+
 #### API — `Command::IsEmpty` document-emptiness predicate (2026-05-09)
 - **New `Command::IsEmpty` (20th observer)** + `Outcome::IsEmpty { is_empty }` + `OutcomeKind::IsEmpty` tag — `is_empty = true` iff the document contains no solids. Cheaper than `Stats` when the consumer only needs the boolean (skips the history-length field).
 - **Wiring**: routed through the read-only fast path in `Session::execute` (now 20 fast-pathed observer variants); dispatch reuses `Document::solid_count() == 0`. No history event is appended.

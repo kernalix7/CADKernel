@@ -11,6 +11,12 @@
 
 ### 추가됨
 
+#### API — `Command::AabbSurfaceArea` AABB 표면적 올서버 (2026-05-09)
+- **`Command::AabbSurfaceArea { id }` (21번째 올서버) 신규** + `Outcome::AabbSurfaceArea` + `OutcomeKind::AabbSurfaceArea` — `2 * (dx*dy + dy*dz + dz*dx)` 반환. 질량 표면적의 저렴한 상한값. `AabbVolume`의 대칭 카운터파트.
+- **연결**: `Session::execute` 읽기 전용 fast-path에 21번째 변형으로 추가. `Document::bounding_box`를 재사용하여 축별 길이로부터 3개 쌍별 곱을 계산. 잘못된 id에는 `UnknownSolid`. history 불변.
+- **스키마**: `command_schemas()`에 `op = "aabb_surface_area"` (필수 `id` 1개) 추가.
+- **테스트**: `crates/api/tests/api_integration.rs`에 5개 회귀 테스트 추가 (4×6×8 → 208, 잘못된 id → `UnknownSolid`, history 불변, JSON 라운드트립, 평행이동 불변 2×3×5 → 62) + 스키마 커버리지 확장.
+
 #### API — `Command::IsEmpty` 문서 비어있음 술어 (2026-05-09)
 - **`Command::IsEmpty` (20번째 올서버) 신규** + `Outcome::IsEmpty` + `OutcomeKind::IsEmpty` — 문서에 솔리드가 없으면 `is_empty = true`. `Stats`보다 저렴 (history 길이 필드 생략).
 - **연결**: `Session::execute` 읽기 전용 fast-path에 20번째 변형으로 추가. `Document::solid_count() == 0`을 그대로 반환. history 불변.
