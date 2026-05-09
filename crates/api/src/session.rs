@@ -294,7 +294,7 @@ impl Session {
         // because they don't mutate the document.
         if matches!(
             command,
-            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. } | Command::HistoryEvents | Command::Stats | Command::Bounds { .. } | Command::Distance { .. } | Command::Volume { .. } | Command::SurfaceArea { .. } | Command::Centroid { .. } | Command::IntersectsAabb { .. } | Command::Exists { .. } | Command::Diagonal { .. }
+            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. } | Command::HistoryEvents | Command::Stats | Command::Bounds { .. } | Command::Distance { .. } | Command::Volume { .. } | Command::SurfaceArea { .. } | Command::Centroid { .. } | Command::IntersectsAabb { .. } | Command::Exists { .. } | Command::Diagonal { .. } | Command::AabbCenter { .. }
         ) {
             return self.dispatch(&command);
         }
@@ -638,6 +638,18 @@ impl Session {
                     + extents[2] * extents[2])
                     .sqrt();
                 Ok(Outcome::Diagonal { id: *id, length, extents })
+            }
+            Command::AabbCenter { id } => {
+                let bbox = self
+                    .document
+                    .bounding_box(*id)
+                    .ok_or_else(|| ApiError::UnknownSolid(format!("{id}")))?;
+                let center = [
+                    (bbox.min[0] + bbox.max[0]) * 0.5,
+                    (bbox.min[1] + bbox.max[1]) * 0.5,
+                    (bbox.min[2] + bbox.max[2]) * 0.5,
+                ];
+                Ok(Outcome::AabbCenter { id: *id, center })
             }
             Command::Rotate {
                 id,
@@ -1232,6 +1244,7 @@ fn history_description(cmd: &Command, outcome: &Outcome) -> String {
         (Command::IntersectsAabb { id_a, id_b }, _) => format!("IntersectsAabb {id_a} <-> {id_b}"),
         (Command::Exists { id }, _) => format!("Exists {id}"),
         (Command::Diagonal { id }, _) => format!("Diagonal {id}"),
+        (Command::AabbCenter { id }, _) => format!("AabbCenter {id}"),
         (Command::Duplicate { id }, _) => format!("Duplicate {id}"),
         (Command::Rotate { id, angle_rad, .. }, _) => {
             format!("Rotate {id} ({angle_rad} rad)")

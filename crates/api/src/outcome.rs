@@ -132,6 +132,11 @@ pub enum Outcome {
     /// per-axis extents `[dx, dy, dz]`. Cheap heuristic used by
     /// camera-fit, level-of-detail thresholds, and tolerance scaling.
     Diagonal { id: SolidId, length: f64, extents: [f64; 3] },
+    /// Read-only AABB center of a solid (`Command::AabbCenter`).
+    /// Returns `(bbox.min + bbox.max) * 0.5`. Distinct from `Centroid`
+    /// (which is the mass centroid). Useful for placement, grid
+    /// snapping, and gizmo positioning.
+    AabbCenter { id: SolidId, center: [f64; 3] },
     /// Nothing happened (`Command::Noop`).
     Empty,
 }
@@ -167,6 +172,7 @@ pub enum OutcomeKind {
     AabbIntersection,
     Exists,
     Diagonal,
+    AabbCenter,
     Empty,
 }
 
@@ -193,6 +199,7 @@ impl Outcome {
             Self::AabbIntersection { .. } => OutcomeKind::AabbIntersection,
             Self::Exists { .. } => OutcomeKind::Exists,
             Self::Diagonal { .. } => OutcomeKind::Diagonal,
+            Self::AabbCenter { .. } => OutcomeKind::AabbCenter,
             Self::Empty => OutcomeKind::Empty,
         }
     }

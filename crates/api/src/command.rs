@@ -219,6 +219,13 @@ pub enum Command {
     /// Cheap heuristic for camera-fit, LOD thresholds, and tolerance
     /// scaling. Does not mutate or append a history event.
     Diagonal { id: SolidId },
+    /// Read-only AABB center of a solid. Returns
+    /// `Outcome::AabbCenter { id, center }` where
+    /// `center = (bbox.min + bbox.max) * 0.5`. Distinct from
+    /// `Centroid` (mass centroid). Useful for placement, grid
+    /// snapping, and gizmo positioning. Does not mutate or append a
+    /// history event.
+    AabbCenter { id: SolidId },
     /// Deep-clone a solid into a new slot. Returns the new
     /// `Outcome::SolidCreated { id, label }` where `label` is
     /// `"<source-label> (copy)"`. The source slot is left untouched.
@@ -278,6 +285,7 @@ impl Command {
             Self::IntersectsAabb { .. } => "intersects_aabb",
             Self::Exists { .. } => "exists",
             Self::Diagonal { .. } => "diagonal",
+            Self::AabbCenter { .. } => "aabb_center",
             Self::Duplicate { .. } => "duplicate",
             Self::Rotate { .. } => "rotate",
             Self::Noop => "noop",
@@ -749,6 +757,16 @@ pub fn command_schemas() -> Vec<CommandSchema> {
         CommandSchema {
             op: "diagonal",
             description: "AABB diagonal length and per-axis extents (cheap; uses bounding box only).",
+            params: &[ParamSchema {
+                name: "id",
+                ty: "solid_id",
+                required: true,
+                doc: "Solid to query.",
+            }],
+        },
+        CommandSchema {
+            op: "aabb_center",
+            description: "AABB center (bbox.min + bbox.max) * 0.5. Distinct from centroid (mass centroid).",
             params: &[ParamSchema {
                 name: "id",
                 ty: "solid_id",

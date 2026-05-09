@@ -508,6 +508,9 @@ fn command_schemas_cover_every_op_name() {
         Command::Diagonal {
             id: cadkernel_api::SolidId(0),
         },
+        Command::AabbCenter {
+            id: cadkernel_api::SolidId(0),
+        },
         Command::Duplicate {
             id: cadkernel_api::SolidId(0),
         },
@@ -2881,4 +2884,58 @@ fn diagonal_command_invariant_under_translation() {
         _ => panic!(),
     };
     assert!((before - after).abs() < 1e-9, "diagonal must be translation-invariant");
+}
+
+#[test]
+fn aabb_center_command_returns_box_center() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 4.0, dy: 6.0, dz: 8.0 }).unwrap();
+    let outcome = s.execute(Command::AabbCenter { id: SolidId(0) }).unwrap();
+    if let Outcome::AabbCenter { id, center } = outcome {
+        assert_eq!(id, SolidId(0));
+        assert!((center[0] - 2.0).abs() < 1e-9);
+        assert!((center[1] - 3.0).abs() < 1e-9);
+        assert!((center[2] - 4.0).abs() < 1e-9);
+    } else { panic!("expected AabbCenter, got {outcome:?}"); }
+}
+
+#[test]
+fn aabb_center_command_returns_unknown_solid_for_invalid_id() {
+    let mut s = Session::new();
+    let err = s.execute(Command::AabbCenter { id: SolidId(7) }).unwrap_err();
+    assert!(matches!(err, ApiError::UnknownSolid(_)));
+}
+
+#[test]
+fn aabb_center_command_does_not_append_history_event() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let before = s.document().history().len();
+    s.execute(Command::AabbCenter { id: SolidId(0) }).unwrap();
+    assert_eq!(s.document().history().len(), before);
+}
+
+#[test]
+fn aabb_center_command_round_trips_through_json() {
+    let cmd = Command::AabbCenter { id: SolidId(11) };
+    let json = serde_json::to_string(&cmd).unwrap();
+    assert!(json.contains("\"op\":\"aabb_center\""));
+    let back: Command = serde_json::from_str(&json).unwrap();
+    match back {
+        Command::AabbCenter { id } => assert_eq!(id, SolidId(11)),
+        _ => panic!("expected AabbCenter"),
+    }
+}
+
+#[test]
+fn aabb_center_command_tracks_translation() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
+    s.execute(Command::Translate { id: SolidId(0), dx: 10.0, dy: 20.0, dz: 30.0 }).unwrap();
+    let outcome = s.execute(Command::AabbCenter { id: SolidId(0) }).unwrap();
+    if let Outcome::AabbCenter { center, .. } = outcome {
+        assert!((center[0] - 11.0).abs() < 1e-9);
+        assert!((center[1] - 21.0).abs() < 1e-9);
+        assert!((center[2] - 31.0).abs() < 1e-9);
+    } else { panic!(); }
 }

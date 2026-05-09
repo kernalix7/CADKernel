@@ -11,6 +11,13 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::AabbCenter` AABB center observer (2026-05-09)
+- **New `Command::AabbCenter { id }` (15th observer)** + `Outcome::AabbCenter { id, center }` + `OutcomeKind::AabbCenter` tag — returns `(bbox.min + bbox.max) * 0.5`. Distinct from `Centroid` (which is the mass centroid). Useful for placement, grid snapping, and gizmo positioning.
+- **Observer fast-path widened** to 15 variants. Reuses `Document::bounding_box`.
+- **`CommandSchema` entry** added.
+- **5 new regression tests**: 4×6×8 box center = (2,3,4), unknown id rejected, no history append, JSON round-trip (`op: "aabb_center"`), translation tracks correctly.
+- **3,021 / 0 / 0** tests (+5 vs. Diagonal slice); strict `clippy --all-targets --all-features -D warnings` clean.
+
 #### API — `Command::Diagonal` AABB-diagonal length observer (2026-05-09)
 - **New `Command::Diagonal { id }` (14th observer)** + `Outcome::Diagonal { id, length, extents }` + `OutcomeKind::Diagonal` tag — returns `extents = bbox.max - bbox.min` and `length = ||extents||`. Cheap heuristic for camera-fit, level-of-detail thresholds, and tolerance scaling.
 - **Observer fast-path widened** to 14 variants. Reuses `Document::bounding_box`.

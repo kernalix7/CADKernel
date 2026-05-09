@@ -11,6 +11,12 @@
 
 ### 추가됨
 
+#### API — `Command::AabbCenter` AABB 중심 올서버 (2026-05-09)
+- **`Command::AabbCenter { id }` (15번째 올서버) 신규** + `Outcome::AabbCenter` + `OutcomeKind::AabbCenter` — `(bbox.min + bbox.max) * 0.5` 반환. `Centroid`(질량 중심)와 구분되는 AABB 중심. 배치, 그리드 스냅, 기즈모 위치 결정용.
+- **올서버 fast-path 15개로 확장**. `Document::bounding_box` 재사용.
+- **회귀 테스트 5개**: 4×6×8 박스 중심 = (2,3,4) / 잘못된 id `UnknownSolid` / history 미추가 / JSON 라운드트립 / translation 추적.
+- **3,021 / 0 / 0** 테스트, clippy strict clean.
+
 #### API — `Command::Diagonal` AABB 대각선 길이 올서버 (2026-05-09)
 - **`Command::Diagonal { id }` (14번째 올서버) 신규** + `Outcome::Diagonal { id, length, extents }` + `OutcomeKind::Diagonal` — `extents = bbox.max - bbox.min` 및 `length = ||extents||` 반환. 카메라 fit, LOD 임계값, 허용오차 스케일링용 경량 휴리스틱.
 - **올서버 fast-path 14개로 확장**. `Document::bounding_box` 재사용.
