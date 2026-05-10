@@ -11,6 +11,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::OperationCount` history op-occurrence counter (2026-05-10)
+- **New `Command::OperationCount { op_name }` (35th observer)** + `Outcome::OperationCount { op_name, count }` + `OutcomeKind::OperationCount` tag — returns the number of history events whose `op` field matches the queried `op_name` exactly (case-sensitive). Cheaper than `HistoryEvents` when callers only need a single op's count (e.g. "how many `create_box` calls have run?").
+- **Wiring**: routed through the read-only fast path in `Session::execute` (now 35 fast-pathed observer variants); dispatch filters `Document::history()` and counts matches as `u32`. Unknown ops return `count = 0` (not an error). No history event is appended. The variant field is named `op_name` (not `op`) to avoid clashing with the serde-tag discriminator `tag = "op"` used by `Command`.
+- **Schema**: `command_schemas()` exposes `op = "operation_count"` with a single required `op_name: string` parameter.
+- **Tests**: 7 new regression tests in `crates/api/tests/api_integration.rs` (empty history → 0, three CreateBox → 3, distinguishes `create_box` vs `translate`, unknown op → 0, case-sensitive (`CREATE_BOX` ≠ `create_box`), history-untouched, JSON round-trip with `"op":"operation_count"`) + schema-coverage fixture extended.
+
 #### API — `Command::IsSquareXz` square-XZ-footprint predicate (2026-05-10)
 - **New `Command::IsSquareXz { id }` (34th observer)** + `Outcome::IsSquareXz { id, square }` + `OutcomeKind::IsSquareXz` tag — returns `true` when the X and Z AABB extents are equal within an absolute tolerance of `1e-9` (Y is unconstrained). Completes the orthogonal trio (`IsSquareXy` / `IsSquareYz` / `IsSquareXz`) for solids extruded along the Y axis (square cross-section in XZ).
 - **Wiring**: routed through the read-only fast path in `Session::execute` (now 34 fast-pathed observer variants); dispatch reuses `Document::bounding_box` and tests `(dx - dz).abs() <= 1e-9`. `UnknownSolid` surfaces for missing ids; no history event is appended.

@@ -11,6 +11,12 @@
 
 ### 추가됨
 
+#### API — `Command::OperationCount` 히스토리 op 발생 횟수 카운터 (2026-05-10)
+- **`Command::OperationCount { op_name }` (35번째 옵서버) 신규** + `Outcome::OperationCount { op_name, count }` + `OutcomeKind::OperationCount` — 히스토리 이벤트 중 `op` 필드가 `op_name`과 정확히 일치(대소문자 구분)하는 개수를 `u32`로 반환. 단일 op 카운트만 필요할 때 `HistoryEvents`보다 경량 (예: "`create_box` 몇 번 호출됐는가?").
+- **연결**: `Session::execute` fast-path 35번째 변형. `Document::history()` 필터링. 알 수 없는 op는 `count = 0` (에러 아님). history 불변. 필드명을 `op`가 아닌 `op_name`으로 한 이유: `Command`의 serde 태그 `tag = "op"` 식별자와 충돌하기 때문.
+- **스키마**: `command_schemas()`에 `op = "operation_count"` (필수 `op_name: string` 1개) 추가.
+- **테스트**: 7개 회귀 테스트 추가 (빈 히스토리 → 0, CreateBox 3회 → 3, `create_box`/`translate` 구분, 알 수 없는 op → 0, 대소문자 구분, history 불변, JSON 라운드트립) + 스키마 커버리지 확장.
+
 #### API — `Command::IsSquareXz` 사각 XZ 풋프린트 판별 옵서버 (2026-05-10)
 - **`Command::IsSquareXz { id }` (34번째 옵서버) 신규** + `Outcome::IsSquareXz { id, square }` + `OutcomeKind::IsSquareXz` — X와 Z AABB 길이가 절대 허용 오차 `1e-9` 내에서 동일할 때 `true` 반환 (Y 무관). 사각 단면 옵서버 직교 3종 트리오(`IsSquareXy` / `IsSquareYz` / `IsSquareXz`) 완성 — Y축 방향 돌출 솔리드 감지용.
 - **연결**: `Session::execute` fast-path 34번째 변형. `Document::bounding_box` 재사용, `(dx - dz).abs() <= 1e-9`. 잘못된 id에는 `UnknownSolid`. history 불변.

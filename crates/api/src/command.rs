@@ -365,6 +365,13 @@ pub enum Command {
     /// plane (extrusions oriented along the Y axis). Does not
     /// mutate or append a history event.
     IsSquareXz { id: SolidId },
+    /// Read-only history op-occurrence counter. Returns
+    /// `Outcome::OperationCount { op_name, count }` with the
+    /// number of history events whose `op` field matches the
+    /// queried `op_name` exactly (case-sensitive). Cheaper
+    /// than `HistoryEvents` when callers only need a single
+    /// op's count. Does not mutate or append a history event.
+    OperationCount { op_name: String },
     /// `Outcome::SolidCreated { id, label }` where `label` is
     /// `"<source-label> (copy)"`. The source slot is left untouched.
     Duplicate { id: SolidId },
@@ -443,6 +450,7 @@ impl Command {
             Self::HistoryDescription { .. } => "history_description",
             Self::IsSquareYz { .. } => "is_square_yz",
             Self::IsSquareXz { .. } => "is_square_xz",
+            Self::OperationCount { .. } => "operation_count",
             Self::Duplicate { .. } => "duplicate",
             Self::Rotate { .. } => "rotate",
             Self::Noop => "noop",
@@ -1107,6 +1115,16 @@ pub fn command_schemas() -> Vec<CommandSchema> {
                 ty: "solid_id",
                 required: true,
                 doc: "Solid to query.",
+            }],
+        },
+        CommandSchema {
+            op: "operation_count",
+            description: "History op-occurrence counter. Returns the number of history events whose op matches the queried op_name exactly (case-sensitive).",
+            params: &[ParamSchema {
+                name: "op_name",
+                ty: "string",
+                required: true,
+                doc: "Op name to count (e.g. \"create_box\").",
             }],
         },
         CommandSchema {

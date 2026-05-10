@@ -252,6 +252,12 @@ pub enum Outcome {
     /// unconstrained). Detects solids with a square cross-section
     /// in the XZ plane (e.g. extrusions oriented along the Y axis).
     IsSquareXz { id: SolidId, square: bool },
+    /// Read-only history op-occurrence counter (`Command::OperationCount`).
+    /// Returns the number of history events whose `op` field matches
+    /// the queried `op_name` exactly (case-sensitive). Useful for
+    /// introspection (“how many `create_box` calls have run?”) without
+    /// scanning the full history vector manually.
+    OperationCount { op_name: String, count: u32 },
     /// Nothing happened (`Command::Noop`).
     Empty,
 }
@@ -307,6 +313,7 @@ pub enum OutcomeKind {
     HistoryDescription,
     IsSquareYz,
     IsSquareXz,
+    OperationCount,
     Empty,
 }
 
@@ -353,6 +360,7 @@ impl Outcome {
             Self::HistoryDescription { .. } => OutcomeKind::HistoryDescription,
             Self::IsSquareYz { .. } => OutcomeKind::IsSquareYz,
             Self::IsSquareXz { .. } => OutcomeKind::IsSquareXz,
+            Self::OperationCount { .. } => OutcomeKind::OperationCount,
             Self::Empty => OutcomeKind::Empty,
         }
     }

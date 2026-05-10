@@ -541,6 +541,9 @@ fn command_schemas_cover_every_op_name() {
         Command::HistoryDescription { index: 0 },
         Command::IsSquareYz { id: cadkernel_api::SolidId(0) },
         Command::IsSquareXz { id: cadkernel_api::SolidId(0) },
+        Command::OperationCount {
+            op_name: "create_box".to_string(),
+        },
         Command::Duplicate {
             id: cadkernel_api::SolidId(0),
         },
@@ -4172,4 +4175,105 @@ fn is_square_xz_command_round_trips_through_json() {
     assert!(json.contains("\"op\":\"is_square_xz\""), "json = {json}");
     let back: Command = serde_json::from_str(&json).unwrap();
     assert!(matches!(back, Command::IsSquareXz { id: SolidId(0) }));
+}
+
+#[test]
+fn operation_count_command_zero_when_empty() {
+    let mut s = Session::new();
+    let outcome = s
+        .execute(Command::OperationCount { op_name: "create_box".to_string() })
+        .unwrap();
+    if let Outcome::OperationCount { op_name, count } = outcome {
+        assert_eq!(op_name, "create_box");
+        assert_eq!(count, 0);
+    } else { panic!("expected OperationCount, got {outcome:?}"); }
+}
+
+#[test]
+fn operation_count_command_counts_create_box() {
+    let mut s = Session::new();
+    for _ in 0..3 {
+        s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    }
+    let count = match s
+        .execute(Command::OperationCount { op_name: "create_box".to_string() })
+        .unwrap()
+    {
+        Outcome::OperationCount { count, .. } => count, _ => panic!(),
+    };
+    assert_eq!(count, 3);
+}
+
+#[test]
+fn operation_count_command_distinguishes_ops() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
+    s.execute(Command::Translate { id: SolidId(0), dx: 1.0, dy: 0.0, dz: 0.0 }).unwrap();
+    let boxes = match s
+        .execute(Command::OperationCount { op_name: "create_box".to_string() })
+        .unwrap()
+    {
+        Outcome::OperationCount { count, .. } => count, _ => panic!(),
+    };
+    let translates = match s
+        .execute(Command::OperationCount { op_name: "translate".to_string() })
+        .unwrap()
+    {
+        Outcome::OperationCount { count, .. } => count, _ => panic!(),
+    };
+    assert_eq!(boxes, 2);
+    assert_eq!(translates, 1);
+}
+
+#[test]
+fn operation_count_command_unknown_op_is_zero() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let count = match s
+        .execute(Command::OperationCount { op_name: "definitely_not_an_op".to_string() })
+        .unwrap()
+    {
+        Outcome::OperationCount { count, .. } => count, _ => panic!(),
+    };
+    assert_eq!(count, 0);
+}
+
+#[test]
+fn operation_count_command_is_case_sensitive() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let lower = match s
+        .execute(Command::OperationCount { op_name: "create_box".to_string() })
+        .unwrap()
+    {
+        Outcome::OperationCount { count, .. } => count, _ => panic!(),
+    };
+    let upper = match s
+        .execute(Command::OperationCount { op_name: "CREATE_BOX".to_string() })
+        .unwrap()
+    {
+        Outcome::OperationCount { count, .. } => count, _ => panic!(),
+    };
+    assert_eq!(lower, 1);
+    assert_eq!(upper, 0);
+}
+
+#[test]
+fn operation_count_command_does_not_append_history_event() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let before = s.document().history().len();
+    s.execute(Command::OperationCount { op_name: "create_box".to_string() }).unwrap();
+    assert_eq!(s.document().history().len(), before);
+}
+
+#[test]
+fn operation_count_command_round_trips_through_json() {
+    let cmd = Command::OperationCount { op_name: "create_box".to_string() };
+    let json = serde_json::to_string(&cmd).unwrap();
+    assert!(json.contains("\"op\":\"operation_count\""), "json = {json}");
+    assert!(json.contains("\"create_box\""), "json = {json}");
+    let back: Command = serde_json::from_str(&json).unwrap();
+    assert!(matches!(back, Command::OperationCount { ref op_name } if op_name == "create_box"));
 }
