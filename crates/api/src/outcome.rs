@@ -235,6 +235,11 @@ pub enum Outcome {
     /// unconstrained). Detects solids with a square footprint in
     /// the XY plane (e.g. square prisms / pillars / posts).
     IsSquareXy { id: SolidId, square: bool },
+    /// Read-only single-event history lookup (`Command::HistoryDescription`).
+    /// Returns the `description` string of the history event at the
+    /// given index. Cheaper than `HistoryEvents` when the caller only
+    /// needs one entry (e.g. tooltip rendering).
+    HistoryDescription { index: u32, description: String },
     /// Nothing happened (`Command::Noop`).
     Empty,
 }
@@ -287,6 +292,7 @@ pub enum OutcomeKind {
     AabbAspectRatio,
     IsCubic,
     IsSquareXy,
+    HistoryDescription,
     Empty,
 }
 
@@ -330,6 +336,7 @@ impl Outcome {
             Self::AabbAspectRatio { .. } => OutcomeKind::AabbAspectRatio,
             Self::IsCubic { .. } => OutcomeKind::IsCubic,
             Self::IsSquareXy { .. } => OutcomeKind::IsSquareXy,
+            Self::HistoryDescription { .. } => OutcomeKind::HistoryDescription,
             Self::Empty => OutcomeKind::Empty,
         }
     }

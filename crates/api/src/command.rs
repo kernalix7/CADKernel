@@ -342,6 +342,13 @@ pub enum Command {
     /// Detects solids with a square footprint (square prisms,
     /// pillars, posts). Does not mutate or append a history event.
     IsSquareXy { id: SolidId },
+    /// Read-only single-event history lookup. Returns
+    /// `Outcome::HistoryDescription { index, description }` with
+    /// the description string of the history event at `index`.
+    /// Returns `InvalidArgument` if `index` is out of bounds.
+    /// Cheaper than `HistoryEvents` when the caller only needs
+    /// one entry; does not mutate or append a history event.
+    HistoryDescription { index: u32 },
     /// `Outcome::SolidCreated { id, label }` where `label` is
     /// `"<source-label> (copy)"`. The source slot is left untouched.
     Duplicate { id: SolidId },
@@ -417,6 +424,7 @@ impl Command {
             Self::AabbAspectRatio { .. } => "aabb_aspect_ratio",
             Self::IsCubic { .. } => "is_cubic",
             Self::IsSquareXy { .. } => "is_square_xy",
+            Self::HistoryDescription { .. } => "history_description",
             Self::Duplicate { .. } => "duplicate",
             Self::Rotate { .. } => "rotate",
             Self::Noop => "noop",
@@ -1051,6 +1059,16 @@ pub fn command_schemas() -> Vec<CommandSchema> {
                 ty: "solid_id",
                 required: true,
                 doc: "Solid to query.",
+            }],
+        },
+        CommandSchema {
+            op: "history_description",
+            description: "Single-event history lookup. Returns the description string of the history event at the given index. InvalidArgument when out of bounds.",
+            params: &[ParamSchema {
+                name: "index",
+                ty: "u32",
+                required: true,
+                doc: "0-based index into the history event list.",
             }],
         },
         CommandSchema {

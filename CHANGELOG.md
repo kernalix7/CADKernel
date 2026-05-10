@@ -11,6 +11,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::HistoryDescription` single-event history lookup (2026-05-10)
+- **New `Command::HistoryDescription { index }` (32nd observer)** + `Outcome::HistoryDescription { index, description }` + `OutcomeKind::HistoryDescription` tag — returns the `description` string of the history event at the given 0-based index. Cheaper than `HistoryEvents` when callers only need a single entry (e.g. tooltip rendering, log inspection).
+- **Wiring**: routed through the read-only fast path in `Session::execute` (now 32 fast-pathed observer variants); dispatch reads `Document::history()` and clones a single `description`. Returns `InvalidArgument` (with descriptive message containing the bad index and current length) when the index is out of bounds. No history event is appended.
+- **Schema**: `command_schemas()` exposes `op = "history_description"` with a single required `index: u32` parameter.
+- **Tests**: 6 new regression tests in `crates/api/tests/api_integration.rs` (recent event after CreateBox, multi-event match against `Document::history()`, out-of-bounds → `InvalidArgument`, empty history → `InvalidArgument`, history-untouched, JSON round-trip with `"op":"history_description"`) + schema-coverage fixture extended.
+
 #### API — `Command::IsSquareXy` square-XY-footprint predicate (2026-05-10)
 - **New `Command::IsSquareXy { id }` (31st observer)** + `Outcome::IsSquareXy { id, square }` + `OutcomeKind::IsSquareXy` tag — returns `true` when the X and Y AABB extents are equal within an absolute tolerance of `1e-9` (Z is unconstrained). Detects solids with a square footprint in the XY plane (square prisms, pillars, posts).
 - **Wiring**: routed through the read-only fast path in `Session::execute` (now 31 fast-pathed observer variants); dispatch reuses `Document::bounding_box` and tests `(dx - dy).abs() <= 1e-9`. `UnknownSolid` surfaces for missing ids; no history event is appended.

@@ -538,6 +538,7 @@ fn command_schemas_cover_every_op_name() {
         Command::AabbAspectRatio { id: cadkernel_api::SolidId(0) },
         Command::IsCubic { id: cadkernel_api::SolidId(0) },
         Command::IsSquareXy { id: cadkernel_api::SolidId(0) },
+        Command::HistoryDescription { index: 0 },
         Command::Duplicate {
             id: cadkernel_api::SolidId(0),
         },
@@ -3965,4 +3966,65 @@ fn is_square_xy_command_round_trips_through_json() {
     assert!(json.contains("\"op\":\"is_square_xy\""), "json = {json}");
     let back: Command = serde_json::from_str(&json).unwrap();
     assert!(matches!(back, Command::IsSquareXy { id: SolidId(0) }));
+}
+
+#[test]
+fn history_description_command_returns_recent_event() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 2.0, dz: 3.0 }).unwrap();
+    let len = s.document().history().len() as u32;
+    assert!(len >= 1);
+    let outcome = s.execute(Command::HistoryDescription { index: len - 1 }).unwrap();
+    if let Outcome::HistoryDescription { index, description } = outcome {
+        assert_eq!(index, len - 1);
+        assert!(!description.is_empty());
+    } else { panic!("expected HistoryDescription, got {outcome:?}"); }
+}
+
+#[test]
+fn history_description_command_matches_history_events() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
+    let events: Vec<_> = s.document().history().iter().map(|e| e.description.clone()).collect();
+    for (i, expected) in events.iter().enumerate() {
+        let outcome = s.execute(Command::HistoryDescription { index: i as u32 }).unwrap();
+        if let Outcome::HistoryDescription { description, .. } = outcome {
+            assert_eq!(&description, expected);
+        } else { panic!("expected HistoryDescription"); }
+    }
+}
+
+#[test]
+fn history_description_command_out_of_bounds() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let len = s.document().history().len() as u32;
+    let err = s.execute(Command::HistoryDescription { index: len + 5 }).unwrap_err();
+    assert!(matches!(err, ApiError::InvalidArgument(_)));
+}
+
+#[test]
+fn history_description_command_empty_history() {
+    let mut s = Session::new();
+    let err = s.execute(Command::HistoryDescription { index: 0 }).unwrap_err();
+    assert!(matches!(err, ApiError::InvalidArgument(_)));
+}
+
+#[test]
+fn history_description_command_does_not_append_history_event() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let before = s.document().history().len();
+    s.execute(Command::HistoryDescription { index: 0 }).unwrap();
+    assert_eq!(s.document().history().len(), before);
+}
+
+#[test]
+fn history_description_command_round_trips_through_json() {
+    let cmd = Command::HistoryDescription { index: 7 };
+    let json = serde_json::to_string(&cmd).unwrap();
+    assert!(json.contains("\"op\":\"history_description\""), "json = {json}");
+    let back: Command = serde_json::from_str(&json).unwrap();
+    assert!(matches!(back, Command::HistoryDescription { index: 7 }));
 }
