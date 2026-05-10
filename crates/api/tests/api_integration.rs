@@ -545,6 +545,9 @@ fn command_schemas_cover_every_op_name() {
             op_name: "create_box".to_string(),
         },
         Command::LastOperation,
+        Command::HasOperation {
+            op_name: "create_box".to_string(),
+        },
         Command::Duplicate {
             id: cadkernel_api::SolidId(0),
         },
@@ -4343,4 +4346,81 @@ fn last_operation_command_round_trips_through_json() {
     assert!(json.contains("\"op\":\"last_operation\""), "json = {json}");
     let back: Command = serde_json::from_str(&json).unwrap();
     assert!(matches!(back, Command::LastOperation));
+}
+
+#[test]
+fn has_operation_command_false_when_empty() {
+    let mut s = Session::new();
+    let outcome = s.execute(Command::HasOperation { op_name: "create_box".to_string() }).unwrap();
+    if let Outcome::HasOperation { op_name, present } = outcome {
+        assert_eq!(op_name, "create_box");
+        assert!(!present);
+    } else { panic!("expected HasOperation, got {outcome:?}"); }
+}
+
+#[test]
+fn has_operation_command_true_after_create_box() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let present = match s.execute(Command::HasOperation { op_name: "create_box".to_string() }).unwrap() {
+        Outcome::HasOperation { present, .. } => present, _ => panic!(),
+    };
+    assert!(present);
+}
+
+#[test]
+fn has_operation_command_false_for_unknown_op() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let present = match s.execute(Command::HasOperation { op_name: "definitely_not_an_op".to_string() }).unwrap() {
+        Outcome::HasOperation { present, .. } => present, _ => panic!(),
+    };
+    assert!(!present);
+}
+
+#[test]
+fn has_operation_command_is_case_sensitive() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let lower = match s.execute(Command::HasOperation { op_name: "create_box".to_string() }).unwrap() {
+        Outcome::HasOperation { present, .. } => present, _ => panic!(),
+    };
+    let upper = match s.execute(Command::HasOperation { op_name: "CREATE_BOX".to_string() }).unwrap() {
+        Outcome::HasOperation { present, .. } => present, _ => panic!(),
+    };
+    assert!(lower);
+    assert!(!upper);
+}
+
+#[test]
+fn has_operation_command_agrees_with_operation_count() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
+    let present = match s.execute(Command::HasOperation { op_name: "create_box".to_string() }).unwrap() {
+        Outcome::HasOperation { present, .. } => present, _ => panic!(),
+    };
+    let count = match s.execute(Command::OperationCount { op_name: "create_box".to_string() }).unwrap() {
+        Outcome::OperationCount { count, .. } => count, _ => panic!(),
+    };
+    assert_eq!(present, count > 0);
+}
+
+#[test]
+fn has_operation_command_does_not_append_history_event() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let before = s.document().history().len();
+    s.execute(Command::HasOperation { op_name: "create_box".to_string() }).unwrap();
+    assert_eq!(s.document().history().len(), before);
+}
+
+#[test]
+fn has_operation_command_round_trips_through_json() {
+    let cmd = Command::HasOperation { op_name: "create_box".to_string() };
+    let json = serde_json::to_string(&cmd).unwrap();
+    assert!(json.contains("\"op\":\"has_operation\""), "json = {json}");
+    assert!(json.contains("\"create_box\""), "json = {json}");
+    let back: Command = serde_json::from_str(&json).unwrap();
+    assert!(matches!(back, Command::HasOperation { ref op_name } if op_name == "create_box"));
 }

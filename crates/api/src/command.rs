@@ -380,6 +380,13 @@ pub enum Command {
     /// `InvalidArgument` when the history is empty. Does not
     /// mutate or append a history event.
     LastOperation,
+    /// Read-only history op-presence predicate. Returns
+    /// `Outcome::HasOperation { op_name, present }` where
+    /// `present` is `true` when at least one history event's
+    /// `op` field matches `op_name` exactly (case-sensitive).
+    /// Lighter than `OperationCount` when callers only need a
+    /// boolean answer. Does not mutate or append a history event.
+    HasOperation { op_name: String },
     /// `Outcome::SolidCreated { id, label }` where `label` is
     /// `"<source-label> (copy)"`. The source slot is left untouched.
     Duplicate { id: SolidId },
@@ -460,6 +467,7 @@ impl Command {
             Self::IsSquareXz { .. } => "is_square_xz",
             Self::OperationCount { .. } => "operation_count",
             Self::LastOperation => "last_operation",
+            Self::HasOperation { .. } => "has_operation",
             Self::Duplicate { .. } => "duplicate",
             Self::Rotate { .. } => "rotate",
             Self::Noop => "noop",
@@ -1140,6 +1148,16 @@ pub fn command_schemas() -> Vec<CommandSchema> {
             op: "last_operation",
             description: "Last-history-event lookup. Returns op_name + description + 0-based index of the most recent history event. Errors with InvalidArgument when the history is empty.",
             params: &[],
+        },
+        CommandSchema {
+            op: "has_operation",
+            description: "History op-presence predicate. Returns true when at least one history event's op matches the queried op_name exactly (case-sensitive). Lighter than operation_count when only a boolean is needed.",
+            params: &[ParamSchema {
+                name: "op_name",
+                ty: "string",
+                required: true,
+                doc: "Op name to test (e.g. \"create_box\").",
+            }],
         },
         CommandSchema {
             op: "scale_non_uniform",

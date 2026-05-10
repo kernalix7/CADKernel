@@ -11,6 +11,12 @@
 
 ### 추가됨
 
+#### API — `Command::HasOperation` 히스토리 op 존재 여부 판별 (2026-05-11)
+- **`Command::HasOperation { op_name }` (37번째 옷서버) 신규** + `Outcome::HasOperation { op_name, present }` + `OutcomeKind::HasOperation` — 히스토리 이벤트 중 하나라도 `op` 필드가 `op_name`과 정확히 일치(대소문자 구분)할 때 `true` 반환. 단순 존재 여부만 필요한 경우 `OperationCount`보다 경량.
+- **연결**: `Session::execute` fast-path 37번째 변형. `Document::history().iter().any()`. history 불변.
+- **스키마**: `command_schemas()`에 `op = "has_operation"` (필수 `op_name: string` 1개) 추가.
+- **테스트**: 7개 회귀 테스트 추가 (빈 히스토리 → false, CreateBox 후 true, 알 수 없는 op → false, 대소문자 구분, `OperationCount > 0`과 일치, history 불변, JSON 라운드트립) + 스키마 커버리지 확장.
+
 #### API — `Command::LastOperation` 최근 히스토리 이벤트 조회 (2026-05-11)
 - **`Command::LastOperation` (36번째 옷서버, 매개변수 없음) 신규** + `Outcome::LastOperation { index, op_name, description }` + `OutcomeKind::LastOperation` — 가장 최근 히스토리 이벤트의 0기반 `index`, `op_name`, `description`을 단일 호출로 반환. `HistoryDescription { index: HistoryCount - 1 }` + op 이름과 동등하지만 완전 한 번의 호출로.
 - **연결**: `Session::execute` fast-path 36번째 변형. 빈 히스토리에는 `InvalidArgument("history is empty")` 반환. history 불변.

@@ -294,7 +294,7 @@ impl Session {
         // because they don't mutate the document.
         if matches!(
             command,
-            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. } | Command::HistoryEvents | Command::Stats | Command::Bounds { .. } | Command::Distance { .. } | Command::Volume { .. } | Command::SurfaceArea { .. } | Command::Centroid { .. } | Command::IntersectsAabb { .. } | Command::Exists { .. } | Command::Diagonal { .. } | Command::AabbCenter { .. } | Command::AabbVolume { .. } | Command::ContainsAabb { .. } | Command::AabbCorners { .. } | Command::SolidLabel { .. } | Command::IsEmpty | Command::AabbSurfaceArea { .. } | Command::SolidCount | Command::HistoryCount | Command::HasLabel { .. } | Command::SolidIds | Command::AabbExtents { .. } | Command::AabbLongestAxis { .. } | Command::AabbShortestAxis { .. } | Command::AabbAspectRatio { .. } | Command::IsCubic { .. } | Command::IsSquareXy { .. } | Command::HistoryDescription { .. } | Command::IsSquareYz { .. } | Command::IsSquareXz { .. } | Command::OperationCount { .. } | Command::LastOperation
+            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. } | Command::HistoryEvents | Command::Stats | Command::Bounds { .. } | Command::Distance { .. } | Command::Volume { .. } | Command::SurfaceArea { .. } | Command::Centroid { .. } | Command::IntersectsAabb { .. } | Command::Exists { .. } | Command::Diagonal { .. } | Command::AabbCenter { .. } | Command::AabbVolume { .. } | Command::ContainsAabb { .. } | Command::AabbCorners { .. } | Command::SolidLabel { .. } | Command::IsEmpty | Command::AabbSurfaceArea { .. } | Command::SolidCount | Command::HistoryCount | Command::HasLabel { .. } | Command::SolidIds | Command::AabbExtents { .. } | Command::AabbLongestAxis { .. } | Command::AabbShortestAxis { .. } | Command::AabbAspectRatio { .. } | Command::IsCubic { .. } | Command::IsSquareXy { .. } | Command::HistoryDescription { .. } | Command::IsSquareYz { .. } | Command::IsSquareXz { .. } | Command::OperationCount { .. } | Command::LastOperation | Command::HasOperation { .. }
         ) {
             return self.dispatch(&command);
         }
@@ -891,6 +891,17 @@ impl Session {
                     index,
                     op_name: event.op.clone(),
                     description: event.description.clone(),
+                })
+            }
+            Command::HasOperation { op_name } => {
+                let present = self
+                    .document
+                    .history()
+                    .iter()
+                    .any(|event| event.op == *op_name);
+                Ok(Outcome::HasOperation {
+                    op_name: op_name.clone(),
+                    present,
                 })
             }
             Command::Rotate {
@@ -1510,6 +1521,7 @@ fn history_description(cmd: &Command, outcome: &Outcome) -> String {
         (Command::IsSquareXz { id }, _) => format!("IsSquareXz {id:?}"),
         (Command::OperationCount { op_name }, _) => format!("OperationCount '{op_name}'"),
         (Command::LastOperation, _) => "LastOperation".to_string(),
+        (Command::HasOperation { op_name }, _) => format!("HasOperation '{op_name}'"),
         (Command::Duplicate { id }, _) => format!("Duplicate {id}"),
         (Command::Rotate { id, angle_rad, .. }, _) => {
             format!("Rotate {id} ({angle_rad} rad)")

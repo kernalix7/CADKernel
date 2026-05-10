@@ -11,6 +11,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::HasOperation` history op-presence predicate (2026-05-11)
+- **New `Command::HasOperation { op_name }` (37th observer)** + `Outcome::HasOperation { op_name, present }` + `OutcomeKind::HasOperation` tag — returns `true` when at least one history event's `op` field matches `op_name` exactly (case-sensitive). Lighter-weight boolean counterpart to `OperationCount` for callers that only need a yes/no answer.
+- **Wiring**: routed through the read-only fast path in `Session::execute` (now 37 fast-pathed observer variants); dispatch uses `Document::history().iter().any()`. No history event is appended.
+- **Schema**: `command_schemas()` exposes `op = "has_operation"` with a single required `op_name: string` parameter.
+- **Tests**: 7 new regression tests in `crates/api/tests/api_integration.rs` (empty history → false, true after CreateBox, false for unknown op, case-sensitive, agrees with `OperationCount > 0`, history-untouched, JSON round-trip with `"op":"has_operation"`) + schema-coverage fixture extended.
+
 #### API — `Command::LastOperation` last-history-event lookup (2026-05-11)
 - **New `Command::LastOperation` (36th observer, no params)** + `Outcome::LastOperation { index, op_name, description }` + `OutcomeKind::LastOperation` tag — returns the 0-based `index`, `op_name`, and `description` of the most recent history event in a single call. Equivalent to `HistoryDescription { index: HistoryCount - 1 }` plus the op name, but cheaper and avoids the round-trip.
 - **Wiring**: routed through the read-only fast path in `Session::execute` (now 36 fast-pathed observer variants); dispatch reads `Document::history()` last entry. Errors with `InvalidArgument("history is empty")` when the history vector is empty. No history event is appended.

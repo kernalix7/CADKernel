@@ -269,6 +269,12 @@ pub enum Outcome {
         op_name: String,
         description: String,
     },
+    /// Read-only history op-presence predicate (`Command::HasOperation`).
+    /// `present` is `true` when at least one history event's `op`
+    /// field matches the queried `op_name` exactly (case-sensitive).
+    /// Lighter than `OperationCount` when callers only need a
+    /// boolean answer.
+    HasOperation { op_name: String, present: bool },
     /// Nothing happened (`Command::Noop`).
     Empty,
 }
@@ -326,6 +332,7 @@ pub enum OutcomeKind {
     IsSquareXz,
     OperationCount,
     LastOperation,
+    HasOperation,
     Empty,
 }
 
@@ -374,6 +381,7 @@ impl Outcome {
             Self::IsSquareXz { .. } => OutcomeKind::IsSquareXz,
             Self::OperationCount { .. } => OutcomeKind::OperationCount,
             Self::LastOperation { .. } => OutcomeKind::LastOperation,
+            Self::HasOperation { .. } => OutcomeKind::HasOperation,
             Self::Empty => OutcomeKind::Empty,
         }
     }
