@@ -11,6 +11,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::IsSquareYz` square-YZ-footprint predicate (2026-05-10)
+- **New `Command::IsSquareYz { id }` (33rd observer)** + `Outcome::IsSquareYz { id, square }` + `OutcomeKind::IsSquareYz` tag — returns `true` when the Y and Z AABB extents are equal within an absolute tolerance of `1e-9` (X is unconstrained). Counterpart to `IsSquareXy` for solids extruded along the X axis (square cross-section in YZ).
+- **Wiring**: routed through the read-only fast path in `Session::execute` (now 33 fast-pathed observer variants); dispatch reuses `Document::bounding_box` and tests `(dy - dz).abs() <= 1e-9`. `UnknownSolid` surfaces for missing ids; no history event is appended.
+- **Schema**: `command_schemas()` exposes `op = "is_square_yz"` with a single required `id: solid_id` parameter.
+- **Tests**: 7 new regression tests in `crates/api/tests/api_integration.rs` (20×4×4 X-extrusion → true, 3×3×3 cube → true, 3×5×7 → false, 4×4×9 disagreement with `IsSquareXy` (xy=true, yz=false), unknown id → `UnknownSolid`, history-untouched, JSON round-trip with `"op":"is_square_yz"`) + schema-coverage fixture extended.
+
 #### API — `Command::HistoryDescription` single-event history lookup (2026-05-10)
 - **New `Command::HistoryDescription { index }` (32nd observer)** + `Outcome::HistoryDescription { index, description }` + `OutcomeKind::HistoryDescription` tag — returns the `description` string of the history event at the given 0-based index. Cheaper than `HistoryEvents` when callers only need a single entry (e.g. tooltip rendering, log inspection).
 - **Wiring**: routed through the read-only fast path in `Session::execute` (now 32 fast-pathed observer variants); dispatch reads `Document::history()` and clones a single `description`. Returns `InvalidArgument` (with descriptive message containing the bad index and current length) when the index is out of bounds. No history event is appended.

@@ -240,6 +240,12 @@ pub enum Outcome {
     /// given index. Cheaper than `HistoryEvents` when the caller only
     /// needs one entry (e.g. tooltip rendering).
     HistoryDescription { index: u32, description: String },
+    /// Read-only square-YZ-footprint predicate (`Command::IsSquareYz`).
+    /// `square` is `true` when the Y and Z extents of the bounding
+    /// box are equal within an absolute tolerance of `1e-9` (X is
+    /// unconstrained). Detects solids with a square cross-section
+    /// in the YZ plane (e.g. extrusions oriented along the X axis).
+    IsSquareYz { id: SolidId, square: bool },
     /// Nothing happened (`Command::Noop`).
     Empty,
 }
@@ -293,6 +299,7 @@ pub enum OutcomeKind {
     IsCubic,
     IsSquareXy,
     HistoryDescription,
+    IsSquareYz,
     Empty,
 }
 
@@ -337,6 +344,7 @@ impl Outcome {
             Self::IsCubic { .. } => OutcomeKind::IsCubic,
             Self::IsSquareXy { .. } => OutcomeKind::IsSquareXy,
             Self::HistoryDescription { .. } => OutcomeKind::HistoryDescription,
+            Self::IsSquareYz { .. } => OutcomeKind::IsSquareYz,
             Self::Empty => OutcomeKind::Empty,
         }
     }

@@ -349,6 +349,14 @@ pub enum Command {
     /// Cheaper than `HistoryEvents` when the caller only needs
     /// one entry; does not mutate or append a history event.
     HistoryDescription { index: u32 },
+    /// Read-only square-YZ-footprint predicate. Returns
+    /// `Outcome::IsSquareYz { id, square }` where `square` is
+    /// `true` when the Y and Z AABB extents are equal within
+    /// an absolute tolerance of `1e-9` (X is unconstrained).
+    /// Detects solids with a square cross-section in the YZ
+    /// plane (extrusions oriented along the X axis). Does not
+    /// mutate or append a history event.
+    IsSquareYz { id: SolidId },
     /// `Outcome::SolidCreated { id, label }` where `label` is
     /// `"<source-label> (copy)"`. The source slot is left untouched.
     Duplicate { id: SolidId },
@@ -425,6 +433,7 @@ impl Command {
             Self::IsCubic { .. } => "is_cubic",
             Self::IsSquareXy { .. } => "is_square_xy",
             Self::HistoryDescription { .. } => "history_description",
+            Self::IsSquareYz { .. } => "is_square_yz",
             Self::Duplicate { .. } => "duplicate",
             Self::Rotate { .. } => "rotate",
             Self::Noop => "noop",
@@ -1069,6 +1078,16 @@ pub fn command_schemas() -> Vec<CommandSchema> {
                 ty: "u32",
                 required: true,
                 doc: "0-based index into the history event list.",
+            }],
+        },
+        CommandSchema {
+            op: "is_square_yz",
+            description: "Square-YZ-footprint predicate. Returns true when Y and Z AABB extents are equal within an absolute tolerance of 1e-9 (X unconstrained).",
+            params: &[ParamSchema {
+                name: "id",
+                ty: "solid_id",
+                required: true,
+                doc: "Solid to query.",
             }],
         },
         CommandSchema {
