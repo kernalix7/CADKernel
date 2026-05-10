@@ -11,6 +11,12 @@
 
 ### 추가됨
 
+#### API — `Command::AabbShortestAxis` AABB 최단축 옵서버 (2026-05-10)
+- **`Command::AabbShortestAxis { id }` (28번째 옵서버) 신규** + `Outcome::AabbShortestAxis { id, axis }` + `OutcomeKind::AabbShortestAxis` — 경계 상자에서 가장 짧은 축 인덱스(`0`=X, `1`=Y, `2`=Z) 반환. 동점은 낮은 인덱스 우선. `AabbLongestAxis`의 대칭 카운터파트. 쇬버/얇은 솔리드 감지용.
+- **연결**: `Session::execute` 읽기 전용 fast-path에 28번째 변형으로 추가. `Document::bounding_box` 재사용, 두 단계 `<=` 비교로 선택. 잘못된 id에는 `UnknownSolid`. history 불변.
+- **스키마**: `command_schemas()`에 `op = "aabb_shortest_axis"` (필수 `id` 1개) 추가.
+- **테스트**: `crates/api/tests/api_integration.rs`에 7개 회귀 테스트 추가 (1×5×8 → X, Y·Z 우세 교차, 정육면체 동점 → axis 0, 잘못된 id, history 불변, JSON 라운드트립, 2×7×4 → longest=1 / shortest=0 대칭) + 스키마 커버리지 확장.
+
 #### API — `Command::AabbLongestAxis` AABB 최장축 옵서버 (2026-05-10)
 - **`Command::AabbLongestAxis { id }` (27번째 옵서버) 신규** + `Outcome::AabbLongestAxis { id, axis }` + `OutcomeKind::AabbLongestAxis` — 경계 상자에서 가장 긴 축 인덱스(`0`=X, `1`=Y, `2`=Z) 반환. 동접은 낮은 인덱스 우선(X > Y > Z). 카메라 프레이밍, 테셰레이션 시임 경로 등 방향성 휴리스틱용.
 - **연결**: `Session::execute` 읽기 전용 fast-path에 27번째 변형으로 추가. `Document::bounding_box` 재사용, 두 단계 `>=` 비교로 설택. 잘못된 id에는 `UnknownSolid`. history 불변.

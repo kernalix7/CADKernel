@@ -11,6 +11,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::AabbShortestAxis` AABB shortest-axis observer (2026-05-10)
+- **New `Command::AabbShortestAxis { id }` (28th observer)** + `Outcome::AabbShortestAxis { id, axis }` + `OutcomeKind::AabbShortestAxis` tag — returns the axis index (`0` = X, `1` = Y, `2` = Z) of the smallest bounding-box extent. Ties go to the lowest index. Symmetric counterpart to `AabbLongestAxis`; useful for thinness/sliver detection.
+- **Wiring**: routed through the read-only fast path in `Session::execute` (now 28 fast-pathed observer variants); dispatch reuses `Document::bounding_box` and selects the index via two cascaded `<=` comparisons. `UnknownSolid` surfaces for missing ids; no history event is appended.
+- **Schema**: `command_schemas()` exposes `op = "aabb_shortest_axis"` with a single required `id: solid_id` parameter.
+- **Tests**: 7 new regression tests in `crates/api/tests/api_integration.rs` (1×5×8 → X, Y·Z dominance via two boxes, cube tie → axis 0, unknown id → `UnknownSolid`, history-untouched, JSON round-trip with `"op":"aabb_shortest_axis"`, 2×7×4 → longest=1 / shortest=0 disagree) + schema-coverage fixture extended.
+
 #### API — `Command::AabbLongestAxis` AABB longest-axis observer (2026-05-10)
 - **New `Command::AabbLongestAxis { id }` (27th observer)** + `Outcome::AabbLongestAxis { id, axis }` + `OutcomeKind::AabbLongestAxis` tag — returns the axis index (`0` = X, `1` = Y, `2` = Z) of the largest bounding-box extent. Ties go to the lowest index (X over Y over Z). Useful for orientation heuristics (camera framing, tessellation seam routing) without manual `[dx, dy, dz]` inspection.
 - **Wiring**: routed through the read-only fast path in `Session::execute` (now 27 fast-pathed observer variants); dispatch reuses `Document::bounding_box` and selects the index via two cascaded `>=` comparisons. `UnknownSolid` surfaces for missing ids; no history event is appended.

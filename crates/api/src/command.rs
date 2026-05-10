@@ -315,6 +315,13 @@ pub enum Command {
     /// for orientation heuristics. Does not mutate or append a
     /// history event.
     AabbLongestAxis { id: SolidId },
+    /// Read-only AABB shortest-axis observer. Returns
+    /// `Outcome::AabbShortestAxis { id, axis }` where `axis` is
+    /// the index (`0` = X, `1` = Y, `2` = Z) of the smallest
+    /// bounding-box extent (ties favour the lower index).
+    /// Symmetric counterpart to `AabbLongestAxis`. Does not
+    /// mutate or append a history event.
+    AabbShortestAxis { id: SolidId },
     /// `Outcome::SolidCreated { id, label }` where `label` is
     /// `"<source-label> (copy)"`. The source slot is left untouched.
     Duplicate { id: SolidId },
@@ -386,6 +393,7 @@ impl Command {
             Self::SolidIds => "solid_ids",
             Self::AabbExtents { .. } => "aabb_extents",
             Self::AabbLongestAxis { .. } => "aabb_longest_axis",
+            Self::AabbShortestAxis { .. } => "aabb_shortest_axis",
             Self::Duplicate { .. } => "duplicate",
             Self::Rotate { .. } => "rotate",
             Self::Noop => "noop",
@@ -975,6 +983,16 @@ pub fn command_schemas() -> Vec<CommandSchema> {
         CommandSchema {
             op: "aabb_longest_axis",
             description: "AABB longest-axis observer. Returns axis index (0=X, 1=Y, 2=Z) of the largest extent; ties favour the lower index.",
+            params: &[ParamSchema {
+                name: "id",
+                ty: "solid_id",
+                required: true,
+                doc: "Solid to query.",
+            }],
+        },
+        CommandSchema {
+            op: "aabb_shortest_axis",
+            description: "AABB shortest-axis observer. Returns axis index (0=X, 1=Y, 2=Z) of the smallest extent; ties favour the lower index.",
             params: &[ParamSchema {
                 name: "id",
                 ty: "solid_id",

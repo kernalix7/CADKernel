@@ -213,6 +213,12 @@ pub enum Outcome {
     /// and primary-axis detection without manual `[dx, dy, dz]`
     /// inspection.
     AabbLongestAxis { id: SolidId, axis: u8 },
+    /// Read-only AABB shortest-axis observer (`Command::AabbShortestAxis`).
+    /// Returns the axis index (`0` = X, `1` = Y, `2` = Z) whose
+    /// bounding-box extent is smallest. Ties go to the lowest
+    /// index. Symmetric counterpart to `AabbLongestAxis`; useful
+    /// for thinness/sliver detection.
+    AabbShortestAxis { id: SolidId, axis: u8 },
     /// Nothing happened (`Command::Noop`).
     Empty,
 }
@@ -261,6 +267,7 @@ pub enum OutcomeKind {
     SolidIds,
     AabbExtents,
     AabbLongestAxis,
+    AabbShortestAxis,
     Empty,
 }
 
@@ -300,6 +307,7 @@ impl Outcome {
             Self::SolidIds { .. } => OutcomeKind::SolidIds,
             Self::AabbExtents { .. } => OutcomeKind::AabbExtents,
             Self::AabbLongestAxis { .. } => OutcomeKind::AabbLongestAxis,
+            Self::AabbShortestAxis { .. } => OutcomeKind::AabbShortestAxis,
             Self::Empty => OutcomeKind::Empty,
         }
     }

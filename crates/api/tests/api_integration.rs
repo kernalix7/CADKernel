@@ -534,6 +534,7 @@ fn command_schemas_cover_every_op_name() {
         Command::SolidIds,
         Command::AabbExtents { id: cadkernel_api::SolidId(0) },
         Command::AabbLongestAxis { id: cadkernel_api::SolidId(0) },
+        Command::AabbShortestAxis { id: cadkernel_api::SolidId(0) },
         Command::Duplicate {
             id: cadkernel_api::SolidId(0),
         },
@@ -3711,4 +3712,80 @@ fn aabb_longest_axis_command_round_trips_through_json() {
     assert!(json.contains("\"op\":\"aabb_longest_axis\""), "json = {json}");
     let back: Command = serde_json::from_str(&json).unwrap();
     assert!(matches!(back, Command::AabbLongestAxis { id: SolidId(0) }));
+}
+
+#[test]
+fn aabb_shortest_axis_command_picks_x() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 5.0, dz: 8.0 }).unwrap();
+    let outcome = s.execute(Command::AabbShortestAxis { id: SolidId(0) }).unwrap();
+    if let Outcome::AabbShortestAxis { id, axis } = outcome {
+        assert_eq!(id, SolidId(0));
+        assert_eq!(axis, 0);
+    } else { panic!("expected AabbShortestAxis, got {outcome:?}"); }
+}
+
+#[test]
+fn aabb_shortest_axis_command_picks_y_and_z() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 9.0, dy: 1.0, dz: 5.0 }).unwrap();
+    s.execute(Command::CreateBox { dx: 9.0, dy: 5.0, dz: 1.0 }).unwrap();
+    let ax_y = match s.execute(Command::AabbShortestAxis { id: SolidId(0) }).unwrap() {
+        Outcome::AabbShortestAxis { axis, .. } => axis, _ => panic!(),
+    };
+    let ax_z = match s.execute(Command::AabbShortestAxis { id: SolidId(1) }).unwrap() {
+        Outcome::AabbShortestAxis { axis, .. } => axis, _ => panic!(),
+    };
+    assert_eq!(ax_y, 1);
+    assert_eq!(ax_z, 2);
+}
+
+#[test]
+fn aabb_shortest_axis_command_ties_favour_lower_index() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 5.0, dy: 5.0, dz: 5.0 }).unwrap();
+    let axis = match s.execute(Command::AabbShortestAxis { id: SolidId(0) }).unwrap() {
+        Outcome::AabbShortestAxis { axis, .. } => axis, _ => panic!(),
+    };
+    assert_eq!(axis, 0);
+}
+
+#[test]
+fn aabb_shortest_axis_command_unknown_solid() {
+    let mut s = Session::new();
+    let err = s.execute(Command::AabbShortestAxis { id: SolidId(99) }).unwrap_err();
+    assert!(matches!(err, ApiError::UnknownSolid(_)));
+}
+
+#[test]
+fn aabb_shortest_axis_command_does_not_append_history_event() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 2.0, dz: 3.0 }).unwrap();
+    let before = s.document().history().len();
+    s.execute(Command::AabbShortestAxis { id: SolidId(0) }).unwrap();
+    assert_eq!(s.document().history().len(), before);
+}
+
+#[test]
+fn aabb_shortest_axis_command_round_trips_through_json() {
+    let cmd = Command::AabbShortestAxis { id: SolidId(0) };
+    let json = serde_json::to_string(&cmd).unwrap();
+    assert!(json.contains("\"op\":\"aabb_shortest_axis\""), "json = {json}");
+    let back: Command = serde_json::from_str(&json).unwrap();
+    assert!(matches!(back, Command::AabbShortestAxis { id: SolidId(0) }));
+}
+
+#[test]
+fn aabb_shortest_axis_disagrees_with_longest_for_non_cube() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 2.0, dy: 7.0, dz: 4.0 }).unwrap();
+    let longest = match s.execute(Command::AabbLongestAxis { id: SolidId(0) }).unwrap() {
+        Outcome::AabbLongestAxis { axis, .. } => axis, _ => panic!(),
+    };
+    let shortest = match s.execute(Command::AabbShortestAxis { id: SolidId(0) }).unwrap() {
+        Outcome::AabbShortestAxis { axis, .. } => axis, _ => panic!(),
+    };
+    assert_eq!(longest, 1);
+    assert_eq!(shortest, 0);
+    assert_ne!(longest, shortest);
 }
