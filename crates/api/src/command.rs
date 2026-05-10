@@ -357,6 +357,14 @@ pub enum Command {
     /// plane (extrusions oriented along the X axis). Does not
     /// mutate or append a history event.
     IsSquareYz { id: SolidId },
+    /// Read-only square-XZ-footprint predicate. Returns
+    /// `Outcome::IsSquareXz { id, square }` where `square` is
+    /// `true` when the X and Z AABB extents are equal within
+    /// an absolute tolerance of `1e-9` (Y is unconstrained).
+    /// Detects solids with a square cross-section in the XZ
+    /// plane (extrusions oriented along the Y axis). Does not
+    /// mutate or append a history event.
+    IsSquareXz { id: SolidId },
     /// `Outcome::SolidCreated { id, label }` where `label` is
     /// `"<source-label> (copy)"`. The source slot is left untouched.
     Duplicate { id: SolidId },
@@ -434,6 +442,7 @@ impl Command {
             Self::IsSquareXy { .. } => "is_square_xy",
             Self::HistoryDescription { .. } => "history_description",
             Self::IsSquareYz { .. } => "is_square_yz",
+            Self::IsSquareXz { .. } => "is_square_xz",
             Self::Duplicate { .. } => "duplicate",
             Self::Rotate { .. } => "rotate",
             Self::Noop => "noop",
@@ -1083,6 +1092,16 @@ pub fn command_schemas() -> Vec<CommandSchema> {
         CommandSchema {
             op: "is_square_yz",
             description: "Square-YZ-footprint predicate. Returns true when Y and Z AABB extents are equal within an absolute tolerance of 1e-9 (X unconstrained).",
+            params: &[ParamSchema {
+                name: "id",
+                ty: "solid_id",
+                required: true,
+                doc: "Solid to query.",
+            }],
+        },
+        CommandSchema {
+            op: "is_square_xz",
+            description: "Square-XZ-footprint predicate. Returns true when X and Z AABB extents are equal within an absolute tolerance of 1e-9 (Y unconstrained).",
             params: &[ParamSchema {
                 name: "id",
                 ty: "solid_id",

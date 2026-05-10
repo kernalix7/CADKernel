@@ -246,6 +246,12 @@ pub enum Outcome {
     /// unconstrained). Detects solids with a square cross-section
     /// in the YZ plane (e.g. extrusions oriented along the X axis).
     IsSquareYz { id: SolidId, square: bool },
+    /// Read-only square-XZ-footprint predicate (`Command::IsSquareXz`).
+    /// `square` is `true` when the X and Z extents of the bounding
+    /// box are equal within an absolute tolerance of `1e-9` (Y is
+    /// unconstrained). Detects solids with a square cross-section
+    /// in the XZ plane (e.g. extrusions oriented along the Y axis).
+    IsSquareXz { id: SolidId, square: bool },
     /// Nothing happened (`Command::Noop`).
     Empty,
 }
@@ -300,6 +306,7 @@ pub enum OutcomeKind {
     IsSquareXy,
     HistoryDescription,
     IsSquareYz,
+    IsSquareXz,
     Empty,
 }
 
@@ -345,6 +352,7 @@ impl Outcome {
             Self::IsSquareXy { .. } => OutcomeKind::IsSquareXy,
             Self::HistoryDescription { .. } => OutcomeKind::HistoryDescription,
             Self::IsSquareYz { .. } => OutcomeKind::IsSquareYz,
+            Self::IsSquareXz { .. } => OutcomeKind::IsSquareXz,
             Self::Empty => OutcomeKind::Empty,
         }
     }

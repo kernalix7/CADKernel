@@ -11,6 +11,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::IsSquareXz` square-XZ-footprint predicate (2026-05-10)
+- **New `Command::IsSquareXz { id }` (34th observer)** + `Outcome::IsSquareXz { id, square }` + `OutcomeKind::IsSquareXz` tag — returns `true` when the X and Z AABB extents are equal within an absolute tolerance of `1e-9` (Y is unconstrained). Completes the orthogonal trio (`IsSquareXy` / `IsSquareYz` / `IsSquareXz`) for solids extruded along the Y axis (square cross-section in XZ).
+- **Wiring**: routed through the read-only fast path in `Session::execute` (now 34 fast-pathed observer variants); dispatch reuses `Document::bounding_box` and tests `(dx - dz).abs() <= 1e-9`. `UnknownSolid` surfaces for missing ids; no history event is appended.
+- **Schema**: `command_schemas()` exposes `op = "is_square_xz"` with a single required `id: solid_id` parameter.
+- **Tests**: 7 new regression tests in `crates/api/tests/api_integration.rs` (4×20×4 Y-extrusion → true, 3×3×3 cube → true, 3×5×7 → false, 4×9×4 trio cross-check (xz=true, xy=false, yz=false), unknown id → `UnknownSolid`, history-untouched, JSON round-trip with `"op":"is_square_xz"`) + schema-coverage fixture extended.
+
 #### API — `Command::IsSquareYz` square-YZ-footprint predicate (2026-05-10)
 - **New `Command::IsSquareYz { id }` (33rd observer)** + `Outcome::IsSquareYz { id, square }` + `OutcomeKind::IsSquareYz` tag — returns `true` when the Y and Z AABB extents are equal within an absolute tolerance of `1e-9` (X is unconstrained). Counterpart to `IsSquareXy` for solids extruded along the X axis (square cross-section in YZ).
 - **Wiring**: routed through the read-only fast path in `Session::execute` (now 33 fast-pathed observer variants); dispatch reuses `Document::bounding_box` and tests `(dy - dz).abs() <= 1e-9`. `UnknownSolid` surfaces for missing ids; no history event is appended.

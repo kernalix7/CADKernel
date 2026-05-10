@@ -540,6 +540,7 @@ fn command_schemas_cover_every_op_name() {
         Command::IsSquareXy { id: cadkernel_api::SolidId(0) },
         Command::HistoryDescription { index: 0 },
         Command::IsSquareYz { id: cadkernel_api::SolidId(0) },
+        Command::IsSquareXz { id: cadkernel_api::SolidId(0) },
         Command::Duplicate {
             id: cadkernel_api::SolidId(0),
         },
@@ -4098,4 +4099,77 @@ fn is_square_yz_command_round_trips_through_json() {
     assert!(json.contains("\"op\":\"is_square_yz\""), "json = {json}");
     let back: Command = serde_json::from_str(&json).unwrap();
     assert!(matches!(back, Command::IsSquareYz { id: SolidId(0) }));
+}
+
+#[test]
+fn is_square_xz_command_true_for_y_extrusion() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 4.0, dy: 20.0, dz: 4.0 }).unwrap();
+    let outcome = s.execute(Command::IsSquareXz { id: SolidId(0) }).unwrap();
+    if let Outcome::IsSquareXz { id, square } = outcome {
+        assert_eq!(id, SolidId(0));
+        assert!(square);
+    } else { panic!("expected IsSquareXz, got {outcome:?}"); }
+}
+
+#[test]
+fn is_square_xz_command_true_for_cube() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 3.0, dy: 3.0, dz: 3.0 }).unwrap();
+    let square = match s.execute(Command::IsSquareXz { id: SolidId(0) }).unwrap() {
+        Outcome::IsSquareXz { square, .. } => square, _ => panic!(),
+    };
+    assert!(square);
+}
+
+#[test]
+fn is_square_xz_command_false_for_rectangular_xz() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 3.0, dy: 5.0, dz: 7.0 }).unwrap();
+    let square = match s.execute(Command::IsSquareXz { id: SolidId(0) }).unwrap() {
+        Outcome::IsSquareXz { square, .. } => square, _ => panic!(),
+    };
+    assert!(!square);
+}
+
+#[test]
+fn is_square_xz_command_trio_disagreement() {
+    let mut s = Session::new();
+    // X==Z but Y differs: only IsSquareXz is true.
+    s.execute(Command::CreateBox { dx: 4.0, dy: 9.0, dz: 4.0 }).unwrap();
+    let xz = match s.execute(Command::IsSquareXz { id: SolidId(0) }).unwrap() {
+        Outcome::IsSquareXz { square, .. } => square, _ => panic!(),
+    };
+    let xy = match s.execute(Command::IsSquareXy { id: SolidId(0) }).unwrap() {
+        Outcome::IsSquareXy { square, .. } => square, _ => panic!(),
+    };
+    let yz = match s.execute(Command::IsSquareYz { id: SolidId(0) }).unwrap() {
+        Outcome::IsSquareYz { square, .. } => square, _ => panic!(),
+    };
+    assert!(xz && !xy && !yz);
+}
+
+#[test]
+fn is_square_xz_command_unknown_solid() {
+    let mut s = Session::new();
+    let err = s.execute(Command::IsSquareXz { id: SolidId(99) }).unwrap_err();
+    assert!(matches!(err, ApiError::UnknownSolid(_)));
+}
+
+#[test]
+fn is_square_xz_command_does_not_append_history_event() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 7.0, dz: 1.0 }).unwrap();
+    let before = s.document().history().len();
+    s.execute(Command::IsSquareXz { id: SolidId(0) }).unwrap();
+    assert_eq!(s.document().history().len(), before);
+}
+
+#[test]
+fn is_square_xz_command_round_trips_through_json() {
+    let cmd = Command::IsSquareXz { id: SolidId(0) };
+    let json = serde_json::to_string(&cmd).unwrap();
+    assert!(json.contains("\"op\":\"is_square_xz\""), "json = {json}");
+    let back: Command = serde_json::from_str(&json).unwrap();
+    assert!(matches!(back, Command::IsSquareXz { id: SolidId(0) }));
 }

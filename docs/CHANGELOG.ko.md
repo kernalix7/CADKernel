@@ -11,6 +11,12 @@
 
 ### 추가됨
 
+#### API — `Command::IsSquareXz` 사각 XZ 풋프린트 판별 옵서버 (2026-05-10)
+- **`Command::IsSquareXz { id }` (34번째 옵서버) 신규** + `Outcome::IsSquareXz { id, square }` + `OutcomeKind::IsSquareXz` — X와 Z AABB 길이가 절대 허용 오차 `1e-9` 내에서 동일할 때 `true` 반환 (Y 무관). 사각 단면 옵서버 직교 3종 트리오(`IsSquareXy` / `IsSquareYz` / `IsSquareXz`) 완성 — Y축 방향 돌출 솔리드 감지용.
+- **연결**: `Session::execute` fast-path 34번째 변형. `Document::bounding_box` 재사용, `(dx - dz).abs() <= 1e-9`. 잘못된 id에는 `UnknownSolid`. history 불변.
+- **스키마**: `command_schemas()`에 `op = "is_square_xz"` (필수 `id` 1개) 추가.
+- **테스트**: 7개 회귀 테스트 추가 (4×20×4 Y돌출 → true, 정육면체 → true, 3×5×7 → false, 4×9×4 트리오 교차 검증 (xz=true, xy=false, yz=false), 잘못된 id, history 불변, JSON 라운드트립) + 스키마 커버리지 확장.
+
 #### API — `Command::IsSquareYz` 사각 YZ 풋프린트 판별 옵서버 (2026-05-10)
 - **`Command::IsSquareYz { id }` (33번째 옵서버) 신규** + `Outcome::IsSquareYz { id, square }` + `OutcomeKind::IsSquareYz` — Y와 Z AABB 길이가 절대 허용 오차 `1e-9` 내에서 동일할 때 `true` 반환 (X 무관). `IsSquareXy`와 쌍을 이루는 X축 방향 돌출 솔리드 감지용.
 - **연결**: `Session::execute` fast-path 33번째 변형. `Document::bounding_box` 재사용, `(dy - dz).abs() <= 1e-9`. 잘못된 id에는 `UnknownSolid`. history 불변.
