@@ -322,6 +322,13 @@ pub enum Command {
     /// Symmetric counterpart to `AabbLongestAxis`. Does not
     /// mutate or append a history event.
     AabbShortestAxis { id: SolidId },
+    /// Read-only AABB aspect-ratio observer. Returns
+    /// `Outcome::AabbAspectRatio { id, ratio }` where
+    /// `ratio = longest_extent / shortest_extent` (>= 1.0).
+    /// Returns `f64::INFINITY` when the shortest extent is
+    /// exactly zero. Useful for slenderness/sliver detection.
+    /// Does not mutate or append a history event.
+    AabbAspectRatio { id: SolidId },
     /// `Outcome::SolidCreated { id, label }` where `label` is
     /// `"<source-label> (copy)"`. The source slot is left untouched.
     Duplicate { id: SolidId },
@@ -394,6 +401,7 @@ impl Command {
             Self::AabbExtents { .. } => "aabb_extents",
             Self::AabbLongestAxis { .. } => "aabb_longest_axis",
             Self::AabbShortestAxis { .. } => "aabb_shortest_axis",
+            Self::AabbAspectRatio { .. } => "aabb_aspect_ratio",
             Self::Duplicate { .. } => "duplicate",
             Self::Rotate { .. } => "rotate",
             Self::Noop => "noop",
@@ -993,6 +1001,16 @@ pub fn command_schemas() -> Vec<CommandSchema> {
         CommandSchema {
             op: "aabb_shortest_axis",
             description: "AABB shortest-axis observer. Returns axis index (0=X, 1=Y, 2=Z) of the smallest extent; ties favour the lower index.",
+            params: &[ParamSchema {
+                name: "id",
+                ty: "solid_id",
+                required: true,
+                doc: "Solid to query.",
+            }],
+        },
+        CommandSchema {
+            op: "aabb_aspect_ratio",
+            description: "AABB aspect-ratio observer. Returns longest_extent / shortest_extent (>= 1.0); +inf when shortest extent is zero.",
             params: &[ParamSchema {
                 name: "id",
                 ty: "solid_id",

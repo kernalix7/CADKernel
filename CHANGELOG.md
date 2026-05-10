@@ -11,6 +11,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::AabbAspectRatio` AABB aspect-ratio observer (2026-05-10)
+- **New `Command::AabbAspectRatio { id }` (29th observer)** + `Outcome::AabbAspectRatio { id, ratio }` + `OutcomeKind::AabbAspectRatio` tag — returns `longest_extent / shortest_extent` (always `>= 1.0`); returns `f64::INFINITY` when the shortest extent is zero (degenerate/planar solid). Useful as a single-number slenderness metric without computing all three extents manually.
+- **Wiring**: routed through the read-only fast path in `Session::execute` (now 29 fast-pathed observer variants); dispatch reuses `Document::bounding_box` and combines `dx.max(dy).max(dz)` / `dx.min(dy).min(dz)`. `UnknownSolid` surfaces for missing ids; no history event is appended.
+- **Schema**: `command_schemas()` exposes `op = "aabb_aspect_ratio"` with a single required `id: solid_id` parameter.
+- **Tests**: 6 new regression tests in `crates/api/tests/api_integration.rs` (5×5×5 cube → 1.0, 2×4×20 → 10.0, translation invariance check, unknown id → `UnknownSolid`, history-untouched, JSON round-trip with `"op":"aabb_aspect_ratio"`) + schema-coverage fixture extended.
+
 #### API — `Command::AabbShortestAxis` AABB shortest-axis observer (2026-05-10)
 - **New `Command::AabbShortestAxis { id }` (28th observer)** + `Outcome::AabbShortestAxis { id, axis }` + `OutcomeKind::AabbShortestAxis` tag — returns the axis index (`0` = X, `1` = Y, `2` = Z) of the smallest bounding-box extent. Ties go to the lowest index. Symmetric counterpart to `AabbLongestAxis`; useful for thinness/sliver detection.
 - **Wiring**: routed through the read-only fast path in `Session::execute` (now 28 fast-pathed observer variants); dispatch reuses `Document::bounding_box` and selects the index via two cascaded `<=` comparisons. `UnknownSolid` surfaces for missing ids; no history event is appended.

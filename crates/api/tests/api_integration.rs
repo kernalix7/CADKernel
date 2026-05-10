@@ -535,6 +535,7 @@ fn command_schemas_cover_every_op_name() {
         Command::AabbExtents { id: cadkernel_api::SolidId(0) },
         Command::AabbLongestAxis { id: cadkernel_api::SolidId(0) },
         Command::AabbShortestAxis { id: cadkernel_api::SolidId(0) },
+        Command::AabbAspectRatio { id: cadkernel_api::SolidId(0) },
         Command::Duplicate {
             id: cadkernel_api::SolidId(0),
         },
@@ -3788,4 +3789,65 @@ fn aabb_shortest_axis_disagrees_with_longest_for_non_cube() {
     assert_eq!(longest, 1);
     assert_eq!(shortest, 0);
     assert_ne!(longest, shortest);
+}
+
+#[test]
+fn aabb_aspect_ratio_command_cube_returns_one() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 5.0, dy: 5.0, dz: 5.0 }).unwrap();
+    let outcome = s.execute(Command::AabbAspectRatio { id: SolidId(0) }).unwrap();
+    if let Outcome::AabbAspectRatio { id, ratio } = outcome {
+        assert_eq!(id, SolidId(0));
+        assert!((ratio - 1.0).abs() < 1e-9);
+    } else { panic!("expected AabbAspectRatio, got {outcome:?}"); }
+}
+
+#[test]
+fn aabb_aspect_ratio_command_slender_box() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 2.0, dy: 4.0, dz: 20.0 }).unwrap();
+    let ratio = match s.execute(Command::AabbAspectRatio { id: SolidId(0) }).unwrap() {
+        Outcome::AabbAspectRatio { ratio, .. } => ratio, _ => panic!(),
+    };
+    assert!((ratio - 10.0).abs() < 1e-9);
+}
+
+#[test]
+fn aabb_aspect_ratio_command_translation_invariant() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 3.0, dy: 1.0, dz: 6.0 }).unwrap();
+    let before = match s.execute(Command::AabbAspectRatio { id: SolidId(0) }).unwrap() {
+        Outcome::AabbAspectRatio { ratio, .. } => ratio, _ => panic!(),
+    };
+    s.execute(Command::Translate { id: SolidId(0), dx: 100.0, dy: -50.0, dz: 7.0 }).unwrap();
+    let after = match s.execute(Command::AabbAspectRatio { id: SolidId(0) }).unwrap() {
+        Outcome::AabbAspectRatio { ratio, .. } => ratio, _ => panic!(),
+    };
+    assert!((before - after).abs() < 1e-9);
+    assert!((before - 6.0).abs() < 1e-9);
+}
+
+#[test]
+fn aabb_aspect_ratio_command_unknown_solid() {
+    let mut s = Session::new();
+    let err = s.execute(Command::AabbAspectRatio { id: SolidId(99) }).unwrap_err();
+    assert!(matches!(err, ApiError::UnknownSolid(_)));
+}
+
+#[test]
+fn aabb_aspect_ratio_command_does_not_append_history_event() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 2.0, dz: 3.0 }).unwrap();
+    let before = s.document().history().len();
+    s.execute(Command::AabbAspectRatio { id: SolidId(0) }).unwrap();
+    assert_eq!(s.document().history().len(), before);
+}
+
+#[test]
+fn aabb_aspect_ratio_command_round_trips_through_json() {
+    let cmd = Command::AabbAspectRatio { id: SolidId(0) };
+    let json = serde_json::to_string(&cmd).unwrap();
+    assert!(json.contains("\"op\":\"aabb_aspect_ratio\""), "json = {json}");
+    let back: Command = serde_json::from_str(&json).unwrap();
+    assert!(matches!(back, Command::AabbAspectRatio { id: SolidId(0) }));
 }

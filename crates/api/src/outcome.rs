@@ -219,6 +219,11 @@ pub enum Outcome {
     /// index. Symmetric counterpart to `AabbLongestAxis`; useful
     /// for thinness/sliver detection.
     AabbShortestAxis { id: SolidId, axis: u8 },
+    /// Read-only AABB aspect-ratio observer (`Command::AabbAspectRatio`).
+    /// Returns `longest_extent / shortest_extent` (>= 1.0). Returns
+    /// `f64::INFINITY` when the shortest extent is exactly zero
+    /// (degenerate AABB). Useful for slenderness/sliver detection.
+    AabbAspectRatio { id: SolidId, ratio: f64 },
     /// Nothing happened (`Command::Noop`).
     Empty,
 }
@@ -268,6 +273,7 @@ pub enum OutcomeKind {
     AabbExtents,
     AabbLongestAxis,
     AabbShortestAxis,
+    AabbAspectRatio,
     Empty,
 }
 
@@ -308,6 +314,7 @@ impl Outcome {
             Self::AabbExtents { .. } => OutcomeKind::AabbExtents,
             Self::AabbLongestAxis { .. } => OutcomeKind::AabbLongestAxis,
             Self::AabbShortestAxis { .. } => OutcomeKind::AabbShortestAxis,
+            Self::AabbAspectRatio { .. } => OutcomeKind::AabbAspectRatio,
             Self::Empty => OutcomeKind::Empty,
         }
     }

@@ -11,6 +11,12 @@
 
 ### 추가됨
 
+#### API — `Command::AabbAspectRatio` AABB 종횡비 옵서버 (2026-05-10)
+- **`Command::AabbAspectRatio { id }` (29번째 옵서버) 신규** + `Outcome::AabbAspectRatio { id, ratio }` + `OutcomeKind::AabbAspectRatio` — `최장 길이 / 최단 길이` (항상 `>= 1.0`) 반환. 최단 길이가 0인 퇴화/평면 솔리드는 `f64::INFINITY` 반환. 세 길이를 일일이 비교하지 않고도 슬렌더니스(slenderness) 지표를 한 숫자로 얻기 위한 옵서버.
+- **연결**: `Session::execute` fast-path 29번째 변형. `Document::bounding_box` 재사용, `dx.max(dy).max(dz) / dx.min(dy).min(dz)` 결합. 잘못된 id에는 `UnknownSolid`. history 불변.
+- **스키마**: `command_schemas()`에 `op = "aabb_aspect_ratio"` (필수 `id` 1개) 추가.
+- **테스트**: 6개 회귀 테스트 추가 (5×5×5 정육면체 → 1.0, 2×4×20 → 10.0, 이동 불변성, 잘못된 id, history 불변, JSON 라운드트립) + 스키마 커버리지 확장.
+
 #### API — `Command::AabbShortestAxis` AABB 최단축 옵서버 (2026-05-10)
 - **`Command::AabbShortestAxis { id }` (28번째 옵서버) 신규** + `Outcome::AabbShortestAxis { id, axis }` + `OutcomeKind::AabbShortestAxis` — 경계 상자에서 가장 짧은 축 인덱스(`0`=X, `1`=Y, `2`=Z) 반환. 동점은 낮은 인덱스 우선. `AabbLongestAxis`의 대칭 카운터파트. 쇬버/얇은 솔리드 감지용.
 - **연결**: `Session::execute` 읽기 전용 fast-path에 28번째 변형으로 추가. `Document::bounding_box` 재사용, 두 단계 `<=` 비교로 선택. 잘못된 id에는 `UnknownSolid`. history 불변.
