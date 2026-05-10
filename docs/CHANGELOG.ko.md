@@ -11,6 +11,12 @@
 
 ### 추가됨
 
+#### API — `Command::LastOperation` 최근 히스토리 이벤트 조회 (2026-05-11)
+- **`Command::LastOperation` (36번째 옷서버, 매개변수 없음) 신규** + `Outcome::LastOperation { index, op_name, description }` + `OutcomeKind::LastOperation` — 가장 최근 히스토리 이벤트의 0기반 `index`, `op_name`, `description`을 단일 호출로 반환. `HistoryDescription { index: HistoryCount - 1 }` + op 이름과 동등하지만 완전 한 번의 호출로.
+- **연결**: `Session::execute` fast-path 36번째 변형. 빈 히스토리에는 `InvalidArgument("history is empty")` 반환. history 불변.
+- **스키마**: `command_schemas()`에 `op = "last_operation"` (매개변수 없음) 추가.
+- **테스트**: 6개 회귀 테스트 추가 (빈 히스토리 → `InvalidArgument`, CreateBox 후 index=0, CreateBox/CreateBox/Translate 추적, `HistoryDescription` 일치, history 불변, JSON 라운드트립) + 스키마 커버리지 확장.
+
 #### API — `Command::OperationCount` 히스토리 op 발생 횟수 카운터 (2026-05-10)
 - **`Command::OperationCount { op_name }` (35번째 옵서버) 신규** + `Outcome::OperationCount { op_name, count }` + `OutcomeKind::OperationCount` — 히스토리 이벤트 중 `op` 필드가 `op_name`과 정확히 일치(대소문자 구분)하는 개수를 `u32`로 반환. 단일 op 카운트만 필요할 때 `HistoryEvents`보다 경량 (예: "`create_box` 몇 번 호출됐는가?").
 - **연결**: `Session::execute` fast-path 35번째 변형. `Document::history()` 필터링. 알 수 없는 op는 `count = 0` (에러 아님). history 불변. 필드명을 `op`가 아닌 `op_name`으로 한 이유: `Command`의 serde 태그 `tag = "op"` 식별자와 충돌하기 때문.

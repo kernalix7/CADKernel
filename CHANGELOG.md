@@ -11,6 +11,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::LastOperation` last-history-event lookup (2026-05-11)
+- **New `Command::LastOperation` (36th observer, no params)** + `Outcome::LastOperation { index, op_name, description }` + `OutcomeKind::LastOperation` tag — returns the 0-based `index`, `op_name`, and `description` of the most recent history event in a single call. Equivalent to `HistoryDescription { index: HistoryCount - 1 }` plus the op name, but cheaper and avoids the round-trip.
+- **Wiring**: routed through the read-only fast path in `Session::execute` (now 36 fast-pathed observer variants); dispatch reads `Document::history()` last entry. Errors with `InvalidArgument("history is empty")` when the history vector is empty. No history event is appended.
+- **Schema**: `command_schemas()` exposes `op = "last_operation"` with no parameters.
+- **Tests**: 6 new regression tests in `crates/api/tests/api_integration.rs` (empty history → `InvalidArgument`, latest after CreateBox at index 0, tracks most recent across CreateBox/CreateBox/Translate, description matches `HistoryDescription` at last index, history-untouched, JSON round-trip with `"op":"last_operation"`) + schema-coverage fixture extended.
+
 #### API — `Command::OperationCount` history op-occurrence counter (2026-05-10)
 - **New `Command::OperationCount { op_name }` (35th observer)** + `Outcome::OperationCount { op_name, count }` + `OutcomeKind::OperationCount` tag — returns the number of history events whose `op` field matches the queried `op_name` exactly (case-sensitive). Cheaper than `HistoryEvents` when callers only need a single op's count (e.g. "how many `create_box` calls have run?").
 - **Wiring**: routed through the read-only fast path in `Session::execute` (now 35 fast-pathed observer variants); dispatch filters `Document::history()` and counts matches as `u32`. Unknown ops return `count = 0` (not an error). No history event is appended. The variant field is named `op_name` (not `op`) to avoid clashing with the serde-tag discriminator `tag = "op"` used by `Command`.

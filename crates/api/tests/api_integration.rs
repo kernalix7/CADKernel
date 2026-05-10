@@ -544,6 +544,7 @@ fn command_schemas_cover_every_op_name() {
         Command::OperationCount {
             op_name: "create_box".to_string(),
         },
+        Command::LastOperation,
         Command::Duplicate {
             id: cadkernel_api::SolidId(0),
         },
@@ -4276,4 +4277,70 @@ fn operation_count_command_round_trips_through_json() {
     assert!(json.contains("\"create_box\""), "json = {json}");
     let back: Command = serde_json::from_str(&json).unwrap();
     assert!(matches!(back, Command::OperationCount { ref op_name } if op_name == "create_box"));
+}
+
+#[test]
+fn last_operation_command_empty_history_errors() {
+    let mut s = Session::new();
+    let err = s.execute(Command::LastOperation).unwrap_err();
+    assert!(matches!(err, ApiError::InvalidArgument(_)), "got {err:?}");
+}
+
+#[test]
+fn last_operation_command_returns_latest_after_create_box() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let outcome = s.execute(Command::LastOperation).unwrap();
+    if let Outcome::LastOperation { index, op_name, description } = outcome {
+        assert_eq!(index, 0);
+        assert_eq!(op_name, "create_box");
+        assert!(!description.is_empty());
+    } else { panic!("expected LastOperation, got {outcome:?}"); }
+}
+
+#[test]
+fn last_operation_command_tracks_most_recent_event() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
+    s.execute(Command::Translate { id: SolidId(1), dx: 5.0, dy: 0.0, dz: 0.0 }).unwrap();
+    let outcome = s.execute(Command::LastOperation).unwrap();
+    if let Outcome::LastOperation { index, op_name, .. } = outcome {
+        assert_eq!(index, 2);
+        assert_eq!(op_name, "translate");
+    } else { panic!("expected LastOperation, got {outcome:?}"); }
+}
+
+#[test]
+fn last_operation_command_matches_history_description_at_last_index() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
+    let last_outcome = s.execute(Command::LastOperation).unwrap();
+    let (last_index, last_desc) = match last_outcome {
+        Outcome::LastOperation { index, description, .. } => (index, description),
+        _ => panic!(),
+    };
+    let desc_outcome = s.execute(Command::HistoryDescription { index: last_index }).unwrap();
+    if let Outcome::HistoryDescription { description, .. } = desc_outcome {
+        assert_eq!(description, last_desc);
+    } else { panic!(); }
+}
+
+#[test]
+fn last_operation_command_does_not_append_history_event() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let before = s.document().history().len();
+    s.execute(Command::LastOperation).unwrap();
+    assert_eq!(s.document().history().len(), before);
+}
+
+#[test]
+fn last_operation_command_round_trips_through_json() {
+    let cmd = Command::LastOperation;
+    let json = serde_json::to_string(&cmd).unwrap();
+    assert!(json.contains("\"op\":\"last_operation\""), "json = {json}");
+    let back: Command = serde_json::from_str(&json).unwrap();
+    assert!(matches!(back, Command::LastOperation));
 }

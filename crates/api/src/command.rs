@@ -372,6 +372,14 @@ pub enum Command {
     /// than `HistoryEvents` when callers only need a single
     /// op's count. Does not mutate or append a history event.
     OperationCount { op_name: String },
+    /// Read-only last-history-event lookup. Returns
+    /// `Outcome::LastOperation { index, op_name, description }`
+    /// for the most recent history event. Equivalent to
+    /// `HistoryDescription { index: HistoryCount - 1 }` plus
+    /// the op name, but in a single call. Errors with
+    /// `InvalidArgument` when the history is empty. Does not
+    /// mutate or append a history event.
+    LastOperation,
     /// `Outcome::SolidCreated { id, label }` where `label` is
     /// `"<source-label> (copy)"`. The source slot is left untouched.
     Duplicate { id: SolidId },
@@ -451,6 +459,7 @@ impl Command {
             Self::IsSquareYz { .. } => "is_square_yz",
             Self::IsSquareXz { .. } => "is_square_xz",
             Self::OperationCount { .. } => "operation_count",
+            Self::LastOperation => "last_operation",
             Self::Duplicate { .. } => "duplicate",
             Self::Rotate { .. } => "rotate",
             Self::Noop => "noop",
@@ -1126,6 +1135,11 @@ pub fn command_schemas() -> Vec<CommandSchema> {
                 required: true,
                 doc: "Op name to count (e.g. \"create_box\").",
             }],
+        },
+        CommandSchema {
+            op: "last_operation",
+            description: "Last-history-event lookup. Returns op_name + description + 0-based index of the most recent history event. Errors with InvalidArgument when the history is empty.",
+            params: &[],
         },
         CommandSchema {
             op: "scale_non_uniform",

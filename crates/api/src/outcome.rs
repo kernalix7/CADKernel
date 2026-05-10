@@ -258,6 +258,17 @@ pub enum Outcome {
     /// introspection (“how many `create_box` calls have run?”) without
     /// scanning the full history vector manually.
     OperationCount { op_name: String, count: u32 },
+    /// Read-only last-history-event lookup (`Command::LastOperation`).
+    /// Returns the `op_name`, `description`, and 0-based `index` of
+    /// the most recent history event. Equivalent to
+    /// `HistoryDescription { index: HistoryCount - 1 }` plus the
+    /// op name, but in a single call. Errors with `InvalidArgument`
+    /// when the history is empty.
+    LastOperation {
+        index: u32,
+        op_name: String,
+        description: String,
+    },
     /// Nothing happened (`Command::Noop`).
     Empty,
 }
@@ -314,6 +325,7 @@ pub enum OutcomeKind {
     IsSquareYz,
     IsSquareXz,
     OperationCount,
+    LastOperation,
     Empty,
 }
 
@@ -361,6 +373,7 @@ impl Outcome {
             Self::IsSquareYz { .. } => OutcomeKind::IsSquareYz,
             Self::IsSquareXz { .. } => OutcomeKind::IsSquareXz,
             Self::OperationCount { .. } => OutcomeKind::OperationCount,
+            Self::LastOperation { .. } => OutcomeKind::LastOperation,
             Self::Empty => OutcomeKind::Empty,
         }
     }
