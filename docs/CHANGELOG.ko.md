@@ -11,6 +11,12 @@
 
 ### 추가됨
 
+#### API — `Command::IsCubic` 정육면체 판별 옵서버 (2026-05-10)
+- **`Command::IsCubic { id }` (30번째 옵서버) 신규** + `Outcome::IsCubic { id, cubic }` + `OutcomeKind::IsCubic` — 경계 상자의 세 길이가 절대 허용 오차 `1e-9` 내에서 동일할 때 `true` 반환. 슬렌더니스 지표인 `AabbAspectRatio`와 쌍을 이루는 빠른 형상 분류기.
+- **연결**: `Session::execute` fast-path 30번째 변형. `Document::bounding_box` 재사용, `(longest - shortest) <= 1e-9`. 잘못된 id에는 `UnknownSolid`. history 불변.
+- **스키마**: `command_schemas()`에 `op = "is_cubic"` (필수 `id` 1개) 추가.
+- **테스트**: 6개 회귀 테스트 추가 (4×4×4 → true, 4×4×5 → false, 이동 불변성, 잘못된 id, history 불변, JSON 라운드트립) + 스키마 커버리지 확장.
+
 #### API — `Command::AabbAspectRatio` AABB 종횡비 옵서버 (2026-05-10)
 - **`Command::AabbAspectRatio { id }` (29번째 옵서버) 신규** + `Outcome::AabbAspectRatio { id, ratio }` + `OutcomeKind::AabbAspectRatio` — `최장 길이 / 최단 길이` (항상 `>= 1.0`) 반환. 최단 길이가 0인 퇴화/평면 솔리드는 `f64::INFINITY` 반환. 세 길이를 일일이 비교하지 않고도 슬렌더니스(slenderness) 지표를 한 숫자로 얻기 위한 옵서버.
 - **연결**: `Session::execute` fast-path 29번째 변형. `Document::bounding_box` 재사용, `dx.max(dy).max(dz) / dx.min(dy).min(dz)` 결합. 잘못된 id에는 `UnknownSolid`. history 불변.

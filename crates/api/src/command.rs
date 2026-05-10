@@ -329,6 +329,12 @@ pub enum Command {
     /// exactly zero. Useful for slenderness/sliver detection.
     /// Does not mutate or append a history event.
     AabbAspectRatio { id: SolidId },
+    /// Read-only cubic-AABB predicate. Returns
+    /// `Outcome::IsCubic { id, cubic }` where `cubic` is
+    /// `true` when all three bounding-box extents are equal
+    /// within an absolute tolerance of `1e-9`. Quick shape
+    /// classifier; does not mutate or append a history event.
+    IsCubic { id: SolidId },
     /// `Outcome::SolidCreated { id, label }` where `label` is
     /// `"<source-label> (copy)"`. The source slot is left untouched.
     Duplicate { id: SolidId },
@@ -402,6 +408,7 @@ impl Command {
             Self::AabbLongestAxis { .. } => "aabb_longest_axis",
             Self::AabbShortestAxis { .. } => "aabb_shortest_axis",
             Self::AabbAspectRatio { .. } => "aabb_aspect_ratio",
+            Self::IsCubic { .. } => "is_cubic",
             Self::Duplicate { .. } => "duplicate",
             Self::Rotate { .. } => "rotate",
             Self::Noop => "noop",
@@ -1011,6 +1018,16 @@ pub fn command_schemas() -> Vec<CommandSchema> {
         CommandSchema {
             op: "aabb_aspect_ratio",
             description: "AABB aspect-ratio observer. Returns longest_extent / shortest_extent (>= 1.0); +inf when shortest extent is zero.",
+            params: &[ParamSchema {
+                name: "id",
+                ty: "solid_id",
+                required: true,
+                doc: "Solid to query.",
+            }],
+        },
+        CommandSchema {
+            op: "is_cubic",
+            description: "Cubic-AABB predicate. Returns true when all three bounding-box extents are equal within an absolute tolerance of 1e-9.",
             params: &[ParamSchema {
                 name: "id",
                 ty: "solid_id",

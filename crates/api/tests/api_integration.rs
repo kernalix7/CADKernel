@@ -536,6 +536,7 @@ fn command_schemas_cover_every_op_name() {
         Command::AabbLongestAxis { id: cadkernel_api::SolidId(0) },
         Command::AabbShortestAxis { id: cadkernel_api::SolidId(0) },
         Command::AabbAspectRatio { id: cadkernel_api::SolidId(0) },
+        Command::IsCubic { id: cadkernel_api::SolidId(0) },
         Command::Duplicate {
             id: cadkernel_api::SolidId(0),
         },
@@ -3850,4 +3851,61 @@ fn aabb_aspect_ratio_command_round_trips_through_json() {
     assert!(json.contains("\"op\":\"aabb_aspect_ratio\""), "json = {json}");
     let back: Command = serde_json::from_str(&json).unwrap();
     assert!(matches!(back, Command::AabbAspectRatio { id: SolidId(0) }));
+}
+
+#[test]
+fn is_cubic_command_true_for_cube() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 4.0, dy: 4.0, dz: 4.0 }).unwrap();
+    let outcome = s.execute(Command::IsCubic { id: SolidId(0) }).unwrap();
+    if let Outcome::IsCubic { id, cubic } = outcome {
+        assert_eq!(id, SolidId(0));
+        assert!(cubic);
+    } else { panic!("expected IsCubic, got {outcome:?}"); }
+}
+
+#[test]
+fn is_cubic_command_false_for_non_cube() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 4.0, dy: 4.0, dz: 5.0 }).unwrap();
+    let cubic = match s.execute(Command::IsCubic { id: SolidId(0) }).unwrap() {
+        Outcome::IsCubic { cubic, .. } => cubic, _ => panic!(),
+    };
+    assert!(!cubic);
+}
+
+#[test]
+fn is_cubic_command_translation_invariant() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 3.0, dy: 3.0, dz: 3.0 }).unwrap();
+    s.execute(Command::Translate { id: SolidId(0), dx: 100.0, dy: -50.0, dz: 7.0 }).unwrap();
+    let cubic = match s.execute(Command::IsCubic { id: SolidId(0) }).unwrap() {
+        Outcome::IsCubic { cubic, .. } => cubic, _ => panic!(),
+    };
+    assert!(cubic);
+}
+
+#[test]
+fn is_cubic_command_unknown_solid() {
+    let mut s = Session::new();
+    let err = s.execute(Command::IsCubic { id: SolidId(99) }).unwrap_err();
+    assert!(matches!(err, ApiError::UnknownSolid(_)));
+}
+
+#[test]
+fn is_cubic_command_does_not_append_history_event() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let before = s.document().history().len();
+    s.execute(Command::IsCubic { id: SolidId(0) }).unwrap();
+    assert_eq!(s.document().history().len(), before);
+}
+
+#[test]
+fn is_cubic_command_round_trips_through_json() {
+    let cmd = Command::IsCubic { id: SolidId(0) };
+    let json = serde_json::to_string(&cmd).unwrap();
+    assert!(json.contains("\"op\":\"is_cubic\""), "json = {json}");
+    let back: Command = serde_json::from_str(&json).unwrap();
+    assert!(matches!(back, Command::IsCubic { id: SolidId(0) }));
 }

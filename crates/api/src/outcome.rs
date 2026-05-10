@@ -224,6 +224,11 @@ pub enum Outcome {
     /// `f64::INFINITY` when the shortest extent is exactly zero
     /// (degenerate AABB). Useful for slenderness/sliver detection.
     AabbAspectRatio { id: SolidId, ratio: f64 },
+    /// Read-only cubic-AABB predicate (`Command::IsCubic`). `cubic`
+    /// is `true` when all three bounding-box extents are equal
+    /// within an absolute tolerance of `1e-9`. Useful for quick
+    /// shape-classification heuristics.
+    IsCubic { id: SolidId, cubic: bool },
     /// Nothing happened (`Command::Noop`).
     Empty,
 }
@@ -274,6 +279,7 @@ pub enum OutcomeKind {
     AabbLongestAxis,
     AabbShortestAxis,
     AabbAspectRatio,
+    IsCubic,
     Empty,
 }
 
@@ -315,6 +321,7 @@ impl Outcome {
             Self::AabbLongestAxis { .. } => OutcomeKind::AabbLongestAxis,
             Self::AabbShortestAxis { .. } => OutcomeKind::AabbShortestAxis,
             Self::AabbAspectRatio { .. } => OutcomeKind::AabbAspectRatio,
+            Self::IsCubic { .. } => OutcomeKind::IsCubic,
             Self::Empty => OutcomeKind::Empty,
         }
     }

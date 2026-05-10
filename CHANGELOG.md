@@ -11,6 +11,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::IsCubic` cubic-AABB predicate (2026-05-10)
+- **New `Command::IsCubic { id }` (30th observer)** + `Outcome::IsCubic { id, cubic }` + `OutcomeKind::IsCubic` tag — returns `true` when all three bounding-box extents are equal within an absolute tolerance of `1e-9`. Quick shape classifier complementing the slenderness-oriented `AabbAspectRatio` observer.
+- **Wiring**: routed through the read-only fast path in `Session::execute` (now 30 fast-pathed observer variants); dispatch reuses `Document::bounding_box` and tests `(longest - shortest) <= 1e-9`. `UnknownSolid` surfaces for missing ids; no history event is appended.
+- **Schema**: `command_schemas()` exposes `op = "is_cubic"` with a single required `id: solid_id` parameter.
+- **Tests**: 6 new regression tests in `crates/api/tests/api_integration.rs` (4×4×4 → true, 4×4×5 → false, translation invariance, unknown id → `UnknownSolid`, history-untouched, JSON round-trip with `"op":"is_cubic"`) + schema-coverage fixture extended.
+
 #### API — `Command::AabbAspectRatio` AABB aspect-ratio observer (2026-05-10)
 - **New `Command::AabbAspectRatio { id }` (29th observer)** + `Outcome::AabbAspectRatio { id, ratio }` + `OutcomeKind::AabbAspectRatio` tag — returns `longest_extent / shortest_extent` (always `>= 1.0`); returns `f64::INFINITY` when the shortest extent is zero (degenerate/planar solid). Useful as a single-number slenderness metric without computing all three extents manually.
 - **Wiring**: routed through the read-only fast path in `Session::execute` (now 29 fast-pathed observer variants); dispatch reuses `Document::bounding_box` and combines `dx.max(dy).max(dz)` / `dx.min(dy).min(dz)`. `UnknownSolid` surfaces for missing ids; no history event is appended.
