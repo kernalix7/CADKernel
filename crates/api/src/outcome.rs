@@ -229,6 +229,12 @@ pub enum Outcome {
     /// within an absolute tolerance of `1e-9`. Useful for quick
     /// shape-classification heuristics.
     IsCubic { id: SolidId, cubic: bool },
+    /// Read-only square-XY-footprint predicate (`Command::IsSquareXy`).
+    /// `square` is `true` when the X and Z extents of the bounding
+    /// box are equal within an absolute tolerance of `1e-9` (Z is
+    /// unconstrained). Detects solids with a square footprint in
+    /// the XY plane (e.g. square prisms / pillars / posts).
+    IsSquareXy { id: SolidId, square: bool },
     /// Nothing happened (`Command::Noop`).
     Empty,
 }
@@ -280,6 +286,7 @@ pub enum OutcomeKind {
     AabbShortestAxis,
     AabbAspectRatio,
     IsCubic,
+    IsSquareXy,
     Empty,
 }
 
@@ -322,6 +329,7 @@ impl Outcome {
             Self::AabbShortestAxis { .. } => OutcomeKind::AabbShortestAxis,
             Self::AabbAspectRatio { .. } => OutcomeKind::AabbAspectRatio,
             Self::IsCubic { .. } => OutcomeKind::IsCubic,
+            Self::IsSquareXy { .. } => OutcomeKind::IsSquareXy,
             Self::Empty => OutcomeKind::Empty,
         }
     }

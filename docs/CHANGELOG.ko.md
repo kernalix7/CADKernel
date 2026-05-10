@@ -11,6 +11,12 @@
 
 ### 추가됨
 
+#### API — `Command::IsSquareXy` 사각 XY 풋프린트 판별 옵서버 (2026-05-10)
+- **`Command::IsSquareXy { id }` (31번째 옵서버) 신규** + `Outcome::IsSquareXy { id, square }` + `OutcomeKind::IsSquareXy` — X와 Y AABB 길이가 절대 허용 오차 `1e-9` 내에서 동일할 때 `true` 반환 (Z는 무관). XY 평면에서 사각 풋프린트를 가진 솔리드(사각 프리즘, 기둥, 기닥) 감지용.
+- **연결**: `Session::execute` fast-path 31번째 변형. `Document::bounding_box` 재사용, `(dx - dy).abs() <= 1e-9`. 잘못된 id에는 `UnknownSolid`. history 불변.
+- **스키마**: `command_schemas()`에 `op = "is_square_xy"` (필수 `id` 1개) 추가.
+- **테스트**: 6개 회귀 테스트 추가 (4×4×20 기둥 → true, 3×3×3 정육면체 → true, 3×5×3 → false, 잘못된 id, history 불변, JSON 라운드트립) + 스키마 커버리지 확장.
+
 #### API — `Command::IsCubic` 정육면체 판별 옵서버 (2026-05-10)
 - **`Command::IsCubic { id }` (30번째 옵서버) 신규** + `Outcome::IsCubic { id, cubic }` + `OutcomeKind::IsCubic` — 경계 상자의 세 길이가 절대 허용 오차 `1e-9` 내에서 동일할 때 `true` 반환. 슬렌더니스 지표인 `AabbAspectRatio`와 쌍을 이루는 빠른 형상 분류기.
 - **연결**: `Session::execute` fast-path 30번째 변형. `Document::bounding_box` 재사용, `(longest - shortest) <= 1e-9`. 잘못된 id에는 `UnknownSolid`. history 불변.

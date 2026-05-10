@@ -537,6 +537,7 @@ fn command_schemas_cover_every_op_name() {
         Command::AabbShortestAxis { id: cadkernel_api::SolidId(0) },
         Command::AabbAspectRatio { id: cadkernel_api::SolidId(0) },
         Command::IsCubic { id: cadkernel_api::SolidId(0) },
+        Command::IsSquareXy { id: cadkernel_api::SolidId(0) },
         Command::Duplicate {
             id: cadkernel_api::SolidId(0),
         },
@@ -3908,4 +3909,60 @@ fn is_cubic_command_round_trips_through_json() {
     assert!(json.contains("\"op\":\"is_cubic\""), "json = {json}");
     let back: Command = serde_json::from_str(&json).unwrap();
     assert!(matches!(back, Command::IsCubic { id: SolidId(0) }));
+}
+
+#[test]
+fn is_square_xy_command_true_for_square_pillar() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 4.0, dy: 4.0, dz: 20.0 }).unwrap();
+    let outcome = s.execute(Command::IsSquareXy { id: SolidId(0) }).unwrap();
+    if let Outcome::IsSquareXy { id, square } = outcome {
+        assert_eq!(id, SolidId(0));
+        assert!(square);
+    } else { panic!("expected IsSquareXy, got {outcome:?}"); }
+}
+
+#[test]
+fn is_square_xy_command_true_for_cube() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 3.0, dy: 3.0, dz: 3.0 }).unwrap();
+    let square = match s.execute(Command::IsSquareXy { id: SolidId(0) }).unwrap() {
+        Outcome::IsSquareXy { square, .. } => square, _ => panic!(),
+    };
+    assert!(square);
+}
+
+#[test]
+fn is_square_xy_command_false_for_rectangular_xy() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 3.0, dy: 5.0, dz: 3.0 }).unwrap();
+    let square = match s.execute(Command::IsSquareXy { id: SolidId(0) }).unwrap() {
+        Outcome::IsSquareXy { square, .. } => square, _ => panic!(),
+    };
+    assert!(!square);
+}
+
+#[test]
+fn is_square_xy_command_unknown_solid() {
+    let mut s = Session::new();
+    let err = s.execute(Command::IsSquareXy { id: SolidId(99) }).unwrap_err();
+    assert!(matches!(err, ApiError::UnknownSolid(_)));
+}
+
+#[test]
+fn is_square_xy_command_does_not_append_history_event() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 7.0 }).unwrap();
+    let before = s.document().history().len();
+    s.execute(Command::IsSquareXy { id: SolidId(0) }).unwrap();
+    assert_eq!(s.document().history().len(), before);
+}
+
+#[test]
+fn is_square_xy_command_round_trips_through_json() {
+    let cmd = Command::IsSquareXy { id: SolidId(0) };
+    let json = serde_json::to_string(&cmd).unwrap();
+    assert!(json.contains("\"op\":\"is_square_xy\""), "json = {json}");
+    let back: Command = serde_json::from_str(&json).unwrap();
+    assert!(matches!(back, Command::IsSquareXy { id: SolidId(0) }));
 }

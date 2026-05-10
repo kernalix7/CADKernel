@@ -335,6 +335,13 @@ pub enum Command {
     /// within an absolute tolerance of `1e-9`. Quick shape
     /// classifier; does not mutate or append a history event.
     IsCubic { id: SolidId },
+    /// Read-only square-XY-footprint predicate. Returns
+    /// `Outcome::IsSquareXy { id, square }` where `square` is
+    /// `true` when the X and Y AABB extents are equal within
+    /// an absolute tolerance of `1e-9` (Z is unconstrained).
+    /// Detects solids with a square footprint (square prisms,
+    /// pillars, posts). Does not mutate or append a history event.
+    IsSquareXy { id: SolidId },
     /// `Outcome::SolidCreated { id, label }` where `label` is
     /// `"<source-label> (copy)"`. The source slot is left untouched.
     Duplicate { id: SolidId },
@@ -409,6 +416,7 @@ impl Command {
             Self::AabbShortestAxis { .. } => "aabb_shortest_axis",
             Self::AabbAspectRatio { .. } => "aabb_aspect_ratio",
             Self::IsCubic { .. } => "is_cubic",
+            Self::IsSquareXy { .. } => "is_square_xy",
             Self::Duplicate { .. } => "duplicate",
             Self::Rotate { .. } => "rotate",
             Self::Noop => "noop",
@@ -1028,6 +1036,16 @@ pub fn command_schemas() -> Vec<CommandSchema> {
         CommandSchema {
             op: "is_cubic",
             description: "Cubic-AABB predicate. Returns true when all three bounding-box extents are equal within an absolute tolerance of 1e-9.",
+            params: &[ParamSchema {
+                name: "id",
+                ty: "solid_id",
+                required: true,
+                doc: "Solid to query.",
+            }],
+        },
+        CommandSchema {
+            op: "is_square_xy",
+            description: "Square-XY-footprint predicate. Returns true when X and Y AABB extents are equal within an absolute tolerance of 1e-9 (Z unconstrained).",
             params: &[ParamSchema {
                 name: "id",
                 ty: "solid_id",

@@ -11,6 +11,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::IsSquareXy` square-XY-footprint predicate (2026-05-10)
+- **New `Command::IsSquareXy { id }` (31st observer)** + `Outcome::IsSquareXy { id, square }` + `OutcomeKind::IsSquareXy` tag — returns `true` when the X and Y AABB extents are equal within an absolute tolerance of `1e-9` (Z is unconstrained). Detects solids with a square footprint in the XY plane (square prisms, pillars, posts).
+- **Wiring**: routed through the read-only fast path in `Session::execute` (now 31 fast-pathed observer variants); dispatch reuses `Document::bounding_box` and tests `(dx - dy).abs() <= 1e-9`. `UnknownSolid` surfaces for missing ids; no history event is appended.
+- **Schema**: `command_schemas()` exposes `op = "is_square_xy"` with a single required `id: solid_id` parameter.
+- **Tests**: 6 new regression tests in `crates/api/tests/api_integration.rs` (4×4×20 pillar → true, 3×3×3 cube → true, 3×5×3 → false, unknown id → `UnknownSolid`, history-untouched, JSON round-trip with `"op":"is_square_xy"`) + schema-coverage fixture extended.
+
 #### API — `Command::IsCubic` cubic-AABB predicate (2026-05-10)
 - **New `Command::IsCubic { id }` (30th observer)** + `Outcome::IsCubic { id, cubic }` + `OutcomeKind::IsCubic` tag — returns `true` when all three bounding-box extents are equal within an absolute tolerance of `1e-9`. Quick shape classifier complementing the slenderness-oriented `AabbAspectRatio` observer.
 - **Wiring**: routed through the read-only fast path in `Session::execute` (now 30 fast-pathed observer variants); dispatch reuses `Document::bounding_box` and tests `(longest - shortest) <= 1e-9`. `UnknownSolid` surfaces for missing ids; no history event is appended.
