@@ -548,6 +548,7 @@ fn command_schemas_cover_every_op_name() {
         Command::HasOperation {
             op_name: "create_box".to_string(),
         },
+        Command::FirstOperation,
         Command::Duplicate {
             id: cadkernel_api::SolidId(0),
         },
@@ -4423,4 +4424,70 @@ fn has_operation_command_round_trips_through_json() {
     assert!(json.contains("\"create_box\""), "json = {json}");
     let back: Command = serde_json::from_str(&json).unwrap();
     assert!(matches!(back, Command::HasOperation { ref op_name } if op_name == "create_box"));
+}
+
+#[test]
+fn first_operation_command_empty_history_errors() {
+    let mut s = Session::new();
+    let err = s.execute(Command::FirstOperation).unwrap_err();
+    assert!(matches!(err, ApiError::InvalidArgument(_)), "got {err:?}");
+}
+
+#[test]
+fn first_operation_command_returns_oldest_after_create_box() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let outcome = s.execute(Command::FirstOperation).unwrap();
+    if let Outcome::FirstOperation { op_name, description } = outcome {
+        assert_eq!(op_name, "create_box");
+        assert!(!description.is_empty());
+    } else { panic!("expected FirstOperation, got {outcome:?}"); }
+}
+
+#[test]
+fn first_operation_command_does_not_change_with_subsequent_events() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let first_after_one = match s.execute(Command::FirstOperation).unwrap() {
+        Outcome::FirstOperation { op_name, .. } => op_name, _ => panic!(),
+    };
+    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
+    s.execute(Command::Translate { id: SolidId(0), dx: 1.0, dy: 0.0, dz: 0.0 }).unwrap();
+    let first_after_three = match s.execute(Command::FirstOperation).unwrap() {
+        Outcome::FirstOperation { op_name, .. } => op_name, _ => panic!(),
+    };
+    assert_eq!(first_after_one, "create_box");
+    assert_eq!(first_after_three, "create_box");
+}
+
+#[test]
+fn first_operation_command_matches_history_description_at_index_zero() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
+    let first_desc = match s.execute(Command::FirstOperation).unwrap() {
+        Outcome::FirstOperation { description, .. } => description, _ => panic!(),
+    };
+    let desc_at_zero = match s.execute(Command::HistoryDescription { index: 0 }).unwrap() {
+        Outcome::HistoryDescription { description, .. } => description, _ => panic!(),
+    };
+    assert_eq!(first_desc, desc_at_zero);
+}
+
+#[test]
+fn first_operation_command_does_not_append_history_event() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    let before = s.document().history().len();
+    s.execute(Command::FirstOperation).unwrap();
+    assert_eq!(s.document().history().len(), before);
+}
+
+#[test]
+fn first_operation_command_round_trips_through_json() {
+    let cmd = Command::FirstOperation;
+    let json = serde_json::to_string(&cmd).unwrap();
+    assert!(json.contains("\"op\":\"first_operation\""), "json = {json}");
+    let back: Command = serde_json::from_str(&json).unwrap();
+    assert!(matches!(back, Command::FirstOperation));
 }

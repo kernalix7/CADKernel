@@ -11,6 +11,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::FirstOperation` first-history-event lookup (2026-05-11)
+- **New `Command::FirstOperation` (38th observer, no params)** + `Outcome::FirstOperation { op_name, description }` + `OutcomeKind::FirstOperation` tag — returns the `op_name` and `description` of the oldest history event (always at index 0). Mirror of `LastOperation`. Useful for log inspection / debugging "what was the first thing this session did?"
+- **Wiring**: routed through the read-only fast path in `Session::execute` (now 38 fast-pathed observer variants); dispatch reads `Document::history()[0]`. Errors with `InvalidArgument("history is empty")` when the history vector is empty. No history event is appended.
+- **Schema**: `command_schemas()` exposes `op = "first_operation"` with no parameters.
+- **Tests**: 6 new regression tests in `crates/api/tests/api_integration.rs` (empty history → `InvalidArgument`, oldest after CreateBox, stable across subsequent events, description matches `HistoryDescription { index: 0 }`, history-untouched, JSON round-trip with `"op":"first_operation"`) + schema-coverage fixture extended.
+
 #### API — `Command::HasOperation` history op-presence predicate (2026-05-11)
 - **New `Command::HasOperation { op_name }` (37th observer)** + `Outcome::HasOperation { op_name, present }` + `OutcomeKind::HasOperation` tag — returns `true` when at least one history event's `op` field matches `op_name` exactly (case-sensitive). Lighter-weight boolean counterpart to `OperationCount` for callers that only need a yes/no answer.
 - **Wiring**: routed through the read-only fast path in `Session::execute` (now 37 fast-pathed observer variants); dispatch uses `Document::history().iter().any()`. No history event is appended.

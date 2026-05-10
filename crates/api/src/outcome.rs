@@ -275,6 +275,12 @@ pub enum Outcome {
     /// Lighter than `OperationCount` when callers only need a
     /// boolean answer.
     HasOperation { op_name: String, present: bool },
+    /// Read-only first-history-event lookup (`Command::FirstOperation`).
+    /// Returns the `op_name` and `description` of the oldest
+    /// history event (always at index 0). Mirror of
+    /// `LastOperation`. Errors with `InvalidArgument` when the
+    /// history is empty.
+    FirstOperation { op_name: String, description: String },
     /// Nothing happened (`Command::Noop`).
     Empty,
 }
@@ -333,6 +339,7 @@ pub enum OutcomeKind {
     OperationCount,
     LastOperation,
     HasOperation,
+    FirstOperation,
     Empty,
 }
 
@@ -382,6 +389,7 @@ impl Outcome {
             Self::OperationCount { .. } => OutcomeKind::OperationCount,
             Self::LastOperation { .. } => OutcomeKind::LastOperation,
             Self::HasOperation { .. } => OutcomeKind::HasOperation,
+            Self::FirstOperation { .. } => OutcomeKind::FirstOperation,
             Self::Empty => OutcomeKind::Empty,
         }
     }
