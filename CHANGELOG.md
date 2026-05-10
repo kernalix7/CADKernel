@@ -11,6 +11,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### API — `Command::AabbLongestAxis` AABB longest-axis observer (2026-05-10)
+- **New `Command::AabbLongestAxis { id }` (27th observer)** + `Outcome::AabbLongestAxis { id, axis }` + `OutcomeKind::AabbLongestAxis` tag — returns the axis index (`0` = X, `1` = Y, `2` = Z) of the largest bounding-box extent. Ties go to the lowest index (X over Y over Z). Useful for orientation heuristics (camera framing, tessellation seam routing) without manual `[dx, dy, dz]` inspection.
+- **Wiring**: routed through the read-only fast path in `Session::execute` (now 27 fast-pathed observer variants); dispatch reuses `Document::bounding_box` and selects the index via two cascaded `>=` comparisons. `UnknownSolid` surfaces for missing ids; no history event is appended.
+- **Schema**: `command_schemas()` exposes `op = "aabb_longest_axis"` with a single required `id: solid_id` parameter.
+- **Tests**: 6 new regression tests in `crates/api/tests/api_integration.rs` (Z dominant for 2×3×10, X and Y dominance via two boxes, cube tie → axis 0, unknown id → `UnknownSolid`, history-untouched, JSON round-trip with `"op":"aabb_longest_axis"`) + schema-coverage fixture extended.
+
 #### API — `Command::AabbExtents` AABB-extents observer (2026-05-09)
 - **New `Command::AabbExtents { id }` (26th observer)** + `Outcome::AabbExtents { id, extents }` + `OutcomeKind::AabbExtents` tag — returns the per-axis bounding-box extents `[dx, dy, dz]` where `dx = max.x - min.x`, etc. Cheaper than `Bounds` (skips min/max points) and a raw companion to `Diagonal` (which returns `sqrt(dx*dx + dy*dy + dz*dz)`).
 - **Wiring**: routed through the read-only fast path in `Session::execute` (now 26 fast-pathed observer variants); dispatch reuses `Document::bounding_box` and computes axis-wise differences. `UnknownSolid` surfaces for missing ids; no history event is appended.

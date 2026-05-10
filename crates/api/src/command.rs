@@ -308,6 +308,13 @@ pub enum Command {
     /// companion to `Diagonal`. Does not mutate or append a
     /// history event.
     AabbExtents { id: SolidId },
+    /// Read-only AABB longest-axis observer. Returns
+    /// `Outcome::AabbLongestAxis { id, axis }` where `axis` is
+    /// the index (`0` = X, `1` = Y, `2` = Z) of the largest
+    /// bounding-box extent (ties favour the lower index). Useful
+    /// for orientation heuristics. Does not mutate or append a
+    /// history event.
+    AabbLongestAxis { id: SolidId },
     /// `Outcome::SolidCreated { id, label }` where `label` is
     /// `"<source-label> (copy)"`. The source slot is left untouched.
     Duplicate { id: SolidId },
@@ -378,6 +385,7 @@ impl Command {
             Self::HasLabel { .. } => "has_label",
             Self::SolidIds => "solid_ids",
             Self::AabbExtents { .. } => "aabb_extents",
+            Self::AabbLongestAxis { .. } => "aabb_longest_axis",
             Self::Duplicate { .. } => "duplicate",
             Self::Rotate { .. } => "rotate",
             Self::Noop => "noop",
@@ -957,6 +965,16 @@ pub fn command_schemas() -> Vec<CommandSchema> {
         CommandSchema {
             op: "aabb_extents",
             description: "AABB-extents observer. Returns the per-axis bounding-box extents [dx, dy, dz].",
+            params: &[ParamSchema {
+                name: "id",
+                ty: "solid_id",
+                required: true,
+                doc: "Solid to query.",
+            }],
+        },
+        CommandSchema {
+            op: "aabb_longest_axis",
+            description: "AABB longest-axis observer. Returns axis index (0=X, 1=Y, 2=Z) of the largest extent; ties favour the lower index.",
             params: &[ParamSchema {
                 name: "id",
                 ty: "solid_id",

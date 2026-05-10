@@ -533,6 +533,7 @@ fn command_schemas_cover_every_op_name() {
         Command::HasLabel { query: "x".into() },
         Command::SolidIds,
         Command::AabbExtents { id: cadkernel_api::SolidId(0) },
+        Command::AabbLongestAxis { id: cadkernel_api::SolidId(0) },
         Command::Duplicate {
             id: cadkernel_api::SolidId(0),
         },
@@ -3649,4 +3650,65 @@ fn aabb_extents_command_diagonal_consistent() {
     let computed = (extents[0]*extents[0] + extents[1]*extents[1] + extents[2]*extents[2]).sqrt();
     assert!((diag - computed).abs() < 1e-9);
     assert!((diag - 13.0).abs() < 1e-9);
+}
+
+#[test]
+fn aabb_longest_axis_command_picks_z() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 2.0, dy: 3.0, dz: 10.0 }).unwrap();
+    let outcome = s.execute(Command::AabbLongestAxis { id: SolidId(0) }).unwrap();
+    if let Outcome::AabbLongestAxis { id, axis } = outcome {
+        assert_eq!(id, SolidId(0));
+        assert_eq!(axis, 2);
+    } else { panic!("expected AabbLongestAxis, got {outcome:?}"); }
+}
+
+#[test]
+fn aabb_longest_axis_command_picks_x_and_y() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 9.0, dy: 2.0, dz: 3.0 }).unwrap();
+    s.execute(Command::CreateBox { dx: 2.0, dy: 9.0, dz: 3.0 }).unwrap();
+    let ax_x = match s.execute(Command::AabbLongestAxis { id: SolidId(0) }).unwrap() {
+        Outcome::AabbLongestAxis { axis, .. } => axis, _ => panic!(),
+    };
+    let ax_y = match s.execute(Command::AabbLongestAxis { id: SolidId(1) }).unwrap() {
+        Outcome::AabbLongestAxis { axis, .. } => axis, _ => panic!(),
+    };
+    assert_eq!(ax_x, 0);
+    assert_eq!(ax_y, 1);
+}
+
+#[test]
+fn aabb_longest_axis_command_ties_favour_lower_index() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 5.0, dy: 5.0, dz: 5.0 }).unwrap();
+    let axis = match s.execute(Command::AabbLongestAxis { id: SolidId(0) }).unwrap() {
+        Outcome::AabbLongestAxis { axis, .. } => axis, _ => panic!(),
+    };
+    assert_eq!(axis, 0);
+}
+
+#[test]
+fn aabb_longest_axis_command_unknown_solid() {
+    let mut s = Session::new();
+    let err = s.execute(Command::AabbLongestAxis { id: SolidId(99) }).unwrap_err();
+    assert!(matches!(err, ApiError::UnknownSolid(_)));
+}
+
+#[test]
+fn aabb_longest_axis_command_does_not_append_history_event() {
+    let mut s = Session::new();
+    s.execute(Command::CreateBox { dx: 1.0, dy: 2.0, dz: 3.0 }).unwrap();
+    let before = s.document().history().len();
+    s.execute(Command::AabbLongestAxis { id: SolidId(0) }).unwrap();
+    assert_eq!(s.document().history().len(), before);
+}
+
+#[test]
+fn aabb_longest_axis_command_round_trips_through_json() {
+    let cmd = Command::AabbLongestAxis { id: SolidId(0) };
+    let json = serde_json::to_string(&cmd).unwrap();
+    assert!(json.contains("\"op\":\"aabb_longest_axis\""), "json = {json}");
+    let back: Command = serde_json::from_str(&json).unwrap();
+    assert!(matches!(back, Command::AabbLongestAxis { id: SolidId(0) }));
 }

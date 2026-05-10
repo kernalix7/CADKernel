@@ -206,6 +206,13 @@ pub enum Outcome {
     /// (skips the min/max points) and a raw companion to
     /// `Diagonal` (which returns `sqrt(dx*dx + dy*dy + dz*dz)`).
     AabbExtents { id: SolidId, extents: [f64; 3] },
+    /// Read-only AABB longest-axis observer (`Command::AabbLongestAxis`).
+    /// Returns the axis index (`0` = X, `1` = Y, `2` = Z) whose
+    /// bounding-box extent is largest. Ties go to the lowest
+    /// index (X over Y over Z). Useful for orientation heuristics
+    /// and primary-axis detection without manual `[dx, dy, dz]`
+    /// inspection.
+    AabbLongestAxis { id: SolidId, axis: u8 },
     /// Nothing happened (`Command::Noop`).
     Empty,
 }
@@ -253,6 +260,7 @@ pub enum OutcomeKind {
     HasLabel,
     SolidIds,
     AabbExtents,
+    AabbLongestAxis,
     Empty,
 }
 
@@ -291,6 +299,7 @@ impl Outcome {
             Self::HasLabel { .. } => OutcomeKind::HasLabel,
             Self::SolidIds { .. } => OutcomeKind::SolidIds,
             Self::AabbExtents { .. } => OutcomeKind::AabbExtents,
+            Self::AabbLongestAxis { .. } => OutcomeKind::AabbLongestAxis,
             Self::Empty => OutcomeKind::Empty,
         }
     }

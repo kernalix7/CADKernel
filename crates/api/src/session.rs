@@ -294,7 +294,7 @@ impl Session {
         // because they don't mutate the document.
         if matches!(
             command,
-            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. } | Command::HistoryEvents | Command::Stats | Command::Bounds { .. } | Command::Distance { .. } | Command::Volume { .. } | Command::SurfaceArea { .. } | Command::Centroid { .. } | Command::IntersectsAabb { .. } | Command::Exists { .. } | Command::Diagonal { .. } | Command::AabbCenter { .. } | Command::AabbVolume { .. } | Command::ContainsAabb { .. } | Command::AabbCorners { .. } | Command::SolidLabel { .. } | Command::IsEmpty | Command::AabbSurfaceArea { .. } | Command::SolidCount | Command::HistoryCount | Command::HasLabel { .. } | Command::SolidIds | Command::AabbExtents { .. }
+            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. } | Command::HistoryEvents | Command::Stats | Command::Bounds { .. } | Command::Distance { .. } | Command::Volume { .. } | Command::SurfaceArea { .. } | Command::Centroid { .. } | Command::IntersectsAabb { .. } | Command::Exists { .. } | Command::Diagonal { .. } | Command::AabbCenter { .. } | Command::AabbVolume { .. } | Command::ContainsAabb { .. } | Command::AabbCorners { .. } | Command::SolidLabel { .. } | Command::IsEmpty | Command::AabbSurfaceArea { .. } | Command::SolidCount | Command::HistoryCount | Command::HasLabel { .. } | Command::SolidIds | Command::AabbExtents { .. } | Command::AabbLongestAxis { .. }
         ) {
             return self.dispatch(&command);
         }
@@ -757,6 +757,23 @@ impl Session {
                         bbox.max[2] - bbox.min[2],
                     ],
                 })
+            }
+            Command::AabbLongestAxis { id } => {
+                let bbox = self
+                    .document
+                    .bounding_box(*id)
+                    .ok_or_else(|| ApiError::UnknownSolid(format!("{id}")))?;
+                let dx = bbox.max[0] - bbox.min[0];
+                let dy = bbox.max[1] - bbox.min[1];
+                let dz = bbox.max[2] - bbox.min[2];
+                let axis: u8 = if dx >= dy && dx >= dz {
+                    0
+                } else if dy >= dz {
+                    1
+                } else {
+                    2
+                };
+                Ok(Outcome::AabbLongestAxis { id: *id, axis })
             }
             Command::Rotate {
                 id,
@@ -1365,6 +1382,7 @@ fn history_description(cmd: &Command, outcome: &Outcome) -> String {
         (Command::HasLabel { query }, _) => format!("HasLabel '{query}'"),
         (Command::SolidIds, _) => "SolidIds".to_string(),
         (Command::AabbExtents { id }, _) => format!("AabbExtents {id:?}"),
+        (Command::AabbLongestAxis { id }, _) => format!("AabbLongestAxis {id:?}"),
         (Command::Duplicate { id }, _) => format!("Duplicate {id}"),
         (Command::Rotate { id, angle_rad, .. }, _) => {
             format!("Rotate {id} ({angle_rad} rad)")
