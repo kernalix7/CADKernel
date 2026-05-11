@@ -1,18 +1,27 @@
 //! Build the R1-R12 reference parts and write each to `.cadk` plus a
-//! companion `.expected_hash` file containing the BLAKE3 content hash.
+//! companion `.expected_hash` file containing the FNV-1a content hash.
 //!
 //! ```bash
 //! cargo run --release --example build_reference_parts -- --output tests/corpus/reference_parts/
 //! ```
 //!
-//! For now this implements R1 (axis-aligned box) and R2 (extruded
-//! rectangle with circular hole) at topology level; R3-R12 follow the
-//! same pattern and are stubbed to compile but skipped in execution.
+//! Implemented today (Commercial CAD Roadmap v0.5 Gates #9 / #10):
+//!   - R1: axis-aligned box (CreateBox)
+//!   - R2: extruded rectangle with one circular through-hole
+//!     (CreateBox + CreateCylinder + BooleanSubtract)
 //!
-//! Cross-architecture determinism requirement: the produced .cadk hash
+//! R3-R12 follow the same pattern and are stubbed to compile but skipped
+//! in execution. They land as later phases close the corresponding
+//! roadmap gates (sketch profiles, fillet/chamfer, assembly, etc.).
+//!
+//! Cross-architecture determinism requirement: the produced `.cadk` hash
 //! MUST be byte-identical on Linux x86-64, Linux arm64, macOS arm64, and
-//! Windows x86-64. CI verifies this via tests/reference_parts_corpus.rs.
+//! Windows x86-64. The codec encodes the command log only (no
+//! timestamps, no kernel-side floating-point dependence on tessellation
+//! seeds), so byte-identity is structural. CI verifies this via
+//! `tests/reference_parts_corpus.rs`.
 
+use cadkernel_api::{Command, Session};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -82,23 +91,77 @@ fn main() -> ExitCode {
     }
 }
 
-fn build_r1_box(_dest: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    // Once topology / modeling crates expose a stable Rust public API for
-    // primitive construction + .cadk export, replace the body below with:
-    //
-    //   use cadkernel_modeling::quick;
-    //   let solid = quick::quick_box(100.0, 50.0, 25.0)?;
-    //   cadkernel_io::cadk::write(&solid, dest)?;
-    //
-    // For now we surface a clear NotImplemented so CI can track when the
-    // dependency lands.
-    Err("cadk writer not yet wired into example".into())
+fn build_r1_box(dest: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    // R1 — axis-aligned box, 100 × 50 × 25.
+    // Roadmap reference: §3 "R1 (bracket)" simplified to a single primitive.
+    let mut session = Session::new();
+    session.execute(Command::CreateBox {
+        dx: 100.0,
+        dy: 50.0,
+        dz: 25.0,
+    })?;
+    write_cadk_with_hash(&session, dest)
 }
 
-fn build_r2_extrude(_dest: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    Err("extrude + cadk writer not yet wired".into())
+fn build_r2_extrude(dest: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    // R2 — base box 60 × 40 × 10 with one Ø10 through-hole at the
+    // centre (a flat rectangular plate with a single mounting hole).
+    // Drilled via CreateCylinder + BooleanSubtract — the smallest
+    // composite that exercises the boolean splitter end-to-end through
+    // the API surface.
+    let mut session = Session::new();
+    let plate = match session.execute(Command::CreateBox {
+        dx: 60.0,
+        dy: 40.0,
+        dz: 10.0,
+    })? {
+        cadkernel_api::Outcome::SolidCreated { id, .. } => id,
+        other => return Err(format!("R2: expected SolidCreated, got {other:?}").into()),
+    };
+    let hole = match session.execute(Command::CreateCylinder {
+        radius: 5.0,
+        height: 10.0,
+    })? {
+        cadkernel_api::Outcome::SolidCreated { id, .. } => id,
+        other => return Err(format!("R2: expected SolidCreated, got {other:?}").into()),
+    };
+    session.execute(Command::BooleanSubtract {
+        lhs: plate,
+        rhs: hole,
+    })?;
+    write_cadk_with_hash(&session, dest)
 }
 
 fn stub(_dest: &Path) -> Result<(), Box<dyn std::error::Error>> {
     Err("R3-R12 not yet implemented".into())
+}
+
+/// Encode the session's applied command log via the deterministic
+/// `.cadk` codec, write it to `dest`, and write a sibling
+/// `<dest>.expected_hash` file with the FNV-1a-64 hex digest.
+fn write_cadk_with_hash(
+    session: &Session,
+    dest: &Path,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let bytes = session.save_cadk()?;
+    fs::write(dest, &bytes)?;
+    let digest = fnv1a_64(&bytes);
+    let hash_path = dest.with_extension(format!(
+        "{}.expected_hash",
+        dest.extension().and_then(|s| s.to_str()).unwrap_or("cadk")
+    ));
+    fs::write(&hash_path, format!("{digest:016x}\n"))?;
+    Ok(())
+}
+
+/// FNV-1a 64-bit. Used here only as a small dependency-free determinism
+/// check for the corpus example. CI also verifies byte-equality, so the
+/// digest is a convenience marker, not a cryptographic guarantee.
+pub fn fnv1a_64(bytes: &[u8]) -> u64 {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for &b in bytes {
+        hash ^= b as u64;
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    hash
 }

@@ -11,6 +11,13 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### Commercial CAD Roadmap — v0.5 Gate #9 / #10 R1 + R2 reference parts wired (2026-05-11)
+- **`examples/build_reference_parts.rs` no longer a stub.** R1 (axis-aligned 100×50×25 box) and R2 (60×40×10 plate with one Ø10 through-hole) are now built end-to-end through the public `cadkernel-api` surface (`Command::CreateBox`, `Command::CreateCylinder`, `Command::BooleanSubtract`, `Session::save_cadk`). No direct kernel calls. Closes Roadmap v0.5 Gates #9 and #10.
+- **`tests/reference_parts_corpus.rs` regression suite (6 tests):** R1 / R2 build through public API, R1 / R2 `.cadk` byte-identical across two independent runs (determinism Trust gate), R1 / R2 `.cadk` round-trip via `save_cadk` → `load_cadk` → re-encode produces byte-identical payloads.
+- **`STOP_LIST.md` at repo root — scope lock.** Pauses the `Command::*` observer-slice chain at #48 (`FirstOperation`) until v0.5 / v1.0 Gate Trust rows close. Bans new file-format crates, new viewer workbenches, new analytical surface kinds, new sketch constraint kinds, and new FEM analysis kinds. References `docs/COMMERCIAL_CAD_ROADMAP.md` v3.5 as the single scoreboard.
+- **R3-R12 still stubbed.** They land as later phases close their referenced gates (sketch profiles for R3, fillet/chamfer for R4, etc.).
+- **Tests at HEAD: 3,164 / 0 / 0** (was 3,158; +6 new corpus tests). Workspace `cargo build` / `cargo clippy --all-targets --all-features -D warnings` / `cargo test --no-fail-fast` all clean.
+
 #### API — `Command::FirstOperation` first-history-event lookup (2026-05-11)
 - **New `Command::FirstOperation` (38th observer, no params)** + `Outcome::FirstOperation { op_name, description }` + `OutcomeKind::FirstOperation` tag — returns the `op_name` and `description` of the oldest history event (always at index 0). Mirror of `LastOperation`. Useful for log inspection / debugging "what was the first thing this session did?"
 - **Wiring**: routed through the read-only fast path in `Session::execute` (now 38 fast-pathed observer variants); dispatch reads `Document::history()[0]`. Errors with `InvalidArgument("history is empty")` when the history vector is empty. No history event is appended.

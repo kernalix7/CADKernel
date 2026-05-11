@@ -57,3 +57,4 @@ clap = { version = "4", features = ["derive"] }
 
 [dev-dependencies]
 serde_json.workspace = true
+cadkernel-api.workspace = true

@@ -11,6 +11,13 @@
 
 ### 추가됨
 
+#### 상용 CAD 로드맵 — v0.5 Gate #9 / #10 R1 + R2 레퍼런스 파트 완성 (2026-05-11)
+- **`examples/build_reference_parts.rs` 스턽 해소.** R1 (축정렬 100×50×25 박스)과 R2 (Ø10 관통움 1개를 가진 60×40×10 평판)을 공개 `cadkernel-api` 표면(`Command::CreateBox`, `Command::CreateCylinder`, `Command::BooleanSubtract`, `Session::save_cadk`)만으로 완전 구성. 커널 직접 호출 없음. 로드맵 v0.5 Gate #9, #10 닫음.
+- **`tests/reference_parts_corpus.rs` 회귀 테스트 6개:** R1/R2 공개 API 빌드, R1/R2 `.cadk` 두 독립 실행 간 바이트 동일성(결정성 Trust gate), R1/R2 `.cadk` `save_cadk` → `load_cadk` → 재인코딩 라운드트립 바이트 동일성.
+- **저장소 루트 `STOP_LIST.md` 추가 — 범위 잠금.** v0.5/v1.0 Gate Trust 행이 닫힐 때까지 `Command::*` 옵서버 슬라이스 체인을 #48 (`FirstOperation`)에서 일시 정지. 새 파일 포맷 크레이트, 새 뷰어 워크벤치, 새 해석적 서페이스 종류, 새 스케치 구속조건 종류, 새 FEM 해석 종류 금지. `docs/COMMERCIAL_CAD_ROADMAP.md` v3.5를 유일한 스코어보드로 참조.
+- **R3-R12는 여전히 스턽.** 각자가 참조하는 Gate가 닫힌 후 후속 단계에서 착독.
+- **테스트 HEAD: 3,164 / 0 / 0** (3,158 → +6). 워크스페이스 build / clippy / test --no-fail-fast 모두 정상.
+
 #### API — `Command::FirstOperation` 첫 히스토리 이벤트 조회 (2026-05-11)
 - **`Command::FirstOperation` (38번째 옷서버, 매개변수 없음) 신규** + `Outcome::FirstOperation { op_name, description }` + `OutcomeKind::FirstOperation` — 가장 오랭된 히스토리 이벤트(항상 index 0)의 `op_name`과 `description` 반환. `LastOperation`의 거울.
 - **연결**: `Session::execute` fast-path 38번째 변형. `Document::history()[0]`. 빈 히스토리에는 `InvalidArgument("history is empty")` 반환. history 불변.
