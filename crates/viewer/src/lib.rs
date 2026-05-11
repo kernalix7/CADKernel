@@ -31,6 +31,12 @@ pub mod test_support {
     //! construct the action internally and drive the production dispatcher
     //! (`CadApp::process_actions`) with `runtime = None`.
     pub use crate::app::CadApp;
+
+    /// Read-only accessor for the Sketcher status bar's DoF readout.
+    /// Mirrors what the viewer renders in `gui/status_bar.rs` — exposed for
+    /// integration tests to lock Gate #8 in without poking at `pub(crate)`
+    /// `SketchMode` internals.
+    pub use crate::gui::sketch_state::sketch_degrees_of_freedom;
 }
 
 use cadkernel_io::Mesh;

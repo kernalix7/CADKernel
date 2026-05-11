@@ -11,6 +11,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### Commercial CAD Roadmap — v0.5 Gates #6 / #7 / #8 **VERIFIED**: UX verification harness (2026-05-11)
+- **`crates/viewer/tests/picking_at_distance.rs`** — locks in Gate #6 picking-at-camera-distance invariant: face, edge, and vertex selection exercised at 1 m / 10 m / 100 m / 1000 m camera distances. Verifies that the B-Rep ray-cast pick path returns correct hit topology regardless of camera zoom level.
+- **`crates/viewer/tests/property_binding.rs`** — locks in Gate #7 property-panel two-way binding: Box dx/dy/dz and Cylinder radius/height are read back from the property panel state and confirmed to round-trip through the scene object. Verifies that edits in the Properties panel are reflected in the model without a full rebuild cycle.
+- **`crates/viewer/tests/sketcher_dof.rs`** — locks in Gate #8 Sketcher DoF readout for 5+ constraint configurations: unconstrained, partially constrained, fully constrained, over-constrained, and construction-geometry-only sketches each produce the correct degrees-of-freedom count in the DoF badge.
+- v0.5 Gates #6, #7, #8 flipped from `❓ unverified` to `✅ verified 2026-05-11`.
+
 #### Commercial CAD Roadmap — v0.5 Gate #11 **Phase A CLOSED**: R1 open benchmark enforced in CI (2026-05-11)
 - **`cadkernel-api` exposes `pub mod reference_parts`** with `r1_bytes()` / `r2_bytes()` returning `ApiResult<Vec<u8>>` — shared helpers reused by both the example binary and the new Criterion bench.
 - **`crates/api/benches/reference_parts_open.rs`** — Criterion benchmark (`harness = false`) measuring R1 and R2 open-from-bytes; registered as `[[bench]] name = "reference_parts_open"` in `crates/api/Cargo.toml`.

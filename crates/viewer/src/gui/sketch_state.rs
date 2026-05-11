@@ -7,6 +7,46 @@
 
 use cadkernel_sketch::{Constraint, Sketch, WorkPlane};
 
+/// Degrees of freedom of a `Sketch`: `2 * points − Σ constraint_dofs`. This
+/// is the formula the Sketcher status bar (`gui/status_bar.rs`) reads to
+/// drive the "Fully constrained / Under-constrained / N DOF" readout.
+///
+/// Exposed here (instead of as a method on the `pub(crate)` `SketchMode`) so
+/// integration tests can lock the readout in without poking at viewer
+/// internals.
+pub fn sketch_degrees_of_freedom(sketch: &Sketch) -> i32 {
+    let pt_dofs = (sketch.points.len() * 2) as i32;
+    let mut c_dofs = 0i32;
+    for c in &sketch.constraints {
+        c_dofs += match c {
+            Constraint::Coincident(..) => 2,
+            Constraint::Horizontal(_) | Constraint::Vertical(_) => 1,
+            Constraint::Parallel(..) | Constraint::Perpendicular(..) => 1,
+            Constraint::PointOnLine(..) => 1,
+            Constraint::PointOnCircle(..) => 1,
+            Constraint::Symmetric(..) => 2,
+            Constraint::Distance(..) => 1,
+            Constraint::Angle(..) => 1,
+            Constraint::Radius(..) => 1,
+            Constraint::Length(..) => 1,
+            Constraint::Fixed(..) => 2,
+            Constraint::Tangent(..) => 1,
+            Constraint::EqualLength(..) => 1,
+            Constraint::Midpoint(..) => 2,
+            Constraint::Collinear(..) => 2,
+            Constraint::EqualRadius(..) => 1,
+            Constraint::Concentric(..) => 2,
+            Constraint::Diameter(..) => 1,
+            Constraint::Block(..) => 2,
+            Constraint::HorizontalDistance(..) => 1,
+            Constraint::VerticalDistance(..) => 1,
+            Constraint::PointOnObject(..) => 1,
+            Constraint::Refraction { .. } => 1,
+        };
+    }
+    pt_dofs - c_dofs
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum SketchTool {
     Select,
@@ -195,36 +235,7 @@ impl SketchMode {
 
     /// Compute degrees of freedom: 2 * points - constraint_dofs.
     pub fn degrees_of_freedom(&self) -> i32 {
-        let pt_dofs = (self.sketch.points.len() * 2) as i32;
-        let mut c_dofs = 0i32;
-        for c in &self.sketch.constraints {
-            c_dofs += match c {
-                Constraint::Coincident(..) => 2,
-                Constraint::Horizontal(_) | Constraint::Vertical(_) => 1,
-                Constraint::Parallel(..) | Constraint::Perpendicular(..) => 1,
-                Constraint::PointOnLine(..) => 1,
-                Constraint::PointOnCircle(..) => 1,
-                Constraint::Symmetric(..) => 2,
-                Constraint::Distance(..) => 1,
-                Constraint::Angle(..) => 1,
-                Constraint::Radius(..) => 1,
-                Constraint::Length(..) => 1,
-                Constraint::Fixed(..) => 2,
-                Constraint::Tangent(..) => 1,
-                Constraint::EqualLength(..) => 1,
-                Constraint::Midpoint(..) => 2,
-                Constraint::Collinear(..) => 2,
-                Constraint::EqualRadius(..) => 1,
-                Constraint::Concentric(..) => 2,
-                Constraint::Diameter(..) => 1,
-                Constraint::Block(..) => 2,
-                Constraint::HorizontalDistance(..) => 1,
-                Constraint::VerticalDistance(..) => 1,
-                Constraint::PointOnObject(..) => 1,
-                Constraint::Refraction { .. } => 1,
-            };
-        }
-        pt_dofs - c_dofs
+        sketch_degrees_of_freedom(&self.sketch)
     }
 
     /// Recompute per-constraint residuals, solver status, and validation issues.

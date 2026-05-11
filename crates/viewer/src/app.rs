@@ -11854,6 +11854,19 @@ impl CadApp {
         self.dispatch(GuiAction::Part(crate::gui::PartAction::CoonsPatch));
     }
 
+    /// Drive the `RebuildObject` dispatcher arm with a new `CreationParams`
+    /// for the given object id. Mirrors what the Properties panel emits when
+    /// a user edits a primitive parameter (`draw_params_editor` in
+    /// `gui/properties.rs`).
+    #[doc(hidden)]
+    pub fn dispatch_rebuild_object(
+        &mut self,
+        id: crate::scene::ObjectId,
+        params: crate::scene::CreationParams,
+    ) {
+        self.dispatch(GuiAction::RebuildObject { id, params });
+    }
+
     /// Toggle-select an object at the given index (test helper for
     /// multi-select boolean / fragment ops).
     #[doc(hidden)]

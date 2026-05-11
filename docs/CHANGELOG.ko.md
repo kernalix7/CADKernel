@@ -11,6 +11,12 @@
 
 ### 추가됨
 
+#### 상용 CAD 로드맵 — v0.5 Gate #6 / #7 / #8 **검증 완료**: UX 검증 하네스 (2026-05-11)
+- **`crates/viewer/tests/picking_at_distance.rs`** — Gate #6: 카메라 거리(1 m / 10 m / 100 m / 1000 m)별 B-Rep face/edge/vertex 피킹 불변성 잠금.
+- **`crates/viewer/tests/property_binding.rs`** — Gate #7: Box dx/dy/dz, Cylinder radius/height에 대한 속성 패널 양방향 바인딩 검증.
+- **`crates/viewer/tests/sketcher_dof.rs`** — Gate #8: 5개 이상 구속 구성(비구속/부분/완전/과구속/construction geometry 전용)에서 DoF 배지 정확성 검증.
+- v0.5 Gate #6 / #7 / #8 상태: `❓ unverified` → `✅ verified 2026-05-11`.
+
 #### 상용 CAD 로드맵 — v0.5 Gate #11 **Phase A 완료**: R1 open 벤치마크 CI 강제 적용 (2026-05-11)
 - **`cadkernel-api`에 `pub mod reference_parts` 추가** — `r1_bytes()` / `r2_bytes()`가 `ApiResult<Vec<u8>>` 반환. 예제 바이너리와 Criterion 벤치 공유.
 - **`crates/api/benches/reference_parts_open.rs`** — R1/R2 open-from-bytes Criterion 벤치 (`harness = false`).
