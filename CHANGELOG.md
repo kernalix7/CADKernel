@@ -11,6 +11,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### Commercial CAD Roadmap — v0.5 Gate #12 extension: panic-free `cadkernel-topology` (2026-05-11)
+- **`crates/topology/src/lib.rs` now enforces `clippy::unwrap_used` + `clippy::expect_used` + `clippy::panic`** for non-test code.
+- **Half-edge B-Rep builders refactored to use `if let Some(_) = X.get_mut(handle)` instead of `X.get_mut(handle).unwrap()`** at 14 production sites in `add_edge` / `add_edge_tagged` / `make_wire_tagged` / `make_face` / `make_face_tagged` / `add_inner_loop` / `make_shell` / `make_shell_tagged` / `make_solid` / `make_solid_tagged`. The unwrapped handles were structurally guaranteed Some (each was just returned from a corresponding `insert`), so behaviour is identical; only the panic surface is removed.
+- **`validate` + `validate_collect` loop-cycle checks**: replaced `*hes.last().unwrap()` (guarded by `if hes.len() < 2` early-exit) with `hes[hes.len() - 1]` indexing. Behaviour identical; `unwrap()` removed.
+- v0.5 Gate #12 now covers `cadkernel-api` + `cadkernel-core` + `cadkernel-math` + `cadkernel-sketch` + `cadkernel-topology` (5 / 9 crates). Remaining: `geometry` 156, `viewer` 175, `io` 408, `modeling` 847.
+
 #### Commercial CAD Roadmap — v0.5 Gate #12 extension: panic-free `cadkernel-math` + `cadkernel-sketch` (2026-05-11)
 - **`crates/math/src/lib.rs` now enforces `clippy::unwrap_used` + `clippy::expect_used` + `clippy::panic`** for non-test code. All 4 pre-existing unwraps were already inside `#[cfg(test)]` modules; no production change required.
 - **`crates/sketch/src/lib.rs` now enforces the same deny-list.**

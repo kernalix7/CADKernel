@@ -11,6 +11,12 @@
 
 ### 추가됨
 
+#### 상용 CAD 로드맵 — v0.5 Gate #12 확장: `cadkernel-topology` panic-free (2026-05-11)
+- **`crates/topology/src/lib.rs`에 `clippy::unwrap_used` + `clippy::expect_used` + `clippy::panic` deny 적용** (비-테스트 한정).
+- **Half-edge B-Rep 빌더 14개 사이트에서 `X.get_mut(h).unwrap()` → `if let Some(_) = X.get_mut(h)` 사용** (`add_edge`, `add_edge_tagged`, `make_wire_tagged`, `make_face`, `make_face_tagged`, `add_inner_loop`, `make_shell`, `make_shell_tagged`, `make_solid`, `make_solid_tagged`). 외어썪한 새 핸들은 직전 `insert`에서 반환되었으므로 구조적으로 Some이 보장되어 동작 동일, panic 표면만 제거.
+- **`validate` / `validate_collect` 루프 사이클 체크**: `if hes.len() < 2` 조기 탈출로 보호되는 `*hes.last().unwrap()`을 `hes[hes.len() - 1]` 인덱싱으로 교체.
+- v0.5 Gate #12 커버리지: `cadkernel-api` + `cadkernel-core` + `cadkernel-math` + `cadkernel-sketch` + `cadkernel-topology` (5 / 9). 남은 작업: `geometry` 156, `viewer` 175, `io` 408, `modeling` 847.
+
 #### 상용 CAD 로드맵 — v0.5 Gate #12 확장: `cadkernel-math` + `cadkernel-sketch` panic-free (2026-05-11)
 - **`crates/math/src/lib.rs`에 `clippy::unwrap_used` + `clippy::expect_used` + `clippy::panic` deny 적용** (비-테스트 한정). 기존 4개 unwrap은 모두 `#[cfg(test)]` 모듈 내부였으므로 production 변경 없음.
 - **`crates/sketch/src/lib.rs`에 동일 deny 적용.**

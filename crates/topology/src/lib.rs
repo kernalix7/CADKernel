@@ -37,6 +37,13 @@
 //! assert_eq!(model.edges.len(), 1);
 //! ```
 
+// Commercial CAD Roadmap v0.5 Gate 12: half-edge B-Rep is the structural
+// backbone of every solid. Production code here must never panic.
+#![cfg_attr(
+    not(test),
+    deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)
+)]
+
 pub mod edge;
 pub mod error;
 pub mod face;
@@ -188,16 +195,24 @@ impl BRepModel {
         let he_a = self.half_edges.insert(HalfEdgeData::new(v_start));
         let he_b = self.half_edges.insert(HalfEdgeData::new(v_end));
 
-        self.half_edges.get_mut(he_a).unwrap().twin = Some(he_b);
-        self.half_edges.get_mut(he_b).unwrap().twin = Some(he_a);
+        if let Some(he) = self.half_edges.get_mut(he_a) {
+            he.twin = Some(he_b);
+        }
+        if let Some(he) = self.half_edges.get_mut(he_b) {
+            he.twin = Some(he_a);
+        }
 
         let mut edge = EdgeData::new(v_start, v_end);
         edge.half_edge_a = Some(he_a);
         edge.half_edge_b = Some(he_b);
         let edge_h = self.edges.insert(edge);
 
-        self.half_edges.get_mut(he_a).unwrap().edge = Some(edge_h);
-        self.half_edges.get_mut(he_b).unwrap().edge = Some(edge_h);
+        if let Some(he) = self.half_edges.get_mut(he_a) {
+            he.edge = Some(edge_h);
+        }
+        if let Some(he) = self.half_edges.get_mut(he_b) {
+            he.edge = Some(edge_h);
+        }
 
         if let Some(v) = self.vertices.get_mut(v_start) {
             if v.half_edge.is_none() {
@@ -221,7 +236,9 @@ impl BRepModel {
         tag: Tag,
     ) -> (Handle<EdgeData>, Handle<HalfEdgeData>, Handle<HalfEdgeData>) {
         let (edge_h, he_a, he_b) = self.add_edge(v_start, v_end);
-        self.edges.get_mut(edge_h).unwrap().tag = Some(tag.clone());
+        if let Some(e) = self.edges.get_mut(edge_h) {
+            e.tag = Some(tag.clone());
+        }
         self.name_map.insert(tag, EntityRef::Edge(edge_h));
         (edge_h, he_a, he_b)
     }
@@ -287,7 +304,9 @@ impl BRepModel {
         tag: Tag,
     ) -> Handle<WireData> {
         let wire_h = self.make_wire(half_edges, is_closed);
-        self.wires.get_mut(wire_h).unwrap().tag = Some(tag.clone());
+        if let Some(w) = self.wires.get_mut(wire_h) {
+            w.tag = Some(tag.clone());
+        }
         self.name_map.insert(tag, EntityRef::Wire(wire_h));
         wire_h
     }
@@ -299,26 +318,30 @@ impl BRepModel {
     /// Creates a face from an outer loop.
     pub fn make_face(&mut self, outer_loop: Handle<LoopData>) -> Handle<FaceData> {
         let face_h = self.faces.insert(FaceData::new(outer_loop));
-        self.loops.get_mut(outer_loop).unwrap().face = Some(face_h);
+        if let Some(l) = self.loops.get_mut(outer_loop) {
+            l.face = Some(face_h);
+        }
         face_h
     }
 
     /// Creates a face with a persistent tag.
     pub fn make_face_tagged(&mut self, outer_loop: Handle<LoopData>, tag: Tag) -> Handle<FaceData> {
         let face_h = self.make_face(outer_loop);
-        self.faces.get_mut(face_h).unwrap().tag = Some(tag.clone());
+        if let Some(f) = self.faces.get_mut(face_h) {
+            f.tag = Some(tag.clone());
+        }
         self.name_map.insert(tag, EntityRef::Face(face_h));
         face_h
     }
 
     /// Adds an inner loop (hole) to an existing face.
     pub fn add_inner_loop(&mut self, face: Handle<FaceData>, inner_loop: Handle<LoopData>) {
-        self.loops.get_mut(inner_loop).unwrap().face = Some(face);
-        self.faces
-            .get_mut(face)
-            .unwrap()
-            .inner_loops
-            .push(inner_loop);
+        if let Some(l) = self.loops.get_mut(inner_loop) {
+            l.face = Some(face);
+        }
+        if let Some(f) = self.faces.get_mut(face) {
+            f.inner_loops.push(inner_loop);
+        }
     }
 
     // -----------------------------------------------------------------------
@@ -331,7 +354,9 @@ impl BRepModel {
         shell.faces = faces.to_vec();
         let shell_h = self.shells.insert(shell);
         for &f in faces {
-            self.faces.get_mut(f).unwrap().shell = Some(shell_h);
+            if let Some(face) = self.faces.get_mut(f) {
+                face.shell = Some(shell_h);
+            }
         }
         shell_h
     }
@@ -339,7 +364,9 @@ impl BRepModel {
     /// Creates a shell with a persistent tag.
     pub fn make_shell_tagged(&mut self, faces: &[Handle<FaceData>], tag: Tag) -> Handle<ShellData> {
         let shell_h = self.make_shell(faces);
-        self.shells.get_mut(shell_h).unwrap().tag = Some(tag.clone());
+        if let Some(sh) = self.shells.get_mut(shell_h) {
+            sh.tag = Some(tag.clone());
+        }
         self.name_map.insert(tag, EntityRef::Shell(shell_h));
         shell_h
     }
@@ -354,7 +381,9 @@ impl BRepModel {
         solid.shells = shells.to_vec();
         let solid_h = self.solids.insert(solid);
         for &s in shells {
-            self.shells.get_mut(s).unwrap().solid = Some(solid_h);
+            if let Some(sh) = self.shells.get_mut(s) {
+                sh.solid = Some(solid_h);
+            }
         }
         solid_h
     }
@@ -366,7 +395,9 @@ impl BRepModel {
         tag: Tag,
     ) -> Handle<SolidData> {
         let solid_h = self.make_solid(shells);
-        self.solids.get_mut(solid_h).unwrap().tag = Some(tag.clone());
+        if let Some(sd) = self.solids.get_mut(solid_h) {
+            sd.tag = Some(tag.clone());
+        }
         self.name_map.insert(tag, EntityRef::Solid(solid_h));
         solid_h
     }
@@ -576,7 +607,7 @@ impl BRepModel {
                     "loop {loop_h:?} has fewer than 2 half-edges"
                 )));
             }
-            let last = *hes.last().unwrap();
+            let last = hes[hes.len() - 1];
             let last_he = self
                 .half_edges
                 .get(last)
@@ -794,7 +825,7 @@ impl BRepModel {
                 )));
                 continue;
             }
-            let last = *hes.last().unwrap();
+            let last = hes[hes.len() - 1];
             if let Some(last_he) = self.half_edges.get(last) {
                 if last_he.next != Some(hes[0]) {
                     issues.push(ValidationIssue::error(format!(
