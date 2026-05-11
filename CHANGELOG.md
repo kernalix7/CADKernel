@@ -11,6 +11,13 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### Commercial CAD Roadmap — v0.5 Gate #12 partial: panic-free `cadkernel-api` (2026-05-11)
+- **`crates/api/src/lib.rs` now enforces `clippy::unwrap_used` + `clippy::expect_used` + `clippy::panic`** for non-test code via `#![cfg_attr(not(test), deny(...))]`. The SemVer-locked public API surface is now provably panic-free at lint level.
+- **`crates/api/src/cadk/codec.rs` `read_header`**: replaced 6 `.try_into().unwrap()` calls with two new private helpers `read_le_u32` / `read_le_u64` that copy into fixed-size arrays. Behaviour identical (slice bounds already validated above); panic surface removed.
+- **`crates/api/src/bin/cadk_inspect.rs`**: replaced 2 `.try_into().unwrap()` calls in the verbose-mode header re-parser with a local `read_le_u32` helper. Identical reasoning.
+- This closes Gate #12 *on the API crate only* — a follow-up will extend the lint to `core` (already 0 unwraps) and selectively to the other 7 crates as their unwrap counts are paid down (`modeling` 847, `io` 408, `viewer` 175, `geometry` 156, `topology` 39, `sketch` 24, `math` 4 today; full workspace enforcement is the v1.0 deliverable).
+- Tests: 3,164 / 0 / 0 (unchanged). `cargo clippy --workspace --all-targets --all-features -- -D warnings` clean including the new deny-list.
+
 #### Commercial CAD Roadmap — v0.5 Gate #9 / #10 R1 + R2 reference parts wired (2026-05-11)
 - **`examples/build_reference_parts.rs` no longer a stub.** R1 (axis-aligned 100×50×25 box) and R2 (60×40×10 plate with one Ø10 through-hole) are now built end-to-end through the public `cadkernel-api` surface (`Command::CreateBox`, `Command::CreateCylinder`, `Command::BooleanSubtract`, `Session::save_cadk`). No direct kernel calls. Closes Roadmap v0.5 Gates #9 and #10.
 - **`tests/reference_parts_corpus.rs` regression suite (6 tests):** R1 / R2 build through public API, R1 / R2 `.cadk` byte-identical across two independent runs (determinism Trust gate), R1 / R2 `.cadk` round-trip via `save_cadk` → `load_cadk` → re-encode produces byte-identical payloads.

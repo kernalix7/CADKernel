@@ -11,6 +11,13 @@
 
 ### 추가됨
 
+#### 상용 CAD 로드맵 — v0.5 Gate #12 partial: `cadkernel-api` panic-free (2026-05-11)
+- **`crates/api/src/lib.rs`에 `clippy::unwrap_used` + `clippy::expect_used` + `clippy::panic` deny 적용** (비-테스트 코드 한정, `#![cfg_attr(not(test), deny(...))]`). SemVer-lock된 공개 API 표면이 lint 레벨에서 panic-free 증명.
+- **`crates/api/src/cadk/codec.rs` `read_header`**: 6개의 `.try_into().unwrap()` 호출을 새 프라이빗 헬퍼 `read_le_u32` / `read_le_u64`로 교체. 동작 동일, panic 표면 제거.
+- **`crates/api/src/bin/cadk_inspect.rs`**: verbose 모드 헤더 재파싱의 2개 `.try_into().unwrap()`를 동일 패턴으로 교체.
+- **API 크레이트만 닫음**. 후속 작업으로 구조적으로 0개인 `core`에 확장, 나머지 7크레이트는 unwrap 고소 진행 후 선택적 적용 (`modeling` 847, `io` 408, `viewer` 175, `geometry` 156, `topology` 39, `sketch` 24, `math` 4). 워크스페이스 전체 제한은 v1.0 deliverable.
+- 테스트: 3,164 / 0 / 0 (변동 없음). `cargo clippy --workspace --all-targets --all-features -- -D warnings`가 새 deny-list 포함 정상.
+
 #### 상용 CAD 로드맵 — v0.5 Gate #9 / #10 R1 + R2 레퍼런스 파트 완성 (2026-05-11)
 - **`examples/build_reference_parts.rs` 스턽 해소.** R1 (축정렬 100×50×25 박스)과 R2 (Ø10 관통움 1개를 가진 60×40×10 평판)을 공개 `cadkernel-api` 표면(`Command::CreateBox`, `Command::CreateCylinder`, `Command::BooleanSubtract`, `Session::save_cadk`)만으로 완전 구성. 커널 직접 호출 없음. 로드맵 v0.5 Gate #9, #10 닫음.
 - **`tests/reference_parts_corpus.rs` 회귀 테스트 6개:** R1/R2 공개 API 빌드, R1/R2 `.cadk` 두 독립 실행 간 바이트 동일성(결정성 Trust gate), R1/R2 `.cadk` `save_cadk` → `load_cadk` → 재인코딩 라운드트립 바이트 동일성.

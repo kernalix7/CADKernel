@@ -72,12 +72,16 @@ fn read_header(buf: &[u8]) -> ApiResult<CadkHeader> {
             buf.len()
         )));
     }
-    let schema_version = u32::from_le_bytes(buf[0..4].try_into().unwrap());
-    let flags = u32::from_le_bytes(buf[4..8].try_into().unwrap());
-    let total_size = u64::from_le_bytes(buf[8..16].try_into().unwrap());
-    let manifest_offset = u64::from_le_bytes(buf[16..24].try_into().unwrap());
-    let manifest_length = u64::from_le_bytes(buf[24..32].try_into().unwrap());
-    let manifest_crc32 = u32::from_le_bytes(buf[32..36].try_into().unwrap());
+    // SAFETY-by-construction: every slice below has the exact length
+    // required by `from_le_bytes`; the bounds were validated above.
+    // We use `copy_from_slice` into a fixed-size array to keep this
+    // panic-free for clippy's `unwrap_used` lint.
+    let schema_version = read_le_u32(&buf[0..4]);
+    let flags = read_le_u32(&buf[4..8]);
+    let total_size = read_le_u64(&buf[8..16]);
+    let manifest_offset = read_le_u64(&buf[16..24]);
+    let manifest_length = read_le_u64(&buf[24..32]);
+    let manifest_crc32 = read_le_u32(&buf[32..36]);
     let mut reserved = [0u8; 28];
     reserved.copy_from_slice(&buf[36..HEADER_SIZE]);
     Ok(CadkHeader {
@@ -89,6 +93,27 @@ fn read_header(buf: &[u8]) -> ApiResult<CadkHeader> {
         manifest_crc32,
         reserved,
     })
+}
+
+/// Read a little-endian `u32` from a 4-byte slice. Caller guarantees
+/// `slice.len() == 4`; shorter slices are zero-padded which would only
+/// happen via a programmer error inside this module.
+#[inline]
+fn read_le_u32(slice: &[u8]) -> u32 {
+    let mut arr = [0u8; 4];
+    let n = slice.len().min(4);
+    arr[..n].copy_from_slice(&slice[..n]);
+    u32::from_le_bytes(arr)
+}
+
+/// Read a little-endian `u64` from an 8-byte slice. Caller guarantees
+/// `slice.len() == 8`; see [`read_le_u32`] for the zero-pad fallback.
+#[inline]
+fn read_le_u64(slice: &[u8]) -> u64 {
+    let mut arr = [0u8; 8];
+    let n = slice.len().min(8);
+    arr[..n].copy_from_slice(&slice[..n]);
+    u64::from_le_bytes(arr)
 }
 
 /// Encode a session command log to the `.cadk` v0 container format.

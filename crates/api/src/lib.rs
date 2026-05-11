@@ -46,6 +46,16 @@
 //! assert_eq!(session.document().solid_count(), 2);
 //! ```
 
+// Commercial CAD Roadmap v0.5 Gate #12 partial — enforce panic-free
+// public API on the SemVer-locked `cadkernel-api` surface. Non-test
+// code in this crate must not contain `unwrap()`, `expect()`, or
+// `panic!()`. Tests opt out via `cfg_attr` so the assertion-style
+// macros remain ergonomic.
+#![cfg_attr(
+    not(test),
+    deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)
+)]
+
 mod command;
 mod document;
 mod outcome;
