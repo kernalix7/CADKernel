@@ -90,7 +90,7 @@
     "method": "tools/call",
     "params": {
       "name": "delete_solid",
-      "arguments": { "id": 0 }
+      "arguments": { "id": 2 }
     }
   },
   {

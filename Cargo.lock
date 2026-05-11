@@ -511,6 +511,7 @@ dependencies = [
  "cadkernel-geometry",
  "cadkernel-io",
  "cadkernel-math",
+ "cadkernel-mcp",
  "cadkernel-modeling",
  "cadkernel-sketch",
  "cadkernel-topology",
@@ -564,6 +565,20 @@ dependencies = [
  "glam",
  "nalgebra",
  "serde",
+]
+
+[[package]]
+name = "cadkernel-mcp"
+version = "0.1.0"
+dependencies = [
+ "cadkernel-api",
+ "cadkernel-core",
+ "cadkernel-io",
+ "cadkernel-math",
+ "cadkernel-modeling",
+ "cadkernel-topology",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

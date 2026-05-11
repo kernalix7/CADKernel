@@ -11,6 +11,13 @@
 
 ### 추가됨
 
+#### 상용 CAD 로드맵 — v0.5 Gate #5 **완료**: MCP 서버를 `crates/mcp/`으로 분리 (2026-05-11)
+- **새 워크스페이스 멤버 `crates/mcp/` (`cadkernel-mcp`)**: `cadkernel-api` + `cadkernel-io` 의존. 8개 MCP 툴이 모두 `Session::execute(Command::*)` 경유로 전환.
+- **`crates/io/src/mcp.rs` 삭제** (~2,208줄). `McpServer` / `McpRequest` / `McpResponse` / `McpError` / `McpToolDef`는 이제 `cadkernel-mcp`에서 재익스포트.
+- **Cone frustum 제한**: `top_radius != 0`이면 `INVALID_PARAMS` 반환 (STOP_LIST — 새 `Command` 배리언트 금지).
+- **Boolean 피연산자 소비**: `target_id` / `tool_id` 슬롯 모두 소거; 결과는 빈 슬롯 재사용.
+- **34개 이식 + 신규 2개** 테스트가 `crates/mcp/tests/server_integration.rs`에 추가. 워크스페이스: **3,138 / 0 / 0**.
+
 #### 상용 CAD 로드맵 — v0.5 Gate #12 **라이브러리 크레이트 전체 완료**: `cadkernel-modeling` panic-free (2026-05-11)
 - **`crates/modeling/src/lib.rs`에 deny 적용** (비-테스트 한정). 847개 원시 매치 중 production은 25개뿐.
 - **`boolean/face_split.rs`**: `*pts.last().unwrap()` (조기 반환으로 비어 있지 않음 보장) → 인덱싱; `*chord.first/last().unwrap()` (가드 후) → 인덱싱.

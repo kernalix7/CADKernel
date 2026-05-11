@@ -1367,43 +1367,46 @@ pub trait Plugin: Send + Sync {
 
 ## 16. MCP Integration
 
-CADKernel implements a **Model Context Protocol (MCP)** server that exposes the kernel to AI assistants via JSON-RPC 2.0.
+CADKernel implements a **Model Context Protocol (MCP)** server (`crates/mcp/`, `cadkernel-mcp`) that exposes the kernel to AI assistants via JSON-RPC 2.0. As of v0.5 Gate #5 (2026-05-11) the server routes all state-mutating tools through `cadkernel-api::Session::execute(Command::*)` instead of building topology directly.
 
 ### Protocol
 
 - Transport: stdin/stdout (line-delimited JSON)
-- Request format: `{ "jsonrpc": "2.0", "id": N, "method": "<tool>", "params": { ... } }`
-- Response format: `{ "jsonrpc": "2.0", "id": N, "result": { ... } }` or `"error": { ... }`
+- Request format: `{ "jsonrpc": "2.0", "id": N, "method": "tools/call", "params": { "name": "<tool>", "arguments": { ... } } }`
+- Response format: `{ "jsonrpc": "2.0", "id": N, "result": { ... } }` or `"error": { "code": N, "message": "..." }`
 
 ### McpServer
 
 ```rust
-pub struct McpServer {
-    model: BRepModel,
-}
+// crates/mcp/src/server.rs
+pub struct McpServer { /* owns a cadkernel_api::Session + MCP integer-id slot map */ }
 
 impl McpServer {
-    pub fn handle_request(&mut self, request: &str) -> String;
+    pub fn new() -> Self;
+    pub fn list_tools(&self) -> Vec<McpToolDef>;
+    pub fn handle_request(&mut self, json: &str) -> Result<String, KernelError>;
 }
 ```
 
+MCP integer ids (`0`, `1`, …) are stable within a session and reuse freed slots after `delete_solid`. They map internally to `cadkernel-api::SolidId`s managed by the `Session`.
+
 ### Supported Tools (8)
 
-| Tool | Params | Description |
-|------|--------|-------------|
-| `create_primitive` | `shape`, `params` | Box/Cylinder/Sphere/Cone/Torus with dimensions |
-| `boolean_operation` | `op`, `target`, `tool` | Union/Subtract/Intersect by solid name |
-| `transform` | `solid`, `tx`, `ty`, `tz`, `rx`, `ry`, `rz` | Translate + rotate solid |
-| `query_model` | — | Returns all solid names, counts |
-| `measure` | `solid` | Volume, surface area, bounding box |
-| `export_model` | `format`, `path` | STL/OBJ/glTF/STEP/BREP export |
-| `delete_solid` | `solid` | Remove named solid from model |
-| `list_solids` | — | Array of solid name strings |
+| Tool | Key params | Description |
+|------|-----------|-------------|
+| `create_primitive` | `type` (`box`/`cylinder`/`sphere`/`cone`/`torus`), `dimensions` | Create a primitive solid; cone requires `top_radius = 0` |
+| `boolean_operation` | `op` (`union`/`subtract`/`intersect`), `target_id`, `tool_id` | CSG boolean; both operands consumed, result allocated to first free slot |
+| `transform` | `id`, optional `translate[3]`, `rotate[3]` (Euler °), `scale[3]` | Translate, rotate (3 sequential Command::Rotate, X→Y→Z), scale (ScaleNonUniform) |
+| `query_model` | — | Returns `solid_count`, `total_faces`, `total_edges`, `total_vertices` |
+| `measure` | `id` | Volume, surface area, centroid, bounding box via `Command::Measure` |
+| `export_model` | `id`, `format` (`stl`/`obj`/`step`/`json`) | Serialises via `cadkernel-io` adapters directly |
+| `delete_solid` | `id` | Removes solid via `Command::DeleteSolid`; returns `{"deleted": id}` |
+| `list_solids` | — | `{"solids": [{id, label, faces, edges, vertices}, …]}` |
 
 ### Usage
 
 ```bash
-echo '{"jsonrpc":"2.0","id":1,"method":"create_primitive","params":{"shape":"box","params":{"x":10,"y":10,"z":10}}}' | cadkernel --mcp
+echo '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"create_primitive","arguments":{"type":"box","dimensions":{"dx":10,"dy":10,"dz":10}}}}' | cadkernel --mcp
 ```
 
 ---

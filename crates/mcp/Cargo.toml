@@ -1,0 +1,21 @@
+[package]
+name = "cadkernel-mcp"
+description = "Model Context Protocol (JSON-RPC 2.0) server for CADKernel — AI agent integration on the cadkernel-api Session surface"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+cadkernel-api.workspace = true
+cadkernel-core.workspace = true
+cadkernel-math.workspace = true
+cadkernel-topology.workspace = true
+cadkernel-io.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+cadkernel-modeling.workspace = true

@@ -11,6 +11,18 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### Commercial CAD Roadmap — v0.5 Gate #5 **CLOSED**: MCP server extracted to `crates/mcp/` (2026-05-11)
+- **New workspace member `crates/mcp/` (`cadkernel-mcp`)** depends on `cadkernel-api` and `cadkernel-io`. All 8 MCP tools now route through `Session::execute(Command::*)` instead of building topology directly.
+- **`crates/io/src/mcp.rs` deleted** (was ~2,208 lines). `cadkernel-io` no longer exposes `McpServer`, `McpRequest`, `McpResponse`, `McpError`, or `McpToolDef`; these are now re-exported from `cadkernel-mcp`.
+- **Cone frustum gated**: `create_primitive` cone with `top_radius != 0` returns `INVALID_PARAMS` — `Command::CreateCone` supports only `radius` (bottom) + `height`; frustum deferred per STOP_LIST.
+- **Boolean operands consumed**: both `target_id` and `tool_id` slots are cleared; the result lands in the first freed slot (mirrors the old slot-reuse behaviour).
+- **Transform/rotate dispatches three sequential `Command::Rotate` calls** (X, Y, Z Euler degrees); scale uses `Command::ScaleNonUniform{factors, point=[0,0,0]}`.
+- **`export_model`** reaches into `cadkernel-io` adapters directly (no serializing `Command` and STOP_LIST forbids adding one).
+- **38 MCP integration tests removed** from `crates/io/tests/io_comprehensive.rs`; **34 migrated + 2 new** land in `crates/mcp/tests/server_integration.rs` (32 renamed/adapted from old suite, +1 `mcp_create_primitive_cone_nonzero_top_radius_rejected`, +1 `mcp_boolean_union_consumes_inputs_and_returns_new_slot`). Smoke tests retained in `crates/mcp/tests/smoke.rs`.
+- **`src/main.rs --mcp`** flag retargeted to `cadkernel_mcp::McpServer`.
+- **`examples/mcp/`** updated to reference `cadkernel-mcp`.
+- v0.5 Gate #5 closed. Workspace: `cargo clippy` clean; `cargo test --workspace` = **3,138 / 0 / 0**.
+
 #### Commercial CAD Roadmap — v0.5 Gate #12 **CLOSED for all library crates**: panic-free `cadkernel-modeling` (2026-05-11)
 - **`crates/modeling/src/lib.rs` now enforces `clippy::unwrap_used` + `clippy::expect_used` + `clippy::panic`** for non-test code. Of 847 raw matches, only **25 lived in production code**; the rest were inside `#[cfg(test)]` modules.
 - **`crates/modeling/src/boolean/face_split.rs`**:

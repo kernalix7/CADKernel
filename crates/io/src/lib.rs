@@ -47,7 +47,6 @@ pub mod dxf;
 pub mod gltf;
 pub mod iges;
 pub mod json;
-pub mod mcp;
 pub mod mesh_ops;
 pub mod native;
 pub mod obj;
@@ -78,7 +77,6 @@ pub use iges::{
     read_iges_lines, read_iges_points,
 };
 pub use json::{export_json, import_json, model_from_json, model_to_json, read_json, write_json};
-pub use mcp::{McpError, McpRequest, McpResponse, McpServer, McpToolDef};
 pub use mesh_ops::{
     FaceInfo, MeshBoundingBox, MeshRepairReport, MeshSegment, RegularSolidType, UnwrapResult,
     UvCoord, add_triangle, bounding_box_info, check_mesh_watertight, close_holes,

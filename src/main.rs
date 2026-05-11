@@ -69,7 +69,7 @@ fn run_script(path: &str) -> ExitCode {
 }
 
 fn run_mcp_stdio() -> ExitCode {
-    let mut server = cadkernel_io::McpServer::new();
+    let mut server = cadkernel_mcp::McpServer::new();
     let stdin = std::io::stdin();
     let stdout = std::io::stdout();
     let mut out = stdout.lock();

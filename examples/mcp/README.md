@@ -22,7 +22,7 @@ response.
 | Tool | Description | Key Parameters |
 |------|-------------|----------------|
 | `create_primitive` | Create box, cylinder, sphere, cone, or torus | `type`, `dimensions` |
-| `boolean_operation` | Union, subtract, or intersect two solids | `op`, `target_id`, `tool_id` |
+| `boolean_operation` | Union, subtract, or intersect two solids (consumes both inputs; returns fresh id) | `op`, `target_id`, `tool_id` |
 | `transform` | Translate, rotate, and/or scale a solid | `id`, `translate`, `rotate`, `scale` |
 | `query_model` | Get solid/face/edge/vertex counts | (none) |
 | `measure` | Volume, surface area, centroid, bounding box | `id` |
@@ -112,7 +112,7 @@ echo '{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}' | cargo run --
 ## Programmatic Usage (Rust)
 
 ```rust
-use cadkernel_io::McpServer;
+use cadkernel_mcp::McpServer;
 
 let mut server = McpServer::new();
 let request = r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"create_primitive","arguments":{"type":"box","dimensions":{"dx":10,"dy":10,"dz":10}}}}"#;
@@ -127,7 +127,7 @@ println!("{response}");
 | `box` | `dx`, `dy`, `dz` |
 | `cylinder` | `radius`, `height` (optional: `segments`) |
 | `sphere` | `radius` (optional: `segments`, `rings`) |
-| `cone` | `base_radius`, `top_radius`, `height` (optional: `segments`) |
+| `cone` | `base_radius`, `height` (only pointed cones; `top_radius` must be 0) |
 | `torus` | `major_radius`, `minor_radius` (optional: `major_segments`, `minor_segments`) |
 
 ## Error Handling

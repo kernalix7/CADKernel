@@ -1475,43 +1475,43 @@ pub trait Plugin: Send + Sync {
 
 ## 16. MCP 통합
 
-CADKernel은 JSON-RPC 2.0을 통해 커널을 AI 어시스턴트에 노출하는 **Model Context Protocol(MCP)** 서버를 구현합니다.
+CADKernel은 JSON-RPC 2.0을 통해 커널을 AI 어시스턴트에 노출하는 **Model Context Protocol(MCP)** 서버(`crates/mcp/`, `cadkernel-mcp`)를 구현합니다. v0.5 Gate #5(2026-05-11)부터 모든 상태 변경 도구는 `cadkernel-api::Session::execute(Command::*)`를 경유합니다.
 
 ### 프로토콜
 
 - 전송: stdin/stdout (라인 구분 JSON)
-- 요청 형식: `{ "jsonrpc": "2.0", "id": N, "method": "<tool>", "params": { ... } }`
-- 응답 형식: `{ "jsonrpc": "2.0", "id": N, "result": { ... } }` 또는 `"error": { ... }`
+- 요청: `{ "jsonrpc": "2.0", "id": N, "method": "tools/call", "params": { "name": "<tool>", "arguments": { ... } } }`
+- 응답: `{ "jsonrpc": "2.0", "id": N, "result": { ... } }` 또는 `"error": { "code": N, "message": "..." }`
 
 ### McpServer
 
 ```rust
-pub struct McpServer {
-    model: BRepModel,
-}
-
+// crates/mcp/src/server.rs
+pub struct McpServer { /* cadkernel_api::Session + 정수 id 슬롯 맵 */ }
 impl McpServer {
-    pub fn handle_request(&mut self, request: &str) -> String;
+    pub fn new() -> Self;
+    pub fn list_tools(&self) -> Vec<McpToolDef>;
+    pub fn handle_request(&mut self, json: &str) -> Result<String, KernelError>;
 }
 ```
 
 ### 지원 도구 (8개)
 
-| 도구 | 파라미터 | 설명 |
-|------|----------|------|
-| `create_primitive` | `shape`, `params` | 치수를 지정한 Box/Cylinder/Sphere/Cone/Torus |
-| `boolean_operation` | `op`, `target`, `tool` | 솔리드 이름으로 Union/Subtract/Intersect |
-| `transform` | `solid`, `tx`, `ty`, `tz`, `rx`, `ry`, `rz` | 솔리드 이동 + 회전 |
-| `query_model` | — | 모든 솔리드 이름 및 개수 반환 |
-| `measure` | `solid` | 체적, 표면적, 바운딩 박스 |
-| `export_model` | `format`, `path` | STL/OBJ/glTF/STEP/BREP 내보내기 |
-| `delete_solid` | `solid` | 모델에서 지정한 솔리드 제거 |
-| `list_solids` | — | 솔리드 이름 문자열 배열 |
+| 도구 | 주요 파라미터 | 설명 |
+|------|-------------|------|
+| `create_primitive` | `type`, `dimensions` | Box/Cylinder/Sphere/Cone(top_radius=0만 허용)/Torus |
+| `boolean_operation` | `op`, `target_id`, `tool_id` | CSG; 두 피연산자 소비, 결과는 빈 슬롯에 할당 |
+| `transform` | `id`, `translate[3]`, `rotate[3]`(오일러 °), `scale[3]` | 이동·회전(X→Y→Z 순 Rotate 3회)·ScaleNonUniform |
+| `query_model` | — | `solid_count`, `total_faces`, `total_edges`, `total_vertices` |
+| `measure` | `id` | 체적, 표면적, 무게중심, 바운딩 박스 |
+| `export_model` | `id`, `format` (`stl`/`obj`/`step`/`json`) | `cadkernel-io` 어댑터 직접 호출 |
+| `delete_solid` | `id` | `Command::DeleteSolid` 경유; `{"deleted": id}` 반환 |
+| `list_solids` | — | `{"solids": [{id, label, faces, edges, vertices}, …]}` |
 
 ### 사용법
 
 ```bash
-echo '{"jsonrpc":"2.0","id":1,"method":"create_primitive","params":{"shape":"box","params":{"x":10,"y":10,"z":10}}}' | cadkernel --mcp
+echo '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"create_primitive","arguments":{"type":"box","dimensions":{"dx":10,"dy":10,"dz":10}}}}' | cadkernel --mcp
 ```
 
 ---

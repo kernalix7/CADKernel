@@ -169,6 +169,18 @@ impl Document {
         })
     }
 
+    /// Returns the underlying `(BRepModel, SolidData handle)` pair for a
+    /// solid, if it exists. Intended for adapters (export, tessellation)
+    /// that need to reach the kernel surface for operations not yet
+    /// reachable through [`Command`](crate::Command). Returns `None` if
+    /// the slot is missing or has no handle. Read-only — the document's
+    /// stored state is unaffected.
+    pub fn solid_brep(&self, id: SolidId) -> Option<(&BRepModel, Handle<SolidData>)> {
+        let slot = self.get_slot(id)?;
+        let handle = slot.handle?;
+        Some((&slot.model, handle))
+    }
+
     /// Returns the axis-aligned bounding box of a solid in world coordinates,
     /// computed by walking the underlying `BRepModel` vertex store. Returns
     /// `None` if the slot is missing, has no handle, or contains no vertices.
