@@ -11,6 +11,10 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### Commercial CAD Roadmap — v0.5 Gate #12 extension: panic-free `cadkernel-core` (2026-05-11)
+- **`crates/core/src/lib.rs` now enforces `clippy::unwrap_used` + `clippy::expect_used` + `clippy::panic`** for non-test code via `#![cfg_attr(not(test), deny(...))]`. `cadkernel-core` already had 0 production unwraps, so the lint locks in the existing guarantee at the root of the `KernelResult<T>`-first contract. No behavioural change.
+- Per-crate roll-out continues as unwrap counts in the remaining crates are paid down.
+
 #### Commercial CAD Roadmap — v0.5 Gate #12 partial: panic-free `cadkernel-api` (2026-05-11)
 - **`crates/api/src/lib.rs` now enforces `clippy::unwrap_used` + `clippy::expect_used` + `clippy::panic`** for non-test code via `#![cfg_attr(not(test), deny(...))]`. The SemVer-locked public API surface is now provably panic-free at lint level.
 - **`crates/api/src/cadk/codec.rs` `read_header`**: replaced 6 `.try_into().unwrap()` calls with two new private helpers `read_le_u32` / `read_le_u64` that copy into fixed-size arrays. Behaviour identical (slice bounds already validated above); panic surface removed.

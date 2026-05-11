@@ -11,6 +11,10 @@
 
 ### 추가됨
 
+#### 상용 CAD 로드맵 — v0.5 Gate #12 확장: `cadkernel-core` panic-free (2026-05-11)
+- **`crates/core/src/lib.rs`에도 `clippy::unwrap_used` + `clippy::expect_used` + `clippy::panic` deny 적용** (비-테스트 코드 한정). `cadkernel-core`는 이미 production unwrap이 0개였으므로 `KernelResult<T>`-first 계약의 뿌리에 lint로 못박음. 동작 변경 없음.
+- 나머지 크레이트는 unwrap 카운트를 갚아가며 순차 확대.
+
 #### 상용 CAD 로드맵 — v0.5 Gate #12 partial: `cadkernel-api` panic-free (2026-05-11)
 - **`crates/api/src/lib.rs`에 `clippy::unwrap_used` + `clippy::expect_used` + `clippy::panic` deny 적용** (비-테스트 코드 한정, `#![cfg_attr(not(test), deny(...))]`). SemVer-lock된 공개 API 표면이 lint 레벨에서 panic-free 증명.
 - **`crates/api/src/cadk/codec.rs` `read_header`**: 6개의 `.try_into().unwrap()` 호출을 새 프라이빗 헬퍼 `read_le_u32` / `read_le_u64`로 교체. 동작 동일, panic 표면 제거.

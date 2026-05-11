@@ -21,6 +21,13 @@
 //! assert!(validate_radius(-1.0).is_err());
 //! ```
 
+// Commercial CAD Roadmap v0.5 Gate 12: the core error crate is the root of the
+// `KernelResult<T>`-first contract. Production code here must never panic.
+#![cfg_attr(
+    not(test),
+    deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)
+)]
+
 pub mod error;
 
 pub use error::{KernelError, KernelResult};
