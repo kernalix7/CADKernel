@@ -31,6 +31,13 @@
 //! - [`intersect_curve_surface`]: curve-surface intersection (subdivision + Newton)
 //! - [`intersect_surfaces`]: surface-surface intersection (marching algorithm)
 
+// Commercial CAD Roadmap v0.5 Gate 12: curves, surfaces and tessellation feed
+// every modelling operation. Production code here must never panic.
+#![cfg_attr(
+    not(test),
+    deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)
+)]
+
 pub mod bvh;
 pub mod curve;
 pub mod intersect;

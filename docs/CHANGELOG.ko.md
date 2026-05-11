@@ -11,6 +11,16 @@
 
 ### 추가됨
 
+#### 상용 CAD 로드맵 — v0.5 Gate #12 확장: `cadkernel-geometry` panic-free (2026-05-11)
+- **`crates/geometry/src/lib.rs`에 deny 적용** (비-테스트 한정). 156개 원시 매치 중 production은 6개뿐; 나머지는 모두 `#[cfg(test)]` 내부.
+- **`crates/geometry/src/curve/nurbs.rs`**:
+  - `elevate_degree`: `*distinct_knots.last().unwrap()` / `*new_knots.last().unwrap()` (구조적으로 비어 없음) → 명시적 `len() - 1` 인덱싱.
+  - `split_at`: knot refinement 후 `.position(...).unwrap()` → `.ok_or_else(...)` (`KernelError::InvalidArgument`).
+  - `refine_knots`: `partial_cmp(b).unwrap()` → `.unwrap_or(Ordering::Equal)`.
+  - `decompose_to_bezier` (`Vec<NurbsCurve>` 반환, `Result` 아님): `.insert_knot.unwrap()` → `match`, 에러 시 `vec![self.clone()]` 구조적 브리 케이스 반환.
+- **`crates/geometry/src/tessellate.rs::adaptive_sample`**: `*params.last_mut().unwrap() = t_end` → `let last_idx = ...; params[last_idx] = t_end`.
+- v0.5 Gate #12 커버리지: `api` + `core` + `math` + `sketch` + `topology` + `geometry` (6 / 9). 남은 작업: `viewer` 175, `io` 408, `modeling` 847.
+
 #### 상용 CAD 로드맵 — v0.5 Gate #12 확장: `cadkernel-topology` panic-free (2026-05-11)
 - **`crates/topology/src/lib.rs`에 `clippy::unwrap_used` + `clippy::expect_used` + `clippy::panic` deny 적용** (비-테스트 한정).
 - **Half-edge B-Rep 빌더 14개 사이트에서 `X.get_mut(h).unwrap()` → `if let Some(_) = X.get_mut(h)` 사용** (`add_edge`, `add_edge_tagged`, `make_wire_tagged`, `make_face`, `make_face_tagged`, `add_inner_loop`, `make_shell`, `make_shell_tagged`, `make_solid`, `make_solid_tagged`). 외어썪한 새 핸들은 직전 `insert`에서 반환되었으므로 구조적으로 Some이 보장되어 동작 동일, panic 표면만 제거.

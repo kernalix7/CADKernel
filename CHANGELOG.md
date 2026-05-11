@@ -11,6 +11,16 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### Commercial CAD Roadmap — v0.5 Gate #12 extension: panic-free `cadkernel-geometry` (2026-05-11)
+- **`crates/geometry/src/lib.rs` now enforces `clippy::unwrap_used` + `clippy::expect_used` + `clippy::panic`** for non-test code. Of the 156 raw matches in the crate, only **6 were in production code**; the rest were inside `#[cfg(test)]` modules.
+- **`crates/geometry/src/curve/nurbs.rs`**:
+  - `elevate_degree`: replaced `*distinct_knots.last().unwrap()` and `*new_knots.last().unwrap()` (both structurally non-empty by the surrounding `push` chain) with explicit length-1 indexing.
+  - `split_at`: replaced `.position(...).unwrap()` after knot refinement with `.ok_or_else(...)` returning `KernelError::InvalidArgument("split knot {t} not present after refinement")`. Behaviour identical on the happy path; failures now produce a typed error instead of panicking.
+  - `refine_knots`: replaced `a.partial_cmp(b).unwrap()` in the NaN-free sort with `.unwrap_or(std::cmp::Ordering::Equal)`.
+  - `decompose_to_bezier` (returns `Vec<NurbsCurve>`, no `Result`): replaced `.insert_knot(knot_val).unwrap()` with a `match` that falls back to `vec![self.clone()]` on error — the structurally identical conservative result the function would have produced before refinement.
+- **`crates/geometry/src/tessellate.rs::adaptive_sample`**: replaced `*params.last_mut().unwrap() = t_end;` with indexed assignment using `let last_idx = params.len() - 1;`. `params` is guaranteed non-empty by `n = opts.min_segments.max(2)`.
+- v0.5 Gate #12 now covers `api` + `core` + `math` + `sketch` + `topology` + `geometry` (6 / 9). Remaining: `viewer` 175 raw, `io` 408 raw, `modeling` 847 raw.
+
 #### Commercial CAD Roadmap — v0.5 Gate #12 extension: panic-free `cadkernel-topology` (2026-05-11)
 - **`crates/topology/src/lib.rs` now enforces `clippy::unwrap_used` + `clippy::expect_used` + `clippy::panic`** for non-test code.
 - **Half-edge B-Rep builders refactored to use `if let Some(_) = X.get_mut(handle)` instead of `X.get_mut(handle).unwrap()`** at 14 production sites in `add_edge` / `add_edge_tagged` / `make_wire_tagged` / `make_face` / `make_face_tagged` / `add_inner_loop` / `make_shell` / `make_shell_tagged` / `make_solid` / `make_solid_tagged`. The unwrapped handles were structurally guaranteed Some (each was just returned from a corresponding `insert`), so behaviour is identical; only the panic surface is removed.

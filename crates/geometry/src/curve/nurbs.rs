@@ -296,12 +296,12 @@ impl NurbsCurve {
             }
         }
         for _ in 0..=new_degree {
-            new_knots.push(*distinct_knots.last().unwrap());
+            new_knots.push(distinct_knots[distinct_knots.len() - 1]);
         }
 
         let expected_knots = new_hw.len() + new_degree + 1;
         while new_knots.len() < expected_knots {
-            let last = *new_knots.last().unwrap();
+            let last = new_knots[new_knots.len() - 1];
             new_knots.insert(new_knots.len() - new_degree - 1, last);
         }
         while new_knots.len() > expected_knots {
@@ -405,7 +405,9 @@ impl NurbsCurve {
             .knots
             .iter()
             .position(|&k| (k - t).abs() < 1e-14)
-            .unwrap();
+            .ok_or_else(|| {
+                KernelError::InvalidArgument(format!("split knot {t} not present after refinement"))
+            })?;
         let _split_knot_end = split_knot_start + p; // p+1 copies of t, last is at +p
 
         // Left curve: control points 0..split_knot_start, knots 0..=split_knot_end
@@ -442,9 +444,9 @@ impl NurbsCurve {
             }
         }
 
-        // Sort the new knots
+        // Sort the new knots (NaNs are not expected; fall back to Equal).
         let mut sorted = new_knots.to_vec();
-        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
 
         let mut result = self.clone();
         for &k in &sorted {
@@ -667,7 +669,10 @@ impl NurbsCurve {
                 .count();
             let needed = p.saturating_sub(current_mult);
             for _ in 0..needed {
-                refined = refined.insert_knot(knot_val).unwrap();
+                match refined.insert_knot(knot_val) {
+                    Ok(r) => refined = r,
+                    Err(_) => return vec![self.clone()],
+                }
             }
         }
 

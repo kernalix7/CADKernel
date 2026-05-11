@@ -118,8 +118,9 @@ where
 
     // Build initial uniform samples.
     let mut params: Vec<f64> = (0..=n).map(|i| t_start + dt * i as f64).collect();
-    // Clamp the last value exactly to t_end.
-    *params.last_mut().unwrap() = t_end;
+    // Clamp the last value exactly to t_end. `params` is non-empty because `n >= 2`.
+    let last_idx = params.len() - 1;
+    params[last_idx] = t_end;
 
     // Adaptive refinement pass using batch insertion to avoid O(n²) shifts.
     let cos_angle_tol = opts.angle_tolerance.cos();
