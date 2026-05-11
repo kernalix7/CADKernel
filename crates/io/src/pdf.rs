@@ -306,28 +306,28 @@ fn parse_content_stream(stream: &str) -> (Vec<PdfText>, Vec<PdfVector>) {
             // Vector path operators
             "m" => {
                 if num_stack.len() >= 2 {
-                    let y = num_stack.pop().unwrap();
-                    let x = num_stack.pop().unwrap();
+                    let y = num_stack.pop().unwrap_or(0.0);
+                    let x = num_stack.pop().unwrap_or(0.0);
                     current_path.push(PdfPathCmd::MoveTo(Point2::new(x, y)));
                 }
                 num_stack.clear();
             }
             "l" if !in_text => {
                 if num_stack.len() >= 2 {
-                    let y = num_stack.pop().unwrap();
-                    let x = num_stack.pop().unwrap();
+                    let y = num_stack.pop().unwrap_or(0.0);
+                    let x = num_stack.pop().unwrap_or(0.0);
                     current_path.push(PdfPathCmd::LineTo(Point2::new(x, y)));
                 }
                 num_stack.clear();
             }
             "c" => {
                 if num_stack.len() >= 6 {
-                    let y3 = num_stack.pop().unwrap();
-                    let x3 = num_stack.pop().unwrap();
-                    let y2 = num_stack.pop().unwrap();
-                    let x2 = num_stack.pop().unwrap();
-                    let y1 = num_stack.pop().unwrap();
-                    let x1 = num_stack.pop().unwrap();
+                    let y3 = num_stack.pop().unwrap_or(0.0);
+                    let x3 = num_stack.pop().unwrap_or(0.0);
+                    let y2 = num_stack.pop().unwrap_or(0.0);
+                    let x2 = num_stack.pop().unwrap_or(0.0);
+                    let y1 = num_stack.pop().unwrap_or(0.0);
+                    let x1 = num_stack.pop().unwrap_or(0.0);
                     current_path.push(PdfPathCmd::CurveTo(
                         Point2::new(x1, y1),
                         Point2::new(x2, y2),
@@ -350,10 +350,10 @@ fn parse_content_stream(stream: &str) -> (Vec<PdfText>, Vec<PdfVector>) {
             }
             "re" => {
                 if num_stack.len() >= 4 {
-                    let rh = num_stack.pop().unwrap();
-                    let rw = num_stack.pop().unwrap();
-                    let ry = num_stack.pop().unwrap();
-                    let rx = num_stack.pop().unwrap();
+                    let rh = num_stack.pop().unwrap_or(0.0);
+                    let rw = num_stack.pop().unwrap_or(0.0);
+                    let ry = num_stack.pop().unwrap_or(0.0);
+                    let rx = num_stack.pop().unwrap_or(0.0);
                     current_path.push(PdfPathCmd::MoveTo(Point2::new(rx, ry)));
                     current_path.push(PdfPathCmd::LineTo(Point2::new(rx + rw, ry)));
                     current_path.push(PdfPathCmd::LineTo(Point2::new(rx + rw, ry + rh)));
@@ -375,14 +375,14 @@ fn parse_content_stream(stream: &str) -> (Vec<PdfText>, Vec<PdfVector>) {
             }
             "Tf" => {
                 if !num_stack.is_empty() {
-                    font_size = num_stack.pop().unwrap();
+                    font_size = num_stack.pop().unwrap_or(0.0);
                 }
                 num_stack.clear();
             }
             "Td" | "TD" => {
                 if num_stack.len() >= 2 {
-                    let ty = num_stack.pop().unwrap();
-                    let tx = num_stack.pop().unwrap();
+                    let ty = num_stack.pop().unwrap_or(0.0);
+                    let tx = num_stack.pop().unwrap_or(0.0);
                     text_x += tx;
                     text_y += ty;
                 }

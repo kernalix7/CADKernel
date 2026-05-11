@@ -11,6 +11,17 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### Commercial CAD Roadmap — v0.5 Gate #12 extension: panic-free `cadkernel-io` (2026-05-11)
+- **`crates/io/src/lib.rs` now enforces `clippy::unwrap_used` + `clippy::expect_used` + `clippy::panic`** for non-test code. Of 408 raw matches, only ~34 lived in production code; the rest were inside `#[cfg(test)]`.
+- **`crates/io/src/pdf.rs`**: rewrote 17 `num_stack.pop().unwrap()` sites to `num_stack.pop().unwrap_or(0.0)`. Every call is preceded by an explicit `num_stack.len() >= N` length check, so `0.0` is structurally unreachable; behaviour identical.
+- **`crates/io/src/mesh_ops.rs`**:
+  - Shortest-edge collapse: replaced `edges.iter().min_by(...).unwrap()` with a `let-else { break; }` pattern; the partial-cmp tie-break uses `unwrap_or(Ordering::Equal)`.
+  - Two `above.iter().position(...).unwrap()` sites in slice intersection rewritten as `let-else { return; }` — preserves the existing degenerate-case bail-out.
+- **`crates/io/src/step.rs`**: replaced `best.is_none() || err < best.unwrap().4` with `best.as_ref().is_none_or(|b| err < b.4)` (MSRV 1.85 allows `Option::is_none_or`).
+- **`crates/io/src/tessellate.rs`**: four `face_data.unwrap()` / `surface.unwrap()` pairs in `tessellate_solid` / `tessellate_solid_with_face_map` / `tessellate_face_to_mesh` / `tessellate_solid_with_options` rewritten using `if let Some(fd) = face_data.filter(|_| use_surface_tess) && let Some(surface) = fd.surface.as_ref()` (edition 2024 let-chains). `outer_trim.unwrap().contains_point(...)` similarly rewritten as `if let Some(t) = outer_trim && !t.contains_point(...)`; the now-redundant `has_outer` local was removed.
+- **`crates/io/src/mcp.rs`**: two `dst.make_loop(&[he0, he1, he2]).unwrap()` sites (in a function returning `Handle<FaceData>`) replaced with `.unwrap_or_else(|_| dst.loops.insert(LoopData::new(he0)))` — structurally equivalent, no panic surface.
+- v0.5 Gate #12 now covers `api` + `core` + `math` + `sketch` + `topology` + `geometry` + `io` (7 / 9 library crates). `viewer` deferred (application binary; conventional GPU/event-loop init panics). Remaining library: `modeling` 847 raw.
+
 #### Commercial CAD Roadmap — v0.5 Gate #12 extension: panic-free `cadkernel-geometry` (2026-05-11)
 - **`crates/geometry/src/lib.rs` now enforces `clippy::unwrap_used` + `clippy::expect_used` + `clippy::panic`** for non-test code. Of the 156 raw matches in the crate, only **6 were in production code**; the rest were inside `#[cfg(test)]` modules.
 - **`crates/geometry/src/curve/nurbs.rs`**:

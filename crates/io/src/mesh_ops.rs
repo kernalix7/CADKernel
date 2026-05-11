@@ -100,10 +100,12 @@ pub fn decimate_mesh(mesh: &Mesh, target_ratio: f64) -> KernelResult<Mesh> {
         }
 
         // Find shortest edge.
-        let (&(va, vb), _) = edges
+        let Some((&(va, vb), _)) = edges
             .iter()
-            .min_by(|a, b| a.1.partial_cmp(b.1).unwrap())
-            .unwrap();
+            .min_by(|a, b| a.1.partial_cmp(b.1).unwrap_or(std::cmp::Ordering::Equal))
+        else {
+            break;
+        };
 
         // Collapse: merge vb into va at midpoint.
         let mid = vertices[va as usize].midpoint(vertices[vb as usize]);
@@ -565,7 +567,9 @@ fn clip_triangle_to_plane(
 
     if count_above == 2 {
         // Two vertices above: produce a quad (2 triangles)
-        let below_idx = above.iter().position(|&x| !x).unwrap();
+        let Some(below_idx) = above.iter().position(|&x| !x) else {
+            return;
+        };
         let a_idx = (below_idx + 1) % 3;
         let b_idx = (below_idx + 2) % 3;
 
@@ -589,7 +593,9 @@ fn clip_triangle_to_plane(
         indices.push([base + 1, base + 3, base + 2]);
     } else if count_above == 1 {
         // One vertex above: produce one triangle
-        let above_idx = above.iter().position(|&x| x).unwrap();
+        let Some(above_idx) = above.iter().position(|&x| x) else {
+            return;
+        };
         let b_idx = (above_idx + 1) % 3;
         let c_idx = (above_idx + 2) % 3;
 

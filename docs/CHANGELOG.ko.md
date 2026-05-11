@@ -11,6 +11,15 @@
 
 ### 추가됨
 
+#### 상용 CAD 로드맵 — v0.5 Gate #12 확장: `cadkernel-io` panic-free (2026-05-11)
+- **`crates/io/src/lib.rs`에 deny 적용**. 408개 원시 매치 중 production은 약 34개; 나머지는 모두 `#[cfg(test)]` 내부.
+- **`pdf.rs`**: 17개 `num_stack.pop().unwrap()` → `unwrap_or(0.0)`. 호출 직전 `num_stack.len() >= N` 가드가 있어 fallback은 구조적으로 도달 불가.
+- **`mesh_ops.rs`**: 최단 edge 선택의 `min_by().unwrap()` → `let-else { break; }`; slice intersection의 `position().unwrap()` 2곳 → `let-else { return; }`.
+- **`step.rs`**: `best.is_none() || err < best.unwrap().4` → `best.as_ref().is_none_or(|b| err < b.4)` (MSRV 1.85).
+- **`tessellate.rs`**: 4개의 `face_data.unwrap()`/`surface.unwrap()` 페어 → edition 2024 let-chain `if let Some(fd) = face_data.filter(|_| use_surface_tess) && let Some(surface) = fd.surface.as_ref()`. `outer_trim.unwrap()` → `if let Some(t) = outer_trim && !t.contains_point(...)`. 불필요해진 `has_outer` local 제거.
+- **`mcp.rs`**: `dst.make_loop(...).unwrap()` 2곳 (반환형 `Handle<FaceData>`) → `.unwrap_or_else(|_| dst.loops.insert(LoopData::new(he0)))`.
+- v0.5 Gate #12: 9개 라이브러리 크레이트 중 7개 (`api` + `core` + `math` + `sketch` + `topology` + `geometry` + `io`) 완료. `viewer`는 보류 (애플리케이션 바이너리, GPU/이벤트 루프 초기화 panic은 관례). 남음: `modeling` 847.
+
 #### 상용 CAD 로드맵 — v0.5 Gate #12 확장: `cadkernel-geometry` panic-free (2026-05-11)
 - **`crates/geometry/src/lib.rs`에 deny 적용** (비-테스트 한정). 156개 원시 매치 중 production은 6개뿐; 나머지는 모두 `#[cfg(test)]` 내부.
 - **`crates/geometry/src/curve/nurbs.rs`**:

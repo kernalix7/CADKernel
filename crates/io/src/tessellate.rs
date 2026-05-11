@@ -137,9 +137,9 @@ pub fn tessellate_solid(model: &BRepModel, solid: Handle<SolidData>) -> Mesh {
                 })
             });
 
-            if use_surface_tess {
-                let fd = face_data.unwrap();
-                let surface = fd.surface.as_ref().unwrap();
+            if let Some(fd) = face_data.filter(|_| use_surface_tess)
+                && let Some(surface) = fd.surface.as_ref()
+            {
                 let boundary = collect_face_points(model, face_h);
                 let tess_result = tessellate_surface_with_trim(
                     surface.as_ref(),
@@ -267,9 +267,9 @@ pub fn tessellate_solid_with_face_map(
                 })
             });
 
-            if use_surface_tess {
-                let fd = face_data.unwrap();
-                let surface = fd.surface.as_ref().unwrap();
+            if let Some(fd) = face_data.filter(|_| use_surface_tess)
+                && let Some(surface) = fd.surface.as_ref()
+            {
                 let boundary = collect_face_points(model, face_h);
                 let tess_result = tessellate_surface_with_trim(
                     surface.as_ref(),
@@ -413,9 +413,9 @@ fn tessellate_face_to_mesh(model: &BRepModel, face_h: Handle<FaceData>) -> Mesh 
     let face_data = model.faces.get(face_h);
     let has_surface = face_data.is_some_and(|fd| fd.surface.is_some());
 
-    if has_surface {
-        let fd = face_data.unwrap();
-        let surface = fd.surface.as_ref().unwrap();
+    if let Some(fd) = face_data.filter(|_| has_surface)
+        && let Some(surface) = fd.surface.as_ref()
+    {
         let boundary = collect_face_points(model, face_h);
         if let Some(tess_mesh) = tessellate_surface_with_trim(
             surface.as_ref(),
@@ -503,9 +503,9 @@ pub fn tessellate_solid_with_options(
                 })
             });
 
-            if use_surface_tess {
-                let fd = face_data.unwrap();
-                let surface = fd.surface.as_ref().unwrap();
+            if let Some(fd) = face_data.filter(|_| use_surface_tess)
+                && let Some(surface) = fd.surface.as_ref()
+            {
                 let boundary = collect_face_points(model, face_h);
 
                 let (u_lo, u_hi) = surface.domain_u();
@@ -750,7 +750,6 @@ fn tessellate_surface_with_trim(
         return Some(tess);
     }
 
-    let has_outer = outer_trim.is_some();
     let mut filtered_indices = Vec::new();
 
     for idx in &tess.indices {
@@ -765,7 +764,9 @@ fn tessellate_surface_with_trim(
         );
         let (u, v, _) = surface.project_point(centroid);
 
-        if has_outer && !outer_trim.unwrap().contains_point(u, v) {
+        if let Some(t) = outer_trim
+            && !t.contains_point(u, v)
+        {
             continue;
         }
         if inner_trims.iter().any(|hole| hole.contains_point(u, v)) {

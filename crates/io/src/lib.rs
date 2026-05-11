@@ -1,3 +1,8 @@
+#![cfg_attr(
+    not(test),
+    deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)
+)]
+
 //! File I/O, tessellation, and mesh processing for the CAD kernel.
 //!
 //! This crate provides import/export for 18 file formats, face and solid

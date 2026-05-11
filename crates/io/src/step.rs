@@ -1600,7 +1600,7 @@ fn fit_torus(samples: &[(Point3, Vec3)]) -> Option<(Point3, Vec3, f64, f64)> {
             err += d.dot(axis).powi(2);
         }
         err /= centers.len() as f64;
-        if best.is_none() || err < best.unwrap().4 {
+        if best.as_ref().is_none_or(|b| err < b.4) {
             best = Some((cc, axis, rr, r_minor, err));
         }
     }

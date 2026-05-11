@@ -1031,7 +1031,9 @@ fn copy_face_to_model(
         let (_, he0, _) = dst.add_edge(v0, v1);
         let (_, he1, _) = dst.add_edge(v1, v2);
         let (_, he2, _) = dst.add_edge(v2, v0);
-        let lp = dst.make_loop(&[he0, he1, he2]).unwrap();
+        let lp = dst
+            .make_loop(&[he0, he1, he2])
+            .unwrap_or_else(|_| dst.loops.insert(cadkernel_topology::LoopData::new(he0)));
         return dst.make_face(lp);
     }
 
@@ -1084,7 +1086,9 @@ fn copy_face_to_model(
     let (_, he1, _) = dst.add_edge_tagged(v1, v2, tag_e1);
     let (_, he2, _) = dst.add_edge_tagged(v2, v0, tag_e2);
 
-    let lp = dst.make_loop(&[he0, he1, he2]).unwrap();
+    let lp = dst
+        .make_loop(&[he0, he1, he2])
+        .unwrap_or_else(|_| dst.loops.insert(cadkernel_topology::LoopData::new(he0)));
     let face_tag = Tag::generated(EntityKind::Face, op, *edge_idx);
     *edge_idx += 1;
     dst.make_face_tagged(lp, face_tag)
