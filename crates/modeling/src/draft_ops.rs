@@ -54,8 +54,10 @@ pub fn make_wire(model: &mut BRepModel, points: &[Point3]) -> KernelResult<WireR
 
     let op = model.history.next_operation("make_wire");
 
-    let closed =
-        points.len() > 2 && (*points.first().unwrap() - *points.last().unwrap()).length() < 1e-10;
+    let closed = points.len() > 2 && {
+        let last_idx = points.len() - 1;
+        (points[0] - points[last_idx]).length() < 1e-10
+    };
 
     let point_count = if closed {
         points.len() - 1
@@ -360,7 +362,8 @@ pub fn make_fillet_wire(points: &[Point3], radius: f64) -> Vec<Point3> {
         }
     }
 
-    result.push(*points.last().unwrap());
+    let last_idx = points.len() - 1;
+    result.push(points[last_idx]);
     result
 }
 
@@ -894,9 +897,12 @@ pub fn join_wires(wires: &[Vec<Point3>], tolerance: f64) -> Vec<Point3> {
         if wire.is_empty() {
             continue;
         }
-        let end = *result.last().unwrap();
+        let Some(&end) = result.last() else {
+            result.extend_from_slice(wire);
+            continue;
+        };
         let d_start = end.distance_to(wire[0]);
-        let d_end = end.distance_to(*wire.last().unwrap());
+        let d_end = end.distance_to(wire[wire.len() - 1]);
         if d_end < d_start && d_end < tolerance {
             // Reverse this wire
             let mut reversed = wire.clone();
@@ -941,7 +947,7 @@ pub fn upgrade_wire(points: &[Point3]) -> Vec<Point3> {
     }
     let mut result = points.to_vec();
     let first = result[0];
-    let last = *result.last().unwrap();
+    let last = result[result.len() - 1];
     if first.distance_to(last) > 1e-10 {
         result.push(first);
     }
@@ -1325,7 +1331,8 @@ pub fn make_chamfer_wire(points: &[Point3], size: f64) -> Vec<Point3> {
         ));
     }
 
-    result.push(*points.last().unwrap());
+    let last_idx = points.len() - 1;
+    result.push(points[last_idx]);
     result
 }
 
@@ -2435,7 +2442,7 @@ pub fn snap_to_dimensions(dim_start: Point3, dim_end: Point3, query: Point3) -> 
         .iter()
         .map(|p| (*p, p.distance_to(query)))
         .min_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
-        .unwrap();
+        .unwrap_or((query, 0.0));
     SnapResult { point, distance }
 }
 
@@ -2722,9 +2729,12 @@ impl DraftStyleManager {
     }
 
     pub fn get_active(&self) -> &DraftStyle {
+        static FALLBACK: std::sync::LazyLock<DraftStyle> =
+            std::sync::LazyLock::new(DraftStyle::default);
         self.styles
             .get(&self.active)
-            .unwrap_or_else(|| self.styles.values().next().unwrap())
+            .or_else(|| self.styles.values().next())
+            .unwrap_or(&FALLBACK)
     }
 
     pub fn set_active(&mut self, name: &str) -> KernelResult<()> {

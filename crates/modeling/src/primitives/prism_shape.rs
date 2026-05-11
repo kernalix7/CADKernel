@@ -169,8 +169,16 @@ pub fn make_prism(
     // Lateral faces bound to planes
     for i in 0..n {
         let j = (i + 1) % n;
-        let p0 = model.vertices.get(bot_verts[i]).unwrap().point;
-        let p1 = model.vertices.get(bot_verts[j]).unwrap().point;
+        let p0 = model
+            .vertices
+            .get(bot_verts[i])
+            .map(|v| v.point)
+            .unwrap_or(Point3::ORIGIN);
+        let p1 = model
+            .vertices
+            .get(bot_verts[j])
+            .map(|v| v.point)
+            .unwrap_or(Point3::ORIGIN);
         let edge_dir = (p1 - p0).normalized().unwrap_or(Vec3::X);
         let v_axis = Vec3::Z;
         let u_axis = v_axis.cross(edge_dir).normalized().unwrap_or(Vec3::X);

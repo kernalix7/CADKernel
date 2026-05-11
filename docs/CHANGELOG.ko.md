@@ -11,6 +11,14 @@
 
 ### 추가됨
 
+#### 상용 CAD 로드맵 — v0.5 Gate #12 **라이브러리 크레이트 전체 완료**: `cadkernel-modeling` panic-free (2026-05-11)
+- **`crates/modeling/src/lib.rs`에 deny 적용** (비-테스트 한정). 847개 원시 매치 중 production은 25개뿐.
+- **`boolean/face_split.rs`**: `*pts.last().unwrap()` (조기 반환으로 비어 있지 않음 보장) → 인덱싱; `*chord.first/last().unwrap()` (가드 후) → 인덱싱.
+- **`features/section.rs`**: `unique.last().unwrap()` → 인덱싱.
+- **`features/shell.rs` (4) + `primitives/prism_shape.rs` (2) + `primitives/shape_primitives.rs` (4) + `appearance.rs` (3)**: `model.vertices.get(h).unwrap().point` → `.map(|v| v.point).unwrap_or(Point3::ORIGIN)`.
+- **`draft_ops.rs`**: `make_wire` 닫힌 루프 검출, `make_fillet_wire` / `make_chamfer_wire` / `upgrade_wire` 의 `.first/.last().unwrap()` → 인덱싱. `join_wires`: `*result.last().unwrap()` → `let-else { result.extend_from_slice(wire); continue; }` (빈 wires[0] 시 잠재 panic 제거). `snap_to_dimensions`: 3원소 배열 `min_by().unwrap()` → `unwrap_or((query, 0.0))`. `DraftStyleManager::get_active`: 내부 `.unwrap()` → `LazyLock<DraftStyle>` fallback.
+- **v0.5 Gate #12 라이브러리 크레이트 전체 완료**: `api` + `core` + `math` + `sketch` + `topology` + `geometry` + `io` + `modeling` (8 / 8). `viewer`는 보류 (애플리케이션 바이너리, GPU/이벤트 루프 초기화 panic 관례).
+
 #### 상용 CAD 로드맵 — v0.5 Gate #12 확장: `cadkernel-io` panic-free (2026-05-11)
 - **`crates/io/src/lib.rs`에 deny 적용**. 408개 원시 매치 중 production은 약 34개; 나머지는 모두 `#[cfg(test)]` 내부.
 - **`pdf.rs`**: 17개 `num_stack.pop().unwrap()` → `unwrap_or(0.0)`. 호출 직전 `num_stack.len() >= N` 가드가 있어 fallback은 구조적으로 도달 불가.

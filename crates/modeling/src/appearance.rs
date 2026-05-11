@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use cadkernel_core::{KernelError, KernelResult};
-use cadkernel_math::{Mat4, Vec3};
+use cadkernel_math::{Mat4, Point3, Vec3};
 use cadkernel_topology::{BRepModel, EntityKind, FaceData, Handle, SolidData, Tag};
 
 use crate::features::copy_utils::collect_solid_faces;
@@ -152,9 +152,21 @@ pub fn compute_attachment(
     if verts.len() < 3 {
         return Ok(Mat4::translation(Vec3::new(cx, cy, cz)));
     }
-    let p0 = model.vertices.get(verts[0]).unwrap().point;
-    let p1 = model.vertices.get(verts[1]).unwrap().point;
-    let p2 = model.vertices.get(verts[2]).unwrap().point;
+    let p0 = model
+        .vertices
+        .get(verts[0])
+        .map(|v| v.point)
+        .unwrap_or(Point3::ORIGIN);
+    let p1 = model
+        .vertices
+        .get(verts[1])
+        .map(|v| v.point)
+        .unwrap_or(Point3::ORIGIN);
+    let p2 = model
+        .vertices
+        .get(verts[2])
+        .map(|v| v.point)
+        .unwrap_or(Point3::ORIGIN);
     let edge1 = p1 - p0;
     let edge2 = p2 - p0;
     let normal_raw = Vec3::new(

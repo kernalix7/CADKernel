@@ -92,8 +92,16 @@ pub fn make_circle_shape(
         edges.push(edge_h);
         half_edges.push(he_fwd);
 
-        let p0 = model.vertices.get(vertices[i]).unwrap().point;
-        let p1 = model.vertices.get(vertices[j]).unwrap().point;
+        let p0 = model
+            .vertices
+            .get(vertices[i])
+            .map(|v| v.point)
+            .unwrap_or(Point3::ORIGIN);
+        let p1 = model
+            .vertices
+            .get(vertices[j])
+            .map(|v| v.point)
+            .unwrap_or(Point3::ORIGIN);
         model.bind_edge_curve(edge_h, Arc::new(LineSegment::new(p0, p1)), (0.0, 1.0));
     }
 
@@ -155,8 +163,16 @@ pub fn make_ellipse_shape(
         edges.push(edge_h);
         half_edges.push(he_fwd);
 
-        let p0 = model.vertices.get(vertices[i]).unwrap().point;
-        let p1 = model.vertices.get(vertices[j]).unwrap().point;
+        let p0 = model
+            .vertices
+            .get(vertices[i])
+            .map(|v| v.point)
+            .unwrap_or(Point3::ORIGIN);
+        let p1 = model
+            .vertices
+            .get(vertices[j])
+            .map(|v| v.point)
+            .unwrap_or(Point3::ORIGIN);
         model.bind_edge_curve(edge_h, Arc::new(LineSegment::new(p0, p1)), (0.0, 1.0));
     }
 

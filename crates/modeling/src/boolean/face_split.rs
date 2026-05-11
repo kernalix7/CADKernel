@@ -234,7 +234,8 @@ pub fn fit_ssi_to_nurbs(points: &[Point3], tolerance: f64) -> KernelResult<Nurbs
 
     // Check if nearly collinear
     if is_nearly_collinear(&pts, tolerance * 10.0) {
-        return nurbs_fitting::interpolate(&[pts[0], *pts.last().unwrap()], 1);
+        let last_pt = pts[pts.len() - 1];
+        return nurbs_fitting::interpolate(&[pts[0], last_pt], 1);
     }
 
     // Cubic NURBS interpolation
@@ -975,8 +976,8 @@ fn merge_chords_into_polylines_with_boundary(
         if chord.len() < 2 {
             continue;
         }
-        let s = find_or_insert(&mut points, *chord.first().unwrap());
-        let e = find_or_insert(&mut points, *chord.last().unwrap());
+        let s = find_or_insert(&mut points, chord[0]);
+        let e = find_or_insert(&mut points, chord[chord.len() - 1]);
         if s == e {
             continue; // zero-length chord
         }

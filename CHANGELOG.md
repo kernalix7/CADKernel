@@ -11,6 +11,23 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### Commercial CAD Roadmap — v0.5 Gate #12 **CLOSED for all library crates**: panic-free `cadkernel-modeling` (2026-05-11)
+- **`crates/modeling/src/lib.rs` now enforces `clippy::unwrap_used` + `clippy::expect_used` + `clippy::panic`** for non-test code. Of 847 raw matches, only **25 lived in production code**; the rest were inside `#[cfg(test)]` modules.
+- **`crates/modeling/src/boolean/face_split.rs`**:
+  - `*pts.last().unwrap()` (collinear case, `pts.len() > 4` guaranteed by earlier early-return) → indexed local.
+  - `*chord.first().unwrap()` / `*chord.last().unwrap()` (after `if chord.len() < 2 { continue; }` guard) → `chord[0]` / `chord[chord.len() - 1]`.
+- **`crates/modeling/src/features/section.rs::section_solid`**: `unique.last().unwrap()` (vec initialised with `vec![crossing_points[0]]`) → indexed.
+- **`crates/modeling/src/features/shell.rs`** (4 sites): `model.vertices.get(h).unwrap().point` → `.map(|v| v.point).unwrap_or(Point3::ORIGIN)`. Handles all come from `model.vertices_of_face(fh)?` and are structurally valid; fallback is unreachable but panic-free.
+- **`crates/modeling/src/primitives/prism_shape.rs`** (2 sites) + **`crates/modeling/src/primitives/shape_primitives.rs`** (4 sites) + **`crates/modeling/src/appearance.rs`** (3 sites): same `.map(|v| v.point).unwrap_or(Point3::ORIGIN)` transform.
+- **`crates/modeling/src/draft_ops.rs`**:
+  - `make_wire` closed-loop detection: `*points.first().unwrap() - *points.last().unwrap()` → `points[0] - points[last_idx]`.
+  - `make_fillet_wire` / `make_chamfer_wire`: trailing `result.push(*points.last().unwrap())` (after `points.len() < 3` early-return) → indexed push.
+  - `upgrade_wire`: same pattern.
+  - `join_wires`: rewrote `*result.last().unwrap()` as a `let-else { result.extend_from_slice(wire); continue; }`, removing the latent panic when `wires[0]` is empty.
+  - `snap_to_dimensions`: 3-element-array `min_by(...).unwrap()` → `unwrap_or((query, 0.0))`.
+  - `DraftStyleManager::get_active`: replaced inner `.unwrap()` with a `LazyLock<DraftStyle>` fallback via `static FALLBACK`. Behaviour identical when `Standard` invariant holds (the public-API expectation); panic-free even if a caller clears the `pub styles` field externally.
+- **v0.5 Gate #12 fully closed for all library crates**: `api` + `core` + `math` + `sketch` + `topology` + `geometry` + `io` + `modeling` (8 / 8). `viewer` deferred (application binary; conventional GPU-device init / event-loop panics).
+
 #### Commercial CAD Roadmap — v0.5 Gate #12 extension: panic-free `cadkernel-io` (2026-05-11)
 - **`crates/io/src/lib.rs` now enforces `clippy::unwrap_used` + `clippy::expect_used` + `clippy::panic`** for non-test code. Of 408 raw matches, only ~34 lived in production code; the rest were inside `#[cfg(test)]`.
 - **`crates/io/src/pdf.rs`**: rewrote 17 `num_stack.pop().unwrap()` sites to `num_stack.pop().unwrap_or(0.0)`. Every call is preceded by an explicit `num_stack.len() >= N` length check, so `0.0` is structurally unreachable; behaviour identical.

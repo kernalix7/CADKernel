@@ -62,9 +62,21 @@ pub fn shell_solid(
         let verts = model.vertices_of_face(fh)?;
         if verts.len() >= 3 {
             // Compute face normal from first 3 vertices.
-            let p0 = model.vertices.get(verts[0]).unwrap().point;
-            let p1 = model.vertices.get(verts[1]).unwrap().point;
-            let p2 = model.vertices.get(verts[2]).unwrap().point;
+            let p0 = model
+                .vertices
+                .get(verts[0])
+                .map(|v| v.point)
+                .unwrap_or(Point3::ORIGIN);
+            let p1 = model
+                .vertices
+                .get(verts[1])
+                .map(|v| v.point)
+                .unwrap_or(Point3::ORIGIN);
+            let p2 = model
+                .vertices
+                .get(verts[2])
+                .map(|v| v.point)
+                .unwrap_or(Point3::ORIGIN);
             let e1 = p1 - p0;
             let e2 = p2 - p0;
             let fn_vec = Vec3::new(
@@ -103,7 +115,11 @@ pub fn shell_solid(
             if outer_map.contains_key(&key) {
                 continue;
             }
-            let pt = model.vertices.get(vh).unwrap().point;
+            let pt = model
+                .vertices
+                .get(vh)
+                .map(|v| v.point)
+                .unwrap_or(Point3::ORIGIN);
             let n = vert_normals.get(&key).copied().unwrap_or(Vec3::Z);
 
             // Outer vertex: same position as original

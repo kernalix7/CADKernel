@@ -92,7 +92,7 @@ pub fn section_solid(
             // Deduplicate nearby points
             let mut unique = vec![crossing_points[0]];
             for p in &crossing_points[1..] {
-                let last = unique.last().unwrap();
+                let last = unique[unique.len() - 1];
                 let dx = p.x - last.x;
                 let dy = p.y - last.y;
                 let dz = p.z - last.z;

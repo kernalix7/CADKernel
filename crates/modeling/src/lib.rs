@@ -1,3 +1,8 @@
+#![cfg_attr(
+    not(test),
+    deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)
+)]
+
 //! High-level modeling operations for the CAD kernel.
 //!
 //! This crate builds on top of `cadkernel-topology` and `cadkernel-geometry` to
