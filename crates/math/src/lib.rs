@@ -30,6 +30,13 @@
 //! assert!(rotated.approx_eq(Point3::new(0.0, 1.0, 0.0)));
 //! ```
 
+// Commercial CAD Roadmap v0.5 Gate 12: math primitives feed every geometric
+// computation in the workspace. Production code here must never panic.
+#![cfg_attr(
+    not(test),
+    deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)
+)]
+
 pub mod bbox;
 pub mod interop;
 pub mod linalg;

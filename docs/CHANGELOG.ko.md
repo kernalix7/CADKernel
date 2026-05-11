@@ -11,6 +11,12 @@
 
 ### 추가됨
 
+#### 상용 CAD 로드맵 — v0.5 Gate #12 확장: `cadkernel-math` + `cadkernel-sketch` panic-free (2026-05-11)
+- **`crates/math/src/lib.rs`에 `clippy::unwrap_used` + `clippy::expect_used` + `clippy::panic` deny 적용** (비-테스트 한정). 기존 4개 unwrap은 모두 `#[cfg(test)]` 모듈 내부였으므로 production 변경 없음.
+- **`crates/sketch/src/lib.rs`에 동일 deny 적용.**
+- **`crates/sketch/src/profile.rs::extract_profile`**: 체인 루프가 매 반복마다 `ordered_points.last().unwrap()`을 호출하던 부분을 로컬 변수로 마지막 끝점을 추적하도록 리팩터. 동작 동일, panic 표면 제거.
+- v0.5 Gate #12 커버리지: `cadkernel-api` + `cadkernel-core` + `cadkernel-math` + `cadkernel-sketch`. 남은 작업: `topology` 39, `geometry` 156, `viewer` 175, `io` 408, `modeling` 847.
+
 #### 상용 CAD 로드맵 — v0.5 Gate #12 확장: `cadkernel-core` panic-free (2026-05-11)
 - **`crates/core/src/lib.rs`에도 `clippy::unwrap_used` + `clippy::expect_used` + `clippy::panic` deny 적용** (비-테스트 코드 한정). `cadkernel-core`는 이미 production unwrap이 0개였으므로 `KernelResult<T>`-first 계약의 뿌리에 lint로 못박음. 동작 변경 없음.
 - 나머지 크레이트는 unwrap 카운트를 갚아가며 순차 확대.

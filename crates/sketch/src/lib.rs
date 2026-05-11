@@ -31,6 +31,13 @@
 //! assert!(result.converged);
 //! ```
 
+// Commercial CAD Roadmap v0.5 Gate 12: 2D sketch solver feeds parametric
+// modelling. Production code here must never panic.
+#![cfg_attr(
+    not(test),
+    deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)
+)]
+
 pub mod bspline_tools;
 pub mod constraint;
 pub mod display;

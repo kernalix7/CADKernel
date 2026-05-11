@@ -305,11 +305,11 @@ pub fn extract_profile(sketch: &Sketch, plane: &WorkPlane) -> Vec<Point3> {
     let first = &sketch.lines[0];
     visited[0] = true;
     ordered_points.push(first.start);
-    ordered_points.push(first.end);
+    let mut last = first.end;
+    ordered_points.push(last);
 
     // Chain lines by matching endpoints
     loop {
-        let last = *ordered_points.last().unwrap();
         let mut found = false;
         for (i, line) in sketch.lines.iter().enumerate() {
             if visited[i] {
@@ -318,11 +318,13 @@ pub fn extract_profile(sketch: &Sketch, plane: &WorkPlane) -> Vec<Point3> {
             if line.start == last {
                 visited[i] = true;
                 ordered_points.push(line.end);
+                last = line.end;
                 found = true;
                 break;
             } else if line.end == last {
                 visited[i] = true;
                 ordered_points.push(line.start);
+                last = line.start;
                 found = true;
                 break;
             }

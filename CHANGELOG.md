@@ -11,6 +11,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### Commercial CAD Roadmap — v0.5 Gate #12 extension: panic-free `cadkernel-math` + `cadkernel-sketch` (2026-05-11)
+- **`crates/math/src/lib.rs` now enforces `clippy::unwrap_used` + `clippy::expect_used` + `clippy::panic`** for non-test code. All 4 pre-existing unwraps were already inside `#[cfg(test)]` modules; no production change required.
+- **`crates/sketch/src/lib.rs` now enforces the same deny-list.**
+- **`crates/sketch/src/profile.rs::extract_profile`**: refactored the chaining loop to track the last endpoint in a local variable instead of calling `ordered_points.last().unwrap()` on every iteration. Behaviour identical; panic surface removed.
+- v0.5 Gate #12 now covers `cadkernel-api` + `cadkernel-core` + `cadkernel-math` + `cadkernel-sketch`. Remaining: `topology` 39 prod unwraps (next), `geometry` 156, `viewer` 175, `io` 408, `modeling` 847.
+
 #### Commercial CAD Roadmap — v0.5 Gate #12 extension: panic-free `cadkernel-core` (2026-05-11)
 - **`crates/core/src/lib.rs` now enforces `clippy::unwrap_used` + `clippy::expect_used` + `clippy::panic`** for non-test code via `#![cfg_attr(not(test), deny(...))]`. `cadkernel-core` already had 0 production unwraps, so the lint locks in the existing guarantee at the root of the `KernelResult<T>`-first contract. No behavioural change.
 - Per-crate roll-out continues as unwrap counts in the remaining crates are paid down.
