@@ -528,6 +528,7 @@ dependencies = [
  "cadkernel-math",
  "cadkernel-modeling",
  "cadkernel-topology",
+ "criterion",
  "serde",
  "serde_json",
 ]

@@ -62,6 +62,7 @@ mod outcome;
 mod session;
 
 pub mod cadk;
+pub mod reference_parts;
 
 pub use command::{Command, ExtrudeKind, command_schemas};
 pub use document::{AabbSummary, Document, DocumentIssue, HistoryEvent, MeasureSummary, SolidId};

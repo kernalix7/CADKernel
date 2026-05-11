@@ -57,6 +57,47 @@ jobs:
       - name: Test
         run: cargo test --workspace
 
+  bench-perf:
+    name: Performance gate (R1 < 250 ms)
+    needs: quality
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ runner.os }}-cargo-bench-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-bench-
+            ${{ runner.os }}-cargo-build-
+
+      - name: Run R1 / R2 open benches
+        run: |
+          cargo bench -p cadkernel-api --bench reference_parts_open -- \
+            --warm-up-time 1 --measurement-time 5 --sample-size 30
+
+      - name: Enforce R1 open < 250 ms
+        run: bash scripts/bench_threshold.sh r1_open 250000000
+
+      - name: Upload Criterion report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: criterion-report
+          path: target/criterion/
+          retention-days: 14
+
   python-bindings:
     name: Python Bindings Checks
     runs-on: ubuntu-latest

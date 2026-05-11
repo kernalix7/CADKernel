@@ -11,6 +11,16 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### Commercial CAD Roadmap — v0.5 Gate #11 **Phase A CLOSED**: R1 open benchmark enforced in CI (2026-05-11)
+- **`cadkernel-api` exposes `pub mod reference_parts`** with `r1_bytes()` / `r2_bytes()` returning `ApiResult<Vec<u8>>` — shared helpers reused by both the example binary and the new Criterion bench.
+- **`crates/api/benches/reference_parts_open.rs`** — Criterion benchmark (`harness = false`) measuring R1 and R2 open-from-bytes; registered as `[[bench]] name = "reference_parts_open"` in `crates/api/Cargo.toml`.
+- **R1 measured mean: 8.5894 µs** (CI interval [8.5426 µs, 8.6465 µs]) — ~29,000× headroom under the 250 ms gate budget.
+- **`scripts/bench_threshold.sh`** — POSIX bash script; parses `target/criterion/<bench>/new/estimates.json` via `python3`, exits 0 (pass) / 1 (over-budget) / 2 (file missing or bad args). No external dependencies beyond `python3`.
+- **`scripts/bench_threshold_test.sh`** — 5-case self-test (mean == budget, mean < budget, mean > budget, missing file, no args); all passing.
+- **`.github/workflows/ci.yml` — new `bench-perf` job** runs after `quality` (ubuntu-latest only): `cargo bench -p cadkernel-api --bench reference_parts_open -- --warm-up-time 1 --measurement-time 5 --sample-size 30`, then `bash scripts/bench_threshold.sh r1_open 250000000`; uploads Criterion HTML report as artifact on `always()`.
+- **3 new unit tests** in `cadkernel-api::reference_parts::tests`: `r1_bytes_round_trips_to_one_solid`, `r2_bytes_round_trips_to_one_solid`, `r1_bytes_are_deterministic`.
+- v0.5 Gate #11 Phase A closed. Phase B (first-paint < 500 ms) deferred — requires headless wgpu harness. Workspace: `cargo clippy` clean; `cargo test --workspace` = **3,167 / 0 / 0**.
+
 #### Commercial CAD Roadmap — v0.5 Gate #5 **CLOSED**: MCP server extracted to `crates/mcp/` (2026-05-11)
 - **New workspace member `crates/mcp/` (`cadkernel-mcp`)** depends on `cadkernel-api` and `cadkernel-io`. All 8 MCP tools now route through `Session::execute(Command::*)` instead of building topology directly.
 - **`crates/io/src/mcp.rs` deleted** (was ~2,208 lines). `cadkernel-io` no longer exposes `McpServer`, `McpRequest`, `McpResponse`, `McpError`, or `McpToolDef`; these are now re-exported from `cadkernel-mcp`.

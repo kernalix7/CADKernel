@@ -19,3 +19,10 @@ serde_json.workspace = true
 [[bin]]
 name = "cadk-inspect"
 path = "src/bin/cadk_inspect.rs"
+
+[dev-dependencies]
+criterion.workspace = true
+
+[[bench]]
+name = "reference_parts_open"
+harness = false

@@ -11,6 +11,15 @@
 
 ### 추가됨
 
+#### 상용 CAD 로드맵 — v0.5 Gate #11 **Phase A 완료**: R1 open 벤치마크 CI 강제 적용 (2026-05-11)
+- **`cadkernel-api`에 `pub mod reference_parts` 추가** — `r1_bytes()` / `r2_bytes()`가 `ApiResult<Vec<u8>>` 반환. 예제 바이너리와 Criterion 벤치 공유.
+- **`crates/api/benches/reference_parts_open.rs`** — R1/R2 open-from-bytes Criterion 벤치 (`harness = false`).
+- **R1 실측 평균: 8.5894 µs** (CI [8.5426 µs, 8.6465 µs]) — 250 ms 예산 대비 ~29,000× 여유.
+- **`scripts/bench_threshold.sh`** — `python3`로 `estimates.json` 파싱, 0(통과) / 1(초과) / 2(오류) 종료 코드.
+- **`scripts/bench_threshold_test.sh`** — 5개 케이스 자체 테스트, 전부 통과.
+- **`.github/workflows/ci.yml` `bench-perf` 잡 추가** — `quality` 이후 ubuntu-latest 단독 실행; `cargo bench` 후 임계값 스크립트 실행; Criterion HTML 보고서를 아티팩트로 업로드.
+- v0.5 Gate #11 Phase A 완료. Phase B(첫 화면 < 500 ms)는 headless wgpu 하네스 필요로 보류. 워크스페이스: **3,167 / 0 / 0**.
+
 #### 상용 CAD 로드맵 — v0.5 Gate #5 **완료**: MCP 서버를 `crates/mcp/`으로 분리 (2026-05-11)
 - **새 워크스페이스 멤버 `crates/mcp/` (`cadkernel-mcp`)**: `cadkernel-api` + `cadkernel-io` 의존. 8개 MCP 툴이 모두 `Session::execute(Command::*)` 경유로 전환.
 - **`crates/io/src/mcp.rs` 삭제** (~2,208줄). `McpServer` / `McpRequest` / `McpResponse` / `McpError` / `McpToolDef`는 이제 `cadkernel-mcp`에서 재익스포트.

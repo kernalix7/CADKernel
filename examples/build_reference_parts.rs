@@ -21,7 +21,7 @@
 //! seeds), so byte-identity is structural. CI verifies this via
 //! `tests/reference_parts_corpus.rs`.
 
-use cadkernel_api::{Command, Session};
+use cadkernel_api::reference_parts;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -93,59 +93,31 @@ fn main() -> ExitCode {
 
 fn build_r1_box(dest: &Path) -> Result<(), Box<dyn std::error::Error>> {
     // R1 — axis-aligned box, 100 × 50 × 25.
-    // Roadmap reference: §3 "R1 (bracket)" simplified to a single primitive.
-    let mut session = Session::new();
-    session.execute(Command::CreateBox {
-        dx: 100.0,
-        dy: 50.0,
-        dz: 25.0,
-    })?;
-    write_cadk_with_hash(&session, dest)
+    // Delegates to `cadkernel_api::reference_parts::r1_bytes` so the
+    // on-disk corpus and the in-memory bench fixtures stay byte-identical.
+    let bytes = reference_parts::r1_bytes()?;
+    write_cadk_with_hash_bytes(&bytes, dest)
 }
 
 fn build_r2_extrude(dest: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    // R2 — base box 60 × 40 × 10 with one Ø10 through-hole at the
-    // centre (a flat rectangular plate with a single mounting hole).
-    // Drilled via CreateCylinder + BooleanSubtract — the smallest
-    // composite that exercises the boolean splitter end-to-end through
-    // the API surface.
-    let mut session = Session::new();
-    let plate = match session.execute(Command::CreateBox {
-        dx: 60.0,
-        dy: 40.0,
-        dz: 10.0,
-    })? {
-        cadkernel_api::Outcome::SolidCreated { id, .. } => id,
-        other => return Err(format!("R2: expected SolidCreated, got {other:?}").into()),
-    };
-    let hole = match session.execute(Command::CreateCylinder {
-        radius: 5.0,
-        height: 10.0,
-    })? {
-        cadkernel_api::Outcome::SolidCreated { id, .. } => id,
-        other => return Err(format!("R2: expected SolidCreated, got {other:?}").into()),
-    };
-    session.execute(Command::BooleanSubtract {
-        lhs: plate,
-        rhs: hole,
-    })?;
-    write_cadk_with_hash(&session, dest)
+    // R2 — 60 × 40 × 10 plate − Ø10 through-hole. Delegates to
+    // `cadkernel_api::reference_parts::r2_bytes`.
+    let bytes = reference_parts::r2_bytes()?;
+    write_cadk_with_hash_bytes(&bytes, dest)
 }
 
 fn stub(_dest: &Path) -> Result<(), Box<dyn std::error::Error>> {
     Err("R3-R12 not yet implemented".into())
 }
 
-/// Encode the session's applied command log via the deterministic
-/// `.cadk` codec, write it to `dest`, and write a sibling
-/// `<dest>.expected_hash` file with the FNV-1a-64 hex digest.
-fn write_cadk_with_hash(
-    session: &Session,
+/// Write `bytes` to `dest` and write a sibling `<dest>.expected_hash`
+/// file with the FNV-1a-64 hex digest.
+fn write_cadk_with_hash_bytes(
+    bytes: &[u8],
     dest: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let bytes = session.save_cadk()?;
-    fs::write(dest, &bytes)?;
-    let digest = fnv1a_64(&bytes);
+    fs::write(dest, bytes)?;
+    let digest = fnv1a_64(bytes);
     let hash_path = dest.with_extension(format!(
         "{}.expected_hash",
         dest.extension().and_then(|s| s.to_str()).unwrap_or("cadk")
