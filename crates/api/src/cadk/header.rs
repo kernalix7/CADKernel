@@ -39,9 +39,16 @@ impl CadkFlags {
     pub const SIGNED: u32 = 0b0000_0010;
     /// Container has an embedded thumbnail blob.
     pub const HAS_THUMBNAIL: u32 = 0b0000_0100;
+    /// `BlobKind::Document` payload is zstd-compressed (added A3.0.2).
+    /// Decoders without zstd support encounter a CRC match but a JSON
+    /// parse failure on the raw payload, which surfaces as `ApiError::Codec`.
+    pub const DOCUMENT_COMPRESSED: u32 = 0b0000_1000;
 
     /// Bitwise OR of every flag this build understands.
-    pub const KNOWN: u32 = Self::MANIFEST_COMPRESSED | Self::SIGNED | Self::HAS_THUMBNAIL;
+    pub const KNOWN: u32 = Self::MANIFEST_COMPRESSED
+        | Self::SIGNED
+        | Self::HAS_THUMBNAIL
+        | Self::DOCUMENT_COMPRESSED;
 
     /// Bits in the top half of the flag word are "must understand": an
     /// unknown bit there forces a load-side reject.
@@ -127,10 +134,24 @@ mod tests {
         let h = CadkHeader {
             flags: CadkFlags::MANIFEST_COMPRESSED
                 | CadkFlags::SIGNED
-                | CadkFlags::HAS_THUMBNAIL,
+                | CadkFlags::HAS_THUMBNAIL
+                | CadkFlags::DOCUMENT_COMPRESSED,
             ..CadkHeader::default()
         };
         assert!(h.is_supported());
+    }
+
+    #[test]
+    fn document_compressed_bit_is_distinct() {
+        // Guard against accidental flag overlap during future additions.
+        let all = CadkFlags::MANIFEST_COMPRESSED
+            | CadkFlags::SIGNED
+            | CadkFlags::HAS_THUMBNAIL
+            | CadkFlags::DOCUMENT_COMPRESSED;
+        // Each flag is exactly one bit, and they do not overlap, so the
+        // population count of the union equals the number of flags.
+        assert_eq!(all.count_ones(), 4);
+        assert_eq!(CadkFlags::KNOWN, all);
     }
 
     #[test]

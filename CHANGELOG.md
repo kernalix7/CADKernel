@@ -11,6 +11,13 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### Commercial CAD Roadmap — A3.0.2: `.cadk` opt-in zstd compression (2026-05-12)
+- **`cadk::SaveOptions { compression_level: Option<i32>, thumbnail: Option<Vec<u8>> }`** — single options struct that funnels `encode_with_options` (and the new `Session::save_cadk_with_options` / `save_cadk_to_path_with_options`). Builder helpers `.with_compression(level)` and `.with_thumbnail(bytes)` for ergonomic call sites. Default = no compression, no thumbnail; this path produces byte-identical output to the legacy `encode()`, so the v0 fixture and all existing readers stay valid.
+- **`CadkFlags::DOCUMENT_COMPRESSED` (bit 3, ignore-if-unknown)** — set when the `BlobKind::Document` body is zstd-compressed. `decode()` auto-detects the bit and zstd-decompresses before parsing. CRC is computed over the on-disk (potentially compressed) bytes, so the integrity check fires before decompression.
+- **`zstd 0.13` workspace dependency** added (`cadkernel-api` only).
+- **`crates/api/tests/cadk_compression.rs`** — 6 roundtrip tests: level-3 and level-22 round-trips preserve the log, `SaveOptions::default()` produces bytes byte-identical to `save_cadk()`, level-22 strictly shrinks a redundant 100-command log vs uncompressed, compression composes with embedded thumbnails (both flags set, both blobs recoverable), and the filesystem path variant round-trips a compressed file.
+- Backward compatibility: the committed v0 golden fixture (`r1_canonical.cadk`) was generated without compression and continues to decode through `Session::load_cadk_from_path` — exercised by the unchanged `cadk_v0_migration.rs` tests.
+
 #### Commercial CAD Roadmap — A3.0.1: `.cadk` filesystem-path API + v0 migration guard (2026-05-12)
 - **`Session::save_cadk_to_path(path)`**, **`Session::save_cadk_to_path_with_thumbnail(path, thumb)`**, **`Session::load_cadk_from_path(path)`** — convenience wrappers around the existing `save_cadk` / `load_cadk` byte-buffer API plus `std::fs::{read, write}`. Lifts the most common consumer pattern off every caller. I/O errors are surfaced as `ApiError::Codec(format!("file io: {err}"))` so the public `ApiError` enum stays SemVer-stable.
 - **`crates/api/tests/cadk_path_roundtrip.rs`** — 4 integration tests: roundtrip through a temp file, thumbnail-bearing roundtrip via `cadk::decode_thumbnail`, missing-path failure mode, unwritable-path failure mode (verifies the `file io:` prefix contract).

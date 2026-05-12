@@ -127,6 +127,19 @@ Filesystem-path wrappers (added 2026-05-12, A3.0.1):
 - `Session::save_cadk_to_path_with_thumbnail(path, thumb)`
 - `Session::load_cadk_from_path(path)`
 
+Opt-in zstd compression (added 2026-05-12, A3.0.2) via
+`cadk::SaveOptions { compression_level, thumbnail }`:
+- `Session::save_cadk_with_options(&opts)`
+- `Session::save_cadk_to_path_with_options(path, &opts)`
+- `cadk::encode_with_options(commands, &opts)` underneath both.
+
+Compression is opt-in: `SaveOptions::default()` produces bytes byte-identical
+to `save_cadk()`. When `compression_level: Some(n)` the document blob is
+zstd-encoded, the CRC is computed over the compressed bytes, and the
+`CadkFlags::DOCUMENT_COMPRESSED` header bit is set. `decode()` auto-detects
+the bit and decompresses transparently; readers without zstd would see a
+CRC match but a JSON parse failure on the raw frame.
+
 I/O failures map to `ApiError::Codec("file io: ...")` so the `ApiError` enum
 stays SemVer-stable. A committed v0 golden fixture at
 `crates/api/tests/fixtures/cadk-v0/r1_canonical.cadk` (309 bytes) pins the

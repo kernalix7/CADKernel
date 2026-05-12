@@ -14,13 +14,52 @@
 //! +-----------------------------------------------------------+
 //! ```
 //!
-//! No compression / signing yet — those will be additive (gated by
-//! `CadkFlags::MANIFEST_COMPRESSED` / `SIGNED`).
+//! A3.0.2 (2026-05-12) adds opt-in zstd compression of the
+//! `BlobKind::Document` blob via [`SaveOptions::compression_level`].
+//! When set, the encoded blob bytes are zstd frames, the CRC is computed
+//! over those frames, and the [`CadkFlags::DOCUMENT_COMPRESSED`] bit is
+//! set on the header. Decode auto-detects the bit and decompresses
+//! before parsing. Containers without the bit continue to round-trip
+//! exactly as before (v0 fixture compatibility).
 
 use crate::cadk::header::{CadkFlags, CadkHeader, HEADER_SIZE, MAGIC, SCHEMA_VERSION};
 use crate::cadk::manifest::{BlobKind, BlobRecord, Manifest};
 use crate::command::Command;
 use crate::{ApiError, ApiResult};
+
+/// Options controlling `.cadk` encoding side-effects. Default = no
+/// compression, no thumbnail (matches the bytes produced by the
+/// legacy [`encode`] entry point).
+#[derive(Debug, Clone, Default)]
+pub struct SaveOptions {
+    /// `zstd` compression level for the `BlobKind::Document` body.
+    /// `None` (the default) means no compression — bytes match the v0
+    /// uncompressed layout, the header's [`CadkFlags::DOCUMENT_COMPRESSED`]
+    /// bit stays clear, and the v0 golden fixture continues to match.
+    /// When `Some(level)`, the document blob is zstd-encoded at that
+    /// level (zstd accepts roughly `1..=22`; the `zstd` crate clamps
+    /// invalid values).
+    pub compression_level: Option<i32>,
+    /// Optional thumbnail payload to embed (typically PNG). When
+    /// `Some`, behaves like [`encode_with_thumbnail`].
+    pub thumbnail: Option<Vec<u8>>,
+}
+
+impl SaveOptions {
+    /// Builder helper: enable zstd compression at the given level.
+    #[must_use]
+    pub fn with_compression(mut self, level: i32) -> Self {
+        self.compression_level = Some(level);
+        self
+    }
+
+    /// Builder helper: embed a thumbnail payload.
+    #[must_use]
+    pub fn with_thumbnail(mut self, thumb: Vec<u8>) -> Self {
+        self.thumbnail = Some(thumb);
+        self
+    }
+}
 
 /// CRC-32 with the standard IEEE 802.3 reverse polynomial (0xEDB88320).
 /// Lazy-initialised table; matches the output of `crc32fast` and most
@@ -123,7 +162,7 @@ fn read_le_u64(slice: &[u8]) -> u64 {
 /// a future A3.1 patch will swap the body for `bincode 2` and gate the
 /// switch on a header flag without changing the on-disk envelope.
 pub fn encode(commands: &[Command]) -> ApiResult<Vec<u8>> {
-    encode_with_thumbnail(commands, None)
+    encode_with_options(commands, &SaveOptions::default())
 }
 
 /// Encode a command log with an optional embedded thumbnail blob (raw
@@ -134,9 +173,31 @@ pub fn encode_with_thumbnail(
     commands: &[Command],
     thumbnail: Option<&[u8]>,
 ) -> ApiResult<Vec<u8>> {
+    let opts = SaveOptions {
+        thumbnail: thumbnail.map(<[u8]>::to_vec),
+        ..SaveOptions::default()
+    };
+    encode_with_options(commands, &opts)
+}
+
+/// Encode a command log with the supplied [`SaveOptions`]. The single
+/// entry point that all other `encode*` variants funnel through.
+/// Honours both [`SaveOptions::compression_level`] (zstd-compresses the
+/// document blob and sets [`CadkFlags::DOCUMENT_COMPRESSED`]) and
+/// [`SaveOptions::thumbnail`] (appends a `BlobKind::Thumbnail` record).
+pub fn encode_with_options(commands: &[Command], opts: &SaveOptions) -> ApiResult<Vec<u8>> {
     // 1. Encode the document blob body.
-    let doc_body = serde_json::to_vec(commands)?;
+    let raw_doc = serde_json::to_vec(commands)?;
+    let (doc_body, doc_compressed) = match opts.compression_level {
+        Some(level) => {
+            let compressed = zstd::encode_all(raw_doc.as_slice(), level)
+                .map_err(|e| ApiError::Codec(format!("zstd encode: {e}")))?;
+            (compressed, true)
+        }
+        None => (raw_doc, false),
+    };
     let doc_crc = crc32_ieee(&doc_body);
+    let thumbnail = opts.thumbnail.as_deref();
     let thumb_crc = thumbnail.map(crc32_ieee);
 
     // 2. Layout: magic[4] header[64] manifest_blob content_blobs.
@@ -176,11 +237,13 @@ pub fn encode_with_thumbnail(
 
     let thumb_len = thumbnail.map(|t| t.len() as u64).unwrap_or(0);
     let total_size = content_offset + doc_body.len() as u64 + thumb_len;
-    let flags = if thumbnail.is_some() {
-        CadkFlags::HAS_THUMBNAIL
-    } else {
-        0
-    };
+    let mut flags = 0u32;
+    if thumbnail.is_some() {
+        flags |= CadkFlags::HAS_THUMBNAIL;
+    }
+    if doc_compressed {
+        flags |= CadkFlags::DOCUMENT_COMPRESSED;
+    }
     let header = CadkHeader {
         schema_version: SCHEMA_VERSION,
         flags,
@@ -258,7 +321,16 @@ pub fn decode(bytes: &[u8]) -> ApiResult<Vec<Command>> {
     if crc32_ieee(doc_body) != doc_record.crc32 {
         return Err(ApiError::Codec("document blob crc32 mismatch".into()));
     }
-    let commands: Vec<Command> = serde_json::from_slice(doc_body)?;
+    // Auto-detect zstd compression via the DOCUMENT_COMPRESSED flag. The
+    // CRC is computed over the on-disk (potentially compressed) bytes;
+    // decompression happens after the integrity check.
+    let commands: Vec<Command> = if header.flags & CadkFlags::DOCUMENT_COMPRESSED != 0 {
+        let decoded = zstd::decode_all(doc_body)
+            .map_err(|e| ApiError::Codec(format!("zstd decode: {e}")))?;
+        serde_json::from_slice(&decoded)?
+    } else {
+        serde_json::from_slice(doc_body)?
+    };
     Ok(commands)
 }
 

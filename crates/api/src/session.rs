@@ -240,6 +240,18 @@ impl Session {
         crate::cadk::encode_with_thumbnail(self.log(), Some(thumbnail))
     }
 
+    /// Same as [`Self::save_cadk`] but honours [`crate::cadk::SaveOptions`]
+    /// — zstd compression of the document blob and / or an embedded
+    /// thumbnail blob. Output round-trips through [`Self::load_cadk`] /
+    /// [`Self::load_cadk_from_path`] (the compression flag is
+    /// auto-detected on read).
+    pub fn save_cadk_with_options(
+        &self,
+        options: &crate::cadk::SaveOptions,
+    ) -> ApiResult<Vec<u8>> {
+        crate::cadk::encode_with_options(self.log(), options)
+    }
+
     /// Restore a session from a `.cadk` byte buffer produced by
     /// [`Self::save_cadk`]. The redo stack is **not** preserved by this
     /// codec — only the applied prefix round-trips. Use
@@ -273,6 +285,18 @@ impl Session {
         thumbnail: &[u8],
     ) -> ApiResult<()> {
         let bytes = self.save_cadk_with_thumbnail(thumbnail)?;
+        std::fs::write(path.as_ref(), bytes)
+            .map_err(|err| ApiError::Codec(format!("file io: {err}")))
+    }
+
+    /// Variant of [`Self::save_cadk_to_path`] that honours
+    /// [`crate::cadk::SaveOptions`] (compression + thumbnail).
+    pub fn save_cadk_to_path_with_options(
+        &self,
+        path: impl AsRef<std::path::Path>,
+        options: &crate::cadk::SaveOptions,
+    ) -> ApiResult<()> {
+        let bytes = self.save_cadk_with_options(options)?;
         std::fs::write(path.as_ref(), bytes)
             .map_err(|err| ApiError::Codec(format!("file io: {err}")))
     }

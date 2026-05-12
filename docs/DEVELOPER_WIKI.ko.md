@@ -131,6 +131,16 @@ cadkernel (root)        전체 통합
 - `Session::save_cadk_to_path_with_thumbnail(path, thumb)`
 - `Session::load_cadk_from_path(path)`
 
+옵트인 zstd 압축(2026-05-12, A3.0.2) — `cadk::SaveOptions { compression_level, thumbnail }`:
+- `Session::save_cadk_with_options(&opts)`
+- `Session::save_cadk_to_path_with_options(path, &opts)`
+- 하부: `cadk::encode_with_options(commands, &opts)`.
+
+기본값(`compression_level: None`)은 `save_cadk()`와 바이트 동일. `Some(n)` 지정 시
+document blob이 zstd로 인코딩되고 CRC는 압축된 바이트 기준,
+`CadkFlags::DOCUMENT_COMPRESSED` 헤더 비트 설정. `decode()`가 비트 감지하여
+자동 해제. zstd 미지원 리더는 CRC는 맞지만 raw frame을 JSON으로 파싱하다 실패.
+
 I/O 오류는 `ApiError::Codec("file io: ...")`로 매핑(`ApiError` enum SemVer 안정).
 `crates/api/tests/fixtures/cadk-v0/r1_canonical.cadk` (309바이트, 커밋됨)는
 v0 on-disk 스키마 핀이며 `tests/cadk_v0_migration.rs`의 3개 가드 테스트가

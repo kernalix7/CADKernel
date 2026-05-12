@@ -11,6 +11,13 @@
 
 ### 추가됨
 
+#### 상용 CAD 로드맵 — A3.0.2: `.cadk` 옵트인 zstd 압축 (2026-05-12)
+- **`cadk::SaveOptions { compression_level, thumbnail }`** — `encode_with_options` + `Session::save_cadk_with_options` / `save_cadk_to_path_with_options` 단일 옵션 구조체. 빌더 헬퍼 `.with_compression(level)` / `.with_thumbnail(bytes)` 제공. 기본값(`None`/`None`)은 기존 `encode()`와 바이트 동일 — v0 픽스처와 기존 리더 모두 유효.
+- **`CadkFlags::DOCUMENT_COMPRESSED` (bit 3)** — `BlobKind::Document` payload zstd 압축 시 설정. `decode()`가 비트 자동 감지하여 압축 해제. CRC는 (압축된) on-disk 바이트 기준이라 무결성 검사가 해제보다 선행.
+- **`zstd 0.13`** 워크스페이스 의존성 추가(`cadkernel-api`만).
+- **`crates/api/tests/cadk_compression.rs`** — 6개 테스트: 레벨 3/22 라운드트립, `SaveOptions::default()`가 `save_cadk()` 바이트 동일, 레벨 22가 반복 로그를 미압축 대비 엄격히 축소, 압축 + 썸네일 동봉 조합, 파일시스템 경로 라운드트립.
+- v0 호환: 커밋된 `r1_canonical.cadk`(미압축)는 변경 없는 `cadk_v0_migration.rs`에서 계속 그린.
+
 #### 상용 CAD 로드맵 — A3.0.1: `.cadk` 파일시스템 경로 API + v0 마이그레이션 가드 (2026-05-12)
 - **`Session::save_cadk_to_path` / `save_cadk_to_path_with_thumbnail` / `load_cadk_from_path`** — 기존 바이트 버퍼 `save_cadk` / `load_cadk` + `std::fs::{read,write}` 래퍼. I/O 오류는 `ApiError::Codec("file io: ...")`로 매핑(SemVer 안정 — `ApiError` enum 그대로).
 - **`crates/api/tests/cadk_path_roundtrip.rs`** — 4개 통합 테스트(임시 파일 라운드트립, 썸네일 동봉 라운드트립, missing-path 실패 시 `file io:` 프리픽스 확인, unwritable-path 실패 동일).
