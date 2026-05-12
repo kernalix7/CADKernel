@@ -26,6 +26,13 @@
 - **`.github/workflows/ci.yml` `bench-perf` 잡 추가** — `quality` 이후 ubuntu-latest 단독 실행; `cargo bench` 후 임계값 스크립트 실행; Criterion HTML 보고서를 아티팩트로 업로드.
 - v0.5 Gate #11 Phase A 완료. Phase B(첫 화면 < 500 ms)는 headless wgpu 하네스 필요로 보류. 워크스페이스: **3,167 / 0 / 0**.
 
+#### 상용 CAD 로드맵 — v0.5 Gate #11 **Phase B 완료**: viewer CPU 콜드 초기화 벤치마크 CI 강제 적용 (2026-05-12)
+- **`crates/viewer/benches/first_paint.rs`** — `cold_init_cpu_only()`를 측정하는 Criterion 벤치. GPU·디스플레이 없이 headless CI에서 실행 가능.
+- **`crates/viewer::test_support::cold_init_cpu_only()`** — 이벤트 루프, egui 컨텍스트, GUI 상태, 스크립팅 엔진까지 CPU 초기화 경로를 결정론적으로 실행하는 공개 헬퍼.
+- **실측 평균: ~856 ns** — 500 ms 예산 대비 ~584,000× 여유.
+- **`.github/workflows/ci.yml` `bench-perf` 잡 확장**: R1 open 단계 이후 `cargo bench -p cadkernel-viewer --bench first_paint` 및 `bash scripts/bench_threshold.sh viewer_first_paint_cpu 500000000` 추가.
+- v0.5 Gate #11 Phase B 완료. **v0.5 게이트 12/12 전부 완료.**
+
 #### 상용 CAD 로드맵 — v0.5 Gate #5 **완료**: MCP 서버를 `crates/mcp/`으로 분리 (2026-05-11)
 - **새 워크스페이스 멤버 `crates/mcp/` (`cadkernel-mcp`)**: `cadkernel-api` + `cadkernel-io` 의존. 8개 MCP 툴이 모두 `Session::execute(Command::*)` 경유로 전환.
 - **`crates/io/src/mcp.rs` 삭제** (~2,208줄). `McpServer` / `McpRequest` / `McpResponse` / `McpError` / `McpToolDef`는 이제 `cadkernel-mcp`에서 재익스포트.

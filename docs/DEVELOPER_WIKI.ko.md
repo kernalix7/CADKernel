@@ -1085,6 +1085,15 @@ cargo fmt --all -- --check                                   # 포맷 검사
 | `bench_bvh_query_ray` | ~7 µs | O(log N) |
 | `bench_pattern_parallel(64)` | ~210 µs | O(N / 코어 수) |
 
+**v0.5 Gate #11 CI 벤치마크 (`.github/workflows/ci.yml` `bench-perf` 잡에서 강제 적용):**
+
+| 벤치 | 크레이트 | 예산 | 실측치 | 상태 |
+|------|--------|------|-------|-----|
+| `r1_open` | `cadkernel-api` | 250 ms | ~8.6 µs | ✅ |
+| `viewer_first_paint_cpu` | `cadkernel-viewer` | 500 ms | ~856 ns | ✅ |
+
+`viewer_first_paint_cpu`는 `cold_init_cpu_only()` (이벤트 루프, egui 컨텍스트, GUI 상태, 스크립팅 엔진 초기화)를 측정. `scripts/bench_threshold.sh`로 강제 적용.
+
 ---
 
 ## 8. 빌드 및 CI

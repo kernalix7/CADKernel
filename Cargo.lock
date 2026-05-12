@@ -629,6 +629,7 @@ dependencies = [
  "cadkernel-modeling",
  "cadkernel-sketch",
  "cadkernel-topology",
+ "criterion",
  "egui",
  "egui-wgpu",
  "egui-winit",

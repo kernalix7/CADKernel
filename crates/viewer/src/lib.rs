@@ -37,6 +37,12 @@ pub mod test_support {
     /// integration tests to lock Gate #8 in without poking at `pub(crate)`
     /// `SketchMode` internals.
     pub use crate::gui::sketch_state::sketch_degrees_of_freedom;
+
+    /// Construct a fresh `CadApp` via the production cold path and return it.
+    /// Intended for CPU-only benchmarks; no GPU or event-loop involved.
+    pub fn cold_init_cpu_only() -> CadApp {
+        CadApp::cold_init()
+    }
 }
 
 use cadkernel_io::Mesh;

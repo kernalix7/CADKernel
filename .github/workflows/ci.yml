@@ -90,6 +90,14 @@ jobs:
       - name: Enforce R1 open < 250 ms
         run: bash scripts/bench_threshold.sh r1_open 250000000
 
+      - name: Run viewer first-paint bench
+        run: |
+          cargo bench -p cadkernel-viewer --bench first_paint -- \
+            --warm-up-time 1 --measurement-time 5 --sample-size 30
+
+      - name: Enforce first-paint CPU cold-init < 500 ms
+        run: bash scripts/bench_threshold.sh viewer_first_paint_cpu 500000000
+
       - name: Upload Criterion report
         if: always()
         uses: actions/upload-artifact@v4

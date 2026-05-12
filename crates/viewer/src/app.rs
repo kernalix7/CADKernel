@@ -208,6 +208,10 @@ pub struct CadApp {
 }
 
 impl CadApp {
+    pub(crate) fn cold_init() -> Self {
+        Self::new()
+    }
+
     fn new() -> Self {
         Self {
             runtime: None,

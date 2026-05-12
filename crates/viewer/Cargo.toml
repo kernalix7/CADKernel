@@ -27,3 +27,10 @@ rfd = "0.15"
 serde.workspace = true
 serde_json.workspace = true
 mlua.workspace = true
+
+[dev-dependencies]
+criterion.workspace = true
+
+[[bench]]
+name = "first_paint"
+harness = false

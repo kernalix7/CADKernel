@@ -957,6 +957,15 @@ The `crates/modeling/tests/stress_tests.rs` file contains 67 stress tests organi
 
 Run: `cargo bench -p cadkernel-modeling`. See [Performance wiki](wiki/Performance.md) for full analysis.
 
+**v0.5 Gate #11 CI benchmarks (enforced in `.github/workflows/ci.yml` `bench-perf` job):**
+
+| Bench | Crate | Budget | Measured | Status |
+|-------|-------|--------|---------|--------|
+| `r1_open` | `cadkernel-api` | 250 ms | ~8.6 µs | ✅ |
+| `viewer_first_paint_cpu` | `cadkernel-viewer` | 500 ms | ~856 ns | ✅ |
+
+`viewer_first_paint_cpu` measures `cadkernel_viewer::test_support::cold_init_cpu_only()` — the full CPU cold-init path (event loop, egui context, GUI state, scripting engine) without GPU or display. Both gates are enforced via `scripts/bench_threshold.sh <bench_id> <budget_ns>`.
+
 ---
 
 ## 8. Build & CI
