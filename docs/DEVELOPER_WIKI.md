@@ -157,6 +157,16 @@ Filesystem variant (added 2026-05-13, A3.0.4):
   parse errors keep their original diagnostics so callers can tell the
   two failure modes apart.
 
+CLI (`cadk-inspect`, rebuilt 2026-05-13 in A3.0.5):
+- Default `cadk-inspect <file>` — structured summary driven by
+  `CadkSummary` + full `decode()` integrity check. Exit codes
+  unchanged (0 healthy / 1 I/O or arg / 2 format error).
+- `--quick` / `-q` — opt into the cheap path: header + manifest only,
+  no doc/thumb CRC check, status line shows `(--quick)` so the
+  weaker guarantee is explicit.
+- `--verbose` / `-v` — additionally dump the decoded command list;
+  `--quick -v` emits a stderr note and skips the listing.
+
 I/O failures map to `ApiError::Codec("file io: ...")` so the `ApiError` enum
 stays SemVer-stable. A committed v0 golden fixture at
 `crates/api/tests/fixtures/cadk-v0/r1_canonical.cadk` (309 bytes) pins the

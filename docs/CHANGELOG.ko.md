@@ -11,6 +11,13 @@
 
 ### 추가됨
 
+#### 상용 CAD 로드맵 — A3.0.5: `cadk-inspect` CLI를 `inspect()` 기반으로 재구축 + `--quick` 모드 (2026-05-13)
+- **`cadk-inspect` 바이너리 리팩터** — 구조화된 요약 출력을 `cadk::inspect_path()` + `CadkSummary`로 구동하도록 변경. 로컬 `read_le_u32` 헬퍼와 손으로 짠 바이트 슬라이싱 제거. 기본 컨트랙트 유지 — document blob CRC는 여전히 요약 출력 후 `cadk::decode()`로 검증 → 기존 CI 호출과 스크립트가 동일한 종료 코드(0 정상 / 1 I/O 또는 인자 오류 / 2 포맷 오류) 확인.
+- **`--quick` / `-q` 플래그 신설** — 경량 inspect-only 경로 옵트인. magic + header + manifest CRC만 검증하고 구조화된 요약 출력. `decode()` 생략(document CRC 미검사, zstd 미해제, JSON 미파싱, 썸네일 CRC 미검사). 상태 라인이 `OK (header + manifest verified, --quick)`로 다운그레이드 — 약화된 보증이 명시적. `--quick`와 `--verbose` 동시 지정 시 stderr에 `"verbose is a no-op when combined with --quick"` 안내 + 정상 종료.
+- **구조화된 stdout** — `schema:` / `flags: 0xNN` / 비트별 플래그 분해 / `blobs: N` / `document: N bytes (zstd)` / `thumbnail: present, N bytes (per manifest)`을 `CadkSummary` 필드에서 도출. verbose 모드는 기존대로 전체 명령 목록 dump.
+- **`crates/api/tests/cadk_inspect_bin.rs`** — 7개 바이너리 스폰 스모크 테스트(`env!("CARGO_BIN_EXE_cadk-inspect")`). v0 픽스처 기본 실행 = exit 0 + `(all CRCs verified)`, `--quick` = decode 생략 + 상태 라인 다운그레이드, `-v` = `--- commands ---` + `CreateBox` 토큰, missing-path = exit 1, 손상된 바이트 = exit 2, 미지원 플래그 = exit 1, `--quick -v` = stderr 안내 + 정상 종료.
+- STOP_LIST 그린(새 `Command` / `Outcome` / format crate 없음). 라이브러리 API 무변경 — 변경 표면 전부 바이너리 내부.
+
 #### 상용 CAD 로드맵 — A3.0.4: `.cadk` `inspect_path()` 파일시스템 래퍼 (2026-05-13)
 - **`cadk::inspect_path(path) -> ApiResult<CadkSummary>`** — `std::fs::read` + `cadk::inspect` 자유 함수 래퍼. I/O 실패는 `ApiError::Codec("file io: …")`(`save_cadk_to_path` / `load_cadk_from_path` 동일 컨벤션). 파싱 실패는 기존 진단 그대로(접두사 없음) — 호출자가 "읽기 실패" vs "파싱 실패" 구분 가능.
 - **`crates/api/tests/cadk_inspect_path.rs`** — 5개 통합 테스트. 미압축 저장에서 `cadk::inspect` 바이트 동일성, 압축+썸네일 조합이 두 플래그 + `blob_count == 2` + 썸네일 길이 보고, missing-path 실패 시 `file io:` 접두사 보존, 손상 바이트 실패 시 `file io:` 접두사 없음(읽기는 성공), 커밋된 v0 골든 픽스처를 `inspect_path`로 도달 가능(메타데이터 전용 리더를 깨뜨릴 코덱 회귀를 `cadk_v0_migration.rs` 우회 시점에 잡음).

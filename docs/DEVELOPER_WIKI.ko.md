@@ -152,6 +152,14 @@ magic + header + manifest CRC만 검증하고 document blob은 건너뜀(CRC 미
 `std::fs::read` + `inspect`. I/O 오류는 다른 path API와 동일하게 `file io:` 접두사,
 파싱 오류는 원래 진단 그대로 — 호출자가 두 실패 모드 구분 가능.
 
+CLI(`cadk-inspect`, 2026-05-13 A3.0.5 재구축):
+- 기본 `cadk-inspect <file>` — `CadkSummary` 기반 구조화 요약 + 전체 `decode()`
+  무결성 검사. 종료 코드 무변경(0/1/2).
+- `--quick` / `-q` — 경량 경로 옵트인: header + manifest만 검사, doc/thumb CRC
+  미검사. 상태 라인이 `(--quick)`을 명시.
+- `--verbose` / `-v` — 디코드된 명령 목록 추가 출력. `--quick -v`는 stderr 안내 후
+  목록 생략.
+
 I/O 오류는 `ApiError::Codec("file io: ...")`로 매핑(`ApiError` enum SemVer 안정).
 `crates/api/tests/fixtures/cadk-v0/r1_canonical.cadk` (309바이트, 커밋됨)는
 v0 on-disk 스키마 핀이며 `tests/cadk_v0_migration.rs`의 3개 가드 테스트가
