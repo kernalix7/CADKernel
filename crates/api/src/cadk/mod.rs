@@ -20,7 +20,8 @@ pub mod header;
 pub mod manifest;
 
 pub use codec::{
-    SaveOptions, decode, decode_thumbnail, encode, encode_with_options, encode_with_thumbnail,
+    CadkSummary, SaveOptions, decode, decode_thumbnail, encode, encode_with_options,
+    encode_with_thumbnail, inspect,
 };
 pub use header::{CadkFlags, CadkHeader, MAGIC};
 pub use manifest::{BlobKind, BlobRecord, Manifest};

@@ -140,6 +140,17 @@ zstd-encoded, the CRC is computed over the compressed bytes, and the
 the bit and decompresses transparently; readers without zstd would see a
 CRC match but a JSON parse failure on the raw frame.
 
+Cheap metadata-only inspection (added 2026-05-12, A3.0.3):
+- `cadk::inspect(bytes) -> CadkSummary` — validates magic + header +
+  manifest CRC only. Skips the document blob (no CRC check, no zstd
+  decompress, no JSON parse) so it stays fast for Recent-Files panels,
+  autosave directory listings, and CI fixture guards.
+- `CadkSummary` exposes `schema_version`, raw `flags`, `total_size`,
+  `blob_count`, `document_length`, optional `thumbnail_length`, plus
+  bit-helper methods `.document_compressed()`, `.has_thumbnail()`,
+  `.is_signed()`, `.manifest_compressed()`, and `.unknown_flags()` for
+  forward-compat diagnostics.
+
 I/O failures map to `ApiError::Codec("file io: ...")` so the `ApiError` enum
 stays SemVer-stable. A committed v0 golden fixture at
 `crates/api/tests/fixtures/cadk-v0/r1_canonical.cadk` (309 bytes) pins the

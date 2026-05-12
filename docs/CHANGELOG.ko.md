@@ -11,6 +11,12 @@
 
 ### 추가됨
 
+#### 상용 CAD 로드맵 — A3.0.3: `.cadk` 경량 `inspect()` 요약 (2026-05-12)
+- **`cadk::inspect(bytes) -> ApiResult<CadkSummary>`** — magic + header + manifest CRC만 검증하고 schema 버전, flags, 총 크기, blob 개수, document 길이, 썸네일 길이(있을 때)를 반환하는 메타데이터 전용 엔트리. document blob 바디는 의도적으로 건드리지 않음(CRC 미검사, zstd 미압축해제, JSON 미파싱). Recent-Files / autosave / CI fixture 가드용 빠른 조회 — 실제 커맨드가 필요하면 `decode()` 사용.
+- **`cadk::CadkSummary` 헬퍼** — `.document_compressed()` / `.has_thumbnail()` / `.is_signed()` / `.manifest_compressed()`로 `CadkFlags` 비트별 조회, `.unknown_flags()`로 forward-compat 진단(현재 빌드가 모르는 비트는 포맷 스펙대로 verbatim 라운드트립).
+- **`crates/api/tests/cadk_inspect_api.rs`** — 9개 통합 테스트. 미압축 v0 layout 정확도, 압축 컨테이너에서 `DOCUMENT_COMPRESSED` + 압축 후 `document_length` 보고, 썸네일 동봉 시 `blob_count == 2` + 길이, 압축+썸네일 조합, 실패 모드 4종(bad magic, truncation, manifest CRC corruption, unsupported must-understand flag)이 모두 `ApiError::Codec`. 핵심 cheapness 불변성: document body 손상에도 `inspect()`는 성공 / `decode()`는 거부.
+- STOP_LIST 그린(새 `Command` / `Outcome` / format crate 없음). v0 골든 픽스처는 `cadk_v0_migration.rs` 가드 통과 유지.
+
 #### 상용 CAD 로드맵 — A3.0.2: `.cadk` 옵트인 zstd 압축 (2026-05-12)
 - **`cadk::SaveOptions { compression_level, thumbnail }`** — `encode_with_options` + `Session::save_cadk_with_options` / `save_cadk_to_path_with_options` 단일 옵션 구조체. 빌더 헬퍼 `.with_compression(level)` / `.with_thumbnail(bytes)` 제공. 기본값(`None`/`None`)은 기존 `encode()`와 바이트 동일 — v0 픽스처와 기존 리더 모두 유효.
 - **`CadkFlags::DOCUMENT_COMPRESSED` (bit 3)** — `BlobKind::Document` payload zstd 압축 시 설정. `decode()`가 비트 자동 감지하여 압축 해제. CRC는 (압축된) on-disk 바이트 기준이라 무결성 검사가 해제보다 선행.

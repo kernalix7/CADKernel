@@ -61,6 +61,83 @@ impl SaveOptions {
     }
 }
 
+/// Cheap read-only summary of a `.cadk` container.
+///
+/// Produced by [`inspect`]. Unlike [`decode`], reading a summary does not
+/// touch the document blob body: only magic, header, and the manifest
+/// table-of-contents are parsed and CRC-checked. This makes [`inspect`]
+/// suitable for "Recent Files" lists, autosave dirs, and CI guards that
+/// only need metadata (schema version, size, flags, blob count).
+///
+/// Added in A3.0.3 (2026-05-12).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CadkSummary {
+    /// Header schema version. Must equal [`SCHEMA_VERSION`] for this
+    /// build — [`inspect`] errors out on mismatch before returning a
+    /// summary.
+    pub schema_version: u32,
+    /// Raw flags word from the header. Use the
+    /// [`document_compressed`](CadkSummary::document_compressed),
+    /// [`has_thumbnail`](CadkSummary::has_thumbnail),
+    /// [`is_signed`](CadkSummary::is_signed), and
+    /// [`manifest_compressed`](CadkSummary::manifest_compressed) helpers
+    /// for individual bit checks, or [`unknown_flags`](CadkSummary::unknown_flags)
+    /// for forward-compat diagnostics.
+    pub flags: u32,
+    /// File size in bytes as declared by the header. [`inspect`] verifies
+    /// this matches the input slice length before returning.
+    pub total_size: u64,
+    /// Number of records in the manifest. Includes the document blob,
+    /// optional thumbnail, optional signature, and any forward-compat
+    /// blobs preserved verbatim.
+    pub blob_count: usize,
+    /// Encoded length of the document blob in bytes. When the
+    /// [`document_compressed`](CadkSummary::document_compressed) flag is
+    /// set, this is the post-zstd size; otherwise it is the raw JSON
+    /// length.
+    pub document_length: u64,
+    /// Encoded length of the thumbnail blob in bytes, if present. `None`
+    /// when no `BlobKind::Thumbnail` record is in the manifest.
+    pub thumbnail_length: Option<u64>,
+}
+
+impl CadkSummary {
+    /// Returns `true` iff the document blob is zstd-compressed
+    /// (i.e. [`CadkFlags::DOCUMENT_COMPRESSED`] is set).
+    pub fn document_compressed(&self) -> bool {
+        self.flags & CadkFlags::DOCUMENT_COMPRESSED != 0
+    }
+
+    /// Returns `true` iff a thumbnail blob is present
+    /// (i.e. [`CadkFlags::HAS_THUMBNAIL`] is set). Always agrees with
+    /// `self.thumbnail_length.is_some()`.
+    pub fn has_thumbnail(&self) -> bool {
+        self.flags & CadkFlags::HAS_THUMBNAIL != 0
+    }
+
+    /// Returns `true` iff the container declares an Ed25519 signature
+    /// blob (i.e. [`CadkFlags::SIGNED`] is set). The signature itself is
+    /// not validated by [`inspect`]; this is purely the header bit.
+    pub fn is_signed(&self) -> bool {
+        self.flags & CadkFlags::SIGNED != 0
+    }
+
+    /// Returns `true` iff the manifest body itself is zstd-compressed.
+    /// As of A3.0.3 the encoder never sets this bit (the manifest is
+    /// always raw JSON), but the predicate exists for forward compat.
+    pub fn manifest_compressed(&self) -> bool {
+        self.flags & CadkFlags::MANIFEST_COMPRESSED != 0
+    }
+
+    /// Returns the set of flag bits that are set but unknown to this
+    /// build. Zero means the file was produced by an equally-or-older
+    /// encoder. Non-zero means a newer encoder set bits this build does
+    /// not yet recognise — they round-trip verbatim per the format spec.
+    pub fn unknown_flags(&self) -> u32 {
+        self.flags & !CadkFlags::KNOWN
+    }
+}
+
 /// CRC-32 with the standard IEEE 802.3 reverse polynomial (0xEDB88320).
 /// Lazy-initialised table; matches the output of `crc32fast` and most
 /// Unix `cksum` implementations of the IEEE variant.
@@ -390,6 +467,77 @@ pub fn decode_thumbnail(bytes: &[u8]) -> ApiResult<Option<Vec<u8>>> {
         return Err(ApiError::Codec("thumbnail blob crc32 mismatch".into()));
     }
     Ok(Some(body.to_vec()))
+}
+
+/// Inspect a `.cadk` container without decoding the document log.
+///
+/// Validates magic, header (schema version + must-understand flags),
+/// declared `total_size` against the input length, manifest range
+/// in-bounds, and manifest CRC. Returns a [`CadkSummary`] with version,
+/// flags, and blob counts.
+///
+/// Deliberately cheaper than [`decode`]: the document body is **not**
+/// CRC-checked, not zstd-decompressed, and not JSON-parsed. Use this for
+/// metadata-only queries (Recent Files, autosave directory listings, CI
+/// fixture guards). Use [`decode`] when you need the actual commands or
+/// full per-blob integrity.
+///
+/// Added in A3.0.3 (2026-05-12).
+pub fn inspect(bytes: &[u8]) -> ApiResult<CadkSummary> {
+    if bytes.len() < MAGIC.len() + HEADER_SIZE {
+        return Err(ApiError::Codec(format!(
+            "container too small: {} bytes",
+            bytes.len()
+        )));
+    }
+    if &bytes[..MAGIC.len()] != MAGIC.as_slice() {
+        return Err(ApiError::Codec(format!(
+            "bad magic: expected {:?}, got {:?}",
+            MAGIC,
+            &bytes[..MAGIC.len()]
+        )));
+    }
+    let header = read_header(&bytes[MAGIC.len()..MAGIC.len() + HEADER_SIZE])?;
+    if !header.is_supported() {
+        return Err(ApiError::Codec(format!(
+            "unsupported .cadk header: schema_version={}, flags=0x{:08x}",
+            header.schema_version, header.flags
+        )));
+    }
+    if (header.total_size as usize) != bytes.len() {
+        return Err(ApiError::Codec(format!(
+            "container truncated: header.total_size={}, file_size={}",
+            header.total_size,
+            bytes.len()
+        )));
+    }
+    let manifest_start = header.manifest_offset as usize;
+    let manifest_end = manifest_start + header.manifest_length as usize;
+    if manifest_end > bytes.len() {
+        return Err(ApiError::Codec(
+            "manifest range exceeds container bounds".into(),
+        ));
+    }
+    let manifest_bytes = &bytes[manifest_start..manifest_end];
+    if crc32_ieee(manifest_bytes) != header.manifest_crc32 {
+        return Err(ApiError::Codec("manifest crc32 mismatch".into()));
+    }
+    let manifest: Manifest = serde_json::from_slice(manifest_bytes)?;
+
+    let document_length = manifest
+        .find_first(BlobKind::Document)
+        .map(|r| r.length)
+        .ok_or_else(|| ApiError::Codec("no Document blob in manifest".into()))?;
+    let thumbnail_length = manifest.find_first(BlobKind::Thumbnail).map(|r| r.length);
+
+    Ok(CadkSummary {
+        schema_version: header.schema_version,
+        flags: header.flags,
+        total_size: header.total_size,
+        blob_count: manifest.records.len(),
+        document_length,
+        thumbnail_length,
+    })
 }
 
 #[cfg(test)]

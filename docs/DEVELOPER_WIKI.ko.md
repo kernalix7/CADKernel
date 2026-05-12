@@ -141,6 +141,13 @@ document blob이 zstd로 인코딩되고 CRC는 압축된 바이트 기준,
 `CadkFlags::DOCUMENT_COMPRESSED` 헤더 비트 설정. `decode()`가 비트 감지하여
 자동 해제. zstd 미지원 리더는 CRC는 맞지만 raw frame을 JSON으로 파싱하다 실패.
 
+경량 메타데이터 조회(2026-05-12, A3.0.3) — `cadk::inspect(bytes) -> CadkSummary`:
+magic + header + manifest CRC만 검증하고 document blob은 건너뜀(CRC 미검사, zstd
+미해제, JSON 미파싱). Recent-Files / autosave / CI fixture 가드용. `CadkSummary`는
+`schema_version`, `flags`, `total_size`, `blob_count`, `document_length`, 옵셔널
+`thumbnail_length` + 비트 헬퍼 `.document_compressed()` / `.has_thumbnail()` /
+`.is_signed()` / `.manifest_compressed()` / `.unknown_flags()`(forward-compat 진단).
+
 I/O 오류는 `ApiError::Codec("file io: ...")`로 매핑(`ApiError` enum SemVer 안정).
 `crates/api/tests/fixtures/cadk-v0/r1_canonical.cadk` (309바이트, 커밋됨)는
 v0 on-disk 스키마 핀이며 `tests/cadk_v0_migration.rs`의 3개 가드 테스트가
