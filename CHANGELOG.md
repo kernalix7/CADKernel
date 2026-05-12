@@ -11,6 +11,11 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### Commercial CAD Roadmap — A3.0.4: `.cadk` `inspect_path()` filesystem wrapper (2026-05-13)
+- **`cadk::inspect_path(path) -> ApiResult<CadkSummary>`** — free-function wrapper that reads `path` via `std::fs::read` and delegates to `cadk::inspect`. I/O failures surface as `ApiError::Codec("file io: …")`, matching the convention set by `Session::save_cadk_to_path` / `Session::load_cadk_from_path`. Parse failures preserve their existing diagnostics (no `file io:` prefix), so callers can distinguish "could not read the file" from "could not parse the bytes".
+- **`crates/api/tests/cadk_inspect_path.rs`** — 5 integration tests: byte-equivalence with `cadk::inspect` on an uncompressed save, compression-plus-thumbnail combo through disk reports both flags + `blob_count == 2` + thumbnail length, missing-path failure preserves the `file io:` prefix, corrupted-bytes-on-disk failure carries no `file io:` prefix (the read succeeded), and the committed v0 golden fixture is reachable through `inspect_path` (pins the fixture against codec regressions that would slip past `cadk_v0_migration.rs` but break metadata-only readers).
+- STOP_LIST clean (no new `Command` / `Outcome` variants, no new format crate). No Session API touched.
+
 #### Commercial CAD Roadmap — A3.0.3: `.cadk` cheap `inspect()` summary (2026-05-12)
 - **`cadk::inspect(bytes) -> ApiResult<CadkSummary>`** — read-only metadata entry point that validates magic + header + manifest CRC and returns a structured summary (schema version, raw flags, total size, blob count, document length, optional thumbnail length). Deliberately skips the document blob body: no CRC check, no zstd decompress, no JSON parse. Pairs with `decode()` for the cheap-vs-full split — use `inspect` for Recent-Files panels, autosave dir listings, and CI fixture guards; use `decode` when the actual commands are needed.
 - **`cadk::CadkSummary` helpers** — `.document_compressed()`, `.has_thumbnail()`, `.is_signed()`, `.manifest_compressed()` for individual `CadkFlags` bit checks plus `.unknown_flags()` for forward-compat diagnostics (set bits this build does not yet recognise round-trip verbatim per the format spec).

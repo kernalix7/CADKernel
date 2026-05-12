@@ -148,6 +148,10 @@ magic + header + manifest CRC만 검증하고 document blob은 건너뜀(CRC 미
 `thumbnail_length` + 비트 헬퍼 `.document_compressed()` / `.has_thumbnail()` /
 `.is_signed()` / `.manifest_compressed()` / `.unknown_flags()`(forward-compat 진단).
 
+파일시스템 변형(2026-05-13, A3.0.4) — `cadk::inspect_path(path) -> CadkSummary`:
+`std::fs::read` + `inspect`. I/O 오류는 다른 path API와 동일하게 `file io:` 접두사,
+파싱 오류는 원래 진단 그대로 — 호출자가 두 실패 모드 구분 가능.
+
 I/O 오류는 `ApiError::Codec("file io: ...")`로 매핑(`ApiError` enum SemVer 안정).
 `crates/api/tests/fixtures/cadk-v0/r1_canonical.cadk` (309바이트, 커밋됨)는
 v0 on-disk 스키마 핀이며 `tests/cadk_v0_migration.rs`의 3개 가드 테스트가

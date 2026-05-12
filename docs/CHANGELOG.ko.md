@@ -11,6 +11,11 @@
 
 ### 추가됨
 
+#### 상용 CAD 로드맵 — A3.0.4: `.cadk` `inspect_path()` 파일시스템 래퍼 (2026-05-13)
+- **`cadk::inspect_path(path) -> ApiResult<CadkSummary>`** — `std::fs::read` + `cadk::inspect` 자유 함수 래퍼. I/O 실패는 `ApiError::Codec("file io: …")`(`save_cadk_to_path` / `load_cadk_from_path` 동일 컨벤션). 파싱 실패는 기존 진단 그대로(접두사 없음) — 호출자가 "읽기 실패" vs "파싱 실패" 구분 가능.
+- **`crates/api/tests/cadk_inspect_path.rs`** — 5개 통합 테스트. 미압축 저장에서 `cadk::inspect` 바이트 동일성, 압축+썸네일 조합이 두 플래그 + `blob_count == 2` + 썸네일 길이 보고, missing-path 실패 시 `file io:` 접두사 보존, 손상 바이트 실패 시 `file io:` 접두사 없음(읽기는 성공), 커밋된 v0 골든 픽스처를 `inspect_path`로 도달 가능(메타데이터 전용 리더를 깨뜨릴 코덱 회귀를 `cadk_v0_migration.rs` 우회 시점에 잡음).
+- STOP_LIST 그린(새 `Command` / `Outcome` / format crate 없음). Session API 무변경.
+
 #### 상용 CAD 로드맵 — A3.0.3: `.cadk` 경량 `inspect()` 요약 (2026-05-12)
 - **`cadk::inspect(bytes) -> ApiResult<CadkSummary>`** — magic + header + manifest CRC만 검증하고 schema 버전, flags, 총 크기, blob 개수, document 길이, 썸네일 길이(있을 때)를 반환하는 메타데이터 전용 엔트리. document blob 바디는 의도적으로 건드리지 않음(CRC 미검사, zstd 미압축해제, JSON 미파싱). Recent-Files / autosave / CI fixture 가드용 빠른 조회 — 실제 커맨드가 필요하면 `decode()` 사용.
 - **`cadk::CadkSummary` 헬퍼** — `.document_compressed()` / `.has_thumbnail()` / `.is_signed()` / `.manifest_compressed()`로 `CadkFlags` 비트별 조회, `.unknown_flags()`로 forward-compat 진단(현재 빌드가 모르는 비트는 포맷 스펙대로 verbatim 라운드트립).

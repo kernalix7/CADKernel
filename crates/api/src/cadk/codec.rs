@@ -540,6 +540,21 @@ pub fn inspect(bytes: &[u8]) -> ApiResult<CadkSummary> {
     })
 }
 
+/// Filesystem wrapper around [`inspect`]. Reads the file at `path` and
+/// returns a [`CadkSummary`] without keeping the bytes in memory beyond
+/// the parse. I/O failures are surfaced as
+/// [`ApiError::Codec`] with a `file io:` prefix so existing match arms
+/// over `ApiError` continue to compile (matches the convention set by
+/// [`crate::Session::save_cadk_to_path`] and
+/// [`crate::Session::load_cadk_from_path`]).
+///
+/// Added in A3.0.4 (2026-05-13).
+pub fn inspect_path(path: impl AsRef<std::path::Path>) -> ApiResult<CadkSummary> {
+    let bytes = std::fs::read(path.as_ref())
+        .map_err(|err| ApiError::Codec(format!("file io: {err}")))?;
+    inspect(&bytes)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

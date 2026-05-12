@@ -151,6 +151,12 @@ Cheap metadata-only inspection (added 2026-05-12, A3.0.3):
   `.is_signed()`, `.manifest_compressed()`, and `.unknown_flags()` for
   forward-compat diagnostics.
 
+Filesystem variant (added 2026-05-13, A3.0.4):
+- `cadk::inspect_path(path) -> CadkSummary` — `std::fs::read` + `inspect`.
+  I/O errors carry the `file io:` prefix used by the other path APIs;
+  parse errors keep their original diagnostics so callers can tell the
+  two failure modes apart.
+
 I/O failures map to `ApiError::Codec("file io: ...")` so the `ApiError` enum
 stays SemVer-stable. A committed v0 golden fixture at
 `crates/api/tests/fixtures/cadk-v0/r1_canonical.cadk` (309 bytes) pins the
