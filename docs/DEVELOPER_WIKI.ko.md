@@ -145,8 +145,10 @@ document blob이 zstd로 인코딩되고 CRC는 압축된 바이트 기준,
 magic + header + manifest CRC만 검증하고 document blob은 건너뜀(CRC 미검사, zstd
 미해제, JSON 미파싱). Recent-Files / autosave / CI fixture 가드용. `CadkSummary`는
 `schema_version`, `flags`, `total_size`, `blob_count`, `document_length`, 옵셔널
-`thumbnail_length` + 비트 헬퍼 `.document_compressed()` / `.has_thumbnail()` /
-`.is_signed()` / `.manifest_compressed()` / `.unknown_flags()`(forward-compat 진단).
+`thumbnail_length`, per-blob `blobs: Vec<BlobInfo>`(kind / name / 인코딩 길이,
+manifest 순서 — A3.0.6 추가) + 비트 헬퍼 `.document_compressed()` /
+`.has_thumbnail()` / `.is_signed()` / `.manifest_compressed()` /
+`.unknown_flags()`(forward-compat 진단).
 
 파일시스템 변형(2026-05-13, A3.0.4) — `cadk::inspect_path(path) -> CadkSummary`:
 `std::fs::read` + `inspect`. I/O 오류는 다른 path API와 동일하게 `file io:` 접두사,

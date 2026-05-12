@@ -16,7 +16,7 @@
 //!   must-understand region fail the header support check before
 //!   inspect returns.
 
-use cadkernel_api::cadk::{self, CadkFlags, SaveOptions};
+use cadkernel_api::cadk::{self, BlobKind, CadkFlags, SaveOptions};
 use cadkernel_api::{ApiError, Command};
 
 fn sample_log() -> Vec<Command> {
@@ -141,6 +141,55 @@ fn inspect_succeeds_even_when_document_body_is_corrupted() {
 
     // decode() must still reject the same bytes.
     assert!(cadk::decode(&bytes).is_err());
+}
+
+#[test]
+fn inspect_exposes_document_blob_in_manifest_order() {
+    // A3.0.6: per-blob view. Uncompressed save → exactly one BlobInfo,
+    // kind = Document, name = "document", length matches the typed
+    // summary's `document_length`.
+    let bytes = cadk::encode(&sample_log()).unwrap();
+    let summary = cadk::inspect(&bytes).unwrap();
+    assert_eq!(summary.blobs.len(), 1);
+    let doc = &summary.blobs[0];
+    assert_eq!(doc.kind, BlobKind::Document);
+    assert_eq!(doc.name, "document");
+    assert_eq!(doc.length, summary.document_length);
+}
+
+#[test]
+fn inspect_exposes_thumbnail_alongside_document_in_manifest_order() {
+    // A3.0.6: thumbnail combo → exactly two BlobInfo entries in
+    // manifest order: Document first, Thumbnail second. The
+    // thumbnail BlobInfo.length must agree with the typed summary's
+    // `thumbnail_length`.
+    let thumb = vec![0x33u8; 777];
+    let opts = SaveOptions::default().with_thumbnail(thumb.clone());
+    let bytes = cadk::encode_with_options(&sample_log(), &opts).unwrap();
+    let summary = cadk::inspect(&bytes).unwrap();
+    assert_eq!(summary.blobs.len(), 2);
+    assert_eq!(summary.blobs[0].kind, BlobKind::Document);
+    assert_eq!(summary.blobs[1].kind, BlobKind::Thumbnail);
+    assert_eq!(summary.blobs[1].name, "thumbnail");
+    assert_eq!(summary.blobs[1].length, thumb.len() as u64);
+    assert_eq!(summary.thumbnail_length, Some(summary.blobs[1].length));
+}
+
+#[test]
+fn inspect_blob_lengths_sum_to_document_plus_thumbnail() {
+    // Sanity: the per-blob lengths sum to the document_length plus
+    // thumbnail_length when both are present. Pins the invariant
+    // that BlobInfo length == on-disk encoded length, NOT logical
+    // size after decompression.
+    let thumb = vec![0x77u8; 256];
+    let opts = SaveOptions::default()
+        .with_compression(5)
+        .with_thumbnail(thumb.clone());
+    let bytes = cadk::encode_with_options(&sample_log(), &opts).unwrap();
+    let summary = cadk::inspect(&bytes).unwrap();
+    let blob_sum: u64 = summary.blobs.iter().map(|b| b.length).sum();
+    let expected = summary.document_length + summary.thumbnail_length.unwrap_or(0);
+    assert_eq!(blob_sum, expected);
 }
 
 #[test]

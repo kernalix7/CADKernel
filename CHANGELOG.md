@@ -11,6 +11,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### Commercial CAD Roadmap — A3.0.6: per-blob view on `CadkSummary` (2026-05-13)
+- **`cadk::BlobInfo { kind, name, length }`** — new public type that surfaces the stable subset of an on-disk `BlobRecord` (kind tag, manifest-level name, encoded length). The internal codec fields (`offset`, `crc32`) are deliberately not exposed so callers cannot accidentally couple to them across format versions.
+- **`CadkSummary::blobs: Vec<BlobInfo>`** — per-blob view in manifest order, populated by `cadk::inspect()`. Lets consumers enumerate forward-compat blob kinds (e.g. `BlobKind::Unknown` or future variants) without re-parsing the manifest body themselves. Additive field; existing `blob_count` / `document_length` / `thumbnail_length` are unchanged and continue to derive from the same manifest record set.
+- **`cadk-inspect --verbose` now prints a `--- blobs ---` section** ahead of the command listing, dumping each `BlobInfo` as `[i] Kind  name="…"  length=N bytes`. Useful when debugging files that carry attachments, signatures, or unknown forward-compat blobs.
+- **`crates/api/tests/cadk_inspect_api.rs`** — 3 new tests: uncompressed save exposes a single Document `BlobInfo` matching the typed `document_length`, thumbnail combo exposes Document-then-Thumbnail in manifest order, and the per-blob lengths sum to `document_length + thumbnail_length` (pins the invariant that `BlobInfo.length` is the on-disk encoded length, not the post-decompression logical size).
+- **`crates/api/tests/cadk_inspect_bin.rs`** — 1 new test: verbose runs surface `--- blobs ---` with `Document` + `name="document"` against the v0 fixture.
+- STOP_LIST clean (no new `Command` / `Outcome` variants, no new format crate).
+
 #### Commercial CAD Roadmap — A3.0.5: `cadk-inspect` CLI rebuilt on `inspect()` + `--quick` mode (2026-05-13)
 - **`cadk-inspect` binary refactored** to drive its structured summary lines from `cadk::inspect_path()` + `CadkSummary` instead of ad-hoc little-endian header parsing (deletes the local `read_le_u32` helper and the hand-rolled byte slicing). The default contract is unchanged — the document blob CRC is still verified by calling `cadk::decode()` after the summary print — so existing CI invocations and scripts continue to see the same exit codes (0 healthy / 1 I/O or arg error / 2 format error).
 - **New `--quick` / `-q` flag** — opts into the cheap inspect-only path: validates magic + header + manifest CRC and prints the structured summary, but skips `decode()` (no document CRC check, no zstd decompress, no JSON parse, no thumbnail CRC check). Status line is downgraded to `OK (header + manifest verified, --quick)` so the weaker guarantee is explicit. `--quick` combined with `--verbose` emits a stderr note ("verbose is a no-op when combined with --quick") and succeeds.

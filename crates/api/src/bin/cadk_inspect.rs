@@ -153,6 +153,15 @@ fn inspect(path: &Path, verbose: bool, quick: bool) -> Result<(), InspectError> 
 
     if verbose {
         println!();
+        println!("--- blobs ---");
+        for (i, blob) in summary.blobs.iter().enumerate() {
+            println!(
+                "[{i:>4}] {:?}  name={:?}  length={} bytes",
+                blob.kind, blob.name, blob.length
+            );
+        }
+
+        println!();
         println!("--- commands ---");
         for (i, cmd) in commands.iter().enumerate() {
             println!("[{i:>4}] {cmd:?}");

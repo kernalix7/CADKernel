@@ -11,6 +11,14 @@
 
 ### 추가됨
 
+#### 상용 CAD 로드맵 — A3.0.6: `CadkSummary` per-blob 뷰 노출 (2026-05-13)
+- **`cadk::BlobInfo { kind, name, length }`** — on-disk `BlobRecord`의 안정 subset(kind 태그, manifest 이름, 인코딩 길이) 공개 타입. 내부 코덱 필드(`offset`, `crc32`)는 포맷 버전 간 안정성을 위해 의도적으로 숨김.
+- **`CadkSummary::blobs: Vec<BlobInfo>`** — `cadk::inspect()`가 manifest 순서로 채우는 per-blob 뷰. forward-compat blob kind(`BlobKind::Unknown` 등)를 manifest 본문 재파싱 없이 열거 가능. additive 필드 — 기존 `blob_count` / `document_length` / `thumbnail_length` 무변경, 동일 manifest 레코드 셋에서 유도.
+- **`cadk-inspect --verbose`가 `--- blobs ---` 섹션 출력** — 명령 목록 직전. 각 `BlobInfo`를 `[i] Kind  name="…"  length=N bytes`로 dump. attachment/signature/unknown forward-compat blob 디버깅에 유용.
+- **`crates/api/tests/cadk_inspect_api.rs`** — 3개 신규 테스트. 미압축 저장에서 Document 단일 `BlobInfo`가 `document_length`와 일치, 썸네일 조합에서 Document → Thumbnail manifest 순서, blob 길이 합이 `document_length + thumbnail_length`(`BlobInfo.length`가 압축 해제 전 on-disk 크기임을 핀).
+- **`crates/api/tests/cadk_inspect_bin.rs`** — 1개 신규 테스트. v0 픽스처 verbose 실행에서 `--- blobs ---` + `Document` + `name="document"` 출력.
+- STOP_LIST 그린(새 `Command` / `Outcome` / format crate 없음).
+
 #### 상용 CAD 로드맵 — A3.0.5: `cadk-inspect` CLI를 `inspect()` 기반으로 재구축 + `--quick` 모드 (2026-05-13)
 - **`cadk-inspect` 바이너리 리팩터** — 구조화된 요약 출력을 `cadk::inspect_path()` + `CadkSummary`로 구동하도록 변경. 로컬 `read_le_u32` 헬퍼와 손으로 짠 바이트 슬라이싱 제거. 기본 컨트랙트 유지 — document blob CRC는 여전히 요약 출력 후 `cadk::decode()`로 검증 → 기존 CI 호출과 스크립트가 동일한 종료 코드(0 정상 / 1 I/O 또는 인자 오류 / 2 포맷 오류) 확인.
 - **`--quick` / `-q` 플래그 신설** — 경량 inspect-only 경로 옵트인. magic + header + manifest CRC만 검증하고 구조화된 요약 출력. `decode()` 생략(document CRC 미검사, zstd 미해제, JSON 미파싱, 썸네일 CRC 미검사). 상태 라인이 `OK (header + manifest verified, --quick)`로 다운그레이드 — 약화된 보증이 명시적. `--quick`와 `--verbose` 동시 지정 시 stderr에 `"verbose is a no-op when combined with --quick"` 안내 + 정상 종료.

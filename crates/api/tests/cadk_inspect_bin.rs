@@ -79,6 +79,30 @@ fn verbose_run_prints_command_listing() {
 }
 
 #[test]
+fn verbose_run_prints_blob_listing_with_kinds_and_lengths() {
+    // A3.0.6: verbose dumps the per-blob view ahead of the command
+    // listing. For the v0 fixture (single Document blob, no thumbnail)
+    // the section must enumerate exactly one entry with kind=Document
+    // and name="document".
+    let output = Command::new(BIN)
+        .arg("-v")
+        .arg(fixture_path())
+        .output()
+        .expect("spawn cadk-inspect");
+    assert!(output.status.success());
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("--- blobs ---"), "verbose must print blobs section");
+    assert!(
+        stdout.contains("Document"),
+        "blob listing must surface kind=Document: {stdout}"
+    );
+    assert!(
+        stdout.contains("name=\"document\""),
+        "blob listing must surface name: {stdout}"
+    );
+}
+
+#[test]
 fn missing_path_exits_with_io_error_code_one() {
     let missing = std::env::temp_dir().join("cadk-inspect-missing-xyz-9999.cadk");
     let output = Command::new(BIN)

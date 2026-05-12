@@ -146,10 +146,12 @@ Cheap metadata-only inspection (added 2026-05-12, A3.0.3):
   decompress, no JSON parse) so it stays fast for Recent-Files panels,
   autosave directory listings, and CI fixture guards.
 - `CadkSummary` exposes `schema_version`, raw `flags`, `total_size`,
-  `blob_count`, `document_length`, optional `thumbnail_length`, plus
-  bit-helper methods `.document_compressed()`, `.has_thumbnail()`,
-  `.is_signed()`, `.manifest_compressed()`, and `.unknown_flags()` for
-  forward-compat diagnostics.
+  `blob_count`, `document_length`, optional `thumbnail_length`,
+  per-blob `blobs: Vec<BlobInfo>` (kind / name / encoded length, in
+  manifest order — added A3.0.6), plus bit-helper methods
+  `.document_compressed()`, `.has_thumbnail()`, `.is_signed()`,
+  `.manifest_compressed()`, and `.unknown_flags()` for forward-compat
+  diagnostics.
 
 Filesystem variant (added 2026-05-13, A3.0.4):
 - `cadk::inspect_path(path) -> CadkSummary` — `std::fs::read` + `inspect`.

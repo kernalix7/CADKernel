@@ -61,6 +61,26 @@ impl SaveOptions {
     }
 }
 
+/// Public per-blob view returned via [`CadkSummary::blobs`]. Excludes
+/// internal codec fields (offset, CRC) that callers should not depend
+/// on across format versions — those live on the on-disk [`BlobRecord`]
+/// type. `kind`, `name`, and `length` are stable cross-version.
+///
+/// Added in A3.0.6 (2026-05-13).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BlobInfo {
+    /// Blob kind tag (Document / Thumbnail / Signature / Attachment /
+    /// History / Unknown — see [`BlobKind`]).
+    pub kind: BlobKind,
+    /// Application-level name as written in the manifest (e.g.
+    /// `"document"`, `"thumbnail"`).
+    pub name: String,
+    /// Encoded blob length in bytes. Matches the on-disk size — when
+    /// `kind == Document` and the [`CadkFlags::DOCUMENT_COMPRESSED`]
+    /// header bit is set, this is the post-zstd length.
+    pub length: u64,
+}
+
 /// Cheap read-only summary of a `.cadk` container.
 ///
 /// Produced by [`inspect`]. Unlike [`decode`], reading a summary does not
@@ -69,7 +89,8 @@ impl SaveOptions {
 /// suitable for "Recent Files" lists, autosave dirs, and CI guards that
 /// only need metadata (schema version, size, flags, blob count).
 ///
-/// Added in A3.0.3 (2026-05-12).
+/// Added in A3.0.3 (2026-05-12); per-blob `blobs` list added in A3.0.6
+/// (2026-05-13).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CadkSummary {
     /// Header schema version. Must equal [`SCHEMA_VERSION`] for this
@@ -99,6 +120,14 @@ pub struct CadkSummary {
     /// Encoded length of the thumbnail blob in bytes, if present. `None`
     /// when no `BlobKind::Thumbnail` record is in the manifest.
     pub thumbnail_length: Option<u64>,
+    /// Per-blob summary in manifest order. Each entry exposes the
+    /// stable subset of the underlying [`BlobRecord`] — kind, name,
+    /// encoded length — so callers can enumerate forward-compat blob
+    /// kinds (e.g. `BlobKind::Unknown` or future variants) without
+    /// re-parsing the manifest.
+    ///
+    /// Added in A3.0.6 (2026-05-13).
+    pub blobs: Vec<BlobInfo>,
 }
 
 impl CadkSummary {
@@ -530,6 +559,16 @@ pub fn inspect(bytes: &[u8]) -> ApiResult<CadkSummary> {
         .ok_or_else(|| ApiError::Codec("no Document blob in manifest".into()))?;
     let thumbnail_length = manifest.find_first(BlobKind::Thumbnail).map(|r| r.length);
 
+    let blobs = manifest
+        .records
+        .iter()
+        .map(|r| BlobInfo {
+            kind: r.kind,
+            name: r.name.clone(),
+            length: r.length,
+        })
+        .collect();
+
     Ok(CadkSummary {
         schema_version: header.schema_version,
         flags: header.flags,
@@ -537,6 +576,7 @@ pub fn inspect(bytes: &[u8]) -> ApiResult<CadkSummary> {
         blob_count: manifest.records.len(),
         document_length,
         thumbnail_length,
+        blobs,
     })
 }
 
