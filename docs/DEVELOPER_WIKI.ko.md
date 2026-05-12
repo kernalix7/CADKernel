@@ -119,6 +119,24 @@ cadkernel (root)        전체 통합
   타입화된 `Outcome` 반환. 결정적 회귀 테스트·AI 평가용으로
   `Session::replay(commands)`, `log_to_json()`, `replay_from_json()` 제공.
 
+#### `.cadk` 네이티브 포맷 — A3 진행 중
+
+`cadkernel-api::cadk` 모듈은 적용된 커맨드 prefix를 바이너리 컨테이너로
+인코딩합니다 (매직 `CADK` + 64바이트 헤더 + JSON manifest + blob별 CRC-32).
+메모리 버퍼 API: `Session::save_cadk()` / `Session::load_cadk(&bytes)` ,
+썸네일 동봉 `save_cadk_with_thumbnail(thumb)` + 추출 `cadk::decode_thumbnail(bytes)`.
+
+파일시스템 경로 래퍼(2026-05-12, A3.0.1):
+- `Session::save_cadk_to_path(path)`
+- `Session::save_cadk_to_path_with_thumbnail(path, thumb)`
+- `Session::load_cadk_from_path(path)`
+
+I/O 오류는 `ApiError::Codec("file io: ...")`로 매핑(`ApiError` enum SemVer 안정).
+`crates/api/tests/fixtures/cadk-v0/r1_canonical.cadk` (309바이트, 커밋됨)는
+v0 on-disk 스키마 핀이며 `tests/cadk_v0_migration.rs`의 3개 가드 테스트가
+워크스페이스 `cargo test` 실행마다 호환성 검증. 재생성은 명시적으로
+`cargo test --test cadk_v0_migration regenerate -- --ignored --exact`만 허용.
+
 `docs/COMMERCIAL_CAD_ROADMAP.md` 의 §2 Phase 1 참조.
 
 ---

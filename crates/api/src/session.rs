@@ -250,6 +250,43 @@ impl Session {
         Self::replay(&commands)
     }
 
+    /// Encode the applied command prefix and write it to `path` as a
+    /// `.cadk` binary container. Convenience wrapper around
+    /// [`Self::save_cadk`] + `std::fs::write`. The destination is
+    /// truncated and replaced atomically only as far as the underlying
+    /// `std::fs::write` semantics permit (which is **not** crash-safe — see
+    /// the autosave API for that).
+    ///
+    /// I/O errors are surfaced as [`ApiError::Codec`] with a `file io:`
+    /// prefix so existing match arms over `ApiError` continue to compile.
+    pub fn save_cadk_to_path(&self, path: impl AsRef<std::path::Path>) -> ApiResult<()> {
+        let bytes = self.save_cadk()?;
+        std::fs::write(path.as_ref(), bytes)
+            .map_err(|err| ApiError::Codec(format!("file io: {err}")))
+    }
+
+    /// Variant of [`Self::save_cadk_to_path`] that additionally embeds a
+    /// thumbnail payload via [`Self::save_cadk_with_thumbnail`].
+    pub fn save_cadk_to_path_with_thumbnail(
+        &self,
+        path: impl AsRef<std::path::Path>,
+        thumbnail: &[u8],
+    ) -> ApiResult<()> {
+        let bytes = self.save_cadk_with_thumbnail(thumbnail)?;
+        std::fs::write(path.as_ref(), bytes)
+            .map_err(|err| ApiError::Codec(format!("file io: {err}")))
+    }
+
+    /// Read a `.cadk` container from `path` and restore the session.
+    /// Convenience wrapper around `std::fs::read` + [`Self::load_cadk`].
+    /// I/O errors are surfaced as [`ApiError::Codec`] with a `file io:`
+    /// prefix.
+    pub fn load_cadk_from_path(path: impl AsRef<std::path::Path>) -> ApiResult<Self> {
+        let bytes = std::fs::read(path.as_ref())
+            .map_err(|err| ApiError::Codec(format!("file io: {err}")))?;
+        Self::load_cadk(&bytes)
+    }
+
     /// Restore a session from a [`SessionSnapshot`] JSON document.
     /// Replays `commands[..cursor]` and keeps `commands[cursor..]` as the
     /// pending redo stack.

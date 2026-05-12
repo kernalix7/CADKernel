@@ -114,6 +114,26 @@ integration tests, downstream embedders). Three primary types:
   `Session::replay(commands)`, `log_to_json()`, `replay_from_json()` for
   deterministic regression tests and AI evaluation harnesses.
 
+#### `.cadk` native format — A3 in flight
+
+`cadkernel-api::cadk` encodes the applied command prefix into a binary
+container (magic `CADK` + 64-byte header + JSON manifest + per-blob CRC-32).
+Memory-buffer entry points: `Session::save_cadk()` / `Session::load_cadk(&bytes)`,
+plus `save_cadk_with_thumbnail(thumb)` for embedded preview PNGs and
+`cadk::decode_thumbnail(bytes)` to extract them.
+
+Filesystem-path wrappers (added 2026-05-12, A3.0.1):
+- `Session::save_cadk_to_path(path)`
+- `Session::save_cadk_to_path_with_thumbnail(path, thumb)`
+- `Session::load_cadk_from_path(path)`
+
+I/O failures map to `ApiError::Codec("file io: ...")` so the `ApiError` enum
+stays SemVer-stable. A committed v0 golden fixture at
+`crates/api/tests/fixtures/cadk-v0/r1_canonical.cadk` (309 bytes) pins the
+on-disk schema; `tests/cadk_v0_migration.rs` runs 3 guard tests against it
+on every workspace `cargo test`. Regenerate only via the explicit
+`cargo test --test cadk_v0_migration regenerate -- --ignored --exact`.
+
 See `docs/COMMERCIAL_CAD_ROADMAP.md` (Phase 1 in §2) for the long-term plan.
 
 ---

@@ -11,6 +11,12 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### Commercial CAD Roadmap — A3.0.1: `.cadk` filesystem-path API + v0 migration guard (2026-05-12)
+- **`Session::save_cadk_to_path(path)`**, **`Session::save_cadk_to_path_with_thumbnail(path, thumb)`**, **`Session::load_cadk_from_path(path)`** — convenience wrappers around the existing `save_cadk` / `load_cadk` byte-buffer API plus `std::fs::{read, write}`. Lifts the most common consumer pattern off every caller. I/O errors are surfaced as `ApiError::Codec(format!("file io: {err}"))` so the public `ApiError` enum stays SemVer-stable.
+- **`crates/api/tests/cadk_path_roundtrip.rs`** — 4 integration tests: roundtrip through a temp file, thumbnail-bearing roundtrip via `cadk::decode_thumbnail`, missing-path failure mode, unwritable-path failure mode (verifies the `file io:` prefix contract).
+- **`crates/api/tests/fixtures/cadk-v0/r1_canonical.cadk`** — committed v0 golden fixture (309 bytes) built from the canonical R1 command prefix (CreateBox 50×30×10, CreateCylinder r=3 h=12, BooleanSubtract). Pins the on-disk v0 schema so any future codec change that silently breaks v0 readability fails CI.
+- **`crates/api/tests/cadk_v0_migration.rs`** — 3 always-on guard tests + 1 `#[ignore]` regenerator. Verify (1) the v0 fixture decodes to the canonical command log, (2) it replays through `Session::load_cadk_from_path` to one solid, (3) the fixture starts with `CADK` magic. The `regenerate` test is the only sanctioned way to rebuild the fixture.
+
 #### Commercial CAD Roadmap — v0.5 Gates #6 / #7 / #8 **VERIFIED**: UX verification harness (2026-05-11)
 - **`crates/viewer/tests/picking_at_distance.rs`** — locks in Gate #6 picking-at-camera-distance invariant: face, edge, and vertex selection exercised at 1 m / 10 m / 100 m / 1000 m camera distances. Verifies that the B-Rep ray-cast pick path returns correct hit topology regardless of camera zoom level.
 - **`crates/viewer/tests/property_binding.rs`** — locks in Gate #7 property-panel two-way binding: Box dx/dy/dz and Cylinder radius/height are read back from the property panel state and confirmed to round-trip through the scene object. Verifies that edits in the Properties panel are reflected in the model without a full rebuild cycle.

@@ -11,6 +11,12 @@
 
 ### 추가됨
 
+#### 상용 CAD 로드맵 — A3.0.1: `.cadk` 파일시스템 경로 API + v0 마이그레이션 가드 (2026-05-12)
+- **`Session::save_cadk_to_path` / `save_cadk_to_path_with_thumbnail` / `load_cadk_from_path`** — 기존 바이트 버퍼 `save_cadk` / `load_cadk` + `std::fs::{read,write}` 래퍼. I/O 오류는 `ApiError::Codec("file io: ...")`로 매핑(SemVer 안정 — `ApiError` enum 그대로).
+- **`crates/api/tests/cadk_path_roundtrip.rs`** — 4개 통합 테스트(임시 파일 라운드트립, 썸네일 동봉 라운드트립, missing-path 실패 시 `file io:` 프리픽스 확인, unwritable-path 실패 동일).
+- **`crates/api/tests/fixtures/cadk-v0/r1_canonical.cadk`** — 커밋된 v0 골든 픽스처(309바이트, R1 정규 prefix). 향후 코덱 변경이 v0 호환을 깨면 CI에서 즉시 실패.
+- **`crates/api/tests/cadk_v0_migration.rs`** — 상시 3개 가드 + `#[ignore]` regenerator 1개. (1) 커맨드 로그 동일성, (2) `Session::load_cadk_from_path` 경유 solid_count == 1, (3) `CADK` 매직 바이트 시작.
+
 #### 상용 CAD 로드맵 — v0.5 Gate #6 / #7 / #8 **검증 완료**: UX 검증 하네스 (2026-05-11)
 - **`crates/viewer/tests/picking_at_distance.rs`** — Gate #6: 카메라 거리(1 m / 10 m / 100 m / 1000 m)별 B-Rep face/edge/vertex 피킹 불변성 잠금.
 - **`crates/viewer/tests/property_binding.rs`** — Gate #7: Box dx/dy/dz, Cylinder radius/height에 대한 속성 패널 양방향 바인딩 검증.
