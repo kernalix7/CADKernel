@@ -481,6 +481,7 @@ impl CadApp {
         edge_pairs
     }
 
+    // TODO(A3.3): route through Session once viewer Handle<SolidData> ↔ api SolidId mapping exists.
     fn boolean_with_box(
         &mut self,
         width: f64,
@@ -1346,21 +1347,41 @@ impl CadApp {
                     depth,
                 } => {
                     self.snapshot_before("Create Box");
-                    let mut model = BRepModel::new();
-                    match make_box(&mut model, Point3::ORIGIN, width, height, depth) {
-                        Ok(r) => {
-                            self.add_to_scene(
-                                &format!("Box ({width}×{height}×{depth})"),
-                                model,
-                                r.solid,
-                                Some(crate::scene::CreationParams::Box {
-                                    width,
-                                    height,
-                                    depth,
-                                }),
-                            );
-                            self.log_info(format!("Created box ({width} × {height} × {depth})"));
-                        }
+                    match self.session.execute(cadkernel_api::Command::CreateBox {
+                        dx: width,
+                        dy: height,
+                        dz: depth,
+                    }) {
+                        Ok(outcome) => match outcome.primary_id() {
+                            Some(id) => match self.session.document().clone_solid_brep(id) {
+                                Some((model, handle)) => {
+                                    self.add_to_scene(
+                                        &format!("Box ({width}×{height}×{depth})"),
+                                        model,
+                                        handle,
+                                        Some(crate::scene::CreationParams::Box {
+                                            width,
+                                            height,
+                                            depth,
+                                        }),
+                                    );
+                                    self.log_info(format!(
+                                        "Created box ({width} × {height} × {depth})"
+                                    ));
+                                }
+                                None => {
+                                    self.log_error(
+                                        "CreateBox: clone_solid_brep returned None"
+                                            .to_string(),
+                                    );
+                                }
+                            },
+                            None => {
+                                self.log_error(
+                                    "CreateBox: outcome had no primary id".to_string(),
+                                );
+                            }
+                        },
                         Err(e) => {
                             self.log_error(format!("CreateBox error: {e}"));
                         }
@@ -1369,17 +1390,39 @@ impl CadApp {
 
                 GuiAction::CreateCylinder { radius, height } => {
                     self.snapshot_before("Create Cylinder");
-                    let mut model = BRepModel::new();
-                    match make_cylinder(&mut model, Point3::ORIGIN, radius, height, 64) {
-                        Ok(r) => {
-                            self.add_to_scene(
-                                &format!("Cylinder (r={radius}, h={height})"),
-                                model,
-                                r.solid,
-                                Some(crate::scene::CreationParams::Cylinder { radius, height }),
-                            );
-                            self.log_info(format!("Created cylinder (r={radius}, h={height})"));
-                        }
+                    match self
+                        .session
+                        .execute(cadkernel_api::Command::CreateCylinder { radius, height })
+                    {
+                        Ok(outcome) => match outcome.primary_id() {
+                            Some(id) => match self.session.document().clone_solid_brep(id) {
+                                Some((model, handle)) => {
+                                    self.add_to_scene(
+                                        &format!("Cylinder (r={radius}, h={height})"),
+                                        model,
+                                        handle,
+                                        Some(crate::scene::CreationParams::Cylinder {
+                                            radius,
+                                            height,
+                                        }),
+                                    );
+                                    self.log_info(format!(
+                                        "Created cylinder (r={radius}, h={height})"
+                                    ));
+                                }
+                                None => {
+                                    self.log_error(
+                                        "CreateCylinder: clone_solid_brep returned None"
+                                            .to_string(),
+                                    );
+                                }
+                            },
+                            None => {
+                                self.log_error(
+                                    "CreateCylinder: outcome had no primary id".to_string(),
+                                );
+                            }
+                        },
                         Err(e) => {
                             self.log_error(format!("CreateCylinder error: {e}"));
                         }
@@ -1388,17 +1431,34 @@ impl CadApp {
 
                 GuiAction::CreateSphere { radius } => {
                     self.snapshot_before("Create Sphere");
-                    let mut model = BRepModel::new();
-                    match make_sphere(&mut model, Point3::ORIGIN, radius, 64, 32) {
-                        Ok(r) => {
-                            self.add_to_scene(
-                                &format!("Sphere (r={radius})"),
-                                model,
-                                r.solid,
-                                Some(crate::scene::CreationParams::Sphere { radius }),
-                            );
-                            self.log_info(format!("Created sphere (r={radius})"));
-                        }
+                    match self
+                        .session
+                        .execute(cadkernel_api::Command::CreateSphere { radius })
+                    {
+                        Ok(outcome) => match outcome.primary_id() {
+                            Some(id) => match self.session.document().clone_solid_brep(id) {
+                                Some((model, handle)) => {
+                                    self.add_to_scene(
+                                        &format!("Sphere (r={radius})"),
+                                        model,
+                                        handle,
+                                        Some(crate::scene::CreationParams::Sphere { radius }),
+                                    );
+                                    self.log_info(format!("Created sphere (r={radius})"));
+                                }
+                                None => {
+                                    self.log_error(
+                                        "CreateSphere: clone_solid_brep returned None"
+                                            .to_string(),
+                                    );
+                                }
+                            },
+                            None => {
+                                self.log_error(
+                                    "CreateSphere: outcome had no primary id".to_string(),
+                                );
+                            }
+                        },
                         Err(e) => {
                             self.log_error(format!("CreateSphere error: {e}"));
                         }
@@ -1410,6 +1470,7 @@ impl CadApp {
                     top_radius,
                     height,
                 } => {
+                    // TODO(A3.3): route through Session once Command::CreateCone gains top_radius (frustum) support.
                     self.snapshot_before("Create Cone");
                     let mut model = BRepModel::new();
                     match make_cone(
@@ -1451,29 +1512,39 @@ impl CadApp {
                     minor_radius,
                 } => {
                     self.snapshot_before("Create Torus");
-                    let mut model = BRepModel::new();
-                    match make_torus(
-                        &mut model,
-                        Point3::ORIGIN,
+                    match self.session.execute(cadkernel_api::Command::CreateTorus {
                         major_radius,
                         minor_radius,
-                        64,
-                        32,
-                    ) {
-                        Ok(r) => {
-                            self.add_to_scene(
-                                &format!("Torus (R={major_radius}, r={minor_radius})"),
-                                model,
-                                r.solid,
-                                Some(crate::scene::CreationParams::Torus {
-                                    major_radius,
-                                    minor_radius,
-                                }),
-                            );
-                            self.log_info(format!(
-                                "Created torus (R={major_radius}, r={minor_radius})"
-                            ));
-                        }
+                    }) {
+                        Ok(outcome) => match outcome.primary_id() {
+                            Some(id) => match self.session.document().clone_solid_brep(id) {
+                                Some((model, handle)) => {
+                                    self.add_to_scene(
+                                        &format!("Torus (R={major_radius}, r={minor_radius})"),
+                                        model,
+                                        handle,
+                                        Some(crate::scene::CreationParams::Torus {
+                                            major_radius,
+                                            minor_radius,
+                                        }),
+                                    );
+                                    self.log_info(format!(
+                                        "Created torus (R={major_radius}, r={minor_radius})"
+                                    ));
+                                }
+                                None => {
+                                    self.log_error(
+                                        "CreateTorus: clone_solid_brep returned None"
+                                            .to_string(),
+                                    );
+                                }
+                            },
+                            None => {
+                                self.log_error(
+                                    "CreateTorus: outcome had no primary id".to_string(),
+                                );
+                            }
+                        },
                         Err(e) => {
                             self.log_error(format!("CreateTorus error: {e}"));
                         }

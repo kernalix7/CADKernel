@@ -182,6 +182,25 @@ impl Document {
         Some((&slot.model, handle))
     }
 
+    /// Returns an owned clone of the underlying `(BRepModel, SolidData handle)`
+    /// pair for a solid, if it exists.
+    ///
+    /// Used by adapters (notably the viewer's A3.2 GuiAction bridge) that need
+    /// to hand a fully-owned `BRepModel` to APIs like `add_to_scene(model, ...)`
+    /// while keeping the `Session`'s borrow short — calling
+    /// `Session::execute(...)` returns an `Outcome`, releases the `&mut self`
+    /// borrow, and the caller then calls `session.document().clone_solid_brep(id)`.
+    ///
+    /// `BRepModel` derives `Clone` (see `crates/topology/src/lib.rs`), so this
+    /// is a straightforward deep clone of the topology stores plus the
+    /// `Handle<SolidData>` (which is `Copy`). Mutations to the returned model
+    /// do not affect the document's stored state.
+    pub fn clone_solid_brep(&self, id: SolidId) -> Option<(BRepModel, Handle<SolidData>)> {
+        let slot = self.get_slot(id)?;
+        let handle = slot.handle?;
+        Some((slot.model.clone(), handle))
+    }
+
     /// Returns the axis-aligned bounding box of a solid in world coordinates,
     /// computed by walking the underlying `BRepModel` vertex store. Returns
     /// `None` if the slot is missing, has no handle, or contains no vertices.

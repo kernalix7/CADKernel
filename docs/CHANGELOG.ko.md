@@ -11,6 +11,13 @@
 
 ### 추가됨
 
+#### 상용 CAD 로드맵 — A3.2: 4개 primitive 핸들러 Session::execute 라우팅 (2026-05-13)
+- **마이그레이션 핸들러**: `CreateBox` / `CreateCylinder` / `CreateSphere` / `CreateTorus`가 모델링 커널 직접 호출 대신 `Session::execute(Command::*)`를 경유하도록 변경. A3.1 autosave 배관이 이제 실제 편집(primitive 생성)을 캡처.
+- **`Document::clone_solid_brep(id)`** — viewer 핸들러가 `Command` 실행 후 B-Rep를 복제해 씬에 전달할 수 있도록 `cadkernel-api::Document`에 추가한 브리지 접근자.
+- **A3.3 deferred**: CreateCone은 frustum 지원을 위한 Command 스키마 확장이 필요하고, boolean 핸들러는 viewer Handle↔SolidId 매핑이 필요 — 둘 다 A3.3으로 deferred.
+- **테스트**: `crates/api/tests/autosave_e2e.rs` 신규 4개 E2E 테스트, `crates/api/tests/document_clone_brep.rs` 신규 4개 단위 테스트. 워크스페이스 합계: **3,262 통과 / 0 실패 / 1 무시** (기존 3,254).
+- STOP_LIST 그린.
+
 #### 상용 CAD 로드맵 — A3.1: autosave + canonical_hash + 복구 모달 (2026-05-13)
 - **`Document::canonical_hash() -> u64`** — 적용된 커맨드 로그에 대한 결정론적 FNV-1a 해시. 동일 커맨드 이력을 가진 두 `Document`는 항상 같은 해시를 반환. `Session::canonical_hash() -> u64`로도 노출.
 - **`cadk::AutosavePolicy { dir, max_snapshots, interval_secs }`** — 스냅샷 저장 위치·보관 개수·UI 틱 간격을 제어하는 값 타입 설정. `AutosaveEntry { path, hash, saved_at }`로 개별 스냅샷 기술.

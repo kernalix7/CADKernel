@@ -212,6 +212,15 @@ Viewer autosave integration (added 2026-05-13, A3.1):
   ("Unsaved work detected — recover?" / "Discard"). Recovering replays the snapshot
   via `Session::load_cadk`; discarding leaves the session empty.
 
+A3.2 primitive coverage (added 2026-05-13):
+- `CreateBox`, `CreateCylinder`, `CreateSphere`, `CreateTorus` handlers in
+  `crates/viewer/src/app.rs` now route through `Session::execute`. The A3.1 autosave
+  plumbing now captures real primitive-creation commands; previously the viewer session
+  was always empty so every autosave was a no-op. `Document::clone_solid_brep(id)`
+  bridges the executed `Outcome` back to the viewer scene.
+- Remaining handlers stage in A3.3: `CreateCone` (needs frustum Command extension),
+  boolean handlers (need viewer `Handle<SolidData>` ↔ `SolidId` mapping).
+
 See `docs/COMMERCIAL_CAD_ROADMAP.md` (Phase 1 in §2) for the long-term plan.
 
 ---

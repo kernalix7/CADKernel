@@ -197,6 +197,14 @@ Viewer autosave 통합(2026-05-13, A3.1):
   확인 후 해시가 빈 세션과 다르면 egui 복구 모달 표시(복구 / 폐기). 복구 선택 시
   `Session::load_cadk` 경유 재현.
 
+A3.2 primitive 커버리지(2026-05-13):
+- `CreateBox` / `CreateCylinder` / `CreateSphere` / `CreateTorus` 핸들러가
+  `Session::execute`를 경유하도록 변경. A3.1 autosave 배관이 이제 실제 편집을 캡처
+  (이전에는 viewer 세션이 항상 비어 있었음). `Document::clone_solid_brep(id)`로
+  실행된 `Outcome`을 viewer 씬에 전달.
+- A3.3 대기: `CreateCone`(frustum Command 확장 필요), boolean 핸들러
+  (viewer `Handle<SolidData>` ↔ `SolidId` 매핑 필요).
+
 `docs/COMMERCIAL_CAD_ROADMAP.md` 의 §2 Phase 1 참조.
 
 ---

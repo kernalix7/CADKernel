@@ -11,6 +11,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### Commercial CAD Roadmap — A3.2: route 4 primitive handlers through Session::execute (2026-05-13)
+- **Migrated handlers**: `CreateBox`, `CreateCylinder`, `CreateSphere`, `CreateTorus` in `crates/viewer/src/app.rs` now route through `Session::execute(Command::*)` instead of calling the modeling kernel directly. The `Outcome` is unpacked, `Document::clone_solid_brep` is called to hand the resulting B-Rep to the viewer scene, and the session log is updated — activating the A3.1 autosave plumbing so every real primitive creation is now captured in the document history and eligible for autosave snapshot.
+- **`Document::clone_solid_brep(id) -> Option<(BRepModel, Handle<SolidData>)>`** — new bridge accessor added to `cadkernel-api::Document` so viewer handlers can retrieve a cloned B-Rep after executing a `Command` without reaching through the session facade.
+- **Autosave now captures real edits**: with 4 handlers migrated, the A3.1 tick-based snapshot writer receives a session log with actual geometry commands. Previously the viewer session remained empty (no commands routed through it), so every autosave was a no-op snapshot of an empty document.
+- **A3.3 deferred**: CreateCone needs Command schema extension for frustum support; boolean handlers need viewer Handle↔SolidId mapping — both deferred to A3.3.
+- **Tests**: 4 new E2E integration tests in `crates/api/tests/autosave_e2e.rs` (CreateBox roundtrip through autosave + recover_latest + load_cadk_from_path, retain enforcement, empty-session snapshot, compression flag). 4 new unit tests in `crates/api/tests/document_clone_brep.rs`. Workspace total: **3,262 passed / 0 failed / 1 ignored** (was 3,254).
+- STOP_LIST clean (no new `Command` / `Outcome` variants, no new format crate).
+
 #### Commercial CAD Roadmap — A3.1: autosave + canonical_hash + recovery modal (2026-05-13)
 - **`Document::canonical_hash() -> u64`** — deterministic FNV-1a hash over the applied command log (encoding: command kind tag ++ JSON-serialised fields). Two `Document` instances with identical command histories produce the same hash regardless of wall-clock or process ID. Also exposed as **`Session::canonical_hash() -> u64`** on the session facade so callers never need to reach into the `Document` directly.
 - **`cadk::AutosavePolicy { dir, max_snapshots, interval_secs }`** — value-type configuration struct controlling where autosave snapshots land, how many to keep, and at what interval (measured in UI ticks). `AutosavePolicy::default()` resolves `dir` to `$TMPDIR/cadkernel_autosave`. Also **`cadk::AutosaveEntry { path, hash, saved_at }`** — a single resolved snapshot descriptor returned by the listing helpers.
