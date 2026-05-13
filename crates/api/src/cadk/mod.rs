@@ -18,6 +18,7 @@
 pub mod codec;
 pub mod header;
 pub mod manifest;
+pub mod migrate;
 
 pub use codec::{
     BlobInfo, CadkSummary, SaveOptions, decode, decode_thumbnail, encode, encode_with_options,
@@ -25,3 +26,4 @@ pub use codec::{
 };
 pub use header::{CadkFlags, CadkHeader, MAGIC};
 pub use manifest::{BlobKind, BlobRecord, Manifest};
+pub use migrate::{SchemaVersion, migrate_to_current};

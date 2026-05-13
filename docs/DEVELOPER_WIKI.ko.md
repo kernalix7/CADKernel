@@ -154,6 +154,14 @@ manifest 순서 — A3.0.6 추가) + 비트 헬퍼 `.document_compressed()` /
 `std::fs::read` + `inspect`. I/O 오류는 다른 path API와 동일하게 `file io:` 접두사,
 파싱 오류는 원래 진단 그대로 — 호출자가 두 실패 모드 구분 가능.
 
+스키마 버전 디스패치(2026-05-13, A3.0.7):
+- `cadk::SchemaVersion` — raw `u32` 스키마 버전의 타입 view. 현재 variant 단 하나
+  (`V1`). `SchemaVersion::current()`은 매번의 `encode`가 출력하는 버전.
+- `cadk::migrate_to_current(bytes) -> Vec<u8>` — 옛 컨테이너를 현재 스키마로 투명
+  격상. 현재는 V1 → V1 no-op. 향후 스키마 bump 시 match arm만 추가하면 됨. `inspect`의
+  strict 버전 검사를 의도적으로 우회 — `is_supported()`가 옛 버전을 거부하는데
+  마이그레이터의 일은 정확히 그걸 처리하는 것.
+
 CLI(`cadk-inspect`, 2026-05-13 A3.0.5 재구축):
 - 기본 `cadk-inspect <file>` — `CadkSummary` 기반 구조화 요약 + 전체 `decode()`
   무결성 검사. 종료 코드 무변경(0/1/2).

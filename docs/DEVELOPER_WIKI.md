@@ -159,6 +159,17 @@ Filesystem variant (added 2026-05-13, A3.0.4):
   parse errors keep their original diagnostics so callers can tell the
   two failure modes apart.
 
+Schema-version dispatch (added 2026-05-13, A3.0.7):
+- `cadk::SchemaVersion` — typed view over the raw `u32` schema version;
+  exactly one variant (`V1`) today. `SchemaVersion::current()` returns
+  the version every fresh `encode` produces.
+- `cadk::migrate_to_current(bytes) -> Vec<u8>` — transparently brings
+  old containers up to the current schema. As of now it is a no-op for
+  V1; the scaffold pins the contract so future schema bumps just grow
+  a match arm. Deliberately bypasses `inspect`'s strict version check
+  because `is_supported()` would reject the older versions that a
+  migrator's whole job is to handle.
+
 CLI (`cadk-inspect`, rebuilt 2026-05-13 in A3.0.5):
 - Default `cadk-inspect <file>` — structured summary driven by
   `CadkSummary` + full `decode()` integrity check. Exit codes

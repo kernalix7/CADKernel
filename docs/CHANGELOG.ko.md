@@ -11,6 +11,14 @@
 
 ### 추가됨
 
+#### 상용 CAD 로드맵 — A3.0.7: `cadk::migrate` 모듈 + `SchemaVersion` enum (2026-05-13)
+- **`crates/api/src/cadk/migrate.rs`** — 스키마 버전 디스패치를 인라인 검사에서 분리한 신규 모듈. `SchemaVersion::V1`(현재 유일한 variant, 디스크에 정수 `1`) + `from_u32` / `as_u32` / `current()` 접근자, 그리고 마이그레이터 진입점 `cadk::migrate_to_current(bytes) -> ApiResult<Vec<u8>>`. 이번 슬라이스 시점에는 지원 버전이 하나이므로 정상 바이트에 대해 항상 no-op. 모듈은 향후 스키마 bump 계약을 핀하기 위해 존재 — V2가 출시되면 `migrate_to_current`의 match에 `V1 → V2` transform이 추가되고, 옛 파일 리더가 `cadk::decode` 호출 전에 `migrate_to_current`를 거치게 된다.
+- **설계 노트** — `migrate_to_current`는 `cadk::inspect()` / `CadkHeader::is_supported()`를 의도적으로 우회. 그쪽은 미지원 버전을 거부하는데, 마이그레이터는 정확히 반대 동작이 필요함. 대신 magic + 4바이트 `schema_version`만 가볍게 파싱해 올바른 transform으로 디스패치하고, 마이그레이션 후에만 정규 검증 경로로 흐르게 한다.
+- **`pub use cadk::{SchemaVersion, migrate_to_current}`** cadk 모듈 레벨 재노출 — 호출자가 서브모듈 경로를 알 필요 없음.
+- **6개 단위 테스트** (`crates/api/src/cadk/migrate.rs`): `u32` 라운드트립, `SchemaVersion::current()` == `header::SCHEMA_VERSION`, `from_u32`가 미지원 값(0/2/`u32::MAX`) 거부, 마이그레이터가 truncation/bad magic/미지원 버전에서 `ApiError::Codec`.
+- **`crates/api/tests/cadk_migrate.rs`** — 4개 통합 테스트. 신규 인코딩된 V1 바이트의 동일성, 압축+썸네일 플래그가 라운드트립 후 inspect에서 보존, 커밋된 v0 골든 픽스처 무변경 라운드트립, `migrate → inspect → decode`가 원본 명령 로그 복원.
+- STOP_LIST 그린(새 `Command` / `Outcome` / format crate 없음).
+
 #### 상용 CAD 로드맵 — A3.0.6: `CadkSummary` per-blob 뷰 노출 (2026-05-13)
 - **`cadk::BlobInfo { kind, name, length }`** — on-disk `BlobRecord`의 안정 subset(kind 태그, manifest 이름, 인코딩 길이) 공개 타입. 내부 코덱 필드(`offset`, `crc32`)는 포맷 버전 간 안정성을 위해 의도적으로 숨김.
 - **`CadkSummary::blobs: Vec<BlobInfo>`** — `cadk::inspect()`가 manifest 순서로 채우는 per-blob 뷰. forward-compat blob kind(`BlobKind::Unknown` 등)를 manifest 본문 재파싱 없이 열거 가능. additive 필드 — 기존 `blob_count` / `document_length` / `thumbnail_length` 무변경, 동일 manifest 레코드 셋에서 유도.
