@@ -141,8 +141,9 @@ fn mcp_create_primitive_cylinder_succeeds() {
 
 #[test]
 fn mcp_create_primitive_cone_nonzero_top_radius_rejected() {
-    // top_radius != 0 is rejected with INVALID_PARAMS per Gate #5 scope
-    // (Command::CreateCone has no top_radius field; frustum not supported).
+    // top_radius != 0 is rejected with INVALID_PARAMS by the MCP server.
+    // Command::CreateCone now carries top_radius but the MCP layer explicitly
+    // rejects non-zero values (frustum via MCP deferred).
     let mut server = McpServer::new();
     let req = r#"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"create_primitive","arguments":{"type":"cone","dimensions":{"base_radius":3.0,"top_radius":1.0,"height":5.0}}}}"#;
     let r = call(&mut server, req);
