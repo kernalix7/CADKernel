@@ -478,16 +478,16 @@ fn scene_default_is_empty() {
 #[test]
 fn scene_add_mesh_object_increments_len() {
     let mut scene = Scene::new();
-    scene.add_mesh_object("Obj1", empty_mesh(), None);
+    scene.add_mesh_object("Obj1", empty_mesh(), None, None);
     assert_eq!(scene.len(), 1);
-    scene.add_mesh_object("Obj2", empty_mesh(), None);
+    scene.add_mesh_object("Obj2", empty_mesh(), None, None);
     assert_eq!(scene.len(), 2);
 }
 
 #[test]
 fn scene_remove_object_decrements_len() {
     let mut scene = Scene::new();
-    let id = scene.add_mesh_object("Obj", empty_mesh(), None);
+    let id = scene.add_mesh_object("Obj", empty_mesh(), None, None);
     assert!(scene.remove_object(id));
     assert!(scene.is_empty());
 }
@@ -501,8 +501,8 @@ fn scene_remove_nonexistent_object_returns_false() {
 #[test]
 fn scene_add_objects_get_incrementing_ids() {
     let mut scene = Scene::new();
-    let id1 = scene.add_mesh_object("A", empty_mesh(), None);
-    let id2 = scene.add_mesh_object("B", empty_mesh(), None);
+    let id1 = scene.add_mesh_object("A", empty_mesh(), None, None);
+    let id2 = scene.add_mesh_object("B", empty_mesh(), None, None);
     assert_ne!(id1, id2);
     assert!(id2 > id1);
 }
@@ -510,7 +510,7 @@ fn scene_add_objects_get_incrementing_ids() {
 #[test]
 fn scene_get_returns_object_by_id() {
     let mut scene = Scene::new();
-    let id = scene.add_mesh_object("Named", empty_mesh(), None);
+    let id = scene.add_mesh_object("Named", empty_mesh(), None, None);
     let obj = scene.get(id).unwrap();
     assert_eq!(obj.name, "Named");
     assert_eq!(obj.id, id);
@@ -525,7 +525,7 @@ fn scene_get_nonexistent_returns_none() {
 #[test]
 fn scene_get_mut_allows_mutation() {
     let mut scene = Scene::new();
-    let id = scene.add_mesh_object("Obj", empty_mesh(), None);
+    let id = scene.add_mesh_object("Obj", empty_mesh(), None, None);
     scene.get_mut(id).unwrap().name = "Renamed".into();
     assert_eq!(scene.get(id).unwrap().name, "Renamed");
 }
@@ -533,7 +533,7 @@ fn scene_get_mut_allows_mutation() {
 #[test]
 fn scene_new_objects_are_visible_and_unselected() {
     let mut scene = Scene::new();
-    let id = scene.add_mesh_object("Obj", empty_mesh(), None);
+    let id = scene.add_mesh_object("Obj", empty_mesh(), None, None);
     let obj = scene.get(id).unwrap();
     assert!(obj.visible);
     assert!(!obj.selected);
@@ -542,8 +542,8 @@ fn scene_new_objects_are_visible_and_unselected() {
 #[test]
 fn scene_visible_objects_excludes_hidden() {
     let mut scene = Scene::new();
-    let id = scene.add_mesh_object("A", empty_mesh(), None);
-    scene.add_mesh_object("B", empty_mesh(), None);
+    let id = scene.add_mesh_object("A", empty_mesh(), None, None);
+    scene.add_mesh_object("B", empty_mesh(), None, None);
     scene.get_mut(id).unwrap().visible = false;
     assert_eq!(scene.visible_objects().count(), 1);
 }
@@ -551,8 +551,8 @@ fn scene_visible_objects_excludes_hidden() {
 #[test]
 fn scene_select_single_selects_one_and_deselects_others() {
     let mut scene = Scene::new();
-    let id1 = scene.add_mesh_object("A", empty_mesh(), None);
-    let id2 = scene.add_mesh_object("B", empty_mesh(), None);
+    let id1 = scene.add_mesh_object("A", empty_mesh(), None, None);
+    let id2 = scene.add_mesh_object("B", empty_mesh(), None, None);
     scene.select_single(id1);
     assert!(scene.get(id1).unwrap().selected);
     assert!(!scene.get(id2).unwrap().selected);
@@ -564,7 +564,7 @@ fn scene_select_single_selects_one_and_deselects_others() {
 #[test]
 fn scene_deselect_all_clears_selection() {
     let mut scene = Scene::new();
-    let id = scene.add_mesh_object("A", empty_mesh(), None);
+    let id = scene.add_mesh_object("A", empty_mesh(), None, None);
     scene.select_single(id);
     scene.deselect_all();
     assert!(!scene.get(id).unwrap().selected);
@@ -574,8 +574,8 @@ fn scene_deselect_all_clears_selection() {
 #[test]
 fn scene_select_all_selects_only_visible() {
     let mut scene = Scene::new();
-    let id1 = scene.add_mesh_object("A", empty_mesh(), None);
-    let id2 = scene.add_mesh_object("B", empty_mesh(), None);
+    let id1 = scene.add_mesh_object("A", empty_mesh(), None, None);
+    let id2 = scene.add_mesh_object("B", empty_mesh(), None, None);
     scene.get_mut(id2).unwrap().visible = false;
     scene.select_all();
     assert!(scene.get(id1).unwrap().selected);
@@ -585,7 +585,7 @@ fn scene_select_all_selects_only_visible() {
 #[test]
 fn scene_toggle_select_flips_selection_state() {
     let mut scene = Scene::new();
-    let id = scene.add_mesh_object("A", empty_mesh(), None);
+    let id = scene.add_mesh_object("A", empty_mesh(), None, None);
     assert!(!scene.get(id).unwrap().selected);
     scene.toggle_select(id);
     assert!(scene.get(id).unwrap().selected);
@@ -596,8 +596,8 @@ fn scene_toggle_select_flips_selection_state() {
 #[test]
 fn scene_selected_ids_returns_correct_set() {
     let mut scene = Scene::new();
-    let id1 = scene.add_mesh_object("A", empty_mesh(), None);
-    let id2 = scene.add_mesh_object("B", empty_mesh(), None);
+    let id1 = scene.add_mesh_object("A", empty_mesh(), None, None);
+    let id2 = scene.add_mesh_object("B", empty_mesh(), None, None);
     scene.select_single(id1);
     let ids = scene.selected_ids();
     assert_eq!(ids, vec![id1]);
@@ -609,8 +609,8 @@ fn scene_selected_ids_returns_correct_set() {
 #[test]
 fn scene_move_up_reorders_objects() {
     let mut scene = Scene::new();
-    let id1 = scene.add_mesh_object("A", empty_mesh(), None);
-    let id2 = scene.add_mesh_object("B", empty_mesh(), None);
+    let id1 = scene.add_mesh_object("A", empty_mesh(), None, None);
+    let id2 = scene.add_mesh_object("B", empty_mesh(), None, None);
     scene.move_up(id2);
     assert_eq!(scene.objects[0].id, id2);
     assert_eq!(scene.objects[1].id, id1);
@@ -619,8 +619,8 @@ fn scene_move_up_reorders_objects() {
 #[test]
 fn scene_move_down_reorders_objects() {
     let mut scene = Scene::new();
-    let id1 = scene.add_mesh_object("A", empty_mesh(), None);
-    let id2 = scene.add_mesh_object("B", empty_mesh(), None);
+    let id1 = scene.add_mesh_object("A", empty_mesh(), None, None);
+    let id2 = scene.add_mesh_object("B", empty_mesh(), None, None);
     scene.move_down(id1);
     assert_eq!(scene.objects[0].id, id2);
     assert_eq!(scene.objects[1].id, id1);
@@ -629,8 +629,8 @@ fn scene_move_down_reorders_objects() {
 #[test]
 fn scene_root_objects_excludes_children() {
     let mut scene = Scene::new();
-    let parent = scene.add_mesh_object("Parent", empty_mesh(), None);
-    let child = scene.add_mesh_object("Child", empty_mesh(), None);
+    let parent = scene.add_mesh_object("Parent", empty_mesh(), None, None);
+    let child = scene.add_mesh_object("Child", empty_mesh(), None, None);
     scene.get_mut(child).unwrap().parent_id = Some(parent);
     let roots = scene.root_objects();
     assert_eq!(roots.len(), 1);
@@ -640,9 +640,9 @@ fn scene_root_objects_excludes_children() {
 #[test]
 fn scene_children_of_returns_only_direct_children() {
     let mut scene = Scene::new();
-    let parent = scene.add_mesh_object("Parent", empty_mesh(), None);
-    let child1 = scene.add_mesh_object("Child1", empty_mesh(), None);
-    let child2 = scene.add_mesh_object("Child2", empty_mesh(), None);
+    let parent = scene.add_mesh_object("Parent", empty_mesh(), None, None);
+    let child1 = scene.add_mesh_object("Child1", empty_mesh(), None, None);
+    let child2 = scene.add_mesh_object("Child2", empty_mesh(), None, None);
     scene.get_mut(child1).unwrap().parent_id = Some(parent);
     scene.get_mut(child2).unwrap().parent_id = Some(parent);
     let children = scene.children_of(parent);
@@ -652,7 +652,7 @@ fn scene_children_of_returns_only_direct_children() {
 #[test]
 fn scene_active_body_set_and_clear() {
     let mut scene = Scene::new();
-    let id = scene.add_mesh_object("Body", empty_mesh(), None);
+    let id = scene.add_mesh_object("Body", empty_mesh(), None, None);
     assert!(scene.active_body_id.is_none());
     scene.set_active_body(Some(id));
     assert_eq!(scene.active_body_id, Some(id));
@@ -672,7 +672,7 @@ fn scene_create_group_returns_increasing_ids() {
 #[test]
 fn scene_group_selected_assigns_group_id() {
     let mut scene = Scene::new();
-    let id = scene.add_mesh_object("A", empty_mesh(), None);
+    let id = scene.add_mesh_object("A", empty_mesh(), None, None);
     scene.select_single(id);
     let gid = scene.create_group("MyGroup");
     scene.group_selected(gid);
@@ -682,7 +682,7 @@ fn scene_group_selected_assigns_group_id() {
 #[test]
 fn scene_ungroup_object_sets_group_zero() {
     let mut scene = Scene::new();
-    let id = scene.add_mesh_object("A", empty_mesh(), None);
+    let id = scene.add_mesh_object("A", empty_mesh(), None, None);
     scene.select_single(id);
     let gid = scene.create_group("G");
     scene.group_selected(gid);
@@ -693,8 +693,8 @@ fn scene_ungroup_object_sets_group_zero() {
 #[test]
 fn scene_group_members_returns_members() {
     let mut scene = Scene::new();
-    let id1 = scene.add_mesh_object("A", empty_mesh(), None);
-    let id2 = scene.add_mesh_object("B", empty_mesh(), None);
+    let id1 = scene.add_mesh_object("A", empty_mesh(), None, None);
+    let id2 = scene.add_mesh_object("B", empty_mesh(), None, None);
     scene.select_single(id1);
     scene.toggle_select(id2);
     let gid = scene.create_group("G");
@@ -708,7 +708,7 @@ fn scene_group_members_returns_members() {
 #[test]
 fn scene_toggle_group_visibility_hides_and_shows_members() {
     let mut scene = Scene::new();
-    let id = scene.add_mesh_object("A", empty_mesh(), None);
+    let id = scene.add_mesh_object("A", empty_mesh(), None, None);
     scene.select_single(id);
     let gid = scene.create_group("G");
     scene.group_selected(gid);
@@ -721,7 +721,7 @@ fn scene_toggle_group_visibility_hides_and_shows_members() {
 #[test]
 fn scene_delete_group_ungroups_members() {
     let mut scene = Scene::new();
-    let id = scene.add_mesh_object("A", empty_mesh(), None);
+    let id = scene.add_mesh_object("A", empty_mesh(), None, None);
     scene.select_single(id);
     let gid = scene.create_group("G");
     scene.group_selected(gid);

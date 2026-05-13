@@ -53,7 +53,7 @@ fn setup(gap: f32) -> (Scene, Camera, [f32; 3], [f32; 3], f32, f32) {
         height: H,
         depth: D,
     };
-    let _id = scene.add_object("Box", model, r.solid, Some(params));
+    let _id = scene.add_object("Box", model, r.solid, Some(params), None);
 
     let cx = (W * 0.5) as f32;
     let cy = (H * 0.5) as f32;

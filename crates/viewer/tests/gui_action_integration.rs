@@ -43,7 +43,7 @@ fn add_box(scene: &mut Scene, name: &str, w: f64, h: f64, d: f64) -> u32 {
         height: h,
         depth: d,
     };
-    scene.add_object(name, model, r.solid, Some(params))
+    scene.add_object(name, model, r.solid, Some(params), None)
 }
 
 fn add_box_at(scene: &mut Scene, name: &str, origin: Point3, w: f64, h: f64, d: f64) -> u32 {
@@ -54,14 +54,14 @@ fn add_box_at(scene: &mut Scene, name: &str, origin: Point3, w: f64, h: f64, d: 
         height: h,
         depth: d,
     };
-    scene.add_object(name, model, r.solid, Some(params))
+    scene.add_object(name, model, r.solid, Some(params), None)
 }
 
 fn add_sphere(scene: &mut Scene, name: &str, radius: f64) -> u32 {
     let mut model = BRepModel::new();
     let r = make_sphere(&mut model, Point3::ORIGIN, radius, 64, 32).expect("make_sphere");
     let params = CreationParams::Sphere { radius };
-    scene.add_object(name, model, r.solid, Some(params))
+    scene.add_object(name, model, r.solid, Some(params), None)
 }
 
 fn snapshot_from(scene: &Scene) -> ModelSnapshot {
@@ -226,7 +226,7 @@ fn boolean_union_combines_two_boxes_into_fewer_objects() {
         .next()
         .map(|(h, _)| h)
         .expect("union produced no solid");
-    scene.add_object("A_union_B", result_model, first, None);
+    scene.add_object("A_union_B", result_model, first, None, None);
     assert_eq!(scene.len(), 1, "union should leave exactly one object");
 }
 
@@ -560,7 +560,7 @@ fn mesh_add_via_scene_is_supported() {
     // MeshSubdivide, MeshSmooth, etc. apply to imported meshes attached
     // to a Scene object via add_mesh_object.
     let mut scene = Scene::new();
-    let id = scene.add_mesh_object("ImportedMesh", Mesh::new(), None);
+    let id = scene.add_mesh_object("ImportedMesh", Mesh::new(), None, None);
     assert_eq!(scene.len(), 1);
     assert!(scene.get(id).is_some());
 }
@@ -801,6 +801,7 @@ fn draft_rectangle_fills_patch_and_adds_to_scene() {
             width: 2.0,
             height: 1.0,
         }),
+    None,
     );
     assert_eq!(scene.len(), 1);
     assert!(!scene.get(id).unwrap().vertices.is_empty());
@@ -821,6 +822,7 @@ fn draft_polygon_fills_patch_and_adds_to_scene() {
             radius: 1.0,
             sides: 6,
         }),
+    None,
     );
     assert_eq!(scene.len(), 1);
     assert!(!scene.get(id).unwrap().vertices.is_empty());
@@ -843,7 +845,7 @@ fn surface_filling_creates_solid_from_boundary() {
         Point3::new(0.0, 2.0, 0.0),
     ];
     let r = filling(&mut model, &boundary, 1).expect("filling");
-    let id = scene.add_object("Filling", model, r.solid, None);
+    let id = scene.add_object("Filling", model, r.solid, None, None);
     assert_eq!(scene.len(), 1);
     assert!(!scene.get(id).unwrap().vertices.is_empty());
 }
@@ -856,7 +858,7 @@ fn surface_boundary_fills_closed_polyline() {
     let mut model = BRepModel::new();
     let pts = make_polygon_wire(Point3::ORIGIN, Vec3::Z, 1.0, 6).expect("polygon wire");
     let r = filling(&mut model, &pts, 1).expect("filling");
-    let id = scene.add_object("Boundary", model, r.solid, None);
+    let id = scene.add_object("Boundary", model, r.solid, None, None);
     assert_eq!(scene.len(), 1);
     assert!(!scene.get(id).unwrap().vertices.is_empty());
 }
@@ -877,6 +879,7 @@ fn surface_pipe_creates_solid_along_path() {
             radius: 0.25,
             length: 2.0,
         }),
+    None,
     );
     assert_eq!(scene.len(), 1);
     let obj = scene.get(id).unwrap();
@@ -1208,6 +1211,7 @@ fn duplicate_object_via_clone_increases_len() {
         obj_a.model.clone(),
         obj_a.solid,
         obj_a.params.clone(),
+    None,
     );
     assert_eq!(scene.len(), 2);
     assert_ne!(new_id, id_a);
@@ -1676,7 +1680,7 @@ fn focus_object_dispatch_is_a_noop_on_empty_vertex_list() {
     // An object with no geometry must not perturb the camera.
     let mut scene = Scene::new();
     let empty_mesh = Mesh::new();
-    let id = scene.add_mesh_object("empty", empty_mesh, None);
+    let id = scene.add_mesh_object("empty", empty_mesh, None, None);
     let obj = scene.get(id).unwrap();
 
     let mut cam = Camera::new(1.0);

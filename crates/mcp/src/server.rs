@@ -385,6 +385,7 @@ impl McpServer {
                     Command::CreateCone {
                         radius: base_radius,
                         height,
+                        top_radius: 0.0,
                     },
                     format!("cone(br={base_radius},h={height})"),
                 )

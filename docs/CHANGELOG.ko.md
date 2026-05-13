@@ -11,6 +11,14 @@
 
 ### 추가됨
 
+#### 상용 CAD 로드맵 — A3.3: CreateCone frustum 지원 + 4개 deferred 핸들러 마이그레이션 (2026-05-13)
+- **`Command::CreateCone` 스키마 확장** — `top_radius` 필드 추가(`#[serde(default)]`, 기본값 0.0). `top_radius > 0`이면 frustum, 0이면 기본 콘. 기존 `.cadk` 파일은 필드 누락 시 `serde(default)`로 정상 역직렬화.
+- **viewer 씬 오브젝트 `SolidId` 매핑** — `SceneObject`에 `solid_id: Option<SolidId>` 추가. boolean 핸들러가 세션에서 올바른 operand solid를 찾는 데 사용.
+- **4개 핸들러 마이그레이션**: `CreateCone`(frustum 지원), `BooleanUnionWith` / `BooleanSubtractWith` / `BooleanIntersectWith`가 모두 `Session::execute`를 경유. Autosave가 이제 콘과 세 boolean 연산을 캡처.
+- **잔여**: 5개 primitive(Tube/Prism/Wedge/Ellipsoid/Helix) — STOP_LIST 해제 후 A3.4 또는 v1.0.
+- **테스트**: 신규 6개. 워크스페이스 합계: **3,268 통과 / 0 실패 / 1 무시** (기존 3,262).
+- STOP_LIST 그린.
+
 #### 상용 CAD 로드맵 — A3.2: 4개 primitive 핸들러 Session::execute 라우팅 (2026-05-13)
 - **마이그레이션 핸들러**: `CreateBox` / `CreateCylinder` / `CreateSphere` / `CreateTorus`가 모델링 커널 직접 호출 대신 `Session::execute(Command::*)`를 경유하도록 변경. A3.1 autosave 배관이 이제 실제 편집(primitive 생성)을 캡처.
 - **`Document::clone_solid_brep(id)`** — viewer 핸들러가 `Command` 실행 후 B-Rep를 복제해 씬에 전달할 수 있도록 `cadkernel-api::Document`에 추가한 브리지 접근자.

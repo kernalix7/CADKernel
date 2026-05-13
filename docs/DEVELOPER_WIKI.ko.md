@@ -202,8 +202,12 @@ A3.2 primitive 커버리지(2026-05-13):
   `Session::execute`를 경유하도록 변경. A3.1 autosave 배관이 이제 실제 편집을 캡처
   (이전에는 viewer 세션이 항상 비어 있었음). `Document::clone_solid_brep(id)`로
   실행된 `Outcome`을 viewer 씬에 전달.
-- A3.3 대기: `CreateCone`(frustum Command 확장 필요), boolean 핸들러
-  (viewer `Handle<SolidData>` ↔ `SolidId` 매핑 필요).
+
+A3.3 콘 + boolean 커버리지(2026-05-13):
+- `Command::CreateCone`에 `top_radius` 필드 추가(`#[serde(default)]`, 기본값 0.0) — frustum 생성 지원. `CreateCone` 핸들러가 `Session::execute`를 경유하도록 마이그레이션.
+- `BooleanUnionWith` / `BooleanSubtractWith` / `BooleanIntersectWith` 핸들러 마이그레이션. viewer 씬 오브젝트에 `solid_id: Option<SolidId>` 필드 추가 — API 레벨 `SolidId`와 씬 항목을 연결.
+- Autosave가 이제 콘(frustum 포함)과 세 boolean 연산을 캡처.
+- 잔여: 5개 primitive(Tube/Prism/Wedge/Ellipsoid/Helix) — STOP_LIST 해제 후 신규 `Command` variant 추가 예정(A3.4 또는 v1.0).
 
 `docs/COMMERCIAL_CAD_ROADMAP.md` 의 §2 Phase 1 참조.
 

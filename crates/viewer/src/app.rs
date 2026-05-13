@@ -423,18 +423,24 @@ impl CadApp {
     }
 
     /// Add a newly created solid to the scene and update GPU.
+    ///
+    /// `solid_id` is `Some(_)` when the solid was produced by
+    /// `Session::execute(...)` (so the api `Document` tracks it for
+    /// autosave). Pass `None` for legacy/viewer-local solids — those
+    /// will not appear in autosave snapshots.
     fn add_to_scene(
         &mut self,
         name: &str,
         model: BRepModel,
         solid: Handle<SolidData>,
         params: Option<crate::scene::CreationParams>,
+        solid_id: Option<cadkernel_api::SolidId>,
     ) {
         let mesh = cadkernel_io::tessellate_solid(&model, solid);
         self.current_mesh = Some(mesh);
         self.current_solid = Some(solid);
         self.model = model.clone();
-        let id = self.scene.add_object(name, model, solid, params);
+        let id = self.scene.add_object(name, model, solid, params, solid_id);
         self.scene.select_single(id);
         self.rebuild_scene_gpu();
         // Fit camera if this is the first object
@@ -442,6 +448,16 @@ impl CadApp {
             let (min, max) = compute_bounds(&self.vertices);
             self.camera.fit_to_bounds(min, max);
         }
+    }
+
+    /// A3.3 — look up the api `SolidId` (if any) for a scene object.
+    /// Returns `None` for legacy/viewer-local objects that were never
+    /// created through `Session::execute`.
+    pub(crate) fn scene_object_solid_id(
+        &self,
+        scene_id: crate::scene::ObjectId,
+    ) -> Option<cadkernel_api::SolidId> {
+        self.scene.get(scene_id).and_then(|o| o.solid_id)
     }
 
     fn collect_edge_pairs(
@@ -481,7 +497,11 @@ impl CadApp {
         edge_pairs
     }
 
-    // TODO(A3.3): route through Session once viewer Handle<SolidData> ↔ api SolidId mapping exists.
+    /// A3.3 — boolean of the currently-selected scene object with a fresh
+    /// axis-aligned box. Routes through `Session::execute` whenever the
+    /// selected object carries an api `SolidId`; otherwise falls back to
+    /// the in-place viewer-local path (which leaves the api `Document`
+    /// out of sync with what the user sees — autosave will miss the edit).
     fn boolean_with_box(
         &mut self,
         width: f64,
@@ -490,37 +510,163 @@ impl CadApp {
         offset: [f64; 3],
         op: BooleanOp,
     ) {
-        if let Some(solid_a) = self.current_solid {
-            let mut model_b = BRepModel::new();
-            let origin = Point3::new(offset[0], offset[1], offset[2]);
-            match make_box(&mut model_b, origin, width, height, depth) {
-                Ok(r_b) => {
-                    match boolean_op(&self.model, solid_a, &model_b, r_b.solid, op) {
-                        Ok(result_model) => {
-                            // Extract the first solid handle before moving
-                            let first_solid = result_model.solids.iter().next().map(|(h, _)| h);
-                            if let Some(result_solid) = first_solid {
-                                let mesh = tessellate_solid(&result_model, result_solid);
-                                self.model = result_model;
-                                self.current_solid = Some(result_solid);
-                                self.gui.current_file = None;
-                                self.log_info(format!("Boolean {op:?}: box {width}×{height}×{depth} at ({:.1},{:.1},{:.1})", offset[0], offset[1], offset[2]));
-                                self.set_mesh(mesh);
-                            } else {
-                                self.log_warning("Boolean result is empty");
-                            }
-                        }
-                        Err(e) => {
-                            self.log_error(format!("Boolean error: {e}"));
-                        }
+        let Some(scene_id) = self.scene.selected_id() else {
+            self.log_warning("No solid for boolean operation");
+            return;
+        };
+        if let Some(lhs_id) = self.scene_object_solid_id(scene_id) {
+            self.boolean_with_box_via_session(scene_id, lhs_id, width, height, depth, offset, op);
+        } else {
+            self.log_warning(
+                "Boolean op on legacy scene object — bypassing Session (autosave will miss this edit).",
+            );
+            self.boolean_with_box_legacy(width, height, depth, offset, op);
+        }
+    }
+
+    /// A3.3 — Session-routed boolean with a fresh box:
+    ///   1. `CreateBox { dx, dy, dz }` → fresh `rhs` SolidId.
+    ///   2. Optional `Translate { rhs, offset }` when offset is non-zero.
+    ///   3. `BooleanUnion/Subtract/Intersect { lhs, rhs }` → fresh result SolidId.
+    ///
+    /// On success, the old scene object is removed and a new one is added
+    /// from the merged BRep so the scene tree mirrors the api `Document`.
+    #[allow(clippy::too_many_arguments)]
+    fn boolean_with_box_via_session(
+        &mut self,
+        scene_id: crate::scene::ObjectId,
+        lhs_id: cadkernel_api::SolidId,
+        width: f64,
+        height: f64,
+        depth: f64,
+        offset: [f64; 3],
+        op: BooleanOp,
+    ) {
+        // Step 1: create the rhs box through the Session.
+        let rhs_id = match self.session.execute(cadkernel_api::Command::CreateBox {
+            dx: width,
+            dy: height,
+            dz: depth,
+        }) {
+            Ok(o) => match o.primary_id() {
+                Some(id) => id,
+                None => {
+                    self.log_error("Boolean: CreateBox outcome had no primary id".to_string());
+                    return;
+                }
+            },
+            Err(e) => {
+                self.log_error(format!("Boolean: CreateBox failed: {e}"));
+                return;
+            }
+        };
+
+        // Step 2: translate the box to its offset, if any.
+        let need_translate = offset[0] != 0.0 || offset[1] != 0.0 || offset[2] != 0.0;
+        if need_translate {
+            if let Err(e) = self.session.execute(cadkernel_api::Command::Translate {
+                id: rhs_id,
+                dx: offset[0],
+                dy: offset[1],
+                dz: offset[2],
+            }) {
+                self.log_error(format!("Boolean: Translate rhs failed: {e}"));
+                return;
+            }
+        }
+
+        // Step 3: union / subtract / intersect.
+        let cmd = match op {
+            BooleanOp::Union => cadkernel_api::Command::BooleanUnion {
+                lhs: lhs_id,
+                rhs: rhs_id,
+            },
+            BooleanOp::Difference => cadkernel_api::Command::BooleanSubtract {
+                lhs: lhs_id,
+                rhs: rhs_id,
+            },
+            BooleanOp::Intersection => cadkernel_api::Command::BooleanIntersect {
+                lhs: lhs_id,
+                rhs: rhs_id,
+            },
+        };
+        let result_id = match self.session.execute(cmd) {
+            Ok(o) => match o.primary_id() {
+                Some(id) => id,
+                None => {
+                    self.log_error("Boolean: outcome had no primary id".to_string());
+                    return;
+                }
+            },
+            Err(e) => {
+                self.log_error(format!("Boolean error: {e}"));
+                return;
+            }
+        };
+
+        // Pull the merged BRep and rebuild the scene entry.
+        let Some((model, handle)) = self.session.document().clone_solid_brep(result_id) else {
+            self.log_error("Boolean: clone_solid_brep returned None".to_string());
+            return;
+        };
+
+        let (name, params) = self
+            .scene
+            .get(scene_id)
+            .map(|o| (o.name.clone(), o.params.clone()))
+            .unwrap_or_else(|| ("Boolean".to_string(), None));
+        self.scene.remove_object(scene_id);
+        self.add_to_scene(&name, model, handle, params, Some(result_id));
+        self.gui.current_file = None;
+        self.log_info(format!(
+            "Boolean {op:?}: box {width}×{height}×{depth} at ({:.1},{:.1},{:.1})",
+            offset[0], offset[1], offset[2]
+        ));
+    }
+
+    /// Legacy viewer-local boolean kept for scene objects with no api
+    /// `SolidId` (file-load entries, undo-restored entries). Mirrors the
+    /// pre-A3.3 behaviour: mutates `self.model` / `self.current_solid`
+    /// in place; the scene tree and api `Document` are not updated.
+    fn boolean_with_box_legacy(
+        &mut self,
+        width: f64,
+        height: f64,
+        depth: f64,
+        offset: [f64; 3],
+        op: BooleanOp,
+    ) {
+        let Some(solid_a) = self.current_solid else {
+            self.log_warning("No solid for boolean operation");
+            return;
+        };
+        let mut model_b = BRepModel::new();
+        let origin = Point3::new(offset[0], offset[1], offset[2]);
+        match make_box(&mut model_b, origin, width, height, depth) {
+            Ok(r_b) => match boolean_op(&self.model, solid_a, &model_b, r_b.solid, op) {
+                Ok(result_model) => {
+                    let first_solid = result_model.solids.iter().next().map(|(h, _)| h);
+                    if let Some(result_solid) = first_solid {
+                        let mesh = tessellate_solid(&result_model, result_solid);
+                        self.model = result_model;
+                        self.current_solid = Some(result_solid);
+                        self.gui.current_file = None;
+                        self.log_info(format!(
+                            "Boolean {op:?}: box {width}×{height}×{depth} at ({:.1},{:.1},{:.1})",
+                            offset[0], offset[1], offset[2]
+                        ));
+                        self.set_mesh(mesh);
+                    } else {
+                        self.log_warning("Boolean result is empty");
                     }
                 }
                 Err(e) => {
-                    self.log_error(format!("Box creation error: {e}"));
+                    self.log_error(format!("Boolean error: {e}"));
                 }
+            },
+            Err(e) => {
+                self.log_error(format!("Box creation error: {e}"));
             }
-        } else {
-            self.log_warning("No solid for boolean operation");
         }
     }
 
@@ -1364,6 +1510,7 @@ impl CadApp {
                                             height,
                                             depth,
                                         }),
+                                        Some(id),
                                     );
                                     self.log_info(format!(
                                         "Created box ({width} × {height} × {depth})"
@@ -1405,6 +1552,7 @@ impl CadApp {
                                             radius,
                                             height,
                                         }),
+                                        Some(id),
                                     );
                                     self.log_info(format!(
                                         "Created cylinder (r={radius}, h={height})"
@@ -1443,6 +1591,7 @@ impl CadApp {
                                         model,
                                         handle,
                                         Some(crate::scene::CreationParams::Sphere { radius }),
+                                        Some(id),
                                     );
                                     self.log_info(format!("Created sphere (r={radius})"));
                                 }
@@ -1470,37 +1619,50 @@ impl CadApp {
                     top_radius,
                     height,
                 } => {
-                    // TODO(A3.3): route through Session once Command::CreateCone gains top_radius (frustum) support.
                     self.snapshot_before("Create Cone");
-                    let mut model = BRepModel::new();
-                    match make_cone(
-                        &mut model,
-                        Point3::ORIGIN,
-                        base_radius,
-                        top_radius,
+                    match self.session.execute(cadkernel_api::Command::CreateCone {
+                        radius: base_radius,
                         height,
-                        64,
-                    ) {
-                        Ok(r) => {
-                            let kind = if top_radius < 1e-14 {
-                                "cone"
-                            } else {
-                                "frustum"
-                            };
-                            self.add_to_scene(
-                                &format!("Cone (r1={base_radius}, r2={top_radius}, h={height})"),
-                                model,
-                                r.solid,
-                                Some(crate::scene::CreationParams::Cone {
-                                    base_radius,
-                                    top_radius,
-                                    height,
-                                }),
-                            );
-                            self.log_info(format!(
-                                "Created {kind} (r1={base_radius}, r2={top_radius}, h={height})"
-                            ));
-                        }
+                        top_radius,
+                    }) {
+                        Ok(outcome) => match outcome.primary_id() {
+                            Some(id) => match self.session.document().clone_solid_brep(id) {
+                                Some((model, handle)) => {
+                                    let kind = if top_radius < 1e-14 {
+                                        "cone"
+                                    } else {
+                                        "frustum"
+                                    };
+                                    self.add_to_scene(
+                                        &format!(
+                                            "Cone (r1={base_radius}, r2={top_radius}, h={height})"
+                                        ),
+                                        model,
+                                        handle,
+                                        Some(crate::scene::CreationParams::Cone {
+                                            base_radius,
+                                            top_radius,
+                                            height,
+                                        }),
+                                        Some(id),
+                                    );
+                                    self.log_info(format!(
+                                        "Created {kind} (r1={base_radius}, r2={top_radius}, h={height})"
+                                    ));
+                                }
+                                None => {
+                                    self.log_error(
+                                        "CreateCone: clone_solid_brep returned None"
+                                            .to_string(),
+                                    );
+                                }
+                            },
+                            None => {
+                                self.log_error(
+                                    "CreateCone: outcome had no primary id".to_string(),
+                                );
+                            }
+                        },
                         Err(e) => {
                             self.log_error(format!("CreateCone error: {e}"));
                         }
@@ -1527,6 +1689,7 @@ impl CadApp {
                                             major_radius,
                                             minor_radius,
                                         }),
+                                        Some(id),
                                     );
                                     self.log_info(format!(
                                         "Created torus (R={major_radius}, r={minor_radius})"
@@ -1576,6 +1739,7 @@ impl CadApp {
                                     inner_radius,
                                     height,
                                 }),
+                            None,
                             );
                             self.log_info(format!(
                                 "Created tube (R={outer_radius}, r={inner_radius}, h={height})"
@@ -1605,6 +1769,7 @@ impl CadApp {
                                     height,
                                     sides,
                                 }),
+                            None,
                             );
                             self.log_info(format!(
                                 "Created {sides}-sided prism (r={radius}, h={height})"
@@ -1638,6 +1803,7 @@ impl CadApp {
                                     dx2,
                                     dy2,
                                 }),
+                            None,
                             );
                             self.log_info(format!(
                                 "Created wedge ({dx}×{dy}×{dz}, top {dx2}×{dy2})"
@@ -1659,6 +1825,7 @@ impl CadApp {
                                 model,
                                 r.solid,
                                 Some(crate::scene::CreationParams::Ellipsoid { rx, ry, rz }),
+                            None,
                             );
                             self.log_info(format!("Created ellipsoid ({rx}×{ry}×{rz})"));
                         }
@@ -1697,6 +1864,7 @@ impl CadApp {
                                     turns,
                                     tube_radius,
                                 }),
+                            None,
                             );
                             self.log_info(format!(
                                 "Created helix (R={radius}, pitch={pitch}, turns={turns})"
@@ -2350,7 +2518,7 @@ impl CadApp {
                     if let Some(obj) = self.scene.get(id).cloned() {
                         let new_name = format!("{} (copy)", obj.name);
                         self.scene
-                            .add_object(new_name, obj.model, obj.solid, obj.params);
+                            .add_object(new_name, obj.model, obj.solid, obj.params, None);
                         self.rebuild_scene_gpu();
                         self.log_info("Object duplicated");
                     }
@@ -2607,7 +2775,7 @@ impl CadApp {
                             } else {
                                 // Create new preview object
                                 let name = format!("{} (preview)", task.title());
-                                let id = self.scene.add_object(name, model, solid, Some(params));
+                                let id = self.scene.add_object(name, model, solid, Some(params), None);
                                 task.set_preview_id(id);
                                 self.scene.select_single(id);
                             }
@@ -2791,6 +2959,7 @@ impl CadApp {
                                             Some(crate::scene::CreationParams::Boolean {
                                                 op: op_name.into(),
                                             }),
+                                        None,
                                         );
                                         self.log_info(format!("Boolean {op_name} completed"));
                                     }
@@ -4626,7 +4795,7 @@ impl CadApp {
                 ];
                 match filling(&mut model, &boundary, 1) {
                     Ok(r) => {
-                        self.add_to_scene("Surface Filling", model, r.solid, None);
+                        self.add_to_scene("Surface Filling", model, r.solid, None, None);
                         self.log_info("Surface: filling");
                     }
                     Err(e) => self.log_error(format!("SurfaceFilling error: {e}")),
@@ -4638,7 +4807,7 @@ impl CadApp {
                 match make_polygon_wire(Point3::ORIGIN, Vec3::Z, 1.0, 6) {
                     Ok(pts) => match filling(&mut model, &pts, 1) {
                         Ok(r) => {
-                            self.add_to_scene("Surface Boundary", model, r.solid, None);
+                            self.add_to_scene("Surface Boundary", model, r.solid, None, None);
                             self.log_info("Surface: boundary");
                         }
                         Err(e) => self.log_error(format!("SurfaceBoundary fill error: {e}")),
@@ -4663,6 +4832,7 @@ impl CadApp {
                                 radius: 0.25,
                                 length: 2.0,
                             }),
+                        None,
                         );
                         self.log_info("Surface: pipe");
                     }
@@ -4806,6 +4976,7 @@ impl CadApp {
                                         width: 2.0,
                                         height: 1.0,
                                     }),
+                                None,
                                 );
                                 self.log_info("Draft: rectangle");
                             }
@@ -4829,6 +5000,7 @@ impl CadApp {
                                     radius: 1.0,
                                     sides: 6,
                                 }),
+                            None,
                             );
                             self.log_info("Draft: polygon");
                         }
@@ -4952,6 +5124,7 @@ impl CadApp {
                         r.model,
                         r.solid,
                         Some(crate::scene::CreationParams::Extruded),
+                    None,
                     );
                     self.log_info(format!(
                         "Pad: added material (depth={depth:.2}, symmetric={symmetric})"
@@ -4969,6 +5142,7 @@ impl CadApp {
                         model,
                         r.solid,
                         Some(crate::scene::CreationParams::Extruded),
+                    None,
                     );
                     self.log_info(format!("Pad: extruded sketch (depth={depth:.2})"));
                 }
@@ -5011,6 +5185,7 @@ impl CadApp {
                     r.model,
                     r.solid,
                     Some(crate::scene::CreationParams::Extruded),
+                None,
                 );
                 self.log_info(format!(
                     "Pocket: removed material (depth={depth:.2}, through_all={through_all})"
@@ -5061,6 +5236,7 @@ impl CadApp {
                     r.model,
                     r.solid,
                     Some(crate::scene::CreationParams::Groove { angle: angle_deg }),
+                None,
                 );
                 self.log_info(format!("Groove: revolved profile by {angle_deg:.0}°"));
             }
@@ -5105,6 +5281,7 @@ impl CadApp {
                     r.model,
                     r.solid,
                     Some(crate::scene::CreationParams::Extruded),
+                None,
                 );
                 self.log_info(format!("Hole: drilled r={radius:.2} d={depth:.2}"));
             }
@@ -5144,6 +5321,7 @@ impl CadApp {
                     r.model,
                     r.solid,
                     Some(crate::scene::CreationParams::Extruded),
+                None,
                 );
                 self.log_info(format!(
                     "Countersunk hole: r={radius:.2} d={depth:.2} angle={angle_deg:.0}°"
@@ -5181,6 +5359,7 @@ impl CadApp {
                         length: 2.0,
                         angle: 0.0,
                     }),
+                None,
                 );
                 self.gui.scene_overlay.add_polyline(
                     vec![p1, p2],
@@ -5208,6 +5387,7 @@ impl CadApp {
                             model,
                             r.solid,
                             Some(crate::scene::CreationParams::DraftCircle { radius }),
+                        None,
                         );
                         self.log_info(format!("Draft: circle (r={radius:.2})"));
                     }
@@ -5242,6 +5422,7 @@ impl CadApp {
                                 start_angle: 0.0,
                                 end_angle: std::f64::consts::FRAC_PI_2,
                             }),
+                        None,
                         );
                         self.log_info("Draft: arc (90°)");
                     }
@@ -5268,6 +5449,7 @@ impl CadApp {
                             model,
                             r.solid,
                             Some(crate::scene::CreationParams::DraftEllipse { rx, ry }),
+                        None,
                         );
                         self.log_info(format!("Draft: ellipse (rx={rx:.2}, ry={ry:.2})"));
                     }
@@ -5287,7 +5469,7 @@ impl CadApp {
         // scene_overlay paints it as a small filled circle on screen.
         let _id = self
             .scene
-            .add_mesh_object("Draft Point", cadkernel_io::Mesh::new(), None);
+            .add_mesh_object("Draft Point", cadkernel_io::Mesh::new(), None, None);
         self.gui
             .scene_overlay
             .add_point(position, OVERLAY_POINT_COLOR, OVERLAY_POINT_RADIUS);
@@ -5314,7 +5496,7 @@ impl CadApp {
         match make_wire(&mut model, &pts) {
             Ok(_) => {
                 self.scene
-                    .add_mesh_object("Draft Wire", cadkernel_io::Mesh::new(), None);
+                    .add_mesh_object("Draft Wire", cadkernel_io::Mesh::new(), None, None);
                 self.gui.scene_overlay.add_polyline(
                     pts.to_vec(),
                     OVERLAY_WIRE_COLOR,
@@ -5339,7 +5521,7 @@ impl CadApp {
         match make_bspline_wire(&mut model, cps, 3, 32) {
             Ok(result) => {
                 self.scene
-                    .add_mesh_object("Draft B-spline", cadkernel_io::Mesh::new(), None);
+                    .add_mesh_object("Draft B-spline", cadkernel_io::Mesh::new(), None, None);
                 // Tessellate the curve at the same `segments=32` resolution
                 // the kernel just used so the overlay matches the actual
                 // B-rep edges. Falls back to the control polygon if the
@@ -5376,7 +5558,7 @@ impl CadApp {
         ) {
             Ok(pts) => {
                 self.scene
-                    .add_mesh_object("Draft Bezier", cadkernel_io::Mesh::new(), None);
+                    .add_mesh_object("Draft Bezier", cadkernel_io::Mesh::new(), None, None);
                 self.gui
                     .scene_overlay
                     .add_polyline(pts, OVERLAY_WIRE_COLOR, OVERLAY_LINE_WIDTH);
@@ -5404,7 +5586,7 @@ impl CadApp {
         match draft_hatch(&boundary, pattern, 1.0) {
             Ok(result) => {
                 self.scene
-                    .add_mesh_object("Draft Hatch", cadkernel_io::Mesh::new(), None);
+                    .add_mesh_object("Draft Hatch", cadkernel_io::Mesh::new(), None, None);
                 let mut closed_boundary = boundary.to_vec();
                 closed_boundary.push(boundary[0]);
                 self.gui.scene_overlay.add_polyline(
@@ -5438,7 +5620,7 @@ impl CadApp {
         match shape_from_text(body, position, 1.0, Vec3::Z) {
             Ok(strokes) => {
                 self.scene
-                    .add_mesh_object("Draft Text", cadkernel_io::Mesh::new(), None);
+                    .add_mesh_object("Draft Text", cadkernel_io::Mesh::new(), None, None);
                 for stroke in &strokes {
                     if stroke.len() >= 2 {
                         self.gui.scene_overlay.add_polyline(
@@ -5475,7 +5657,7 @@ impl CadApp {
         let mut model = BRepModel::new();
         match upgrade_wire_model(&mut model, &pts) {
             Ok(solid) => {
-                self.add_to_scene("Draft Upgrade", model, solid, None);
+                self.add_to_scene("Draft Upgrade", model, solid, None, None);
                 self.log_info("Draft: upgrade — wire closed into face");
             }
             Err(e) => self.log_error(format!("Draft Upgrade error: {e}")),
@@ -5498,6 +5680,7 @@ impl CadApp {
                         model.clone(),
                         face_solid,
                         None,
+                    None,
                     );
                 }
                 self.rebuild_scene_gpu();
@@ -5528,7 +5711,7 @@ impl CadApp {
                     OVERLAY_LINE_WIDTH,
                 );
                 self.scene
-                    .add_mesh_object("Draft Wire→BSpline", cadkernel_io::Mesh::new(), None);
+                    .add_mesh_object("Draft Wire→BSpline", cadkernel_io::Mesh::new(), None, None);
                 self.log_info("Draft: wire converted to B-spline (curve only — tree entry)");
             }
             Err(e) => self.log_error(format!("Draft Wire→BSpline error: {e}")),
@@ -5568,6 +5751,7 @@ impl CadApp {
                     model,
                     r.solid,
                     obj.params.clone(),
+                None,
                 );
                 self.log_info(format!("Draft: cloned '{}'", obj.name));
             }
@@ -5591,6 +5775,7 @@ impl CadApp {
                         model.clone(),
                         *s,
                         None,
+                    None,
                     );
                 }
                 self.rebuild_scene_gpu();
@@ -5618,6 +5803,7 @@ impl CadApp {
                         model.clone(),
                         *s,
                         None,
+                    None,
                     );
                 }
                 self.rebuild_scene_gpu();
@@ -5651,6 +5837,7 @@ impl CadApp {
                         model.clone(),
                         *s,
                         None,
+                    None,
                     );
                 }
                 self.rebuild_scene_gpu();
@@ -5682,6 +5869,7 @@ impl CadApp {
                         model.clone(),
                         *s,
                         None,
+                    None,
                     );
                 }
                 self.rebuild_scene_gpu();
@@ -5718,7 +5906,7 @@ impl CadApp {
         let mut model = BRepModel::new();
         match filling(&mut model, &pts, 1) {
             Ok(r) => {
-                self.add_to_scene("Face from wires", model, r.solid, None);
+                self.add_to_scene("Face from wires", model, r.solid, None, None);
                 self.log_info("Part: face from 4-point wire boundary");
             }
             Err(e) => self.log_error(format!("Part FaceFromWires error: {e}")),
@@ -5751,6 +5939,7 @@ impl CadApp {
                         Some(crate::scene::CreationParams::Boolean {
                             op: "connect".into(),
                         }),
+                    None,
                     );
                     self.log_info("Part: connect shapes (union)");
                 } else {
@@ -5785,6 +5974,7 @@ impl CadApp {
                         result_model,
                         solid,
                         Some(crate::scene::CreationParams::Boolean { op: "embed".into() }),
+                    None,
                     );
                     self.log_info("Part: embed shapes");
                 } else {
@@ -5821,6 +6011,7 @@ impl CadApp {
                         Some(crate::scene::CreationParams::Boolean {
                             op: "cutout".into(),
                         }),
+                    None,
                     );
                     self.log_info("Part: cutout shapes (difference)");
                 } else {
@@ -5945,6 +6136,7 @@ impl CadApp {
                         model.clone(),
                         solid,
                         None,
+                    None,
                     );
                 }
                 self.rebuild_scene_gpu();
@@ -5989,7 +6181,7 @@ impl CadApp {
         let mut model = BRepModel::new();
         match shape_from_mesh(&mut model, &obj.mesh) {
             Ok(r) => {
-                self.add_to_scene(&format!("{} (solid)", obj.name), model, r.solid, None);
+                self.add_to_scene(&format!("{} (solid)", obj.name), model, r.solid, None, None);
                 self.log_info(format!(
                     "Part: converted mesh '{}' to solid ({} faces)",
                     obj.name,
@@ -6020,6 +6212,7 @@ impl CadApp {
                     model,
                     simplified,
                     None,
+                None,
                 );
                 self.log_info(format!(
                     "Part: auto-defeaturing — removed faces below {threshold:.3} area threshold"
@@ -6044,6 +6237,7 @@ impl CadApp {
                     model,
                     r.solid,
                     obj.params.clone(),
+                None,
                 );
                 self.log_info(format!(
                     "Part: transformed copy of '{}' by ({dx:.1}, {dy:.1}, {dz:.1})",
@@ -6072,7 +6266,7 @@ impl CadApp {
         match coons_patch(&u0, &u1, &v0, &v1) {
             Ok(_result) => {
                 self.scene
-                    .add_mesh_object("Coons Patch", cadkernel_io::Mesh::new(), None);
+                    .add_mesh_object("Coons Patch", cadkernel_io::Mesh::new(), None, None);
                 // Boundary outline (closed quad).
                 self.gui.scene_overlay.add_polyline(
                     vec![p00, p10, p11, p01, p00],
@@ -6110,6 +6304,7 @@ impl CadApp {
                         result_model,
                         solid,
                         None,
+                    None,
                     );
                     self.log_info(format!(
                         "PartDesign: Shape Binder copied faces from '{source_name}'"
@@ -6147,6 +6342,7 @@ impl CadApp {
                     model,
                     new_solid,
                     obj.params.clone(),
+                None,
                 );
                 self.log_info(format!(
                     "Draft: moved '{}' by ({:.1}, {:.1}, {:.1})",
@@ -6173,6 +6369,7 @@ impl CadApp {
                     model,
                     new_solid,
                     obj.params.clone(),
+                None,
                 );
                 self.log_info(format!(
                     "Draft: rotated '{}' by {angle_deg:.0}° around world Z",
@@ -6198,6 +6395,7 @@ impl CadApp {
                     model,
                     new_solid,
                     obj.params.clone(),
+                None,
                 );
                 self.log_info(format!("Draft: scaled '{}' by {factor:.1}×", obj.name));
             }
@@ -6232,6 +6430,7 @@ impl CadApp {
                     model,
                     new_solid,
                     obj.params.clone(),
+                None,
                 );
                 self.log_info(format!(
                     "Draft: mirrored '{}' across {plane_label} plane",
@@ -6359,6 +6558,7 @@ impl CadApp {
                 format!("FEM {label} colormap band {}", band_idx + 1),
                 mesh,
                 None,
+            None,
             );
             if let Some(obj) = self.scene.get_mut(id) {
                 obj.color = color;
@@ -6476,7 +6676,7 @@ impl CadApp {
         match offset_wire(&pts, 0.5, Vec3::Z) {
             Ok(offset) => {
                 self.scene
-                    .add_mesh_object("Draft Offset", cadkernel_io::Mesh::new(), None);
+                    .add_mesh_object("Draft Offset", cadkernel_io::Mesh::new(), None, None);
                 let n = offset.len();
                 self.gui
                     .scene_overlay
@@ -6502,7 +6702,7 @@ impl CadApp {
         match trimex_draft(&pts, target) {
             Ok(trimmed) => {
                 self.scene
-                    .add_mesh_object("Draft Trim", cadkernel_io::Mesh::new(), None);
+                    .add_mesh_object("Draft Trim", cadkernel_io::Mesh::new(), None, None);
                 let n_in = pts.len();
                 let n_out = trimmed.len();
                 self.gui.scene_overlay.add_polyline(
@@ -6524,7 +6724,7 @@ impl CadApp {
         // Default stretch: pull all points within radius 5 by (0, 0, 1).
         let stretched = stretch_wire(&pts, Point3::ORIGIN, 5.0, Vec3::new(0.0, 0.0, 1.0));
         self.scene
-            .add_mesh_object("Draft Stretch", cadkernel_io::Mesh::new(), None);
+            .add_mesh_object("Draft Stretch", cadkernel_io::Mesh::new(), None, None);
         let n = stretched.len();
         self.gui
             .scene_overlay
@@ -6560,6 +6760,7 @@ impl CadApp {
                     model,
                     new_solid,
                     None,
+                None,
                 );
                 self.log_info(format!(
                     "Draft: face binder from first face of '{}'",
@@ -6579,7 +6780,7 @@ impl CadApp {
         // Project the curve onto the selected solid's tessellated surface.
         let projected = project_curve_on_solid(&obj.model, obj.solid, &curve);
         self.scene
-            .add_mesh_object("Projected Curve", cadkernel_io::Mesh::new(), None);
+            .add_mesh_object("Projected Curve", cadkernel_io::Mesh::new(), None, None);
         let n = projected.len();
         if n >= 2 {
             self.gui
@@ -6636,7 +6837,7 @@ impl CadApp {
             OVERLAY_LABEL_COLOR,
         );
         self.scene
-            .add_mesh_object("Draft Dimension", cadkernel_io::Mesh::new(), None);
+            .add_mesh_object("Draft Dimension", cadkernel_io::Mesh::new(), None, None);
         self.log_info(format!(
             "Draft: dimension linear = {:.3} (overlay)",
             dim.value
@@ -6665,7 +6866,7 @@ impl CadApp {
             OVERLAY_LABEL_COLOR,
         );
         self.scene
-            .add_mesh_object("Draft Label", cadkernel_io::Mesh::new(), None);
+            .add_mesh_object("Draft Label", cadkernel_io::Mesh::new(), None, None);
         self.log_info(format!("Draft: label '{}' (overlay)", label.text));
     }
 
@@ -7530,7 +7731,7 @@ impl CadApp {
         let mut model = BRepModel::new();
         match sections(&mut model, &[&curve_a, &curve_b], 16) {
             Ok(r) => {
-                self.add_to_scene("Surface Sections", model, r.solid, None);
+                self.add_to_scene("Surface Sections", model, r.solid, None, None);
                 self.log_info(format!(
                     "Surface: sections — skinned {} faces between 2 profiles",
                     r.faces.len()
@@ -7555,6 +7756,7 @@ impl CadApp {
                     model,
                     r.solid,
                     None,
+                None,
                 );
                 self.log_info(format!("Surface: extended '{}' by {distance:.2}", obj.name));
             }
@@ -7593,7 +7795,7 @@ impl CadApp {
         let mut model = BRepModel::new();
         match surface_from_curves(&mut model, &[&curve_a, &curve_b], 16) {
             Ok(r) => {
-                self.add_to_scene("Surface Blend", model, r.solid, None);
+                self.add_to_scene("Surface Blend", model, r.solid, None, None);
                 self.log_info(format!(
                     "Surface: blend (Gordon-like quad sheet, {} faces — true G2 blend pending kernel work)",
                     r.faces.len()
@@ -7620,7 +7822,7 @@ impl CadApp {
         let mut model = BRepModel::new();
         match loft(&mut model, &[&bottom, &top]) {
             Ok(r) => {
-                self.add_to_scene("Loft", model, r.solid, None);
+                self.add_to_scene("Loft", model, r.solid, None, None);
                 self.log_info(format!(
                     "PartDesign: additive loft ({} faces between 2 profiles)",
                     r.faces.len()
@@ -7644,7 +7846,7 @@ impl CadApp {
         let mut model = BRepModel::new();
         match sweep(&mut model, &profile, &path) {
             Ok(r) => {
-                self.add_to_scene("Pipe", model, r.solid, None);
+                self.add_to_scene("Pipe", model, r.solid, None, None);
                 self.log_info(format!(
                     "PartDesign: additive pipe ({} faces, 2-point path)",
                     r.faces.len()
@@ -7699,6 +7901,7 @@ impl CadApp {
                         Some(crate::scene::CreationParams::Boolean {
                             op: "subtractive_loft".into(),
                         }),
+                    None,
                     );
                     self.log_info("PartDesign: subtractive loft (Difference)");
                 } else {
@@ -7748,6 +7951,7 @@ impl CadApp {
                         Some(crate::scene::CreationParams::Boolean {
                             op: "subtractive_pipe".into(),
                         }),
+                    None,
                     );
                     self.log_info("PartDesign: subtractive pipe (Difference)");
                 } else {
@@ -9256,7 +9460,7 @@ impl CadApp {
                         .and_then(|s| serde_json::from_str(s).ok());
                     let id = self
                         .scene
-                        .add_object(&obj_data.name, obj_data.model, solid, params);
+                        .add_object(&obj_data.name, obj_data.model, solid, params, None);
                     if let Some(scene_obj) = self.scene.get_mut(id) {
                         scene_obj.color = obj_data.color;
                         scene_obj.visible = obj_data.visible;
@@ -9333,7 +9537,7 @@ impl CadApp {
                     });
                     let tri = mesh.triangle_count();
                     let verts = mesh.vertices.len();
-                    let id = self.scene.add_mesh_object(&name, mesh, params);
+                    let id = self.scene.add_mesh_object(&name, mesh, params, None);
                     self.scene.select_single(id);
                     self.rebuild_scene_gpu();
                     let path_str = path.display().to_string();

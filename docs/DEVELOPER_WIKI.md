@@ -218,8 +218,18 @@ A3.2 primitive coverage (added 2026-05-13):
   plumbing now captures real primitive-creation commands; previously the viewer session
   was always empty so every autosave was a no-op. `Document::clone_solid_brep(id)`
   bridges the executed `Outcome` back to the viewer scene.
-- Remaining handlers stage in A3.3: `CreateCone` (needs frustum Command extension),
-  boolean handlers (need viewer `Handle<SolidData>` ↔ `SolidId` mapping).
+
+A3.3 cone + boolean coverage (added 2026-05-13):
+- `Command::CreateCone` gains a `top_radius` field (`#[serde(default)]`, default 0.0)
+  enabling frustum creation. The `CreateCone` handler in `crates/viewer/src/app.rs`
+  routes through `Session::execute`, capturing cones (including frustums) in autosave.
+- `BooleanUnionWith`, `BooleanSubtractWith`, `BooleanIntersectWith` handlers migrated
+  through `Session::execute`. Viewer scene objects now carry a `solid_id: Option<SolidId>`
+  field mapping scene entries to their API-level `SolidId`, enabling boolean ops to
+  resolve the correct operand solid from the session.
+- Autosave now captures cones and all three boolean operations.
+- Remaining: 5 primitives (Tube/Prism/Wedge/Ellipsoid/Helix) pending new `Command`
+  variants post-STOP_LIST. Stage in A3.4 or v1.0 unlock.
 
 See `docs/COMMERCIAL_CAD_ROADMAP.md` (Phase 1 in §2) for the long-term plan.
 

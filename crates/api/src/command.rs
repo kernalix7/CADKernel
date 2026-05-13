@@ -30,8 +30,18 @@ pub enum Command {
     CreateCylinder { radius: f64, height: f64 },
     /// Create a UV-sphere at the origin.
     CreateSphere { radius: f64 },
-    /// Create a cone (top radius = 0) at the origin.
-    CreateCone { radius: f64, height: f64 },
+    /// Create a cone or frustum (cone with non-zero top) at the origin,
+    /// axis along Z. `radius` is the base radius (must be > 0).
+    /// `top_radius` defaults to `0.0` for a pointed cone; values > 0
+    /// produce a truncated cone (frustum). The default keeps existing
+    /// serialized commands (`{"op":"create_cone","radius":...,"height":...}`)
+    /// deserializing unchanged as pure cones.
+    CreateCone {
+        radius: f64,
+        height: f64,
+        #[serde(default)]
+        top_radius: f64,
+    },
     /// Create a torus at the origin in the XY plane.
     CreateTorus {
         major_radius: f64,

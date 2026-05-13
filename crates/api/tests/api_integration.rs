@@ -44,6 +44,7 @@ fn five_primitives_each_get_unique_solid_id() {
         Command::CreateCone {
             radius: 1.0,
             height: 2.0,
+            top_radius: 0.0,
         },
         Command::CreateTorus {
             major_radius: 2.0,
@@ -281,6 +282,7 @@ fn every_command_round_trips_through_json() {
         Command::CreateCone {
             radius: 1.0,
             height: 3.0,
+            top_radius: 0.0,
         },
         Command::CreateTorus {
             major_radius: 5.0,
@@ -399,6 +401,7 @@ fn command_schemas_cover_every_op_name() {
         Command::CreateCone {
             radius: 1.0,
             height: 1.0,
+            top_radius: 0.0,
         },
         Command::CreateTorus {
             major_radius: 2.0,

@@ -2068,6 +2068,7 @@ mod bbox_tests {
                 height: 1.0,
                 depth: 1.0,
             }),
+        None,
         );
         let obj = scene.get(id).unwrap();
         let (dx, dy, dz) = bbox_extents(obj);
@@ -2081,7 +2082,7 @@ mod bbox_tests {
         let mut scene = Scene::new();
         let mut model = BRepModel::new();
         let r = make_box(&mut model, Point3::ORIGIN, 2.5, 7.0, 0.5).unwrap();
-        let id = scene.add_object("aniso", model, r.solid, None);
+        let id = scene.add_object("aniso", model, r.solid, None, None);
         let (dx, dy, dz) = bbox_extents(scene.get(id).unwrap());
         assert!((dx - 2.5).abs() < 1e-3, "dx {dx}");
         assert!((dy - 7.0).abs() < 1e-3, "dy {dy}");
@@ -2094,7 +2095,7 @@ mod bbox_tests {
         // bounds, so extents are zero (clamped non-negative).
         let mut scene = Scene::new();
         let empty = Mesh::new();
-        let id = scene.add_mesh_object("empty", empty, None);
+        let id = scene.add_mesh_object("empty", empty, None, None);
         let (dx, dy, dz) = bbox_extents(scene.get(id).unwrap());
         assert_eq!((dx, dy, dz), (0.0, 0.0, 0.0));
     }

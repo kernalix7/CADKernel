@@ -4,6 +4,7 @@
 //! The `Scene` holds all objects and provides methods for adding, removing,
 //! toggling visibility, and iterating visible objects for rendering.
 
+use cadkernel_api::SolidId;
 use cadkernel_io::{Mesh, tessellate_solid_with_face_map};
 use cadkernel_topology::{BRepModel, EdgeData, FaceData, Handle, SolidData, VertexData};
 use serde::{Deserialize, Serialize};
@@ -194,6 +195,13 @@ pub struct SceneObject {
     pub aabb_min: [f32; 3],
     /// Axis-aligned bounding box maximum (for frustum culling).
     pub aabb_max: [f32; 3],
+    /// A3.3 — api `SolidId` for objects created via `Session::execute`.
+    ///
+    /// Invariant: when `Some(id)`, `Session::document()` contains a matching
+    /// entry — autosave snapshots will round-trip this object. When `None`,
+    /// the solid is viewer-local only (file import, undo restore, tree-only
+    /// Draft/Surface stubs) and will not appear in autosave snapshots.
+    pub solid_id: Option<SolidId>,
 }
 
 pub fn compute_aabb(vertices: &[Vertex]) -> ([f32; 3], [f32; 3]) {
@@ -256,12 +264,18 @@ impl Scene {
     }
 
     /// Add a new object to the scene. Returns its ObjectId.
+    ///
+    /// `solid_id` is `Some(_)` when the solid was produced by
+    /// `Session::execute(...)` so the api `Document` already has a matching
+    /// entry; pass `None` for legacy/viewer-local solids (file import, undo
+    /// restore, etc.) — those will not be tracked by autosave.
     pub fn add_object(
         &mut self,
         name: impl Into<String>,
         model: BRepModel,
         solid: Handle<SolidData>,
         params: Option<CreationParams>,
+        solid_id: Option<SolidId>,
     ) -> ObjectId {
         let (mesh, face_tri_map) = tessellate_solid_with_face_map(&model, solid);
         let vertices = mesh_to_vertices(&mesh);
@@ -296,16 +310,21 @@ impl Scene {
             group_id: 0,
             aabb_min,
             aabb_max,
+            solid_id,
         });
         id
     }
 
     /// Add object from a pre-tessellated mesh (for imported files).
+    ///
+    /// `solid_id` is `Some(_)` only when a Session-tracked solid backs this
+    /// mesh; mesh-only entries (Draft stubs, raw imported meshes) pass `None`.
     pub fn add_mesh_object(
         &mut self,
         name: impl Into<String>,
         mesh: Mesh,
         params: Option<CreationParams>,
+        solid_id: Option<SolidId>,
     ) -> ObjectId {
         let vertices = mesh_to_vertices(&mesh);
         let (aabb_min, aabb_max) = compute_aabb(&vertices);
@@ -337,6 +356,7 @@ impl Scene {
             group_id: 0,
             aabb_min,
             aabb_max,
+            solid_id,
         });
         id
     }
@@ -679,7 +699,7 @@ mod tests {
         let mut scene = Scene::new();
         let mut model = BRepModel::new();
         let r = make_box(&mut model, Point3::ORIGIN, 1.0, 1.0, 1.0).unwrap();
-        let id = scene.add_object("Box", model, r.solid, None);
+        let id = scene.add_object("Box", model, r.solid, None, None);
         assert_eq!(scene.len(), 1);
         assert!(scene.remove_object(id));
         assert!(scene.is_empty());
@@ -690,7 +710,7 @@ mod tests {
         let mut scene = Scene::new();
         let mut model = BRepModel::new();
         let r = make_box(&mut model, Point3::ORIGIN, 1.0, 1.0, 1.0).unwrap();
-        let id = scene.add_object("Box", model, r.solid, None);
+        let id = scene.add_object("Box", model, r.solid, None, None);
         assert_eq!(scene.visible_objects().count(), 1);
         scene.get_mut(id).unwrap().visible = false;
         assert_eq!(scene.visible_objects().count(), 0);
@@ -701,10 +721,10 @@ mod tests {
         let mut scene = Scene::new();
         let mut m1 = BRepModel::new();
         let r1 = make_box(&mut m1, Point3::ORIGIN, 1.0, 1.0, 1.0).unwrap();
-        let id1 = scene.add_object("Box1", m1, r1.solid, None);
+        let id1 = scene.add_object("Box1", m1, r1.solid, None, None);
         let mut m2 = BRepModel::new();
         let r2 = make_box(&mut m2, Point3::new(5.0, 0.0, 0.0), 1.0, 1.0, 1.0).unwrap();
-        let _id2 = scene.add_object("Box2", m2, r2.solid, None);
+        let _id2 = scene.add_object("Box2", m2, r2.solid, None, None);
         scene.select_single(id1);
         assert_eq!(scene.selected_id(), Some(id1));
     }
@@ -714,7 +734,7 @@ mod tests {
         let mut scene = Scene::new();
         let mut model = BRepModel::new();
         let r = make_box(&mut model, Point3::ORIGIN, 1.0, 1.0, 1.0).unwrap();
-        scene.add_object("Box", model, r.solid, None);
+        scene.add_object("Box", model, r.solid, None, None);
         let (verts, ranges) = scene.build_combined_vertices();
         assert!(!verts.is_empty());
         assert_eq!(ranges.len(), 1);
@@ -733,7 +753,7 @@ mod tests {
                 1.0,
             )
             .unwrap();
-            scene.add_object(format!("Box{i}"), model, r.solid, None);
+            scene.add_object(format!("Box{i}"), model, r.solid, None, None);
         }
         // Colors should rotate through the palette
         let c0 = scene.objects[0].color;
@@ -746,17 +766,17 @@ mod tests {
         let mut scene = Scene::new();
         let mut m1 = BRepModel::new();
         let r1 = make_box(&mut m1, Point3::ORIGIN, 1.0, 1.0, 1.0).unwrap();
-        let body_id = scene.add_object("Body", m1, r1.solid, None);
+        let body_id = scene.add_object("Body", m1, r1.solid, None, None);
         scene.get_mut(body_id).unwrap().is_body = true;
 
         let mut m2 = BRepModel::new();
         let r2 = make_box(&mut m2, Point3::ORIGIN, 1.0, 1.0, 1.0).unwrap();
-        let child_id = scene.add_object("Pad", m2, r2.solid, None);
+        let child_id = scene.add_object("Pad", m2, r2.solid, None, None);
         scene.get_mut(child_id).unwrap().parent_id = Some(body_id);
 
         let mut m3 = BRepModel::new();
         let r3 = make_box(&mut m3, Point3::new(3.0, 0.0, 0.0), 1.0, 1.0, 1.0).unwrap();
-        let _standalone = scene.add_object("StandaloneBox", m3, r3.solid, None);
+        let _standalone = scene.add_object("StandaloneBox", m3, r3.solid, None, None);
 
         assert_eq!(scene.root_objects().len(), 2);
         assert_eq!(scene.children_of(body_id).len(), 1);
@@ -768,7 +788,7 @@ mod tests {
         let mut scene = Scene::new();
         let mut m1 = BRepModel::new();
         let r1 = make_box(&mut m1, Point3::ORIGIN, 1.0, 1.0, 1.0).unwrap();
-        let body_id = scene.add_object("Body", m1, r1.solid, None);
+        let body_id = scene.add_object("Body", m1, r1.solid, None, None);
         scene.get_mut(body_id).unwrap().is_body = true;
 
         assert!(scene.active_body_id.is_none());
@@ -783,7 +803,7 @@ mod tests {
         let mut scene = Scene::new();
         let mut model = BRepModel::new();
         let r = make_box(&mut model, Point3::ORIGIN, 1.0, 1.0, 1.0).unwrap();
-        let id = scene.add_object("Box", model, r.solid, None);
+        let id = scene.add_object("Box", model, r.solid, None, None);
         let obj = scene.get(id).unwrap();
         assert!(!obj.is_body);
         assert!(!obj.is_tip);
@@ -791,5 +811,19 @@ mod tests {
         assert!(!obj.has_error);
         assert!(!obj.needs_recompute);
         assert!(obj.parent_id.is_none());
+        assert!(obj.solid_id.is_none());
+    }
+
+    #[test]
+    fn test_solid_id_round_trip() {
+        let mut scene = Scene::new();
+        let mut m1 = BRepModel::new();
+        let r1 = make_box(&mut m1, Point3::ORIGIN, 1.0, 1.0, 1.0).unwrap();
+        let tracked = scene.add_object("Tracked", m1, r1.solid, None, Some(SolidId(7)));
+        let mut m2 = BRepModel::new();
+        let r2 = make_box(&mut m2, Point3::ORIGIN, 1.0, 1.0, 1.0).unwrap();
+        let legacy = scene.add_object("Legacy", m2, r2.solid, None, None);
+        assert_eq!(scene.get(tracked).unwrap().solid_id, Some(SolidId(7)));
+        assert_eq!(scene.get(legacy).unwrap().solid_id, None);
     }
 }

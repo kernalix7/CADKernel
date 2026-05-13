@@ -11,6 +11,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### Commercial CAD Roadmap — A3.3: CreateCone frustum support + 4 deferred handlers migrated (2026-05-13)
+- **`Command::CreateCone` schema extension** — new `top_radius` field (`#[serde(default)]`, default 0.0 for backward-compatibility). A `top_radius > 0` produces a frustum; `top_radius == 0` is a standard cone. Existing `.cadk` files missing the field deserialise correctly via `serde(default)`.
+- **Viewer scene-object `SolidId` mapping** — `SceneObject` (and viewer scene entries) gain `solid_id: Option<SolidId>` to track the API-level identity of each solid. Boolean handlers use this to resolve the correct operand solid from the session.
+- **4 handlers migrated**: `CreateCone` (frustum-capable), `BooleanUnionWith`, `BooleanSubtractWith`, `BooleanIntersectWith` all route through `Session::execute`. Autosave now captures cones and all three boolean operations.
+- **Remaining**: 5 primitives (Tube/Prism/Wedge/Ellipsoid/Helix) pending new `Command` variants post-STOP_LIST. Staged as A3.4 or v1.0 unlock.
+- **Tests**: 6 new tests (CreateCone schema backward-compat, frustum roundtrip, SolidId mapping, boolean handler E2E). Workspace total: **3,268 passed / 0 failed / 1 ignored** (was 3,262).
+- STOP_LIST clean (no new `Command` / `Outcome` variants beyond `CreateCone.top_radius`; no new format crate).
+
 #### Commercial CAD Roadmap — A3.2: route 4 primitive handlers through Session::execute (2026-05-13)
 - **Migrated handlers**: `CreateBox`, `CreateCylinder`, `CreateSphere`, `CreateTorus` in `crates/viewer/src/app.rs` now route through `Session::execute(Command::*)` instead of calling the modeling kernel directly. The `Outcome` is unpacked, `Document::clone_solid_brep` is called to hand the resulting B-Rep to the viewer scene, and the session log is updated — activating the A3.1 autosave plumbing so every real primitive creation is now captured in the document history and eligible for autosave snapshot.
 - **`Document::clone_solid_brep(id) -> Option<(BRepModel, Handle<SolidData>)>`** — new bridge accessor added to `cadkernel-api::Document` so viewer handlers can retrieve a cloned B-Rep after executing a `Command` without reaching through the session facade.

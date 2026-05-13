@@ -16,6 +16,7 @@
 
 use cadkernel_math::{Point3, Quaternion, Vec3};
 use cadkernel_modeling::measure::solid_mass_properties;
+use cadkernel_modeling::primitives::make_cone;
 use cadkernel_modeling::quick::{
     quick_box, quick_cone, quick_cylinder, quick_intersect, quick_sphere, quick_subtract,
     quick_torus, quick_union,
@@ -559,9 +560,14 @@ impl Session {
                 let model = quick_sphere(*radius)?;
                 self.insert_first_solid(model, "Sphere")
             }
-            Command::CreateCone { radius, height } => {
-                let model = quick_cone(*radius, *height)?;
-                self.insert_first_solid(model, "Cone")
+            Command::CreateCone {
+                radius,
+                height,
+                top_radius,
+            } => {
+                let model = create_cone_model(*radius, *height, *top_radius)?;
+                let label = if *top_radius > 0.0 { "Frustum" } else { "Cone" };
+                self.insert_first_solid(model, label)
             }
             Command::CreateTorus {
                 major_radius,
@@ -1563,6 +1569,27 @@ fn first_solid_handle(model: &BRepModel) -> Option<Handle<SolidData>> {
     model.solids.iter().next().map(|(h, _)| h)
 }
 
+fn create_cone_model(radius: f64, height: f64, top_radius: f64) -> ApiResult<BRepModel> {
+    if top_radius <= 0.0 {
+        // Pure cone — reuse the existing quick helper to match the pre-A3.3
+        // codepath byte-for-byte (segments = 64).
+        return Ok(quick_cone(radius, height)?);
+    }
+    if radius <= 0.0 {
+        return Err(ApiError::InvalidArgument(format!(
+            "radius must be > 0, got {radius}"
+        )));
+    }
+    if height <= 0.0 {
+        return Err(ApiError::InvalidArgument(format!(
+            "height must be > 0, got {height}"
+        )));
+    }
+    let mut model = BRepModel::new();
+    make_cone(&mut model, Point3::ORIGIN, radius, top_radius, height, 64)?;
+    Ok(model)
+}
+
 fn slot_mut(doc: &mut Document, id: SolidId) -> ApiResult<&mut SolidSlot> {
     doc.get_slot_mut(id)
         .ok_or_else(|| ApiError::UnknownSolid(format!("{id}")))
@@ -1575,8 +1602,19 @@ fn history_description(cmd: &Command, outcome: &Outcome) -> String {
             format!("Cylinder r={radius} h={height}")
         }
         (Command::CreateSphere { radius }, _) => format!("Sphere r={radius}"),
-        (Command::CreateCone { radius, height }, _) => {
-            format!("Cone r={radius} h={height}")
+        (
+            Command::CreateCone {
+                radius,
+                height,
+                top_radius,
+            },
+            _,
+        ) => {
+            if *top_radius > 0.0 {
+                format!("Frustum r={radius} top={top_radius} h={height}")
+            } else {
+                format!("Cone r={radius} h={height}")
+            }
         }
         (
             Command::CreateTorus {
