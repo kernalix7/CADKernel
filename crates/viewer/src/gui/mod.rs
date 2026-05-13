@@ -505,6 +505,18 @@ pub(crate) enum ActiveDialog {
     TechDrawViewSetup(TechDrawViewSetupState),
     FemResultProbe(FemResultProbeState),
     FemResultTable(FemResultTableState),
+    /// A3.1 — startup autosave recovery prompt. Shown once when an
+    /// autosave snapshot is found on the first frame after launch.
+    AutosaveRecovery(cadkernel_api::cadk::AutosaveEntry),
+}
+
+/// User's choice from the autosave recovery modal, written by the
+/// dialog renderer and consumed once by the dispatcher.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum AutosaveRecoveryChoice {
+    Recover,
+    Discard,
+    Cancel,
 }
 
 // ---------------------------------------------------------------------------
@@ -750,6 +762,9 @@ pub(crate) struct GuiState {
     /// time. Other dialogs (primitives, Part/PartDesign features, etc.)
     /// continue to use the loose `show_X: bool` pattern.
     pub active_dialog: Option<ActiveDialog>,
+    /// A3.1 — set by `draw_autosave_recovery_dialog` when the user
+    /// clicks a button; consumed once by `CadApp::process_actions`.
+    pub autosave_recovery_choice: Option<AutosaveRecoveryChoice>,
     pub pending_fem_material: cadkernel_modeling::FemMaterial,
     // Export options dialog state
     pub show_export_options: bool,
@@ -1007,6 +1022,7 @@ impl GuiState {
             fem_solver_tolerance: 1e-6,
             fem_solver_max_iter: 1000,
             active_dialog: None,
+            autosave_recovery_choice: None,
             pending_fem_material: cadkernel_modeling::FemMaterial::steel(),
             show_export_options: false,
             export_path: None,
@@ -1491,6 +1507,7 @@ pub(crate) fn draw_ui(
     dialogs::draw_techdraw_annotation_setup_dialog(ctx, gui);
     dialogs::draw_techdraw_centerline_setup_dialog(ctx, gui);
     dialogs::draw_techdraw_view_setup_dialog(ctx, gui);
+    dialogs::draw_autosave_recovery_dialog(ctx, gui);
     if nav.show_view_cube {
         view_cube::draw_view_cube(ctx, vp.camera, gui, nav);
     }

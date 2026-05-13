@@ -16,6 +16,7 @@
 use cadkernel_modeling::measure::solid_mass_properties;
 use cadkernel_topology::{BRepModel, Handle, SolidData};
 use serde::{Deserialize, Serialize};
+use std::hash::{DefaultHasher, Hasher};
 
 /// Stable, opaque identifier for a solid inside a [`Document`].
 ///
@@ -212,6 +213,84 @@ impl Document {
             }
         }
         Some(AabbSummary { id, min, max })
+    }
+
+    /// Content-addressable hash of the document's observable state.
+    ///
+    /// Returns a `u64` that is stable across `save_cadk` / `load_cadk`
+    /// roundtrips: any two documents that produce equal canonical hashes
+    /// expose identical solid counts, per-solid metadata (id, label,
+    /// rounded AABB, rounded mass properties), and history-event sequence.
+    ///
+    /// Used by the autosave subsystem (A3.1) to skip writing a snapshot
+    /// when the document state has not meaningfully changed since the
+    /// last write. Deterministic across runs of the same build — uses
+    /// [`std::hash::DefaultHasher`] (currently SipHash-1-3) with a fixed
+    /// feed order. The numeric value is **not** stable across Rust
+    /// releases that change `DefaultHasher`; only intra-build equality
+    /// is guaranteed.
+    ///
+    /// Rounded to ~1e-9 to absorb the tiny float noise that survives a
+    /// JSON serialize / parse roundtrip.
+    pub fn canonical_hash(&self) -> u64 {
+        let mut h = DefaultHasher::new();
+        let ids = self.solid_ids();
+        h.write_u64(ids.len() as u64);
+        for id in ids {
+            h.write_u64(u64::from(id.0));
+            if let Some(label) = self.solid_label(id) {
+                h.write_u64(label.len() as u64);
+                h.write(label.as_bytes());
+            } else {
+                h.write_u64(u64::MAX);
+            }
+            if let Some(aabb) = self.bounding_box(id) {
+                h.write_u64(1);
+                for axis in 0..3 {
+                    h.write_u64(quantize_f64(aabb.min[axis]) as u64);
+                    h.write_u64(quantize_f64(aabb.max[axis]) as u64);
+                }
+            } else {
+                h.write_u64(0);
+            }
+            if let Some(mp) = self.measure_solid(id) {
+                h.write_u64(1);
+                h.write_u64(quantize_f64(mp.volume) as u64);
+                h.write_u64(quantize_f64(mp.surface_area) as u64);
+                for axis in 0..3 {
+                    h.write_u64(quantize_f64(mp.centroid[axis]) as u64);
+                }
+            } else {
+                h.write_u64(0);
+            }
+        }
+        h.write_u64(self.history.len() as u64);
+        for event in &self.history {
+            h.write_u64(event.op.len() as u64);
+            h.write(event.op.as_bytes());
+            match event.primary {
+                Some(id) => {
+                    h.write_u64(1);
+                    h.write_u64(u64::from(id.0));
+                }
+                None => h.write_u64(0),
+            }
+            h.write_u64(event.description.len() as u64);
+            h.write(event.description.as_bytes());
+        }
+        h.finish()
+    }
+}
+
+/// Quantise an `f64` to ~1e-9 resolution so canonical-hash equality
+/// survives a JSON serialize/parse roundtrip. Negative zero collapses
+/// to zero; NaN collapses to a fixed sentinel.
+#[inline]
+fn quantize_f64(x: f64) -> i64 {
+    if x.is_nan() {
+        i64::MIN
+    } else {
+        (x * 1.0e9).round() as i64
     }
 }
 

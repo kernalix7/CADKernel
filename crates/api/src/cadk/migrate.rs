@@ -113,9 +113,8 @@ mod tests {
 
     #[test]
     fn schema_version_round_trips_through_u32() {
-        for v in [SchemaVersion::V1] {
-            assert_eq!(SchemaVersion::from_u32(v.as_u32()), Some(v));
-        }
+        let v = SchemaVersion::V1;
+        assert_eq!(SchemaVersion::from_u32(v.as_u32()), Some(v));
     }
 
     #[test]
@@ -136,7 +135,7 @@ mod tests {
 
     #[test]
     fn migrate_rejects_truncated_buffer() {
-        let err = migrate_to_current(&[b'C', b'A', b'D']).unwrap_err();
+        let err = migrate_to_current(b"CAD").unwrap_err();
         assert!(matches!(err, ApiError::Codec(_)));
     }
 

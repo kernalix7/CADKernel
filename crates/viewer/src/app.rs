@@ -205,6 +205,16 @@ pub struct CadApp {
     script_engine: Option<ScriptEngine>,
     /// Plugin registry for the kernel plugin system.
     plugin_registry: cadkernel_modeling::PluginRegistry,
+    /// A3.1 — autosave plumbing. Held but not yet driven by `GuiAction`
+    /// dispatch; will surface real snapshots once `GuiAction` rewires
+    /// through `Session::execute` (A3.2+).
+    // TODO(A3.2): route GuiAction dispatch through `session.execute(...)`
+    // so `session.canonical_hash()` tracks user edits.
+    session: cadkernel_api::Session,
+    autosave: crate::autosave::AutosaveState,
+    /// True before the first frame; gates the one-shot autosave
+    /// recovery modal scan (task #5).
+    autosave_recovery_pending: bool,
 }
 
 impl CadApp {
@@ -245,6 +255,98 @@ impl CadApp {
             preselect_frame: 0,
             script_engine: None,
             plugin_registry: cadkernel_modeling::PluginRegistry::new(),
+            session: cadkernel_api::Session::new(),
+            autosave: crate::autosave::AutosaveState::new(),
+            autosave_recovery_pending: true,
+        }
+    }
+
+    /// A3.1 — one-shot startup scan for an existing autosave snapshot.
+    /// Called on the first `RedrawRequested` after launch (gated by
+    /// `autosave_recovery_pending`). When a snapshot exists, opens the
+    /// `AutosaveRecovery` modal; either way, the gate is cleared so the
+    /// scan never re-runs.
+    fn autosave_recovery_scan(&mut self) {
+        if !self.autosave_recovery_pending {
+            return;
+        }
+        self.autosave_recovery_pending = false;
+        match cadkernel_api::cadk::recover_latest(&self.autosave.policy.dir) {
+            Ok(Some(entry)) => {
+                self.gui.active_dialog = Some(gui::ActiveDialog::AutosaveRecovery(entry));
+            }
+            Ok(None) => {}
+            Err(e) => {
+                self.log_warning(format!("Autosave scan failed: {e}"));
+            }
+        }
+    }
+
+    /// A3.1 — consume the user's choice from the autosave recovery
+    /// modal exactly once and act on it. Called from `process_actions`
+    /// after the per-frame action drain so a button click placed by
+    /// the dialog renderer (which ran during the previous frame's
+    /// `render_frame`) is picked up on the very next dispatch cycle.
+    fn autosave_recovery_consume_choice(&mut self) {
+        let Some(choice) = self.gui.autosave_recovery_choice.take() else {
+            return;
+        };
+        let Some(gui::ActiveDialog::AutosaveRecovery(entry)) = self.gui.active_dialog.clone()
+        else {
+            return;
+        };
+        self.gui.active_dialog = None;
+        match choice {
+            gui::AutosaveRecoveryChoice::Recover => {
+                match cadkernel_api::Session::load_cadk_from_path(&entry.path) {
+                    Ok(session) => {
+                        self.session = session;
+                        // Clear the recovered snapshot so it does not
+                        // haunt the next launch.
+                        let _ = cadkernel_api::cadk::prune(&self.autosave.policy.dir, 0);
+                        self.log_info(format!(
+                            "Recovered autosave from {}",
+                            entry.path.display()
+                        ));
+                    }
+                    Err(e) => {
+                        self.log_warning(format!("Autosave recovery failed: {e}"));
+                    }
+                }
+            }
+            gui::AutosaveRecoveryChoice::Discard => {
+                match cadkernel_api::cadk::prune(&self.autosave.policy.dir, 0) {
+                    Ok(n) => self.log_info(format!("Discarded {n} autosave snapshot(s)")),
+                    Err(e) => self.log_warning(format!("Autosave discard failed: {e}")),
+                }
+            }
+            gui::AutosaveRecoveryChoice::Cancel => {
+                self.log_info("Autosave recovery cancelled");
+            }
+        }
+    }
+
+    /// A3.1 — autosave tick. Reads the user-facing knobs from
+    /// `NavConfig` (Settings → General → Files), checks the interval
+    /// and canonical-hash gates, and writes a rotated snapshot when
+    /// both gates pass. Failures are logged and swallowed; autosave
+    /// must never block normal editing.
+    fn autosave_tick(&mut self) {
+        self.autosave
+            .sync_from_nav(self.nav.auto_save_enabled, self.nav.auto_save_interval_secs);
+        let now = std::time::Instant::now();
+        let hash = self.session.canonical_hash();
+        if !self.autosave.should_fire(now, hash) {
+            return;
+        }
+        match self.session.write_autosave_snapshot(&self.autosave.policy) {
+            Ok(path) => {
+                self.autosave.record_save(now, hash);
+                self.log_info(format!("Autosaved → {}", path.display()));
+            }
+            Err(e) => {
+                self.log_warning(format!("Autosave failed: {e}"));
+            }
         }
     }
 
@@ -2949,6 +3051,8 @@ impl CadApp {
                 }
             }
         }
+        self.autosave_recovery_consume_choice();
+        self.autosave_tick();
     }
 
     /// Dispatch an `AssemblyAction` (sub-enum of `GuiAction::Assembly`).
@@ -10904,6 +11008,7 @@ impl ApplicationHandler for CadApp {
             }
 
             WindowEvent::RedrawRequested => {
+                self.autosave_recovery_scan();
                 self.tick_animation();
                 self.poll_background_load();
                 self.render_frame();

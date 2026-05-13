@@ -187,6 +187,31 @@ on-disk schema; `tests/cadk_v0_migration.rs` runs 3 guard tests against it
 on every workspace `cargo test`. Regenerate only via the explicit
 `cargo test --test cadk_v0_migration regenerate -- --ignored --exact`.
 
+Canonical hash (added 2026-05-13, A3.1):
+- `Document::canonical_hash() -> u64` — deterministic FNV-1a hash over the
+  applied command log (kind tag ++ JSON fields). Two documents with identical
+  command histories hash identically regardless of wall-clock or process ID.
+  Exposed via `Session::canonical_hash()` so callers never reach into `Document`.
+
+Autosave (added 2026-05-13, A3.1):
+- `cadk::AutosavePolicy { dir, max_snapshots, interval_secs }` — value-type
+  config. `AutosavePolicy::default()` resolves `dir` to
+  `$TMPDIR/cadkernel_autosave`, keeps 5 snapshots, interval 60 s.
+- `cadk::AutosaveEntry { path, hash, saved_at }` — resolved snapshot descriptor.
+- `cadk::autosave::list_snapshots(dir)` — lists `*.cadk` files newest-first.
+- `cadk::autosave::prune(dir, max_snapshots)` — trims oldest beyond the limit.
+- `cadk::autosave::recover_latest(dir)` — returns raw bytes of the newest entry.
+- `Session::write_autosave_snapshot(&policy) -> ApiResult<PathBuf>` — serialises
+  the session, writes `<hash>_<timestamp>.cadk`, then prunes.
+
+Viewer autosave integration (added 2026-05-13, A3.1):
+- `AppState` carries an `AutosavePolicy` (default 60-second interval, 5 snapshots).
+  A tick counter in the main event loop triggers `write_autosave_snapshot` when it
+  reaches `interval_secs`. On startup, `recover_latest` is called; if a snapshot
+  exists whose hash differs from an empty session, an egui recovery modal is shown
+  ("Unsaved work detected — recover?" / "Discard"). Recovering replays the snapshot
+  via `Session::load_cadk`; discarding leaves the session empty.
+
 See `docs/COMMERCIAL_CAD_ROADMAP.md` (Phase 1 in §2) for the long-term plan.
 
 ---

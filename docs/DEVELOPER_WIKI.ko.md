@@ -176,6 +176,27 @@ v0 on-disk 스키마 핀이며 `tests/cadk_v0_migration.rs`의 3개 가드 테�
 워크스페이스 `cargo test` 실행마다 호환성 검증. 재생성은 명시적으로
 `cargo test --test cadk_v0_migration regenerate -- --ignored --exact`만 허용.
 
+Canonical hash(2026-05-13, A3.1):
+- `Document::canonical_hash() -> u64` — 적용된 커맨드 로그에 대한 결정론적
+  FNV-1a 해시(kind 태그 ++ JSON 필드). 동일 커맨드 이력이면 wall-clock·PID에
+  무관하게 항상 동일한 해시. `Session::canonical_hash()`로도 노출.
+
+Autosave(2026-05-13, A3.1):
+- `cadk::AutosavePolicy { dir, max_snapshots, interval_secs }` — 값 타입 설정.
+  기본값: `$TMPDIR/cadkernel_autosave`, 5개 보관, 60초 간격.
+- `cadk::AutosaveEntry { path, hash, saved_at }` — 단일 스냅샷 기술자.
+- `cadk::autosave::list_snapshots(dir)` — `*.cadk` 최신순 열거.
+- `cadk::autosave::prune(dir, max_snapshots)` — 한도 초과 파일 삭제.
+- `cadk::autosave::recover_latest(dir)` — 최신 스냅샷 바이트 반환.
+- `Session::write_autosave_snapshot(&policy) -> ApiResult<PathBuf>` — 직렬화 후
+  `<hash>_<timestamp>.cadk`로 저장, prune 적용.
+
+Viewer autosave 통합(2026-05-13, A3.1):
+- `AppState`에 `AutosavePolicy` 추가(60초 간격, 5개 보관). 틱 카운터가 `interval_secs`
+  도달 시 `write_autosave_snapshot` 호출. 시작 시 `recover_latest`로 최신 스냅샷
+  확인 후 해시가 빈 세션과 다르면 egui 복구 모달 표시(복구 / 폐기). 복구 선택 시
+  `Session::load_cadk` 경유 재현.
+
 `docs/COMMERCIAL_CAD_ROADMAP.md` 의 §2 Phase 1 참조.
 
 ---

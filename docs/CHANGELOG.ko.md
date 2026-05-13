@@ -11,6 +11,15 @@
 
 ### 추가됨
 
+#### 상용 CAD 로드맵 — A3.1: autosave + canonical_hash + 복구 모달 (2026-05-13)
+- **`Document::canonical_hash() -> u64`** — 적용된 커맨드 로그에 대한 결정론적 FNV-1a 해시. 동일 커맨드 이력을 가진 두 `Document`는 항상 같은 해시를 반환. `Session::canonical_hash() -> u64`로도 노출.
+- **`cadk::AutosavePolicy { dir, max_snapshots, interval_secs }`** — 스냅샷 저장 위치·보관 개수·UI 틱 간격을 제어하는 값 타입 설정. `AutosaveEntry { path, hash, saved_at }`로 개별 스냅샷 기술.
+- **`cadk::autosave::{list_snapshots, prune, recover_latest}`** — 디렉터리 내 `*.cadk` 열거(최신순), 오래된 파일 정리, 최신 바이트 반환.
+- **`Session::write_autosave_snapshot(&policy) -> ApiResult<PathBuf>`** — 현재 세션 직렬화 후 `<hash>_<timestamp>.cadk`로 저장, `prune`로 한도 적용.
+- **Viewer 통합** — `AppState`에 `AutosavePolicy` 추가(기본: 60초 간격, 5개 보관). 틱 카운터가 `interval_secs`에 도달하면 자동 저장. 시작 시 최신 스냅샷 존재 여부 확인 후 egui 복구 모달(복구 / 폐기) 표시.
+- **테스트**: 신규 29개 (canonical_hash 결정성, autosave 라이프사이클, 모달 조건). 워크스페이스 합계: **3,254 통과 / 0 실패 / 1 무시** (기존 3,225).
+- STOP_LIST 그린.
+
 #### 상용 CAD 로드맵 — A3.0.7: `cadk::migrate` 모듈 + `SchemaVersion` enum (2026-05-13)
 - **`crates/api/src/cadk/migrate.rs`** — 스키마 버전 디스패치를 인라인 검사에서 분리한 신규 모듈. `SchemaVersion::V1`(현재 유일한 variant, 디스크에 정수 `1`) + `from_u32` / `as_u32` / `current()` 접근자, 그리고 마이그레이터 진입점 `cadk::migrate_to_current(bytes) -> ApiResult<Vec<u8>>`. 이번 슬라이스 시점에는 지원 버전이 하나이므로 정상 바이트에 대해 항상 no-op. 모듈은 향후 스키마 bump 계약을 핀하기 위해 존재 — V2가 출시되면 `migrate_to_current`의 match에 `V1 → V2` transform이 추가되고, 옛 파일 리더가 `cadk::decode` 호출 전에 `migrate_to_current`를 거치게 된다.
 - **설계 노트** — `migrate_to_current`는 `cadk::inspect()` / `CadkHeader::is_supported()`를 의도적으로 우회. 그쪽은 미지원 버전을 거부하는데, 마이그레이터는 정확히 반대 동작이 필요함. 대신 magic + 4바이트 `schema_version`만 가볍게 파싱해 올바른 transform으로 디스패치하고, 마이그레이션 후에만 정규 검증 경로로 흐르게 한다.

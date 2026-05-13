@@ -144,6 +144,15 @@ impl Session {
         &self.document
     }
 
+    /// Convenience: returns `self.document().canonical_hash()`.
+    ///
+    /// See [`Document::canonical_hash`] for the contract. Used by the
+    /// autosave subsystem (A3.1) to elide redundant snapshots and to
+    /// build the `autosave-{epoch_ms}-{hash16}.cadk` filename suffix.
+    pub fn canonical_hash(&self) -> u64 {
+        self.document.canonical_hash()
+    }
+
     /// Returns the active prefix of the command log — i.e. the commands
     /// that have actually been applied to the document.
     pub fn log(&self) -> &[Command] {
@@ -299,6 +308,59 @@ impl Session {
         let bytes = self.save_cadk_with_options(options)?;
         std::fs::write(path.as_ref(), bytes)
             .map_err(|err| ApiError::Codec(format!("file io: {err}")))
+    }
+
+    /// Write a rotated autosave snapshot under `policy.dir` and prune
+    /// older snapshots so at most `policy.retain` remain.
+    ///
+    /// A3.1 (2026-05-13). The snapshot filename follows the convention
+    /// `autosave-{epoch_ms}-{hash16}.cadk`, where `epoch_ms` is the
+    /// current wall-clock time in milliseconds since the Unix epoch
+    /// (best-effort — 0 on clocks earlier than 1970) and `hash16` is
+    /// the leading 16 hex chars of [`Self::canonical_hash`]. This
+    /// keeps the filename self-describing (timestamp + content
+    /// fingerprint) without requiring callers to parse the cadk
+    /// header back out.
+    ///
+    /// `policy.dir` is created on demand via `std::fs::create_dir_all`.
+    /// When `policy.compress` is `true`, the document blob is written
+    /// with [`crate::cadk::SaveOptions::with_compression`] at level 3
+    /// — a deliberate fixed level: autosave optimises for write
+    /// latency, not compression ratio.
+    ///
+    /// After the write succeeds, [`crate::cadk::prune`] removes
+    /// snapshots in excess of `policy.retain`. The interval check
+    /// (`policy.interval`) is **not** enforced here — it belongs to
+    /// the viewer's tick loop. This function writes unconditionally
+    /// so unit tests and CLI tools can drive autosave on demand.
+    ///
+    /// I/O errors are surfaced as [`ApiError::Codec`] with the
+    /// `file io:` prefix, matching the convention set by
+    /// [`Self::save_cadk_to_path`].
+    pub fn write_autosave_snapshot(
+        &self,
+        policy: &crate::cadk::AutosavePolicy,
+    ) -> ApiResult<std::path::PathBuf> {
+        std::fs::create_dir_all(&policy.dir)
+            .map_err(|err| ApiError::Codec(format!("file io: {err}")))?;
+
+        let epoch_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        let hash16 = format!("{:016x}", self.canonical_hash());
+        let filename = format!("autosave-{epoch_ms}-{hash16}.cadk");
+        let path = policy.dir.join(filename);
+
+        let opts = if policy.compress {
+            crate::cadk::SaveOptions::default().with_compression(3)
+        } else {
+            crate::cadk::SaveOptions::default()
+        };
+        self.save_cadk_to_path_with_options(&path, &opts)?;
+
+        crate::cadk::prune(&policy.dir, policy.retain)?;
+        Ok(path)
     }
 
     /// Read a `.cadk` container from `path` and restore the session.

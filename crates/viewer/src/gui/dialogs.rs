@@ -4486,3 +4486,78 @@ fn format_optional(value: Option<f64>) -> String {
         .map(|v| format!("{v:.3e}"))
         .unwrap_or_else(|| "—".into())
 }
+
+// ---------------------------------------------------------------------------
+// A3.1 — Autosave recovery dialog
+// ---------------------------------------------------------------------------
+
+/// Format a `SystemTime` as `YYYY-MM-DD HH:MM:SS` in UTC. Hand-rolled
+/// because `chrono` is not in the workspace dep set and a one-call
+/// formatter is not worth a new dependency.
+fn format_modified(t: std::time::SystemTime) -> String {
+    let secs = t
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0) as i64;
+    // Days since 1970-01-01 (UTC), and seconds within the day.
+    let days = secs.div_euclid(86_400);
+    let day_secs = secs.rem_euclid(86_400) as u64;
+    let hour = day_secs / 3_600;
+    let minute = (day_secs % 3_600) / 60;
+    let second = day_secs % 60;
+
+    // Civil-from-days (Howard Hinnant's algorithm — public-domain).
+    let z = days + 719_468;
+    let era = if z >= 0 { z } else { z - 146_096 } / 146_097;
+    let doe = (z - era * 146_097) as u64;
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let year = if m <= 2 { y + 1 } else { y };
+    format!(
+        "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+        year, m, d, hour, minute, second
+    )
+}
+
+/// Render the autosave recovery prompt when
+/// `gui.active_dialog == Some(ActiveDialog::AutosaveRecovery(_))`.
+/// Buttons write their choice into `gui.autosave_recovery_choice`;
+/// the dispatcher (`CadApp::process_actions`) consumes it once and
+/// closes the dialog.
+pub(crate) fn draw_autosave_recovery_dialog(ctx: &egui::Context, gui: &mut GuiState) {
+    let Some(super::ActiveDialog::AutosaveRecovery(entry)) = gui.active_dialog.clone() else {
+        return;
+    };
+    let when = format_modified(entry.modified);
+    let size_kb = (entry.size_bytes as f64) / 1024.0;
+    egui::Window::new("Recover Autosave")
+        .collapsible(false)
+        .resizable(false)
+        .default_width(420.0)
+        .show(ctx, |ui| {
+            ui.label(format!("Found autosave from {when}. Recover?"));
+            ui.add_space(4.0);
+            ui.label(
+                egui::RichText::new(format!("{} ({:.1} KiB)", entry.path.display(), size_kb))
+                    .size(11.0)
+                    .color(super::theme::COLOR_DIM),
+            );
+            ui.add_space(10.0);
+            ui.horizontal(|ui| {
+                if ui.button("Recover").clicked() {
+                    gui.autosave_recovery_choice = Some(super::AutosaveRecoveryChoice::Recover);
+                }
+                if ui.button("Discard").clicked() {
+                    gui.autosave_recovery_choice = Some(super::AutosaveRecoveryChoice::Discard);
+                }
+                if ui.button("Cancel").clicked() {
+                    gui.autosave_recovery_choice = Some(super::AutosaveRecoveryChoice::Cancel);
+                }
+            });
+        });
+}
+

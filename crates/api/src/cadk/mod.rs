@@ -15,11 +15,13 @@
 //! +----------------+----------------+----------------------+----------------+
 //! ```
 
+pub mod autosave;
 pub mod codec;
 pub mod header;
 pub mod manifest;
 pub mod migrate;
 
+pub use autosave::{AutosaveEntry, AutosavePolicy, list_snapshots, prune, recover_latest};
 pub use codec::{
     BlobInfo, CadkSummary, SaveOptions, decode, decode_thumbnail, encode, encode_with_options,
     encode_with_thumbnail, inspect, inspect_path,

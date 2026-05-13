@@ -8,6 +8,7 @@
 //!   model tree, properties inspector, and shape creation dialogs.
 
 mod app;
+mod autosave;
 pub mod command;
 mod gui;
 pub mod nav;
