@@ -11,6 +11,13 @@
 
 ### 추가됨
 
+#### UI 완성 로드맵 — Phase A Draft 워크벤치 EASY 19개 확인 (2026-05-14)
+- **로드맵 상태 정정**: Draft 워크벤치 EASY 19개 디스패처 arm(`D::Line` ~ `D::ToSketch`)이 HEAD `584d334` 기준 이미 `cadkernel_modeling::draft_ops::*`에 배선 완료되어 있었음. `docs/UI_COMPLETION_ROADMAP.md` §3.1의 "스텁" 분류는 오래된 정보였음 — UI-A1의 PartDesign에서 발견된 것과 동일한 패턴.
+- **신규 테스트 파일** `crates/viewer/tests/draft_easy_features.rs` (366줄, **20개 테스트** = 19 + 보너스 Downgrade): 각 arm이 씬 가시 결과를 생성함을 증명. 솔리드(Circle/Arc/Ellipse/Upgrade fills), 오버레이 폴리라인(Line/Wire/BSpline/Bezier), 오버레이 포인트(Point), 경계+채우기(Hatch), 어레이(Rect/Polar), 텍스트, 선택 없는 no-op(Clone), 사이드이펙트(ToSketch) 커버.
+- **테스트 헬퍼**: `select_first_for_test()` `#[doc(hidden)]` `crates/viewer/src/app.rs`에 추가 (+10줄).
+- 워크스페이스: 3,317 → **3,337 / 0 / 1 무시** (+20).
+- **패턴 관찰**: verify-first 레인 2개 연속(UI-A1 PD 5개, UI-A2 Draft 19개) 모두 이미 배선 완료된 것을 발견. 로드맵이 2-3세션분 뒤처진 것으로 보임. 향후 UI-Ax 단계도 verify-first로 시작해야 함.
+
 #### UI 완성 로드맵 — Phase A PartDesign 스케치 피처: 배선 확인 및 테스트 커버리지 추가 (2026-05-14)
 - **로드맵 상태 정정**: `Pd::PadSketch` / `Pd::PocketSketch` / `Pd::GrooveSketch` / `Pd::HoleSketch` / `Pd::CountersunkHoleSketch` 5개 디스패처 arm이 HEAD `714136e` 기준 이미 `cadkernel_modeling::{pad, pocket, groove, hole, countersunk_hole}`에 배선되어 `add_to_scene`으로 솔리드를 씬에 추가하고 있었음. `docs/UI_COMPLETION_ROADMAP.md` §3.2의 "ALSO log_info" 스텁 분류는 오래된 정보였음.
 - **신규 테스트 파일** `crates/viewer/tests/partdesign_sketch_features.rs` (126줄, 6개 테스트): 5개 arm이 각각 `len == before + 1` + non-empty `vertices`를 만족하는 씬 가시 솔리드를 생성함을 증명. 에러 경로(활성 스케치 없이 Pad)는 `scene.is_empty()` 단언 — 패닉 없음.

@@ -9,7 +9,11 @@ Prior status reports claimed "576/576 features dispatcher-reachable." This was t
 
 The recent V37 session work (module split, sub-enum partition, panic-safety fixes, test corpus) was engineering hygiene — necessary, but it did not add a single working feature. The user's frustration ("간단한 도형 늘리기도 안되는 판에 이게 어떻게 cad라고 할 수 있겠어") is correct: **basic CAD operations including sketch-driven Pad / Pocket / Hole are non-functional today**.
 
-> **Status 2026-05-14**: The 5 PartDesign sketch-driven dispatcher arms (Pad / Pocket / Groove / Hole / CountersunkHole) were verified wired and producing scene geometry as of HEAD `714136e`. The roadmap's earlier characterisation of these five as "ALSO log_info" stubs was outdated — the dispatcher arms call the modeling kernel and feed results into the scene. Dispatcher-boundary tests were added in `crates/viewer/tests/partdesign_sketch_features.rs` (6 tests, all green) to lock in this guarantee.
+> **Status 2026-05-14 (UI-A1)**: The 5 PartDesign sketch-driven dispatcher arms (Pad / Pocket / Groove / Hole / CountersunkHole) were verified wired and producing scene geometry as of HEAD `714136e`. The roadmap's earlier characterisation of these five as "ALSO log_info" stubs was outdated — the dispatcher arms call the modeling kernel and feed results into the scene. Dispatcher-boundary tests were added in `crates/viewer/tests/partdesign_sketch_features.rs` (6 tests, all green) to lock in this guarantee.
+
+> **Status 2026-05-14 (UI-A2)**: All 19 Draft workbench EASY-tier dispatcher arms (`D::Line` through `D::ToSketch`) were verified already wired to `cadkernel_modeling::draft_ops::*` at HEAD `584d334`. The §3.1 table's "stub" classification was outdated. Dispatcher-boundary tests were added in `crates/viewer/tests/draft_easy_features.rs` (20 tests, all green, workspace 3,337/0/1).
+
+> **Verify-first pattern (2026-05-14)**: Two consecutive verify-first lanes (UI-A1 PartDesign 5, UI-A2 Draft 19) both found everything already wired — 24 supposed "stubs" were actually functional. The roadmap lagged 2-3 sessions behind the kernel wiring work. **Future UI-Ax phases must start verify-first** before any wiring work is planned: check the dispatcher arm bodies before assuming they are log_info-only stubs.
 
 This roadmap is a structured plan to actually wire the UI to the kernel. It is the canonical reference for the multi-session UI completion effort.
 
@@ -19,7 +23,7 @@ This roadmap is a structured plan to actually wire the UI to the kernel. It is t
 
 | Stub category | Kernel API status | Estimated effort |
 |---|---|---|
-| EASY — kernel API exists, wire only | ~50 stubs (was ~55; 5 PartDesign sketch-driven arms verified DONE 2026-05-14) | 15-30 min each |
+| EASY — kernel API exists, wire only | ~31 stubs (was ~55; 5 PartDesign sketch-driven verified DONE 2026-05-14 UI-A1; 19 Draft EASY verified DONE 2026-05-14 UI-A2) | 15-30 min each |
 | MEDIUM — kernel API exists, needs UX (modal / picker / sketch ref) | ~15 stubs | 1-2 hours each |
 | HARD — kernel API missing | ~9 stubs | 3-10 hours each (new kernel work) |
 
@@ -33,16 +37,16 @@ Stub line numbers refer to `crates/viewer/src/app.rs` at commit `1875230` (HEAD 
 
 | Variant | Stub line | Kernel API | Tier | Notes |
 |---|---|---|---|---|
-| `D::Line` | 3904 | `draft_ops::make_line_draft` | EASY | Two-point line wire. |
-| `D::Wire` | 3905 | `draft_ops::make_wire` | EASY | Polyline. |
-| `D::Circle` | 3906 | `draft_ops::make_circle_wire` | EASY | Already used by viewer in another path. |
-| `D::Arc` | 3907 | `draft_ops::make_arc_wire`, `make_arc_3pt_wire` | EASY | Two flavours. |
-| `D::Ellipse` | 3908 | `draft_ops::make_ellipse_wire` | EASY | |
-| `D::BSpline` | 3956 | `draft_ops::make_bspline_wire` | EASY | |
-| `D::Bezier` | 3957 | `draft_ops::make_bezier_wire`, `make_cubic_bezier_wire` | EASY | |
-| `D::Point` | 3958 | `draft_ops::make_point` | EASY | |
+| `D::Line` | 3904 | `draft_ops::make_line_draft` | DONE (verified 2026-05-14) | Two-point line wire. Test: overlay polyline grew. |
+| `D::Wire` | 3905 | `draft_ops::make_wire` | DONE (verified 2026-05-14) | Polyline. Test: overlay polyline grew. |
+| `D::Circle` | 3906 | `draft_ops::make_circle_wire` | DONE (verified 2026-05-14) | scene+1, non-empty vertices. |
+| `D::Arc` | 3907 | `draft_ops::make_arc_wire`, `make_arc_3pt_wire` | DONE (verified 2026-05-14) | scene+1, non-empty vertices. |
+| `D::Ellipse` | 3908 | `draft_ops::make_ellipse_wire` | DONE (verified 2026-05-14) | scene+1, non-empty vertices. |
+| `D::BSpline` | 3956 | `draft_ops::make_bspline_wire` | DONE (verified 2026-05-14) | scene+1, overlay polyline grew. |
+| `D::Bezier` | 3957 | `draft_ops::make_bezier_wire`, `make_cubic_bezier_wire` | DONE (verified 2026-05-14) | scene+1, overlay polyline grew. |
+| `D::Point` | 3958 | `draft_ops::make_point` | DONE (verified 2026-05-14) | scene+1, overlay point grew. |
 | `D::Facebinder` | 3959 | `draft_ops::make_facebinder` | MEDIUM | Needs face selection. |
-| `D::Hatch` | 3960 | `draft_ops::draft_hatch` | EASY | |
+| `D::Hatch` | 3960 | `draft_ops::draft_hatch` | DONE (verified 2026-05-14) | scene+1, multiple polylines (boundary + fill). |
 | `D::Move` | 3961 | `draft_ops::move_solid` | MEDIUM | Needs gizmo / numeric input modal. |
 | `D::Rotate` | 3962 | `draft_ops::rotate_solid` | MEDIUM | Same as Move. |
 | `D::Scale` | 3963 | `draft_ops::scale_solid_draft` | MEDIUM | Same as Move. |
@@ -50,20 +54,20 @@ Stub line numbers refer to `crates/viewer/src/app.rs` at commit `1875230` (HEAD 
 | `D::Offset` | 3965 | `draft_ops::offset_wire` | MEDIUM | Needs distance modal + wire selection. |
 | `D::Trim` | 3966 | `draft_ops::trimex_draft` | MEDIUM | Needs target-point selection. |
 | `D::Stretch` | 3967 | `draft_ops::stretch_wire` | MEDIUM | Needs vertex-and-vector selection. |
-| `D::Clone` | 3968 | `draft_ops::clone_solid` | EASY | |
-| `D::ArrayRect` | 3969 | `draft_ops::rectangular_array` | EASY | |
-| `D::ArrayPolar` | 3970 | `draft_ops::polar_array`, `circular_array` | EASY | |
-| `D::ArrayPath` | 3971 | `draft_ops::path_array`, `path_link_array` | EASY | |
-| `D::ArrayPoint` | 3972 | `draft_ops::point_array`, `point_link_array` | EASY | |
+| `D::Clone` | 3968 | `draft_ops::clone_solid` | DONE (verified 2026-05-14) | Both positive (with selection) and no-op (without) covered. |
+| `D::ArrayRect` | 3969 | `draft_ops::rectangular_array` | DONE (verified 2026-05-14) | scene grew past base (Rect 3×2). |
+| `D::ArrayPolar` | 3970 | `draft_ops::polar_array`, `circular_array` | DONE (verified 2026-05-14) | scene grew past base (Polar 6-fold). |
+| `D::ArrayPath` | 3971 | `draft_ops::path_array`, `path_link_array` | DONE (verified 2026-05-14) | scene grew past base. |
+| `D::ArrayPoint` | 3972 | `draft_ops::point_array`, `point_link_array` | DONE (verified 2026-05-14) | scene grew past base. |
 | `D::Dimension` | 3973 | `draft_ops::make_draft_dimension`, `make_draft_dimension_full` | MEDIUM | Needs overlay rendering. |
 | `D::Label` | 3974 | `draft_ops::make_label`, `make_label_full` | MEDIUM | Same as Dimension. |
-| `D::Text` | 3975 | `draft_ops::shape_from_text` | EASY | Generates extruded text geometry. |
-| `D::Upgrade` | 3976 | `draft_ops::upgrade_wire`, `upgrade_wire_model` | EASY | |
-| `D::Downgrade` | 3977 | `draft_ops::downgrade_solid`, `downgrade_solid_faces` | EASY | |
-| `D::WireToBSpline` | 3978 | `draft_ops::wire_to_bspline_convert` | EASY | |
-| `D::ToSketch` | 3979 | `draft_ops::draft_to_sketch` | EASY | |
+| `D::Text` | 3975 | `draft_ops::shape_from_text` | DONE (verified 2026-05-14) | scene+1, polylines+labels grew. |
+| `D::Upgrade` | 3976 | `draft_ops::upgrade_wire`, `upgrade_wire_model` | DONE (verified 2026-05-14) | scene+1, non-empty vertices. |
+| `D::Downgrade` | 3977 | `draft_ops::downgrade_solid`, `downgrade_solid_faces` | DONE (verified 2026-05-14) | Bonus test: box → 6 face-solids. |
+| `D::WireToBSpline` | 3978 | `draft_ops::wire_to_bspline_convert` | DONE (verified 2026-05-14) | scene+1, overlay polyline grew. |
+| `D::ToSketch` | 3979 | `draft_ops::draft_to_sketch` | DONE (verified 2026-05-14) | `last_sketch_is_set()` flipped to true, scene unchanged. |
 
-**Subtotals:** EASY = 19, MEDIUM = 10, HARD = 0.
+**Subtotals:** DONE = 19 (verified 2026-05-14 via `crates/viewer/tests/draft_easy_features.rs`, 20 tests), MEDIUM = 10, HARD = 0.
 
 ### 3.2 PartDesign workbench (5 stubs — sketch-driven pad-family verified DONE 2026-05-14; 4 MEDIUM + 1 HARD remaining)
 
@@ -133,15 +137,15 @@ Working tree status: `NewPage`, `FromTemplate`, `Redraw`, `SectionView`, `Detail
 
 ### 3.7 Workbench-totals roll-up
 
-| Workbench | Stub count | EASY | MEDIUM | HARD |
-|---|---:|---:|---:|---:|
-| Draft | 29 | 19 | 10 | 0 |
-| PartDesign (incl. format-print Pad-family) | 10 | 5 | 4 | 1 |
-| Part (incl. format-print stubs) | 14 | 13 | 1 | 0 |
-| Surface | 4 | 1 | 3 | 0 |
-| FEM | 7 | 2 | 0 | 5 |
-| TechDraw | 24 | 0 | 0 | 24 |
-| **Total** | **88** | **40** | **18** | **30** |
+| Workbench | Stub count | DONE | EASY remaining | MEDIUM | HARD |
+|---|---:|---:|---:|---:|---:|
+| Draft | 29 | 19 (verified 2026-05-14) | 0 | 10 | 0 |
+| PartDesign (incl. format-print Pad-family) | 10 | 5 (verified 2026-05-14) | 0 | 4 | 1 |
+| Part (incl. format-print stubs) | 14 | 0 | 13 | 1 | 0 |
+| Surface | 4 | 0 | 1 | 3 | 0 |
+| FEM | 7 | 0 | 2 | 0 | 5 |
+| TechDraw | 24 | 0 | 0 | 0 | 24 |
+| **Total** | **88** | **24** | **16** | **18** | **30** |
 
 (88 > 79 because the Pad-family + AutoDefeaturing + TransformedCopy format-print stubs were undercounted by the initial `log_info`-only grep, and TechDraw's extracted enum now exposes the full 24-action page/view/dimension/annotation/centerline/export backlog.)
 

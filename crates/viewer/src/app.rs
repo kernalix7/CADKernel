@@ -11802,6 +11802,16 @@ impl CadApp {
         &self.scene
     }
 
+    /// Select the first object in the scene for selection-dependent
+    /// dispatcher tests. No-op when the scene is empty.
+    #[doc(hidden)]
+    pub fn select_first_for_test(&mut self) {
+        if let Some(obj) = self.scene.objects.first() {
+            let id = obj.id;
+            self.scene.select_single(id);
+        }
+    }
+
     /// Read-only view of the camera updated by dispatched actions.
     #[doc(hidden)]
     pub fn camera_ref(&self) -> &Camera {

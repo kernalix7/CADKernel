@@ -11,6 +11,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### UI Completion Roadmap — Phase A Draft workbench EASY 19 verified (2026-05-14)
+- **Roadmap status corrected**: all 19 Draft workbench EASY-tier dispatcher arms (`D::Line`, `D::Wire`, `D::Circle`, `D::Arc`, `D::Ellipse`, `D::BSpline`, `D::Bezier`, `D::Point`, `D::Hatch`, `D::Clone`, `D::ArrayRect`, `D::ArrayPolar`, `D::ArrayPath`, `D::ArrayPoint`, `D::Text`, `D::Upgrade`, `D::Downgrade`, `D::WireToBSpline`, `D::ToSketch`) verified already wired pre-A2 to `cadkernel_modeling::draft_ops::*` at HEAD `584d334`. `docs/UI_COMPLETION_ROADMAP.md` §3.1 "stub" listing was outdated — same pattern UI-A1 found for PartDesign.
+- **New dispatcher-boundary test file** `crates/viewer/tests/draft_easy_features.rs` (366 lines, **20 tests** = 19 + 1 bonus Downgrade) proving each arm produces a scene-visible result. Coverage spans solids (Circle/Arc/Ellipse/Upgrade fills), overlay polylines (Line/Wire/BSpline/Bezier), overlay points (Point), boundary+fill (Hatch), arrays (Rect 3×2, Polar 6-fold), text (Text), no-op (Clone w/o selection), and side-effect-only (ToSketch updates last_sketch).
+- **Test support helper**: `select_first_for_test()` `#[doc(hidden)]` added to `crates/viewer/src/app.rs` (+10 lines) for tests requiring selection state.
+- Workspace: 3,317 → **3,337 / 0 / 1 ignored** (+20).
+- STOP_LIST clean. No `Command`/`Outcome` variants. No kernel changes.
+- **Pattern observation**: Two consecutive verify-first lanes (UI-A1 PartDesign 5, UI-A2 Draft 19) both found everything already wired. The roadmap appears to have lagged behind 2-3 sessions of kernel wiring. Future UI-Ax phases should also start verify-first.
+
 #### UI Completion Roadmap — Phase A PartDesign sketch features: verified wired + test coverage added (2026-05-14)
 - **Roadmap status corrected**: `Pd::PadSketch`, `Pd::PocketSketch`, `Pd::GrooveSketch`, `Pd::HoleSketch`, and `Pd::CountersunkHoleSketch` were already wired to `cadkernel_modeling::{pad, pocket, groove, hole, countersunk_hole}` in HEAD `714136e`, passing produced solids into the scene via `add_to_scene`. The `docs/UI_COMPLETION_ROADMAP.md` §3.2 listing of these five as "ALSO log_info" stubs was stale — the dispatcher arms are functional, not placeholders.
 - **New dispatcher-boundary test file** `crates/viewer/tests/partdesign_sketch_features.rs` (126 lines, 6 tests) proving each of the five arms produces a scene-visible solid: `len == before + 1` with non-empty `vertices`. Error path (`Pd::PadSketch` without an active sketch) asserts `scene.is_empty()` — no panic, no silent no-op.
