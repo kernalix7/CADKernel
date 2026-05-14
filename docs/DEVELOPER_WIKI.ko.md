@@ -2006,3 +2006,5 @@ FEM "Boundary Conditions" 서브메뉴가 3개 서브-서브메뉴로 재구성:
 테스트: `gui::mod::fem_picker_tests`에 11개 unit 테스트(12행 `BcInputs` 가시성 매트릭스 + 신규 variant별 `BcEditorState → BoundaryCondition` 매핑) + `crates/viewer/tests/gui_action_integration.rs`에 10개 통합 테스트(신규 variant별 매칭되는 `BoundaryCondition` 1개 추가). 21개 신규 테스트, ~495 LOC(450 예산보다 45 초과 — 초과는 테스트 폭에서 — Vec3/스칼라 오버로드의 명시적 variant별 커버리지를 위한 합리적 거래로 수용).
 
 Phase O-b(tet 메시 위 stress/displacement 컬러맵)는 미진행 — 렌더링 파이프라인 작업이 필요해 별도 세션으로 분리.
+
+**UI-A4 — verify-first Surface/FEM/TechDraw (2026-05-14): 3,351 → 3,356 / 0 / 1.** 4번째 연속 verify-first 레인. §3.4 Surface(`S::Coons` 1개) + §3.5 FEM(`FemAction::Summary`/`Report` 2개) + §3.6 TechDraw(24개) = 27/27 arm 모두 사전 배선 완료 확인. 누적 카운터 64/64. 27개 중 24개는 기존 테스트에서 이미 커버 완료; 3개만 강화 테스트 추가. 신규 파일: `fem_easy_features.rs` (4개 테스트), `techdraw_done_features.rs` (1개 테스트). 테스트 헬퍼 `CadApp::status_message()` `app.rs`에 추가 (+5줄). Command/Outcome/GuiAction variant 없음, 커널 변경 없음.

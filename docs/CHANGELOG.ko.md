@@ -11,6 +11,14 @@
 
 ### 추가됨
 
+#### UI 완성 로드맵 — Phase A Surface/FEM/TechDraw 확인 (2026-05-14)
+- **verify-first 패턴 4연속 확인**: Surface §3.4 (1) + FEM §3.5 (2) + TechDraw §3.6 (24) = 27/27 arm 모두 사전 배선 완료 확인. 누적 카운터: 5 PD + 19 Draft + 13 Part + 27 mixed = **64/64**.
+- **발견**: 27개 중 24개는 이미 테스트 커버 완료(`S::Coons` `gui_action_integration.rs:2851`, TechDraw 23개 SVG/DXF/PDF 내용 검증 포함). 기존 테스트가 동어반복(tautology)이던 3개만 강화 필요.
+- **강화 테스트 3개 추가**: `crates/viewer/tests/fem_easy_features.rs` NEW (4개 테스트), `crates/viewer/tests/techdraw_done_features.rs` NEW (1개 테스트).
+- **테스트 헬퍼**: `CadApp::status_message()` `#[doc(hidden)]` `crates/viewer/src/app.rs`에 추가 (+5줄).
+- 워크스페이스: 3,351 → **3,356 / 0 / 1 무시** (+5).
+- STOP_LIST 그린 (신규 Command/Outcome/GuiAction variant 없음, 커널 변경 없음).
+
 #### UI 완성 로드맵 — Phase A Part 워크벤치 EASY 13개 확인 (2026-05-14)
 - **로드맵 상태 정정**: Part 워크벤치 EASY 13개 디스패처 arm(`P::FaceFromWires` ~ `P::CoonsPatch`)이 이미 `cadkernel_modeling::features::*`에 배선 완료되어 있었음. `docs/UI_COMPLETION_ROADMAP.md` §3.3의 "스텁" 분류는 오래된 정보.
 - **verify-first 패턴 3연속 확인**: UI-A1 (5/5 PartDesign) + UI-A2 (19/19 Draft) + UI-A3 (13/13 Part) = **37/37 "스텁" 모두 이미 배선 완료**. 로드맵 §1 verify-first 경고에 반영.

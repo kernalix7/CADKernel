@@ -12860,6 +12860,11 @@ impl CadApp {
         (o.polylines.len(), o.points.len(), o.labels.len())
     }
 
+    #[doc(hidden)]
+    pub fn status_message(&self) -> &str {
+        &self.gui.status_message
+    }
+
     /// Read the current TechDraw sheet dimensions (for F-page tests).
     /// Returns `None` if no sheet is open.
     #[doc(hidden)]

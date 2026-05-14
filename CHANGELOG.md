@@ -11,6 +11,16 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### UI Completion Roadmap — Phase A Surface/FEM/TechDraw verified (2026-05-14)
+- **Verify-first 4th consecutive confirmation**: 27/27 dispatcher arms across Surface §3.4 (1), FEM §3.5 (2), TechDraw §3.6 (24) verified already wired pre-A4. Cumulative counter: 5 PD + 19 Draft + 13 Part + 27 mixed = **64/64**.
+- **Discovery**: 24 of 27 arms were ALREADY test-covered (Surface `S::Coons` by `gui_action_integration.rs:2851`; 23 TechDraw arms by various non-trivial assertions including SVG/DXF/PDF content checks). Only 3 arms needed strengthening (their prior tests were tautologies).
+- **3 strengthening tests added**:
+  - `crates/viewer/tests/fem_easy_features.rs` NEW (4 tests): `FemAction::Summary` and `FemAction::Report` status-text + warning-text assertions.
+  - `crates/viewer/tests/techdraw_done_features.rs` NEW (1 test): `T::Redraw` no-sheet warning-text assertion.
+- **Test-support helper**: `CadApp::status_message() -> &str` `#[doc(hidden)]` accessor added to `crates/viewer/src/app.rs` (+5 lines), used by strengthening tests.
+- Workspace: 3,351 → **3,356 / 0 / 1 ignored** (+5).
+- STOP_LIST clean (no Command/Outcome/GuiAction variants added, no kernel changes).
+
 #### UI Completion Roadmap — Phase A Part workbench EASY 13 verified (2026-05-14)
 - **Roadmap status corrected**: all 13 Part workbench EASY dispatcher arms (`P::FaceFromWires`, `P::ConnectShapes`, `P::EmbedShapes`, `P::CutoutShapes`, `P::ExplodeCompound`, `P::CompoundFilter`, `P::BooleanFragments`, `P::SliceToCompound`, `P::PointsFromShape`, `P::ConvertToSolid`, `P::AutoDefeaturing`, `P::TransformedCopy`, `P::CoonsPatch`) verified already wired pre-A3 to their respective kernel APIs in `cadkernel_modeling::features::*`. `docs/UI_COMPLETION_ROADMAP.md` §3.3 "stub" listing was outdated.
 - **Verify-first pattern confirmed for the 3rd time**: UI-A1 (5/5 PartDesign) + UI-A2 (19/19 Draft) + UI-A3 (13/13 Part) = **37/37 supposed "stubs" already wired**. Pattern now anchored in roadmap §1 verify-first warning.

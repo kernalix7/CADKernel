@@ -17,6 +17,8 @@ The recent V37 session work (module split, sub-enum partition, panic-safety fixe
 
 > **Verify-first pattern (2026-05-14, 3rd confirmation)**: Three consecutive verify-first lanes (UI-A1 PartDesign 5, UI-A2 Draft 19, UI-A3 Part 13) all found everything already wired — **37 supposed "stubs" were actually functional**. The roadmap lagged behind the kernel wiring work. **Future UI-Ax phases must start verify-first** before any wiring work is planned: check the dispatcher arm bodies before assuming they are log_info-only stubs.
 
+> **Status 2026-05-14 (UI-A4)**: 27/27 dispatcher arms across Surface §3.4 (1 = `S::Coons`), FEM §3.5 (2 = `FemAction::Summary`/`Report`), TechDraw §3.6 (24) verified already wired pre-A4. Cumulative verify-first counter: 5 + 19 + 13 + 27 = **64/64**. Additionally, 24 of 27 arms were already test-covered in prior test files (`S::Coons` by `gui_action_integration.rs:2851`; 23 TechDraw arms by non-trivial SVG/DXF/PDF assertions). Only 3 arms had tautological prior tests and needed strengthening: new tests in `crates/viewer/tests/fem_easy_features.rs` (4 tests) and `crates/viewer/tests/techdraw_done_features.rs` (1 test). Workspace: 3,351 → **3,356 / 0 / 1**.
+
 This roadmap is a structured plan to actually wire the UI to the kernel. It is the canonical reference for the multi-session UI completion effort.
 
 ## 2. The Surprise (Good News)
@@ -25,7 +27,7 @@ This roadmap is a structured plan to actually wire the UI to the kernel. It is t
 
 | Stub category | Kernel API status | Estimated effort |
 |---|---|---|
-| EASY — kernel API exists, wire only | ~18 stubs (was ~55; 5 PartDesign sketch-driven verified DONE 2026-05-14 UI-A1; 19 Draft EASY verified DONE 2026-05-14 UI-A2; 13 Part EASY verified DONE 2026-05-14 UI-A3) | 15-30 min each |
+| EASY — kernel API exists, wire only | ~15 stubs (was ~55; 5 PD verified DONE UI-A1; 19 Draft DONE UI-A2; 13 Part DONE UI-A3; 3 Surface/FEM DONE UI-A4 = S::Coons + FemAction::Summary + FemAction::Report) | 15-30 min each |
 | MEDIUM — kernel API exists, needs UX (modal / picker / sketch ref) | ~15 stubs | 1-2 hours each |
 | HARD — kernel API missing | ~9 stubs | 3-10 hours each (new kernel work) |
 
@@ -113,9 +115,9 @@ Stub line numbers refer to `crates/viewer/src/app.rs` at commit `1875230` (HEAD 
 | `S::Sections` | 3776 | `surface_ops::sections`, `features::cross_sections` | MEDIUM | Needs profile selection. |
 | `S::Extend` | 3777 | `surface_ops::extend_surface` | MEDIUM | Needs surface selection + distance. |
 | `S::Blend` | 3778 | `surface_ops::surface_from_curves` (closest) | MEDIUM | API is partial. |
-| `S::Coons` | 3802 | `surface_ops::coons_patch` | EASY | |
+| `S::Coons` | 3802 | `surface_ops::coons_patch` | DONE (verified 2026-05-14) | Covered by `gui_action_integration.rs:2851`. |
 
-**Subtotals:** EASY = 1, MEDIUM = 3, HARD = 0.
+**Subtotals:** DONE = 1 (verified 2026-05-14), EASY remaining = 0, MEDIUM = 3, HARD = 0.
 
 ### 3.5 FEM workbench (7 stubs)
 
@@ -126,16 +128,18 @@ Stub line numbers refer to `crates/viewer/src/app.rs` at commit `1875230` (HEAD 
 | `FemAction::ShowStress` | 2831 | viewer FEM colormap boundary mesh | DONE | Working tree: 7-band scene-object colormap from active `FemResult`. |
 | `FemAction::ShowDisplacement` | 2832 | viewer FEM colormap boundary mesh | DONE | Working tree: nodal displacement magnitude colormap. |
 | `FemAction::ShowVonMises` | 2833 | viewer FEM colormap boundary mesh | DONE | Working tree: per-element Von Mises averaged to boundary nodes. |
-| `FemAction::Summary` | 2834 | (text output trivial) | EASY | Just format `fem_analysis` fields. |
-| `FemAction::Report` | 2835 | (text output trivial) | EASY | Same. |
+| `FemAction::Summary` | 2834 | (text output trivial) | DONE (verified 2026-05-14) | Strengthening tests in `fem_easy_features.rs` assert status-text + warning-text. |
+| `FemAction::Report` | 2835 | (text output trivial) | DONE (verified 2026-05-14) | Same; strengthened in `fem_easy_features.rs`. |
 
-**Subtotals:** DONE = 7, HARD remaining = 0.
+**Subtotals:** DONE = 7 (all verified; Summary/Report strengthened 2026-05-14), EASY remaining = 0, HARD remaining = 0.
 
 ### 3.6 TechDraw workbench (24 stubs)
 
 Working tree status: `NewPage`, `FromTemplate`, `Redraw`, `SectionView`, `DetailView`, `BrokenView`, all six dimension variants (`DimLinear`, `DimRadius`, `DimDiameter`, `DimAngle`, `DimArcLen`, `DimArea`), all six annotation variants (`Text`, `RichText`, `Balloon`, `Leader`, `Weld`, `SurfFinish`), all four centerline variants (`CenterFace`, `CenterLines`, `CenterPoints`, `BoltCircle`), `ExportDxf`, and `ExportPdf` are now wired. DXF/PDF export uses new `crates/io/src/techdraw_dxf.rs` and `crates/io/src/techdraw_pdf.rs` helpers; dimensions, annotations, and centerlines render through `drawing_to_svg` (and therefore PDF). TechDraw HARD backlog is now closed at the dispatcher/storage/rendering level.
 
-**Subtotals:** DONE = 24, HARD remaining = 0.
+**Status 2026-05-14 (UI-A4)**: All 24 TechDraw arms verified already wired and test-covered. 23 arms covered by prior non-trivial tests (SVG/DXF/PDF content assertions, sheet-size checks, etc.). `T::Redraw` no-sheet path strengthened in `crates/viewer/tests/techdraw_done_features.rs` (1 test) — prior test was a tautology.
+
+**Subtotals:** DONE = 24 (all verified 2026-05-14; 23 already-covered + 1 strengthened), HARD remaining = 0.
 
 ### 3.7 Workbench-totals roll-up
 
@@ -144,10 +148,10 @@ Working tree status: `NewPage`, `FromTemplate`, `Redraw`, `SectionView`, `Detail
 | Draft | 29 | 19 (verified 2026-05-14) | 0 | 10 | 0 |
 | PartDesign (incl. format-print Pad-family) | 10 | 5 (verified 2026-05-14) | 0 | 4 | 1 |
 | Part (incl. format-print stubs) | 14 | 13 (verified 2026-05-14) | 0 | 1 | 0 |
-| Surface | 4 | 0 | 1 | 3 | 0 |
-| FEM | 7 | 0 | 2 | 0 | 5 |
-| TechDraw | 24 | 0 | 0 | 0 | 24 |
-| **Total** | **88** | **37** | **3** | **18** | **30** |
+| Surface | 4 | 1 (verified 2026-05-14) | 0 | 3 | 0 |
+| FEM | 7 | 7 (all verified; Summary/Report strengthened 2026-05-14) | 0 | 0 | 0 |
+| TechDraw | 24 | 24 (all verified 2026-05-14; 23 already-covered + 1 strengthened) | 0 | 0 | 0 |
+| **Total** | **88** | **64** | **0** | **18** | **1** |
 
 (88 > 79 because the Pad-family + AutoDefeaturing + TransformedCopy format-print stubs were undercounted by the initial `log_info`-only grep, and TechDraw's extracted enum now exposes the full 24-action page/view/dimension/annotation/centerline/export backlog.)
 
