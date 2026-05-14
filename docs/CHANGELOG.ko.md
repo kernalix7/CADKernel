@@ -11,6 +11,13 @@
 
 ### 추가됨
 
+#### 보안 & 공급망 강화: zstd 압축 해제 캡 + cargo-deny CI (2026-05-14)
+- **`.cadk` zstd 디코드에 `MAX_DECOMPRESSED_DOCUMENT_BYTES = 32 MiB` 캡** — `crates/api/src/cadk/codec.rs`의 `decode()`가 압축된 `BlobKind::Document` 본문을 `zstd::Decoder` + `Read::take(cap + 1)` 스트리밍으로 읽고 캡 초과 시 거부. 작은 KB 단위 페이로드가 수 GB로 팽창하는 zstd "압축 폭탄" 공격 차단. R1/R2 레퍼런스 부품은 압축 해제 후 50 KiB 미만이라 실제 사용에는 600배 이상 여유.
+- **신규 단위 테스트 3개** (`codec.rs::tests`): 캡 값 범위 sanity, 캡 초과 거부, 캡 이내 통과.
+- **`deny.toml`** — v0.5 audit 베이스라인을 미러링한 라이선스 화이트리스트(Apache-2.0/MIT/BSD/ISC/Unicode/CC0-1.0/Zlib/MPL-2.0/Apache-2.0 WITH LLVM-exception). `r-efi` 트라이라이선스는 Apache-2.0 선택. Advisory ignore에 `RUSTSEC-2024-0436` (paste), `RUSTSEC-2026-0097` (rand) 두 transitive 경고 핀.
+- **`.github/workflows/cargo-deny.yml`** — push / PR / 주간 cron에서 `cargo deny check --all-features` 실행. 경로 필터로 `Cargo.toml` / `Cargo.lock` / `deny.toml` 변경 시만 트리거 + 신규 advisory drift 감지를 위한 주간 cron.
+- v0.5 push audit의 Security W3 (압축 해제 캡)와 Legal W3 (cargo-deny tooling) 종결.
+
 #### 상용 CAD 로드맵 — A3.3: CreateCone frustum 지원 + 4개 deferred 핸들러 마이그레이션 (2026-05-13)
 - **`Command::CreateCone` 스키마 확장** — `top_radius` 필드 추가(`#[serde(default)]`, 기본값 0.0). `top_radius > 0`이면 frustum, 0이면 기본 콘. 기존 `.cadk` 파일은 필드 누락 시 `serde(default)`로 정상 역직렬화.
 - **viewer 씬 오브젝트 `SolidId` 매핑** — `SceneObject`에 `solid_id: Option<SolidId>` 추가. boolean 핸들러가 세션에서 올바른 operand solid를 찾는 데 사용.

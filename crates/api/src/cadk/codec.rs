@@ -27,6 +27,12 @@ use crate::cadk::manifest::{BlobKind, BlobRecord, Manifest};
 use crate::command::Command;
 use crate::{ApiError, ApiResult};
 
+/// Hard upper bound for the decompressed `BlobKind::Document` payload, used to
+/// refuse zstd decompression-bomb payloads where a tiny on-disk blob expands
+/// to gigabytes. 32 MiB sits well above realistic command-log JSON (the R1/R2
+/// reference parts decompress to < 50 KiB) while bounding adversarial memory.
+const MAX_DECOMPRESSED_DOCUMENT_BYTES: u64 = 32 * 1024 * 1024;
+
 /// Options controlling `.cadk` encoding side-effects. Default = no
 /// compression, no thumbnail (matches the bytes produced by the
 /// legacy [`encode`] entry point).
@@ -429,10 +435,24 @@ pub fn decode(bytes: &[u8]) -> ApiResult<Vec<Command>> {
     }
     // Auto-detect zstd compression via the DOCUMENT_COMPRESSED flag. The
     // CRC is computed over the on-disk (potentially compressed) bytes;
-    // decompression happens after the integrity check.
+    // decompression happens after the integrity check, bounded by
+    // [`MAX_DECOMPRESSED_DOCUMENT_BYTES`] to refuse zstd "decompression bomb"
+    // payloads where a small on-disk blob expands to gigabytes.
     let commands: Vec<Command> = if header.flags & CadkFlags::DOCUMENT_COMPRESSED != 0 {
-        let decoded = zstd::decode_all(doc_body)
+        use std::io::Read;
+        let decoder = zstd::Decoder::new(doc_body)
             .map_err(|e| ApiError::Codec(format!("zstd decode: {e}")))?;
+        let mut decoded = Vec::new();
+        decoder
+            .take(MAX_DECOMPRESSED_DOCUMENT_BYTES + 1)
+            .read_to_end(&mut decoded)
+            .map_err(|e| ApiError::Codec(format!("zstd decode: {e}")))?;
+        if decoded.len() as u64 > MAX_DECOMPRESSED_DOCUMENT_BYTES {
+            return Err(ApiError::Codec(format!(
+                "decompressed document blob exceeds {} MB cap",
+                MAX_DECOMPRESSED_DOCUMENT_BYTES / 1024 / 1024
+            )));
+        }
         serde_json::from_slice(&decoded)?
     } else {
         serde_json::from_slice(doc_body)?
@@ -738,5 +758,54 @@ mod tests {
         // But the thumbnail CRC must reject.
         let err = decode_thumbnail(&bytes).unwrap_err();
         assert!(matches!(err, ApiError::Codec(_)));
+    }
+
+    #[test]
+    fn decompression_cap_constant_is_sane() {
+        // Cap must be large enough for realistic command logs (R1/R2 are
+        // < 50 KiB) but small enough to bound zstd-bomb memory cost.
+        // Both bounds are compile-time checked so a future cap change that
+        // violates them fails the build, not just this test.
+        const { assert!(MAX_DECOMPRESSED_DOCUMENT_BYTES >= 1024 * 1024) };
+        const { assert!(MAX_DECOMPRESSED_DOCUMENT_BYTES <= 128 * 1024 * 1024) };
+    }
+
+    #[test]
+    fn streaming_decoder_take_rejects_oversized_payload() {
+        // Mirror the cap-enforcement primitive used in `decode()`: a payload
+        // that decompresses past the cap fills the buffer to (cap + 1) bytes,
+        // which is the exact signal `decode()` uses to refuse the document.
+        use std::io::Read;
+        let raw = vec![b'x'; 1024];
+        let compressed = zstd::encode_all(raw.as_slice(), 1).expect("encode");
+        let cap: u64 = 512;
+        let decoder = zstd::Decoder::new(compressed.as_slice()).expect("init");
+        let mut out = Vec::new();
+        decoder
+            .take(cap + 1)
+            .read_to_end(&mut out)
+            .expect("read");
+        assert!(
+            (out.len() as u64) > cap,
+            "cap-trip condition must hold (got {} bytes, cap {})",
+            out.len(),
+            cap
+        );
+    }
+
+    #[test]
+    fn streaming_decoder_take_accepts_within_cap() {
+        use std::io::Read;
+        let raw = vec![b'x'; 256];
+        let compressed = zstd::encode_all(raw.as_slice(), 1).expect("encode");
+        let cap: u64 = 1024;
+        let decoder = zstd::Decoder::new(compressed.as_slice()).expect("init");
+        let mut out = Vec::new();
+        decoder
+            .take(cap + 1)
+            .read_to_end(&mut out)
+            .expect("read");
+        assert_eq!(out.len(), 256);
+        assert!((out.len() as u64) <= cap);
     }
 }

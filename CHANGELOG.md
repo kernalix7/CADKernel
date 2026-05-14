@@ -11,6 +11,13 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### Security & supply-chain hardening: zstd decompression cap + cargo-deny CI (2026-05-14)
+- **`MAX_DECOMPRESSED_DOCUMENT_BYTES = 32 MiB` cap on `.cadk` zstd decode** — `crates/api/src/cadk/codec.rs` `decode()` now reads the compressed `BlobKind::Document` body through a `zstd::Decoder` wrapped in `Read::take(cap + 1)` and rejects any payload that exceeds the cap. Prevents zstd "decompression bomb" attacks where a tiny on-disk blob (a few KB) decompresses to gigabytes of `serde_json::from_slice` input. R1/R2 reference parts decompress to < 50 KiB, so the cap leaves a > 600× headroom for realistic command logs while bounding adversarial memory cost.
+- **3 new unit tests** in `codec.rs::tests`: `decompression_cap_constant_is_sane` (cap value bounds), `streaming_decoder_take_rejects_oversized_payload` (cap-trip primitive), `streaming_decoder_take_accepts_within_cap` (under-cap pass-through).
+- **`deny.toml`** — root cargo-deny configuration. License allow-list mirrors the v0.5 audit baseline (Apache-2.0, MIT, BSD-2/3, ISC, Unicode-3.0/DFS-2016, CC0-1.0, Zlib, MPL-2.0, Apache-2.0 WITH LLVM-exception). `r-efi` tri-license exception elects Apache-2.0. Advisory ignore list pins the two pre-existing transitive warnings (`RUSTSEC-2024-0436` paste, `RUSTSEC-2026-0097` rand) with documented reasons. Source policy `deny unknown-registry/git`. Bans `multiple-versions = warn`.
+- **`.github/workflows/cargo-deny.yml`** — runs `cargo deny check --all-features` on push / PR / weekly cron. Path-filtered: only triggers when `Cargo.toml`, `Cargo.lock`, `deny.toml`, or the workflow itself changes (plus weekly drift detection for new advisories on existing deps).
+- Closes Security W3 (decompression cap) and Legal W3 (cargo-deny tooling) from the v0.5 push audit.
+
 #### Commercial CAD Roadmap — A3.3: CreateCone frustum support + 4 deferred handlers migrated (2026-05-13)
 - **`Command::CreateCone` schema extension** — new `top_radius` field (`#[serde(default)]`, default 0.0 for backward-compatibility). A `top_radius > 0` produces a frustum; `top_radius == 0` is a standard cone. Existing `.cadk` files missing the field deserialise correctly via `serde(default)`.
 - **Viewer scene-object `SolidId` mapping** — `SceneObject` (and viewer scene entries) gain `solid_id: Option<SolidId>` to track the API-level identity of each solid. Boolean handlers use this to resolve the correct operand solid from the session.

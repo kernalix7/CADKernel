@@ -31,3 +31,22 @@ CLAUDE.md
 .vscode
 WORK_STATUS.md
 crates/python/Cargo.lock
+
+# === AI tooling (v3.9 — strict no-footprint policy, mandatory all entries) ===
+# Per Absolute Rule #19: AI tooling artifacts must never enter project git history.
+AGENTS.md
+CLAUDE.local.md
+.mcp.json
+tmp-igbkp/
+.priv-storage/.allow-setup-reread
+CLAUDE.md.bak
+AGENTS.md.bak
+.cursorrules.bak
+WORK_STATUS.md.bak
+.gitignore.bak
+.codex/
+.aider*
+.continue/
+.cline/
+.roo/
+uninstall-backup-*/
