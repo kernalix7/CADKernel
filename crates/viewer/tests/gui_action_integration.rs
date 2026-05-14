@@ -2258,10 +2258,11 @@ fn countersunk_hole_sketch_produces_solid_into_scene() {
     app.dispatch_create_box(4.0, 4.0, 4.0);
     let before = app.scene_ref().len();
     app.dispatch_countersunk_hole_sketch(0.4, 3.0, 90.0);
-    // CountersunkHole may fail on small cylinder/cone topology variations
-    // depending on solver state; assert it never panics and either added
-    // an object or kept the count stable (no corruption).
-    assert!(app.scene_ref().len() >= before);
+    assert_eq!(
+        app.scene_ref().len(),
+        before + 1,
+        "CountersunkHole should add the drilled solid as a new scene object"
+    );
 }
 
 #[test]
@@ -2272,10 +2273,11 @@ fn groove_sketch_with_revolve_profile_runs_without_panic() {
     app.seed_test_sketch_square(0.5);
     let before = app.scene_ref().len();
     app.dispatch_groove_sketch(90.0);
-    // Groove may fail on a default-axis configuration; the test only
-    // verifies the dispatcher-to-kernel path does not panic and the scene
-    // count never decreases.
-    assert!(app.scene_ref().len() >= before);
+    assert_eq!(
+        app.scene_ref().len(),
+        before + 1,
+        "Groove should add the revolved-cut result as a new scene object"
+    );
 }
 
 #[test]

@@ -11,6 +11,13 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### UI Completion Roadmap — Phase A PartDesign sketch features: verified wired + test coverage added (2026-05-14)
+- **Roadmap status corrected**: `Pd::PadSketch`, `Pd::PocketSketch`, `Pd::GrooveSketch`, `Pd::HoleSketch`, and `Pd::CountersunkHoleSketch` were already wired to `cadkernel_modeling::{pad, pocket, groove, hole, countersunk_hole}` in HEAD `714136e`, passing produced solids into the scene via `add_to_scene`. The `docs/UI_COMPLETION_ROADMAP.md` §3.2 listing of these five as "ALSO log_info" stubs was stale — the dispatcher arms are functional, not placeholders.
+- **New dispatcher-boundary test file** `crates/viewer/tests/partdesign_sketch_features.rs` (126 lines, 6 tests) proving each of the five arms produces a scene-visible solid: `len == before + 1` with non-empty `vertices`. Error path (`Pd::PadSketch` without an active sketch) asserts `scene.is_empty()` — no panic, no silent no-op.
+- **Tightened pre-existing assertions** in `crates/viewer/tests/gui_action_integration.rs` (lines 2261 and 2276): changed from weak `>= before` to strict `== before + 1` for CountersunkHole and Groove, reflecting confirmed kernel output on the test parameter sets.
+- Workspace: 3,311 → **3,317 / 0 / 1 ignored** (+6 new tests).
+- STOP_LIST clean (no new `Command`/`Outcome` variants; no kernel changes).
+
 #### Commercial CAD Roadmap — A2.9: Lua scripting bridge migrated to Session::execute (2026-05-14)
 - **`crates/viewer/src/scripting.rs` migrated** (+401/-346): every `cad.*` mutating Lua call now routes through `cadkernel_api::Session::execute(Command::*)` instead of calling the modeling/topology kernel directly. The engine's internal `SolidStore` is replaced by a single `Arc<Mutex<Session>>`.
 - **In-place transforms**: `cad.translate`, `cad.rotate`, `cad.scale` use same-id semantics via `Outcome::SolidModified` — observationally identical to the old clone-and-return pattern for every `assign-and-replace` call site in the examples.

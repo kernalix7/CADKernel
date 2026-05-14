@@ -1,6 +1,6 @@
 # UI 완성 로드맵 (요약)
 
-**상태:** 진행 중. 시작 2026-04-30. 2026-05-05 기준 A-C3 완료 + HARD-tier overlay/FEM/TechDraw export/view/dimension/annotation/centerline/ShapeBinder + TechDraw Page/Dimension/Annotation/Centerline/View Placement command UX + FEM Result Interpretation UX + FEM multi-node BC editor UX + Sketcher profile validation UX + Sketcher constraint diagnostics UX + Sketcher external reference/reuse UX 작업 트리 검증 완료.
+**상태:** 진행 중. 시작 2026-04-30. 2026-05-05 기준 A-C3 완료 + HARD-tier overlay/FEM/TechDraw export/view/dimension/annotation/centerline/ShapeBinder + TechDraw Page/Dimension/Annotation/Centerline/View Placement command UX + FEM Result Interpretation UX + FEM multi-node BC editor UX + Sketcher profile validation UX + Sketcher constraint diagnostics UX + Sketcher external reference/reuse UX 작업 트리 검증 완료. **2026-05-14 추가**: PartDesign 스케치 피처 5개(PadSketch/PocketSketch/GrooveSketch/HoleSketch/CountersunkHoleSketch)가 HEAD `714136e` 기준 이미 배선 완료되어 씬 솔리드를 생성함이 확인됨 — 로드맵의 "log_info 스텁" 분류가 오래된 정보였음. 디스패처 경계 테스트 6개 추가 (`partdesign_sketch_features.rs`), 워크스페이스 3,317 / 0 / 1.
 **원문:** [English (canonical)](UI_COMPLETION_ROADMAP.md)
 
 이 한국어 파일은 영문 원문의 요약입니다 — 자세한 표 / 단계별 세부 사항 / 모든 79개 스텁 매핑은 영문판을 참조하십시오 (CLAUDE.md Section 5의 이중 언어 정책에 따라 영문 원문이 정본).
@@ -17,7 +17,7 @@
 
 | 티어 | 개수 | 단위 노력 |
 |---|---:|---|
-| EASY (커널 API 존재, wiring만) | 40 | 15-30분 |
+| EASY (커널 API 존재, wiring만) | 40 (※ §3.2 PartDesign 5개는 2026-05-14 DONE 확인됨) | 15-30분 |
 | MEDIUM (커널 API 존재, UX 필요) | 18 | 1-2시간 |
 | HARD (커널/API/렌더링 작업 필요) | 28 | 3-10시간 |
 

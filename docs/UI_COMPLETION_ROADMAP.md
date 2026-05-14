@@ -9,6 +9,8 @@ Prior status reports claimed "576/576 features dispatcher-reachable." This was t
 
 The recent V37 session work (module split, sub-enum partition, panic-safety fixes, test corpus) was engineering hygiene — necessary, but it did not add a single working feature. The user's frustration ("간단한 도형 늘리기도 안되는 판에 이게 어떻게 cad라고 할 수 있겠어") is correct: **basic CAD operations including sketch-driven Pad / Pocket / Hole are non-functional today**.
 
+> **Status 2026-05-14**: The 5 PartDesign sketch-driven dispatcher arms (Pad / Pocket / Groove / Hole / CountersunkHole) were verified wired and producing scene geometry as of HEAD `714136e`. The roadmap's earlier characterisation of these five as "ALSO log_info" stubs was outdated — the dispatcher arms call the modeling kernel and feed results into the scene. Dispatcher-boundary tests were added in `crates/viewer/tests/partdesign_sketch_features.rs` (6 tests, all green) to lock in this guarantee.
+
 This roadmap is a structured plan to actually wire the UI to the kernel. It is the canonical reference for the multi-session UI completion effort.
 
 ## 2. The Surprise (Good News)
@@ -17,7 +19,7 @@ This roadmap is a structured plan to actually wire the UI to the kernel. It is t
 
 | Stub category | Kernel API status | Estimated effort |
 |---|---|---|
-| EASY — kernel API exists, wire only | ~55 stubs | 15-30 min each |
+| EASY — kernel API exists, wire only | ~50 stubs (was ~55; 5 PartDesign sketch-driven arms verified DONE 2026-05-14) | 15-30 min each |
 | MEDIUM — kernel API exists, needs UX (modal / picker / sketch ref) | ~15 stubs | 1-2 hours each |
 | HARD — kernel API missing | ~9 stubs | 3-10 hours each (new kernel work) |
 
@@ -63,7 +65,7 @@ Stub line numbers refer to `crates/viewer/src/app.rs` at commit `1875230` (HEAD 
 
 **Subtotals:** EASY = 19, MEDIUM = 10, HARD = 0.
 
-### 3.2 PartDesign workbench (5 stubs — most are real, 5 remaining)
+### 3.2 PartDesign workbench (5 stubs — sketch-driven pad-family verified DONE 2026-05-14; 4 MEDIUM + 1 HARD remaining)
 
 | Variant | Stub line | Kernel API | Tier | Notes |
 |---|---|---|---|---|
@@ -73,9 +75,9 @@ Stub line numbers refer to `crates/viewer/src/app.rs` at commit `1875230` (HEAD 
 | `Pd::SubtractivePipe` | 3853 | `features::sweep` + `boolean_op_exact` | MEDIUM | Same as AdditivePipe + boolean. |
 | `Pd::ShapeBinder` | 3867 | `features::shape_binder` | DONE | Wired in working tree: copies selected shape faces into a new binder solid. |
 
-**CRITICAL — separate from stubs but functionally broken**: `Pd::PadSketch`, `Pd::PocketSketch`, `Pd::GrooveSketch`, `Pd::HoleSketch`, `Pd::CountersunkHoleSketch` ALSO log_info even though `features::pad`, `pocket`, `groove`, `hole`, `countersunk_hole` all exist. These are not in the 79-stub count above because the dispatcher format-prints params (so `grep` missed them), but they're equally non-functional. Kernel API: all exist, all EASY tier wiring. **These are the user's "간단한 도형 늘리기" complaint.**
+**Status 2026-05-14 — DONE (verified)**: `Pd::PadSketch`, `Pd::PocketSketch`, `Pd::GrooveSketch`, `Pd::HoleSketch`, `Pd::CountersunkHoleSketch` were verified wired to `cadkernel_modeling::{pad, pocket, groove, hole, countersunk_hole}` in HEAD `714136e`. These dispatcher arms call the kernel and pass produced solids into the scene via `add_to_scene`. The earlier "ALSO log_info" characterisation was stale. Dispatcher-boundary tests in `crates/viewer/tests/partdesign_sketch_features.rs` (6 tests, all green as of 2026-05-14) lock in this guarantee. The "user's 간단한 도형 늘리기 complaint" that prompted this roadmap is resolved for the PartDesign sketch-driven tier.
 
-**Subtotals:** EASY = 5 (the format-printing pad-family), MEDIUM = 4, HARD = 1.
+**Subtotals:** EASY = 5 (the format-printing pad-family, all DONE 2026-05-14), MEDIUM = 4, HARD = 1.
 
 ### 3.3 Part workbench (14 stubs)
 

@@ -11,6 +11,13 @@
 
 ### 추가됨
 
+#### UI 완성 로드맵 — Phase A PartDesign 스케치 피처: 배선 확인 및 테스트 커버리지 추가 (2026-05-14)
+- **로드맵 상태 정정**: `Pd::PadSketch` / `Pd::PocketSketch` / `Pd::GrooveSketch` / `Pd::HoleSketch` / `Pd::CountersunkHoleSketch` 5개 디스패처 arm이 HEAD `714136e` 기준 이미 `cadkernel_modeling::{pad, pocket, groove, hole, countersunk_hole}`에 배선되어 `add_to_scene`으로 솔리드를 씬에 추가하고 있었음. `docs/UI_COMPLETION_ROADMAP.md` §3.2의 "ALSO log_info" 스텁 분류는 오래된 정보였음.
+- **신규 테스트 파일** `crates/viewer/tests/partdesign_sketch_features.rs` (126줄, 6개 테스트): 5개 arm이 각각 `len == before + 1` + non-empty `vertices`를 만족하는 씬 가시 솔리드를 생성함을 증명. 에러 경로(활성 스케치 없이 Pad)는 `scene.is_empty()` 단언 — 패닉 없음.
+- **기존 단언 강화**: `gui_action_integration.rs` 2261·2276행의 CountersunkHole·Groove 단언을 `>= before`에서 `== before + 1`로 수정.
+- 워크스페이스: 3,311 → **3,317 / 0 / 1 무시** (+6 신규 테스트).
+- STOP_LIST 그린 (신규 `Command`/`Outcome` variant 없음, 커널 변경 없음).
+
 #### 상용 CAD 로드맵 — A2.9: Lua 스크립팅 브리지 Session::execute 마이그레이션 (2026-05-14)
 - **`crates/viewer/src/scripting.rs` 마이그레이션** (+401/-346): 모든 `cad.*` 뮤테이팅 Lua 호출이 모델링/토폴로지 직접 호출 대신 `cadkernel_api::Session::execute(Command::*)`를 경유. 내부 `SolidStore`를 `Arc<Mutex<Session>>`으로 교체.
 - **인플레이스 변환**: `cad.translate` / `cad.rotate` / `cad.scale`이 `Outcome::SolidModified`를 통해 동일 ID 유지. 예제 스크립트의 assign-and-replace 패턴과 동작 동일.
