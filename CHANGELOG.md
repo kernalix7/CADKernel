@@ -11,6 +11,14 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### UI Completion Roadmap — Phase A Part workbench EASY 13 verified (2026-05-14)
+- **Roadmap status corrected**: all 13 Part workbench EASY dispatcher arms (`P::FaceFromWires`, `P::ConnectShapes`, `P::EmbedShapes`, `P::CutoutShapes`, `P::ExplodeCompound`, `P::CompoundFilter`, `P::BooleanFragments`, `P::SliceToCompound`, `P::PointsFromShape`, `P::ConvertToSolid`, `P::AutoDefeaturing`, `P::TransformedCopy`, `P::CoonsPatch`) verified already wired pre-A3 to their respective kernel APIs in `cadkernel_modeling::features::*`. `docs/UI_COMPLETION_ROADMAP.md` §3.3 "stub" listing was outdated.
+- **Verify-first pattern confirmed for the 3rd time**: UI-A1 (5/5 PartDesign) + UI-A2 (19/19 Draft) + UI-A3 (13/13 Part) = **37/37 supposed "stubs" already wired**. Pattern now anchored in roadmap §1 verify-first warning.
+- **New dispatcher-boundary test file** `crates/viewer/tests/part_easy_features.rs` (14 tests = 13 happy-path + 1 graceful no-selection for ConnectShapes) proving scene-state change per arm.
+- **Test support helper**: `select_all_for_test()` `#[doc(hidden)]` added to `crates/viewer/src/app.rs` (+9 lines) for multi-select tests (ConnectShapes/EmbedShapes/CutoutShapes/BooleanFragments).
+- Workspace: 3,337 → **3,351 / 0 / 1 ignored** (+14).
+- STOP_LIST clean (no Command/Outcome/GuiAction variants added, no kernel changes).
+
 #### UI Completion Roadmap — Phase A Draft workbench EASY 19 verified (2026-05-14)
 - **Roadmap status corrected**: all 19 Draft workbench EASY-tier dispatcher arms (`D::Line`, `D::Wire`, `D::Circle`, `D::Arc`, `D::Ellipse`, `D::BSpline`, `D::Bezier`, `D::Point`, `D::Hatch`, `D::Clone`, `D::ArrayRect`, `D::ArrayPolar`, `D::ArrayPath`, `D::ArrayPoint`, `D::Text`, `D::Upgrade`, `D::Downgrade`, `D::WireToBSpline`, `D::ToSketch`) verified already wired pre-A2 to `cadkernel_modeling::draft_ops::*` at HEAD `584d334`. `docs/UI_COMPLETION_ROADMAP.md` §3.1 "stub" listing was outdated — same pattern UI-A1 found for PartDesign.
 - **New dispatcher-boundary test file** `crates/viewer/tests/draft_easy_features.rs` (366 lines, **20 tests** = 19 + 1 bonus Downgrade) proving each arm produces a scene-visible result. Coverage spans solids (Circle/Arc/Ellipse/Upgrade fills), overlay polylines (Line/Wire/BSpline/Bezier), overlay points (Point), boundary+fill (Hatch), arrays (Rect 3×2, Polar 6-fold), text (Text), no-op (Clone w/o selection), and side-effect-only (ToSketch updates last_sketch).

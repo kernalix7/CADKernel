@@ -1,6 +1,6 @@
 # UI 완성 로드맵 (요약)
 
-**상태:** 진행 중. 시작 2026-04-30. 2026-05-05 기준 A-C3 완료 + HARD-tier overlay/FEM/TechDraw export/view/dimension/annotation/centerline/ShapeBinder + TechDraw Page/Dimension/Annotation/Centerline/View Placement command UX + FEM Result Interpretation UX + FEM multi-node BC editor UX + Sketcher profile validation UX + Sketcher constraint diagnostics UX + Sketcher external reference/reuse UX 작업 트리 검증 완료. **2026-05-14 UI-A1**: PartDesign 스케치 피처 5개(PadSketch/PocketSketch/GrooveSketch/HoleSketch/CountersunkHoleSketch)가 HEAD `714136e` 기준 이미 배선 완료됨 — 로드맵의 "log_info 스텁" 분류 오류. 디스패처 경계 테스트 6개 추가 (`partdesign_sketch_features.rs`), 워크스페이스 3,317 / 0 / 1. **2026-05-14 UI-A2**: Draft 워크벤치 EASY 19개(`D::Line` ~ `D::ToSketch`) 전부 HEAD `584d334` 기준 이미 `cadkernel_modeling::draft_ops::*`에 배선 완료 확인 — §3.1의 "스텁" 분류 오류. 디스패처 경계 테스트 20개 추가 (`draft_easy_features.rs`), 워크스페이스 3,337 / 0 / 1. **verify-first 패턴**: 연속 2개 레인(UI-A1 PD 5개, UI-A2 Draft 19개)에서 총 24개 "스텁"이 실제로 이미 배선 완료된 것으로 확인. 로드맵이 2-3세션 분량 뒤처진 것으로 파악됨. **향후 UI-Ax 단계는 반드시 verify-first로 시작해야 함.**
+**상태:** 진행 중. 시작 2026-04-30. 2026-05-05 기준 A-C3 완료 + HARD-tier overlay/FEM/TechDraw export/view/dimension/annotation/centerline/ShapeBinder + TechDraw Page/Dimension/Annotation/Centerline/View Placement command UX + FEM Result Interpretation UX + FEM multi-node BC editor UX + Sketcher profile validation UX + Sketcher constraint diagnostics UX + Sketcher external reference/reuse UX 작업 트리 검증 완료. **2026-05-14 UI-A1**: PartDesign 스케치 피처 5개(PadSketch/PocketSketch/GrooveSketch/HoleSketch/CountersunkHoleSketch)가 HEAD `714136e` 기준 이미 배선 완료됨 — 로드맵의 "log_info 스텁" 분류 오류. 디스패처 경계 테스트 6개 추가 (`partdesign_sketch_features.rs`), 워크스페이스 3,317 / 0 / 1. **2026-05-14 UI-A2**: Draft 워크벤치 EASY 19개(`D::Line` ~ `D::ToSketch`) 전부 HEAD `584d334` 기준 이미 `cadkernel_modeling::draft_ops::*`에 배선 완료 확인 — §3.1의 "스텁" 분류 오류. 디스패처 경계 테스트 20개 추가 (`draft_easy_features.rs`), 워크스페이스 3,337 / 0 / 1. **2026-05-14 UI-A3**: Part 워크벤치 EASY 13개(`P::FaceFromWires` ~ `P::CoonsPatch`, `P::ProjectCurvesOnSurface` MEDIUM 제외) 전부 이미 `cadkernel_modeling::features::*`에 배선 완료 확인 — §3.3의 "스텁" 분류 오류. 디스패처 경계 테스트 14개 추가 (`part_easy_features.rs`), 워크스페이스 3,351 / 0 / 1. **verify-first 패턴 3연속 확인**: UI-A1(5) + UI-A2(19) + UI-A3(13) = **37/37 "스텁" 모두 이미 배선 완료**. 로드맵이 2-3세션 분량 뒤처진 것으로 파악됨. **향후 UI-Ax 단계는 반드시 verify-first로 시작해야 함.**
 **원문:** [English (canonical)](UI_COMPLETION_ROADMAP.md)
 
 이 한국어 파일은 영문 원문의 요약입니다 — 자세한 표 / 단계별 세부 사항 / 모든 79개 스텁 매핑은 영문판을 참조하십시오 (CLAUDE.md Section 5의 이중 언어 정책에 따라 영문 원문이 정본).
@@ -17,7 +17,7 @@
 
 | 티어 | 개수 | 단위 노력 |
 |---|---:|---|
-| EASY (커널 API 존재, wiring만) | ~21 잔여 (※ §3.2 PartDesign 5개 2026-05-14 DONE 확인, §3.1 Draft 19개 2026-05-14 DONE 확인 — 기존 ~55에서 24개 감소) | 15-30분 |
+| EASY (커널 API 존재, wiring만) | ~18 잔여 (※ §3.2 PartDesign 5개 2026-05-14 DONE, §3.1 Draft 19개 2026-05-14 DONE, §3.3 Part 13개 2026-05-14 DONE — 기존 ~55에서 37개 감소) | 15-30분 |
 | MEDIUM (커널 API 존재, UX 필요) | 18 | 1-2시간 |
 | HARD (커널/API/렌더링 작업 필요) | 28 | 3-10시간 |
 

@@ -11812,6 +11812,15 @@ impl CadApp {
         }
     }
 
+    /// Select every object in the scene for selection-dependent dispatcher
+    /// tests that need multi-object selection (Connect/Embed/Cutout/Boolean
+    /// Fragments). Mirrors what Ctrl+A does in the live viewer. No-op when
+    /// the scene is empty.
+    #[doc(hidden)]
+    pub fn select_all_for_test(&mut self) {
+        self.scene.select_all();
+    }
+
     /// Read-only view of the camera updated by dispatched actions.
     #[doc(hidden)]
     pub fn camera_ref(&self) -> &Camera {

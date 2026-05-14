@@ -11,6 +11,14 @@
 
 ### 추가됨
 
+#### UI 완성 로드맵 — Phase A Part 워크벤치 EASY 13개 확인 (2026-05-14)
+- **로드맵 상태 정정**: Part 워크벤치 EASY 13개 디스패처 arm(`P::FaceFromWires` ~ `P::CoonsPatch`)이 이미 `cadkernel_modeling::features::*`에 배선 완료되어 있었음. `docs/UI_COMPLETION_ROADMAP.md` §3.3의 "스텁" 분류는 오래된 정보.
+- **verify-first 패턴 3연속 확인**: UI-A1 (5/5 PartDesign) + UI-A2 (19/19 Draft) + UI-A3 (13/13 Part) = **37/37 "스텁" 모두 이미 배선 완료**. 로드맵 §1 verify-first 경고에 반영.
+- **신규 테스트 파일** `crates/viewer/tests/part_easy_features.rs` (14개 테스트 = happy-path 13 + ConnectShapes 선택 없음 graceful 1).
+- **테스트 헬퍼**: `select_all_for_test()` `#[doc(hidden)]` `crates/viewer/src/app.rs`에 추가 (+9줄).
+- 워크스페이스: 3,337 → **3,351 / 0 / 1 무시** (+14).
+- STOP_LIST 그린 (신규 Command/Outcome/GuiAction variant 없음, 커널 변경 없음).
+
 #### UI 완성 로드맵 — Phase A Draft 워크벤치 EASY 19개 확인 (2026-05-14)
 - **로드맵 상태 정정**: Draft 워크벤치 EASY 19개 디스패처 arm(`D::Line` ~ `D::ToSketch`)이 HEAD `584d334` 기준 이미 `cadkernel_modeling::draft_ops::*`에 배선 완료되어 있었음. `docs/UI_COMPLETION_ROADMAP.md` §3.1의 "스텁" 분류는 오래된 정보였음 — UI-A1의 PartDesign에서 발견된 것과 동일한 패턴.
 - **신규 테스트 파일** `crates/viewer/tests/draft_easy_features.rs` (366줄, **20개 테스트** = 19 + 보너스 Downgrade): 각 arm이 씬 가시 결과를 생성함을 증명. 솔리드(Circle/Arc/Ellipse/Upgrade fills), 오버레이 폴리라인(Line/Wire/BSpline/Bezier), 오버레이 포인트(Point), 경계+채우기(Hatch), 어레이(Rect/Polar), 텍스트, 선택 없는 no-op(Clone), 사이드이펙트(ToSketch) 커버.

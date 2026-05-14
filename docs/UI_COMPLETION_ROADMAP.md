@@ -13,7 +13,9 @@ The recent V37 session work (module split, sub-enum partition, panic-safety fixe
 
 > **Status 2026-05-14 (UI-A2)**: All 19 Draft workbench EASY-tier dispatcher arms (`D::Line` through `D::ToSketch`) were verified already wired to `cadkernel_modeling::draft_ops::*` at HEAD `584d334`. The §3.1 table's "stub" classification was outdated. Dispatcher-boundary tests were added in `crates/viewer/tests/draft_easy_features.rs` (20 tests, all green, workspace 3,337/0/1).
 
-> **Verify-first pattern (2026-05-14)**: Two consecutive verify-first lanes (UI-A1 PartDesign 5, UI-A2 Draft 19) both found everything already wired — 24 supposed "stubs" were actually functional. The roadmap lagged 2-3 sessions behind the kernel wiring work. **Future UI-Ax phases must start verify-first** before any wiring work is planned: check the dispatcher arm bodies before assuming they are log_info-only stubs.
+> **Status 2026-05-14 (UI-A3)**: All 13 Part workbench EASY dispatcher arms (`P::FaceFromWires`, `P::ConnectShapes`, `P::EmbedShapes`, `P::CutoutShapes`, `P::ExplodeCompound`, `P::CompoundFilter`, `P::BooleanFragments`, `P::SliceToCompound`, `P::PointsFromShape`, `P::ConvertToSolid`, `P::AutoDefeaturing`, `P::TransformedCopy`, `P::CoonsPatch`) were verified already wired to `cadkernel_modeling::features::*`. The §3.3 table's "stub" classification was outdated. Dispatcher-boundary tests were added in `crates/viewer/tests/part_easy_features.rs` (14 tests, all green, workspace 3,351/0/1). `P::ProjectCurvesOnSurface` is MEDIUM tier and was excluded from UI-A3 scope.
+
+> **Verify-first pattern (2026-05-14, 3rd confirmation)**: Three consecutive verify-first lanes (UI-A1 PartDesign 5, UI-A2 Draft 19, UI-A3 Part 13) all found everything already wired — **37 supposed "stubs" were actually functional**. The roadmap lagged behind the kernel wiring work. **Future UI-Ax phases must start verify-first** before any wiring work is planned: check the dispatcher arm bodies before assuming they are log_info-only stubs.
 
 This roadmap is a structured plan to actually wire the UI to the kernel. It is the canonical reference for the multi-session UI completion effort.
 
@@ -23,7 +25,7 @@ This roadmap is a structured plan to actually wire the UI to the kernel. It is t
 
 | Stub category | Kernel API status | Estimated effort |
 |---|---|---|
-| EASY — kernel API exists, wire only | ~31 stubs (was ~55; 5 PartDesign sketch-driven verified DONE 2026-05-14 UI-A1; 19 Draft EASY verified DONE 2026-05-14 UI-A2) | 15-30 min each |
+| EASY — kernel API exists, wire only | ~18 stubs (was ~55; 5 PartDesign sketch-driven verified DONE 2026-05-14 UI-A1; 19 Draft EASY verified DONE 2026-05-14 UI-A2; 13 Part EASY verified DONE 2026-05-14 UI-A3) | 15-30 min each |
 | MEDIUM — kernel API exists, needs UX (modal / picker / sketch ref) | ~15 stubs | 1-2 hours each |
 | HARD — kernel API missing | ~9 stubs | 3-10 hours each (new kernel work) |
 
@@ -87,22 +89,22 @@ Stub line numbers refer to `crates/viewer/src/app.rs` at commit `1875230` (HEAD 
 
 | Variant | Stub line | Kernel API | Tier | Notes |
 |---|---|---|---|---|
-| `P::FaceFromWires` | 3809 | `features::face_from_wires` | EASY | |
-| `P::ConnectShapes` | 3810 | `features::connect_shapes` | EASY | |
-| `P::EmbedShapes` | 3811 | `features::embed_shapes` | EASY | |
-| `P::CutoutShapes` | 3812 | `features::cutout_shapes` | EASY | |
-| `P::ExplodeCompound` | 3813 | `features::compound_ops::explode_compound` | EASY | |
-| `P::CompoundFilter` | 3814 | `features::compound_ops::compound_filter` | EASY | |
-| `P::BooleanFragments` | 3815 | `features::compound_ops::boolean_fragments` | EASY | |
-| `P::SliceToCompound` | 3816 | `features::compound_ops::slice_to_compound` | EASY | |
-| `P::PointsFromShape` | 3817 | `features::face_from_wires::points_from_shape` | EASY | |
-| `P::ConvertToSolid` | 3818 | `features::shape_convert::shape_from_mesh` | EASY | |
-| `P::AutoDefeaturing` | already wired (logs but doesn't apply) | `features::defeature::auto_defeaturing` | EASY | Format-print stub like Pad-family. |
-| `P::TransformedCopy` | already wired (logs but doesn't apply) | `multi_transform::multi_transform` | EASY | Format-print stub. |
-| `P::ProjectCurvesOnSurface` | 3825 | `features::projection::project_curve_on_solid` | MEDIUM | Needs curve + surface selection. |
-| `P::CoonsPatch` | 3826 | `surface_ops::coons_patch` | EASY | |
+| `P::FaceFromWires` | 3809 | `features::face_from_wires` | DONE (verified 2026-05-14) | scene+1 solid. |
+| `P::ConnectShapes` | 3810 | `features::connect_shapes` | DONE (verified 2026-05-14) | scene+1; graceful no-op without selection. |
+| `P::EmbedShapes` | 3811 | `features::embed_shapes` | DONE (verified 2026-05-14) | scene+1. |
+| `P::CutoutShapes` | 3812 | `features::cutout_shapes` | DONE (verified 2026-05-14) | scene+1. |
+| `P::ExplodeCompound` | 3813 | `features::compound_ops::explode_compound` | DONE (verified 2026-05-14) | log-only by design; scene unchanged. |
+| `P::CompoundFilter` | 3814 | `features::compound_ops::compound_filter` | DONE (verified 2026-05-14) | log-only by design; scene unchanged. |
+| `P::BooleanFragments` | 3815 | `features::compound_ops::boolean_fragments` | DONE (verified 2026-05-14) | log-only — multi-model staging pending Phase D-cont; scene unchanged. |
+| `P::SliceToCompound` | 3816 | `features::compound_ops::slice_to_compound` | DONE (verified 2026-05-14) | scene > before (N pieces). |
+| `P::PointsFromShape` | 3817 | `features::face_from_wires::points_from_shape` | DONE (verified 2026-05-14) | scene+1, overlay points grew. |
+| `P::ConvertToSolid` | 3818 | `features::shape_convert::shape_from_mesh` | DONE (verified 2026-05-14) | scene+1 solid from mesh. |
+| `P::AutoDefeaturing` | already wired | `features::defeature::auto_defeaturing` | DONE (verified 2026-05-14) | scene+1. |
+| `P::TransformedCopy` | already wired | `multi_transform::multi_transform` | DONE (verified 2026-05-14) | scene+1. |
+| `P::ProjectCurvesOnSurface` | 3825 | `features::projection::project_curve_on_solid` | MEDIUM | Needs curve + surface selection. Excluded from UI-A3 scope; pick up in MEDIUM-tier phase. |
+| `P::CoonsPatch` | 3826 | `surface_ops::coons_patch` | DONE (verified 2026-05-14) | scene+1 solid, overlay polyline grew. |
 
-**Subtotals:** EASY = 13, MEDIUM = 1, HARD = 0.
+**Subtotals:** DONE = 13 (verified 2026-05-14 via `crates/viewer/tests/part_easy_features.rs`, 14 tests), MEDIUM = 1, HARD = 0.
 
 ### 3.4 Surface workbench (4 stubs — Filling/Boundary/Pipe already real)
 
@@ -141,11 +143,11 @@ Working tree status: `NewPage`, `FromTemplate`, `Redraw`, `SectionView`, `Detail
 |---|---:|---:|---:|---:|---:|
 | Draft | 29 | 19 (verified 2026-05-14) | 0 | 10 | 0 |
 | PartDesign (incl. format-print Pad-family) | 10 | 5 (verified 2026-05-14) | 0 | 4 | 1 |
-| Part (incl. format-print stubs) | 14 | 0 | 13 | 1 | 0 |
+| Part (incl. format-print stubs) | 14 | 13 (verified 2026-05-14) | 0 | 1 | 0 |
 | Surface | 4 | 0 | 1 | 3 | 0 |
 | FEM | 7 | 0 | 2 | 0 | 5 |
 | TechDraw | 24 | 0 | 0 | 0 | 24 |
-| **Total** | **88** | **24** | **16** | **18** | **30** |
+| **Total** | **88** | **37** | **3** | **18** | **30** |
 
 (88 > 79 because the Pad-family + AutoDefeaturing + TransformedCopy format-print stubs were undercounted by the initial `log_info`-only grep, and TechDraw's extracted enum now exposes the full 24-action page/view/dimension/annotation/centerline/export backlog.)
 
