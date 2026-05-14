@@ -11,6 +11,17 @@
 
 ### 추가됨
 
+#### 상용 CAD 로드맵 — A2.1: FeatureId 기반 구축 (2026-05-14)
+- **`FeatureId(pub u64)` newtype** (`crates/api/src/document.rs`) — `#[serde(transparent)]`, `Display`, `Eq+Hash+Ord`. A2 feature 기반 커맨드가 사용할 stable 식별자. `FeatureId(0)`은 "미할당" 센티넬, 실제 ID는 1부터.
+- **`Document::push_history`가 자동으로 monotonic FeatureId 부여** — 호출자는 `FeatureId::default()`로 생성, 문서가 insert 직전에 덮어씀. replay / undo / redo 경로 모두 `push_history`를 통과해 ID 일관성 유지.
+- **`Document::feature(FeatureId) -> Option<&HistoryEvent>`** 선형 lookup. `FeatureId(0)`과 미지의 ID는 `None`.
+- **`Document::features() -> &[HistoryEvent]`** — PartDesign 어휘의 `history()` alias. 동일 슬라이스.
+- **`HistoryEvent.feature_id`** 필드 (`#[serde(default)]`) — A2.1 이전 `.cadk` snapshot 호환. legacy 이벤트는 `FeatureId(0)`으로 deserialise → replay 시 새 ID 부여.
+- **`canonical_hash`에서 `feature_id` 제외** — v0 golden fixture 호환성 유지, 추가가 non-breaking.
+- **신규 테스트 6개** (`crates/api/tests/feature_id.rs`): monotonic 부여, hit lookup, 센티넬/unknown miss, features/history alias 동등, legacy JSON deserialise, canonical_hash backward-compat. 워크스페이스 합계: **3,277 통과 / 0 실패 / 1 무시** (기존 3,271).
+- A2.2 (`Command::Mirror` full spec), A2.3 (`Command::LinearPattern` full spec), A2.4 (`Command::Extrude` ThroughAll/UpToFace) 의 기반.
+- STOP_LIST 그린 (타입 기반만 추가, 신규 `Command` / `Outcome` variant 없음).
+
 #### 보안 & 공급망 강화: zstd 압축 해제 캡 + cargo-deny CI (2026-05-14)
 - **`.cadk` zstd 디코드에 `MAX_DECOMPRESSED_DOCUMENT_BYTES = 32 MiB` 캡** — `crates/api/src/cadk/codec.rs`의 `decode()`가 압축된 `BlobKind::Document` 본문을 `zstd::Decoder` + `Read::take(cap + 1)` 스트리밍으로 읽고 캡 초과 시 거부. 작은 KB 단위 페이로드가 수 GB로 팽창하는 zstd "압축 폭탄" 공격 차단. R1/R2 레퍼런스 부품은 압축 해제 후 50 KiB 미만이라 실제 사용에는 600배 이상 여유.
 - **신규 단위 테스트 3개** (`codec.rs::tests`): 캡 값 범위 sanity, 캡 초과 거부, 캡 이내 통과.

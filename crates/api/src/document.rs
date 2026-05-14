@@ -42,12 +42,42 @@ pub(crate) struct SolidSlot {
     pub(crate) label: String,
 }
 
+/// Stable identifier for a [`HistoryEvent`] inside a [`Document`].
+///
+/// Assigned monotonically by [`Document::push_history`] starting at `1`
+/// (the value `0` is reserved as a "not-yet-assigned" sentinel — events
+/// deserialised from older `.cadk` files via [`serde(default)`] carry
+/// `FeatureId(0)` until [`Session::replay`](crate::Session::replay)
+/// runs them through `push_history` again and reassigns fresh IDs).
+///
+/// Foundation for the A2 feature surface: A2.2 [`Mirror`](crate::Command::Mirror),
+/// A2.3 [`LinearPattern`](crate::Command::LinearPattern), and A2.4
+/// [`Extrude::UpToFace`](crate::ExtrudeKind) all consume `FeatureId`
+/// references instead of [`SolidId`]s — patterning a "feature" rather
+/// than a finished solid is what unlocks PartDesign-style body editing.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, PartialOrd, Ord, Serialize, Deserialize,
+)]
+#[serde(transparent)]
+pub struct FeatureId(pub u64);
+
+impl std::fmt::Display for FeatureId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "FeatureId({})", self.0)
+    }
+}
+
 /// The model container.
 #[derive(Default)]
 pub struct Document {
     slots: Vec<Option<SolidSlot>>,
     next_id: u32,
     history: Vec<HistoryEvent>,
+    /// Monotonic counter for the next [`FeatureId`] handed out by
+    /// [`Self::push_history`]. Starts at `0`; the increment-then-assign
+    /// pattern in `push_history` means the first event gets `FeatureId(1)`,
+    /// leaving `FeatureId(0)` as the sentinel for not-yet-assigned events.
+    next_feature_id: u64,
 }
 
 impl Document {
@@ -86,13 +116,36 @@ impl Document {
         &self.history
     }
 
-    pub(crate) fn push_history(&mut self, event: HistoryEvent) {
+    /// Alias for [`Self::history`] using the PartDesign-style "feature"
+    /// vocabulary. Returned slice is the same `&[HistoryEvent]`; callers
+    /// pick the name that reads better at the call site.
+    pub fn features(&self) -> &[HistoryEvent] {
+        &self.history
+    }
+
+    /// Looks up a recorded event by its [`FeatureId`]. Linear scan over
+    /// the history vector — `O(n)` in history length but typical CAD
+    /// sessions stay well under 10k events.
+    ///
+    /// Returns `None` when `id` does not match any event, including the
+    /// reserved sentinel `FeatureId(0)`.
+    pub fn feature(&self, id: FeatureId) -> Option<&HistoryEvent> {
+        if id.0 == 0 {
+            return None;
+        }
+        self.history.iter().find(|ev| ev.feature_id == id)
+    }
+
+    pub(crate) fn push_history(&mut self, mut event: HistoryEvent) {
+        self.next_feature_id += 1;
+        event.feature_id = FeatureId(self.next_feature_id);
         self.history.push(event);
     }
 
     #[allow(dead_code)]
     pub(crate) fn clear_history(&mut self) {
         self.history.clear();
+        self.next_feature_id = 0;
     }
 
     /// Inserts a freshly-built model + handle and returns the assigned ID.
@@ -375,4 +428,12 @@ pub struct HistoryEvent {
     pub primary: Option<SolidId>,
     /// Human-readable description (label or short summary).
     pub description: String,
+    /// Stable identifier assigned by [`Document::push_history`]. Foundation
+    /// for the A2 feature-based command surface. Older `.cadk` files
+    /// missing the field deserialise with `FeatureId(0)` (sentinel) and
+    /// receive fresh IDs the moment they replay through the session.
+    /// Excluded from [`Document::canonical_hash`] so its addition does
+    /// not invalidate pre-A2.1 fixtures.
+    #[serde(default)]
+    pub feature_id: FeatureId,
 }

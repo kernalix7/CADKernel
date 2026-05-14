@@ -26,7 +26,7 @@ use cadkernel_topology::{BRepModel, Handle, SolidData};
 use serde::{Deserialize, Serialize};
 
 use crate::command::Command;
-use crate::document::{Document, HistoryEvent, SolidId, SolidSlot};
+use crate::document::{Document, FeatureId, HistoryEvent, SolidId, SolidSlot};
 use crate::outcome::Outcome;
 use crate::{ApiError, ApiResult};
 
@@ -443,6 +443,7 @@ impl Session {
             op: command.op_name().to_string(),
             primary: outcome.primary_id(),
             description: history_description(&command, &outcome),
+            feature_id: FeatureId::default(),
         };
         self.document.push_history(event);
         self.log.push(command);
@@ -540,6 +541,7 @@ impl Session {
             op: cmd.op_name().to_string(),
             primary: outcome.primary_id(),
             description: history_description(&cmd, &outcome),
+            feature_id: FeatureId::default(),
         };
         self.document.push_history(event);
         self.cursor += 1;

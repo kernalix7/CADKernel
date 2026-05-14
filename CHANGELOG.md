@@ -11,6 +11,17 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### Commercial CAD Roadmap — A2.1: FeatureId foundation (2026-05-14)
+- **`FeatureId(pub u64)` newtype** in `crates/api/src/document.rs` with `#[serde(transparent)]`, `Display`, `Eq + Hash + Ord` — the stable identifier the A2 feature-based command surface will consume. `FeatureId(0)` is reserved as the "not-yet-assigned" sentinel; live ids start at `1`.
+- **`Document::push_history` auto-assigns** a monotonically-increasing `FeatureId` to every event. Callers construct `HistoryEvent { feature_id: FeatureId::default(), .. }`; the document overwrites it just before insert. Replay paths and undo/redo branches both flow through `push_history` so ids stay consistent.
+- **`Document::feature(FeatureId) -> Option<&HistoryEvent>`** linear-scan lookup. `FeatureId(0)` and unknown ids return `None`.
+- **`Document::features() -> &[HistoryEvent]`** alias for `history()` using PartDesign-style vocabulary; the underlying slice is the same.
+- **`HistoryEvent.feature_id`** field, `#[serde(default)]` for backward-compat with pre-A2.1 `.cadk` snapshots — legacy events deserialise with `FeatureId(0)` and receive fresh ids the moment they replay through the session.
+- **`canonical_hash` deliberately excludes `feature_id`** so the v0 golden fixture continues to hash identically; the addition is non-breaking.
+- **6 new tests** in `crates/api/tests/feature_id.rs`: monotonic assignment from 1, hit lookup, sentinel/unknown miss, `features`/`history` alias equality, legacy JSON deserialise → sentinel, canonical_hash backward-compat. Workspace total: **3,277 passed / 0 failed / 1 ignored** (was 3,271).
+- Foundation for A2.2 `Command::Mirror` full spec (`features: Vec<FeatureId>`), A2.3 `Command::LinearPattern` full spec (`instance_overrides` + `mirror_alternate`), A2.4 `Command::Extrude` `ThroughAll`/`UpToFace`.
+- STOP_LIST clean (type-only foundation — no new `Command` / `Outcome` variants, no new format crate).
+
 #### Security & supply-chain hardening: zstd decompression cap + cargo-deny CI (2026-05-14)
 - **`MAX_DECOMPRESSED_DOCUMENT_BYTES = 32 MiB` cap on `.cadk` zstd decode** — `crates/api/src/cadk/codec.rs` `decode()` now reads the compressed `BlobKind::Document` body through a `zstd::Decoder` wrapped in `Read::take(cap + 1)` and rejects any payload that exceeds the cap. Prevents zstd "decompression bomb" attacks where a tiny on-disk blob (a few KB) decompresses to gigabytes of `serde_json::from_slice` input. R1/R2 reference parts decompress to < 50 KiB, so the cap leaves a > 600× headroom for realistic command logs while bounding adversarial memory cost.
 - **3 new unit tests** in `codec.rs::tests`: `decompression_cap_constant_is_sane` (cap value bounds), `streaming_decoder_take_rejects_oversized_payload` (cap-trip primitive), `streaming_decoder_take_accepts_within_cap` (under-cap pass-through).
