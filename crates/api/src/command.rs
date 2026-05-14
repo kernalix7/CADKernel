@@ -14,7 +14,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::document::SolidId;
+use crate::document::{FeatureId, SolidId};
 
 /// Every state-mutating operation a [`Session`](crate::Session) accepts.
 ///
@@ -108,8 +108,7 @@ pub enum Command {
     /// `kind` selects the extrusion mode (defaults to `Blind`, which matches
     /// pre-A2.1 behavior). `MidPlane` and `TwoSided` use `distance` as the
     /// total span and reposition the profile accordingly. `ThroughAll` and
-    /// `UpToFace` are reserved for A2.2 once `sketch_id` lands on the
-    /// document and feature-id selection is wired through the API.
+    /// `UpToFace` compute the span from existing document geometry.
     Extrude {
         profile: Vec<[f64; 3]>,
         direction: [f64; 3],
@@ -123,10 +122,8 @@ pub enum Command {
     ///
     /// `skip_instances` lets callers suppress specific instance indices
     /// (0 = original, 1..count-1 = copies). Indices outside the valid
-    /// range are ignored. This is a precursor to the full A2
-    /// `instance_overrides` map (skip / suppress / offset-adjust); for
-    /// now we only model the “skip” case which is by far the most
-    /// common use (e.g. mounting flange with a missing bolt position).
+    /// range are ignored. When `features` is non-empty, `id` is ignored
+    /// and each referenced feature's primary solid is patterned.
     LinearPattern {
         id: SolidId,
         direction: [f64; 3],
@@ -134,18 +131,42 @@ pub enum Command {
         count: u32,
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         skip_instances: Vec<u32>,
+        /// A2.3 feature-list mode. When non-empty, `id` is ignored and the
+        /// dispatcher patterns every solid produced by the listed features.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        features: Vec<FeatureId>,
+        /// When true, every odd-indexed copied instance is reflected about
+        /// the plane through that instance's spacing-derived position with
+        /// normal equal to `direction`.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        mirror_alternate: bool,
+        /// Per-instance suppression or position adjustment.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        instance_overrides: Vec<InstanceOverride>,
     },
-    /// Mirror a solid across a plane. Produces a new solid; the original is
-    /// preserved unless `merge` is true, in which case the original and the
-    /// mirrored copy are fused via boolean union and the source slot is
-    /// consumed (matches FreeCAD/SolidWorks “mirror with merge” /
-    /// PartDesign Mirrored feature behaviour).
+    /// Mirror a solid (or a list of features) across a plane. Produces new
+    /// solids; the originals are preserved unless `merge` is true, in which
+    /// case each original and its mirrored copy are fused via boolean union
+    /// and the source slots are consumed (matches FreeCAD/SolidWorks
+    /// “mirror with merge” / PartDesign Mirrored feature behaviour).
+    ///
+    /// When `features` is non-empty (A2.2 mode), `id` is ignored and the
+    /// dispatcher mirrors every solid produced by the listed feature ids.
+    /// When `features` is empty (legacy / pre-A2.2 path), only the single
+    /// solid `id` is mirrored.
     Mirror {
         id: SolidId,
         point: [f64; 3],
         normal: [f64; 3],
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         merge: bool,
+        /// A2.2 feature-list mode. When non-empty, `id` is ignored and the
+        /// dispatcher mirrors every solid produced by the listed
+        /// [`FeatureId`]s. `#[serde(default)]` so pre-A2.2 fixtures (no
+        /// `features` field) deserialise with an empty `Vec` and fall
+        /// through to the legacy single-solid path.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        features: Vec<FeatureId>,
     },
     /// Create a freshly-named empty document. Discards every existing solid
     /// and resets the [`Session`] log. Useful as the first command of a
@@ -718,7 +739,7 @@ pub fn command_schemas() -> Vec<CommandSchema> {
         },
         CommandSchema {
             op: "extrude",
-            description: "Extrude a planar polygonal profile along a direction by a distance. `kind` (optional, default ‘blind’) selects Blind/MidPlane/TwoSided. ThroughAll and UpToFace are reserved for A2.2.",
+            description: "Extrude a planar polygonal profile along a direction. `kind` (optional, default ‘blind’) selects Blind/MidPlane/TwoSided/ThroughAll/UpToFace.",
             params: &[
                 ParamSchema {
                     name: "profile",
@@ -742,19 +763,19 @@ pub fn command_schemas() -> Vec<CommandSchema> {
                     name: "kind",
                     ty: "extrude_kind",
                     required: false,
-                    doc: "Optional. Discriminated union with mode = blind | mid_plane | two_sided. TwoSided requires back_distance.",
+                    doc: "Optional. Discriminated union with mode = blind | mid_plane | two_sided | through_all | up_to_face. TwoSided requires back_distance; UpToFace requires face_solid and face_index.",
                 },
             ],
         },
         CommandSchema {
             op: "linear_pattern",
-            description: "Produce `count` copies of a solid at `spacing` along `direction`.",
+            description: "Produce a linear pattern from one solid or from every primary solid produced by a feature list, with optional skipped, mirrored, or offset instances.",
             params: &[
                 ParamSchema {
                     name: "id",
                     ty: "solid_id",
                     required: true,
-                    doc: "Source solid (preserved).",
+                    doc: "Source solid (preserved). Ignored when `features` is non-empty.",
                 },
                 ParamSchema {
                     name: "direction",
@@ -780,17 +801,35 @@ pub fn command_schemas() -> Vec<CommandSchema> {
                     required: false,
                     doc: "Optional. Instance indices to suppress (0 = original, 1..count-1 = copies). Out-of-range entries are ignored.",
                 },
+                ParamSchema {
+                    name: "features",
+                    ty: "integer[]",
+                    required: false,
+                    doc: "Optional A2.3 feature-list mode. Array of FeatureIds whose primary solids will all be patterned in one combined PatternCreated outcome. When non-empty, `id` is ignored.",
+                },
+                ParamSchema {
+                    name: "mirror_alternate",
+                    ty: "boolean",
+                    required: false,
+                    doc: "Optional. When true, copied instances with odd indices are reflected about their spacing-derived plane with normal = direction.",
+                },
+                ParamSchema {
+                    name: "instance_overrides",
+                    ty: "object[]",
+                    required: false,
+                    doc: "Optional. Per-instance overrides with index, suppress, and offset_adjust fields. Suppression takes precedence over offset adjustment.",
+                },
             ],
         },
         CommandSchema {
             op: "mirror",
-            description: "Mirror a solid across a plane. The original is preserved.",
+            description: "Mirror a solid (or every solid produced by a list of FeatureIds) across a plane. Originals are preserved unless merge=true. When `features` is empty (default), only the single solid `id` is mirrored (legacy path); when non-empty, `id` is ignored and every listed feature's primary solid is mirrored as one combined PatternCreated outcome.",
             params: &[
                 ParamSchema {
                     name: "id",
                     ty: "solid_id",
                     required: true,
-                    doc: "Source solid (preserved).",
+                    doc: "Source solid (preserved). Ignored when `features` is non-empty.",
                 },
                 ParamSchema {
                     name: "point",
@@ -808,7 +847,13 @@ pub fn command_schemas() -> Vec<CommandSchema> {
                     name: "merge",
                     ty: "boolean",
                     required: false,
-                    doc: "Optional. When true, fuse the mirrored copy with the original via boolean union and consume the source slot.",
+                    doc: "Optional. When true, fuse each mirrored copy with its source via boolean union and consume the source slots.",
+                },
+                ParamSchema {
+                    name: "features",
+                    ty: "integer[]",
+                    required: false,
+                    doc: "Optional A2.2 feature-list mode. Array of FeatureIds whose primary solids will all be mirrored in one combined PatternCreated outcome. When non-empty, `id` is ignored.",
                 },
             ],
         },
@@ -1327,10 +1372,6 @@ pub struct ParamSchema {
 
 /// Extrusion mode for [`Command::Extrude`].
 ///
-/// Subset of the A2 spec landed in 2026-05-07. `ThroughAll` and `UpToFace`
-/// are reserved for A2.2 — they require sketch/feature-id concepts that are
-/// not yet wired through the API surface.
-///
 /// JSON serialization uses the `mode` tag for clean discriminated-union
 /// matching by AI agents and tests; for example `MidPlane` becomes
 /// `{ "mode": "mid_plane" }` and `TwoSided` becomes
@@ -1357,4 +1398,34 @@ pub enum ExtrudeKind {
         /// distance).
         back_distance: f64,
     },
+    /// One-sided extrusion whose span is computed from the current document
+    /// bounding box along the requested direction. The command's `distance`
+    /// field is ignored.
+    ThroughAll,
+    /// One-sided extrusion whose span is computed by intersecting the
+    /// extrusion ray with the plane of a target face. The command's
+    /// `distance` field is ignored.
+    UpToFace {
+        face_solid: SolidId,
+        face_index: u32,
+    },
+}
+
+/// Per-instance adjustment for [`Command::LinearPattern`].
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct InstanceOverride {
+    /// Instance index targeted by this override. 0 = original; 1..count-1 =
+    /// copied instances. Out-of-range indices are ignored.
+    pub index: u32,
+    /// When true, the instance is omitted from the pattern and
+    /// `offset_adjust` is ignored.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub suppress: bool,
+    /// Per-axis nudge added to the instance's spacing-derived position.
+    #[serde(default, skip_serializing_if = "is_zero_vec3")]
+    pub offset_adjust: [f64; 3],
+}
+
+fn is_zero_vec3(v: &[f64; 3]) -> bool {
+    v[0] == 0.0 && v[1] == 0.0 && v[2] == 0.0
 }

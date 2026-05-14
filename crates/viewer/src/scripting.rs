@@ -22,22 +22,10 @@
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
+use cadkernel_api::{Command, ExtrudeKind, Outcome, Session, SolidId};
 use cadkernel_core::{KernelError, KernelResult};
-use cadkernel_math::{Point3, Vec3};
 use cadkernel_topology::{BRepModel, Handle, SolidData};
 use mlua::{Lua, Result as LuaResult, Table, Value};
-
-// ---------------------------------------------------------------------------
-// Internal solid store shared between Lua callbacks
-// ---------------------------------------------------------------------------
-
-/// A model paired with the handle to a single solid inside it.
-struct SolidEntry {
-    model: BRepModel,
-    solid: Handle<SolidData>,
-}
-
-type SolidStore = Arc<Mutex<Vec<Option<SolidEntry>>>>;
 
 // ---------------------------------------------------------------------------
 // ScriptEngine
@@ -45,11 +33,11 @@ type SolidStore = Arc<Mutex<Vec<Option<SolidEntry>>>>;
 
 /// Lua-based scripting engine for CADKernel.
 ///
-/// Each engine owns an independent Lua interpreter and a flat array of
-/// [`BRepModel`] solids addressable by integer ID.
+/// Each engine owns an independent Lua interpreter and a single API
+/// [`Session`] whose document is addressable from Lua by `SolidId.0`.
 pub struct ScriptEngine {
     lua: Lua,
-    store: SolidStore,
+    session: Arc<Mutex<Session>>,
 }
 
 impl ScriptEngine {
@@ -72,12 +60,12 @@ impl ScriptEngine {
         .exec()
         .map_err(|e| KernelError::InvalidArgument(format!("lua sandbox: {e}")))?;
 
-        let store: SolidStore = Arc::new(Mutex::new(Vec::new()));
+        let session = Arc::new(Mutex::new(Session::new()));
 
-        register_cad_table(&lua, Arc::clone(&store))
+        register_cad_table(&lua, Arc::clone(&session))
             .map_err(|e| KernelError::InvalidArgument(format!("lua init: {e}")))?;
 
-        Ok(Self { lua, store })
+        Ok(Self { lua, session })
     }
 
     /// Executes a Lua code string and returns its textual output.
@@ -101,21 +89,33 @@ impl ScriptEngine {
 
     /// Returns cloned models for all live solids held by the engine.
     pub fn get_models(&self) -> Vec<BRepModel> {
-        let guard = self.store.lock().unwrap();
+        let Ok(guard) = self.session.lock() else {
+            return Vec::new();
+        };
         guard
-            .iter()
-            .filter_map(|opt| opt.as_ref().map(|e| e.model.clone()))
+            .document()
+            .solid_ids()
+            .into_iter()
+            .filter_map(|id| {
+                guard
+                    .document()
+                    .clone_solid_brep(id)
+                    .map(|(model, _)| model)
+            })
             .collect()
     }
 
     /// Returns the number of live solids.
     pub fn solid_count(&self) -> usize {
-        self.store
+        self.session
             .lock()
-            .unwrap()
-            .iter()
-            .filter(|e| e.is_some())
-            .count()
+            .map(|s| s.document().solid_count())
+            .unwrap_or(0)
+    }
+
+    /// Returns the shared API session used by the Lua bridge.
+    pub fn session_arc(&self) -> Arc<Mutex<Session>> {
+        Arc::clone(&self.session)
     }
 }
 
@@ -134,97 +134,129 @@ fn lua_value_to_string(val: &Value) -> String {
     }
 }
 
-/// Inserts a new solid entry into the store and returns its zero-based ID.
-fn store_insert(store: &SolidStore, model: BRepModel, solid: Handle<SolidData>) -> usize {
-    let mut vec = store.lock().unwrap();
-    // Reuse a removed slot if available.
-    for (i, slot) in vec.iter_mut().enumerate() {
-        if slot.is_none() {
-            *slot = Some(SolidEntry { model, solid });
-            return i;
-        }
-    }
-    let id = vec.len();
-    vec.push(Some(SolidEntry { model, solid }));
-    id
+fn exec_cmd(session: &Arc<Mutex<Session>>, cmd: Command) -> LuaResult<Outcome> {
+    let mut s = session
+        .lock()
+        .map_err(|e| mlua::Error::external(format!("script session lock poisoned: {e}")))?;
+    s.execute(cmd)
+        .map_err(|e| mlua::Error::external(e.to_string()))
 }
 
-/// Validates that `id` refers to a live solid.
-fn store_get_err(store: &SolidStore, id: usize) -> LuaResult<()> {
-    let vec = store.lock().unwrap();
-    if id >= vec.len() || vec[id].is_none() {
-        return Err(mlua::Error::external(format!("no solid with id {id}")));
+fn clone_solid_brep(
+    session: &Arc<Mutex<Session>>,
+    id: SolidId,
+) -> LuaResult<(BRepModel, Handle<SolidData>)> {
+    let s = session
+        .lock()
+        .map_err(|e| mlua::Error::external(format!("script session lock poisoned: {e}")))?;
+    s.document()
+        .clone_solid_brep(id)
+        .ok_or_else(|| mlua::Error::external(format!("no solid with id {}", id.0)))
+}
+
+fn expect_solid_created(outcome: Outcome, op: &str) -> LuaResult<i64> {
+    match outcome {
+        Outcome::SolidCreated { id, .. } => Ok(id.0 as i64),
+        other => Err(mlua::Error::external(format!(
+            "unexpected {op} outcome: {other:?}"
+        ))),
     }
-    Ok(())
+}
+
+fn expect_booleaned(outcome: Outcome, op: &str) -> LuaResult<i64> {
+    match outcome {
+        Outcome::Booleaned { result, .. } => Ok(result.0 as i64),
+        other => Err(mlua::Error::external(format!(
+            "unexpected {op} outcome: {other:?}"
+        ))),
+    }
+}
+
+fn expect_modified(outcome: Outcome, op: &str) -> LuaResult<i64> {
+    match outcome {
+        Outcome::SolidModified { id } => Ok(id.0 as i64),
+        other => Err(mlua::Error::external(format!(
+            "unexpected {op} outcome: {other:?}"
+        ))),
+    }
+}
+
+#[derive(Copy, Clone)]
+enum BooleanCommand {
+    Union,
+    Subtract,
+    Intersect,
 }
 
 // ---------------------------------------------------------------------------
-// Registration — `cad` table
+// Registration - `cad` table
 // ---------------------------------------------------------------------------
 
-fn register_cad_table(lua: &Lua, store: SolidStore) -> LuaResult<()> {
+fn register_cad_table(lua: &Lua, session: Arc<Mutex<Session>>) -> LuaResult<()> {
     let cad = lua.create_table()?;
 
     // ---- Primitives -------------------------------------------------------
 
-    register_box(lua, &cad, Arc::clone(&store))?;
-    register_cylinder(lua, &cad, Arc::clone(&store))?;
-    register_sphere(lua, &cad, Arc::clone(&store))?;
-    register_cone(lua, &cad, Arc::clone(&store))?;
-    register_torus(lua, &cad, Arc::clone(&store))?;
+    register_box(lua, &cad, Arc::clone(&session))?;
+    register_cylinder(lua, &cad, Arc::clone(&session))?;
+    register_sphere(lua, &cad, Arc::clone(&session))?;
+    register_cone(lua, &cad, Arc::clone(&session))?;
+    register_torus(lua, &cad, Arc::clone(&session))?;
 
     // ---- Booleans ---------------------------------------------------------
 
     register_boolean(
         lua,
         &cad,
-        Arc::clone(&store),
+        Arc::clone(&session),
         "union",
-        cadkernel_modeling::BooleanOp::Union,
+        BooleanCommand::Union,
     )?;
     register_boolean(
         lua,
         &cad,
-        Arc::clone(&store),
+        Arc::clone(&session),
         "subtract",
-        cadkernel_modeling::BooleanOp::Difference,
+        BooleanCommand::Subtract,
     )?;
     register_boolean(
         lua,
         &cad,
-        Arc::clone(&store),
+        Arc::clone(&session),
         "intersect",
-        cadkernel_modeling::BooleanOp::Intersection,
+        BooleanCommand::Intersect,
     )?;
 
     // ---- Transforms -------------------------------------------------------
 
-    register_translate(lua, &cad, Arc::clone(&store))?;
-    register_rotate(lua, &cad, Arc::clone(&store))?;
-    register_scale(lua, &cad, Arc::clone(&store))?;
+    register_translate(lua, &cad, Arc::clone(&session))?;
+    register_rotate(lua, &cad, Arc::clone(&session))?;
+    register_scale(lua, &cad, Arc::clone(&session))?;
+    register_mirror(lua, &cad, Arc::clone(&session))?;
 
     // ---- Features ---------------------------------------------------------
 
-    register_extrude(lua, &cad, Arc::clone(&store))?;
-    register_fillet(lua, &cad, Arc::clone(&store))?;
-    register_chamfer(lua, &cad, Arc::clone(&store))?;
+    register_extrude(lua, &cad, Arc::clone(&session))?;
+    register_fillet(lua, &cad, Arc::clone(&session))?;
+    register_chamfer(lua, &cad, Arc::clone(&session))?;
 
     // ---- Query ------------------------------------------------------------
 
-    register_measure(lua, &cad, Arc::clone(&store))?;
-    register_count(lua, &cad, Arc::clone(&store))?;
+    register_measure(lua, &cad, Arc::clone(&session))?;
+    register_count(lua, &cad, Arc::clone(&session))?;
+    register_bounds(lua, &cad, Arc::clone(&session))?;
 
     // ---- I/O --------------------------------------------------------------
 
-    register_export_stl(lua, &cad, Arc::clone(&store))?;
-    register_export_obj(lua, &cad, Arc::clone(&store))?;
-    register_import_stl(lua, &cad, Arc::clone(&store))?;
+    register_export_stl(lua, &cad, Arc::clone(&session))?;
+    register_export_obj(lua, &cad, Arc::clone(&session))?;
+    register_import_stl(lua, &cad)?;
 
     // ---- Utility ----------------------------------------------------------
 
-    register_list(lua, &cad, Arc::clone(&store))?;
-    register_delete(lua, &cad, Arc::clone(&store))?;
-    register_clear(lua, &cad, Arc::clone(&store))?;
+    register_list(lua, &cad, Arc::clone(&session))?;
+    register_delete(lua, &cad, Arc::clone(&session))?;
+    register_clear(lua, &cad, Arc::clone(&session))?;
 
     lua.globals().set("cad", cad)?;
     Ok(())
@@ -234,58 +266,68 @@ fn register_cad_table(lua: &Lua, store: SolidStore) -> LuaResult<()> {
 // Primitives
 // ---------------------------------------------------------------------------
 
-fn register_box(lua: &Lua, cad: &Table, store: SolidStore) -> LuaResult<()> {
+fn register_box(lua: &Lua, cad: &Table, session: Arc<Mutex<Session>>) -> LuaResult<()> {
     let f = lua.create_function(move |_lua, (w, h, d): (f64, f64, f64)| {
-        let mut model = BRepModel::new();
-        let result = cadkernel_modeling::make_box(&mut model, Point3::ORIGIN, w, h, d)
-            .map_err(|e| mlua::Error::external(e.to_string()))?;
-        let id = store_insert(&store, model, result.solid);
-        Ok(id as i64)
+        let outcome = exec_cmd(
+            &session,
+            Command::CreateBox {
+                dx: w,
+                dy: h,
+                dz: d,
+            },
+        )?;
+        expect_solid_created(outcome, "box")
     })?;
     cad.set("box", f)
 }
 
-fn register_cylinder(lua: &Lua, cad: &Table, store: SolidStore) -> LuaResult<()> {
+fn register_cylinder(lua: &Lua, cad: &Table, session: Arc<Mutex<Session>>) -> LuaResult<()> {
     let f = lua.create_function(move |_lua, (r, h): (f64, f64)| {
-        let mut model = BRepModel::new();
-        let result = cadkernel_modeling::make_cylinder(&mut model, Point3::ORIGIN, r, h, 64)
-            .map_err(|e| mlua::Error::external(e.to_string()))?;
-        let id = store_insert(&store, model, result.solid);
-        Ok(id as i64)
+        let outcome = exec_cmd(
+            &session,
+            Command::CreateCylinder {
+                radius: r,
+                height: h,
+            },
+        )?;
+        expect_solid_created(outcome, "cylinder")
     })?;
     cad.set("cylinder", f)
 }
 
-fn register_sphere(lua: &Lua, cad: &Table, store: SolidStore) -> LuaResult<()> {
+fn register_sphere(lua: &Lua, cad: &Table, session: Arc<Mutex<Session>>) -> LuaResult<()> {
     let f = lua.create_function(move |_lua, r: f64| {
-        let mut model = BRepModel::new();
-        let result = cadkernel_modeling::make_sphere(&mut model, Point3::ORIGIN, r, 64, 32)
-            .map_err(|e| mlua::Error::external(e.to_string()))?;
-        let id = store_insert(&store, model, result.solid);
-        Ok(id as i64)
+        let outcome = exec_cmd(&session, Command::CreateSphere { radius: r })?;
+        expect_solid_created(outcome, "sphere")
     })?;
     cad.set("sphere", f)
 }
 
-fn register_cone(lua: &Lua, cad: &Table, store: SolidStore) -> LuaResult<()> {
+fn register_cone(lua: &Lua, cad: &Table, session: Arc<Mutex<Session>>) -> LuaResult<()> {
     let f = lua.create_function(move |_lua, (r, h): (f64, f64)| {
-        let mut model = BRepModel::new();
-        let result = cadkernel_modeling::make_cone(&mut model, Point3::ORIGIN, r, 0.0, h, 64)
-            .map_err(|e| mlua::Error::external(e.to_string()))?;
-        let id = store_insert(&store, model, result.solid);
-        Ok(id as i64)
+        let outcome = exec_cmd(
+            &session,
+            Command::CreateCone {
+                radius: r,
+                height: h,
+                top_radius: 0.0,
+            },
+        )?;
+        expect_solid_created(outcome, "cone")
     })?;
     cad.set("cone", f)
 }
 
-fn register_torus(lua: &Lua, cad: &Table, store: SolidStore) -> LuaResult<()> {
+fn register_torus(lua: &Lua, cad: &Table, session: Arc<Mutex<Session>>) -> LuaResult<()> {
     let f = lua.create_function(move |_lua, (major, minor): (f64, f64)| {
-        let mut model = BRepModel::new();
-        let result =
-            cadkernel_modeling::make_torus(&mut model, Point3::ORIGIN, major, minor, 64, 32)
-                .map_err(|e| mlua::Error::external(e.to_string()))?;
-        let id = store_insert(&store, model, result.solid);
-        Ok(id as i64)
+        let outcome = exec_cmd(
+            &session,
+            Command::CreateTorus {
+                major_radius: major,
+                minor_radius: minor,
+            },
+        )?;
+        expect_solid_created(outcome, "torus")
     })?;
     cad.set("torus", f)
 }
@@ -297,133 +339,126 @@ fn register_torus(lua: &Lua, cad: &Table, store: SolidStore) -> LuaResult<()> {
 fn register_boolean(
     lua: &Lua,
     cad: &Table,
-    store: SolidStore,
+    session: Arc<Mutex<Session>>,
     name: &str,
-    op: cadkernel_modeling::BooleanOp,
+    kind: BooleanCommand,
 ) -> LuaResult<()> {
-    let f = lua.create_function(move |_lua, (a, b): (usize, usize)| {
-        store_get_err(&store, a)?;
-        store_get_err(&store, b)?;
-
-        // Extract both entries temporarily.
-        let (model_a, solid_a, model_b, solid_b) = {
-            let vec = store.lock().unwrap();
-            let ea = vec[a].as_ref().unwrap();
-            let eb = vec[b].as_ref().unwrap();
-            (ea.model.clone(), ea.solid, eb.model.clone(), eb.solid)
+    let op_name = name.to_string();
+    let f = lua.create_function(move |_lua, (a, b): (u32, u32)| {
+        let lhs = SolidId(a);
+        let rhs = SolidId(b);
+        let command = match kind {
+            BooleanCommand::Union => Command::BooleanUnion { lhs, rhs },
+            BooleanCommand::Subtract => Command::BooleanSubtract { lhs, rhs },
+            BooleanCommand::Intersect => Command::BooleanIntersect { lhs, rhs },
         };
-
-        let result_model = cadkernel_modeling::boolean_op(&model_a, solid_a, &model_b, solid_b, op)
-            .map_err(|e| mlua::Error::external(e.to_string()))?;
-
-        // Find the first solid in the result model.
-        let result_solid = result_model
-            .solids
-            .iter()
-            .next()
-            .map(|(h, _)| h)
-            .ok_or_else(|| mlua::Error::external("boolean produced no solid"))?;
-
-        let id = store_insert(&store, result_model, result_solid);
-        Ok(id as i64)
+        let outcome = exec_cmd(&session, command)?;
+        expect_booleaned(outcome, &op_name)
     })?;
     cad.set(name, f)
 }
 
 // ---------------------------------------------------------------------------
-// Transforms — translate, rotate, scale
+// Transforms - translate, rotate, scale, mirror
 // ---------------------------------------------------------------------------
 
-fn register_translate(lua: &Lua, cad: &Table, store: SolidStore) -> LuaResult<()> {
-    let f = lua.create_function(move |_lua, (id, x, y, z): (usize, f64, f64, f64)| {
-        store_get_err(&store, id)?;
-
-        let (mut model, solid) = {
-            let vec = store.lock().unwrap();
-            let e = vec[id].as_ref().unwrap();
-            (e.model.clone(), e.solid)
-        };
-
-        let transforms = [cadkernel_modeling::Transform::Translation(Vec3::new(
-            x, y, z,
-        ))];
-        let result = cadkernel_modeling::multi_transform(&mut model, solid, &transforms)
-            .map_err(|e| mlua::Error::external(e.to_string()))?;
-
-        let new_id = store_insert(&store, model, result.solid);
-        Ok(new_id as i64)
+fn register_translate(lua: &Lua, cad: &Table, session: Arc<Mutex<Session>>) -> LuaResult<()> {
+    let f = lua.create_function(move |_lua, (id, x, y, z): (u32, f64, f64, f64)| {
+        let outcome = exec_cmd(
+            &session,
+            Command::Translate {
+                id: SolidId(id),
+                dx: x,
+                dy: y,
+                dz: z,
+            },
+        )?;
+        expect_modified(outcome, "translate")
     })?;
     cad.set("translate", f)
 }
 
-fn register_rotate(lua: &Lua, cad: &Table, store: SolidStore) -> LuaResult<()> {
+fn register_rotate(lua: &Lua, cad: &Table, session: Arc<Mutex<Session>>) -> LuaResult<()> {
     let f = lua.create_function(
-        move |_lua, (id, ax, ay, az, angle): (usize, f64, f64, f64, f64)| {
-            store_get_err(&store, id)?;
-
-            let (mut model, solid) = {
-                let vec = store.lock().unwrap();
-                let e = vec[id].as_ref().unwrap();
-                (e.model.clone(), e.solid)
-            };
-
-            let transforms = [cadkernel_modeling::Transform::Rotation {
-                axis_origin: Point3::ORIGIN,
-                axis_dir: Vec3::new(ax, ay, az),
-                angle: angle.to_radians(),
-            }];
-            let result = cadkernel_modeling::multi_transform(&mut model, solid, &transforms)
-                .map_err(|e| mlua::Error::external(e.to_string()))?;
-
-            let new_id = store_insert(&store, model, result.solid);
-            Ok(new_id as i64)
+        move |_lua, (id, ax, ay, az, angle): (u32, f64, f64, f64, f64)| {
+            let outcome = exec_cmd(
+                &session,
+                Command::Rotate {
+                    id: SolidId(id),
+                    axis: [ax, ay, az],
+                    angle_rad: angle.to_radians(),
+                    point: [0.0, 0.0, 0.0],
+                },
+            )?;
+            expect_modified(outcome, "rotate")
         },
     )?;
     cad.set("rotate", f)
 }
 
-fn register_scale(lua: &Lua, cad: &Table, store: SolidStore) -> LuaResult<()> {
-    let f = lua.create_function(move |_lua, (id, sx, sy, sz): (usize, f64, f64, f64)| {
-        store_get_err(&store, id)?;
-
-        let (mut model, solid) = {
-            let vec = store.lock().unwrap();
-            let e = vec[id].as_ref().unwrap();
-            (e.model.clone(), e.solid)
-        };
-
-        // Validate uniform scale: non-uniform scaling not supported on B-Rep
+fn register_scale(lua: &Lua, cad: &Table, session: Arc<Mutex<Session>>) -> LuaResult<()> {
+    let f = lua.create_function(move |_lua, (id, sx, sy, sz): (u32, f64, f64, f64)| {
         let eps = 1e-9;
         if (sx - sy).abs() > eps || (sy - sz).abs() > eps {
             return Err(mlua::Error::external(
                 "non-uniform scaling not supported; sx, sy, sz must be equal",
             ));
         }
-        let transforms = [cadkernel_modeling::Transform::Scale {
-            center: Point3::ORIGIN,
-            factor: sx,
-        }];
-        let result = cadkernel_modeling::multi_transform(&mut model, solid, &transforms)
-            .map_err(|e| mlua::Error::external(e.to_string()))?;
-
-        let new_id = store_insert(&store, model, result.solid);
-        Ok(new_id as i64)
+        let outcome = exec_cmd(
+            &session,
+            Command::Scale {
+                id: SolidId(id),
+                factor: sx,
+            },
+        )?;
+        expect_modified(outcome, "scale")
     })?;
     cad.set("scale", f)
 }
 
+fn register_mirror(lua: &Lua, cad: &Table, session: Arc<Mutex<Session>>) -> LuaResult<()> {
+    let f = lua.create_function(
+        move |_lua, (id, px, py, pz, nx, ny, nz): (u32, f64, f64, f64, f64, f64, f64)| {
+            let outcome = exec_cmd(
+                &session,
+                Command::Mirror {
+                    id: SolidId(id),
+                    point: [px, py, pz],
+                    normal: [nx, ny, nz],
+                    merge: false,
+                    features: Vec::new(),
+                },
+            )?;
+            match outcome {
+                Outcome::PatternCreated { ids, .. } => {
+                    let new_id = ids
+                        .last()
+                        .copied()
+                        .ok_or_else(|| mlua::Error::external("mirror produced no ids"))?;
+                    Ok(new_id.0 as i64)
+                }
+                Outcome::SolidCreated { id, .. } => Ok(id.0 as i64),
+                other => Err(mlua::Error::external(format!(
+                    "unexpected mirror outcome: {other:?}"
+                ))),
+            }
+        },
+    )?;
+    cad.set("mirror", f)
+}
+
 // ---------------------------------------------------------------------------
-// Features — extrude, fillet, chamfer
+// Features - extrude, fillet, chamfer
 // ---------------------------------------------------------------------------
 
-fn register_extrude(lua: &Lua, cad: &Table, store: SolidStore) -> LuaResult<()> {
+fn register_extrude(lua: &Lua, cad: &Table, session: Arc<Mutex<Session>>) -> LuaResult<()> {
     let f = lua.create_function(move |_lua, (pts_table, height): (Table, f64)| {
         let mut profile = Vec::new();
         for pair in pts_table.sequence_values::<Table>() {
             let pt: Table = pair.map_err(|e| mlua::Error::external(e.to_string()))?;
             let x: f64 = pt.get(1)?;
             let y: f64 = pt.get(2)?;
-            profile.push(Point3::new(x, y, 0.0));
+            profile.push([x, y, 0.0]);
         }
         if profile.len() < 3 {
             return Err(mlua::Error::external(
@@ -431,124 +466,123 @@ fn register_extrude(lua: &Lua, cad: &Table, store: SolidStore) -> LuaResult<()> 
             ));
         }
 
-        let mut model = BRepModel::new();
-        let result =
-            cadkernel_modeling::extrude(&mut model, &profile, Vec3::new(0.0, 0.0, 1.0), height)
-                .map_err(|e| mlua::Error::external(e.to_string()))?;
-
-        let id = store_insert(&store, model, result.solid);
-        Ok(id as i64)
+        let outcome = exec_cmd(
+            &session,
+            Command::Extrude {
+                profile,
+                direction: [0.0, 0.0, 1.0],
+                distance: height,
+                kind: ExtrudeKind::default(),
+            },
+        )?;
+        expect_solid_created(outcome, "extrude")
     })?;
     cad.set("extrude", f)
 }
 
-fn register_fillet(lua: &Lua, cad: &Table, store: SolidStore) -> LuaResult<()> {
-    let f = lua.create_function(move |_lua, (id, radius): (usize, f64)| {
-        store_get_err(&store, id)?;
-
-        let (mut model, solid) = {
-            let vec = store.lock().unwrap();
-            let e = vec[id].as_ref().unwrap();
-            (e.model.clone(), e.solid)
-        };
-
-        // Fillet the first edge found in the solid.
-        let edge = model.edges.iter().next().map(|(_, e)| (e.start, e.end));
-
-        let (v1, v2) =
-            edge.ok_or_else(|| mlua::Error::external("solid has no edges for fillet"))?;
-
-        let result = cadkernel_modeling::fillet_edge(&mut model, solid, v1, v2, radius)
-            .map_err(|e| mlua::Error::external(e.to_string()))?;
-
-        let new_id = store_insert(&store, model, result.solid);
-        Ok(new_id as i64)
+fn register_fillet(lua: &Lua, cad: &Table, session: Arc<Mutex<Session>>) -> LuaResult<()> {
+    let f = lua.create_function(move |_lua, (id, _radius): (u32, f64)| {
+        let _ = clone_solid_brep(&session, SolidId(id))?;
+        // TODO(A2.10): route through Session once Command::FilletEdge exists.
+        Err::<i64, _>(mlua::Error::external(
+            "fillet/chamfer: not yet routed through Session — A2.10 deliverable",
+        ))
     })?;
     cad.set("fillet", f)
 }
 
-fn register_chamfer(lua: &Lua, cad: &Table, store: SolidStore) -> LuaResult<()> {
-    let f = lua.create_function(move |_lua, (id, dist): (usize, f64)| {
-        store_get_err(&store, id)?;
-
-        let (mut model, solid) = {
-            let vec = store.lock().unwrap();
-            let e = vec[id].as_ref().unwrap();
-            (e.model.clone(), e.solid)
-        };
-
-        let edge = model.edges.iter().next().map(|(_, e)| (e.start, e.end));
-
-        let (v1, v2) =
-            edge.ok_or_else(|| mlua::Error::external("solid has no edges for chamfer"))?;
-
-        let result = cadkernel_modeling::chamfer_edge(&mut model, solid, v1, v2, dist)
-            .map_err(|e| mlua::Error::external(e.to_string()))?;
-
-        let new_id = store_insert(&store, model, result.solid);
-        Ok(new_id as i64)
+fn register_chamfer(lua: &Lua, cad: &Table, session: Arc<Mutex<Session>>) -> LuaResult<()> {
+    let f = lua.create_function(move |_lua, (id, _dist): (u32, f64)| {
+        let _ = clone_solid_brep(&session, SolidId(id))?;
+        // TODO(A2.10): route through Session once Command::ChamferEdge exists.
+        Err::<i64, _>(mlua::Error::external(
+            "fillet/chamfer: not yet routed through Session — A2.10 deliverable",
+        ))
     })?;
     cad.set("chamfer", f)
 }
 
 // ---------------------------------------------------------------------------
-// Query — measure, count
+// Query - measure, count, bounds
 // ---------------------------------------------------------------------------
 
-fn register_measure(lua: &Lua, cad: &Table, store: SolidStore) -> LuaResult<()> {
-    let f = lua.create_function(move |lua, id: usize| {
-        store_get_err(&store, id)?;
-
-        let (model, solid) = {
-            let vec = store.lock().unwrap();
-            let e = vec[id].as_ref().unwrap();
-            (e.model.clone(), e.solid)
-        };
-
-        let mesh = cadkernel_io::tessellate_solid(&model, solid);
-        let props = cadkernel_modeling::compute_mass_properties(&mesh);
-
-        let tbl = lua.create_table()?;
-        tbl.set("volume", props.volume)?;
-        tbl.set("area", props.surface_area)?;
-        tbl.set("centroid_x", props.centroid.x)?;
-        tbl.set("centroid_y", props.centroid.y)?;
-        tbl.set("centroid_z", props.centroid.z)?;
-        Ok(tbl)
+fn register_measure(lua: &Lua, cad: &Table, session: Arc<Mutex<Session>>) -> LuaResult<()> {
+    let f = lua.create_function(move |lua, id: u32| {
+        let outcome = exec_cmd(&session, Command::Measure { id: SolidId(id) })?;
+        match outcome {
+            Outcome::Measured {
+                volume,
+                surface_area,
+                centroid,
+                ..
+            } => {
+                let tbl = lua.create_table()?;
+                tbl.set("volume", volume)?;
+                tbl.set("area", surface_area)?;
+                tbl.set("centroid_x", centroid[0])?;
+                tbl.set("centroid_y", centroid[1])?;
+                tbl.set("centroid_z", centroid[2])?;
+                Ok(tbl)
+            }
+            other => Err(mlua::Error::external(format!(
+                "unexpected measure outcome: {other:?}"
+            ))),
+        }
     })?;
     cad.set("measure", f)
 }
 
-fn register_count(lua: &Lua, cad: &Table, store: SolidStore) -> LuaResult<()> {
-    let f = lua.create_function(move |lua, id: usize| {
-        store_get_err(&store, id)?;
-
-        let vec = store.lock().unwrap();
-        let e = vec[id].as_ref().unwrap();
+fn register_count(lua: &Lua, cad: &Table, session: Arc<Mutex<Session>>) -> LuaResult<()> {
+    let f = lua.create_function(move |lua, id: u32| {
+        let (faces, edges, vertices) = {
+            let s = session
+                .lock()
+                .map_err(|e| mlua::Error::external(format!("script session lock poisoned: {e}")))?;
+            let (model, _) = s
+                .document()
+                .solid_brep(SolidId(id))
+                .ok_or_else(|| mlua::Error::external(format!("no solid with id {id}")))?;
+            (model.faces.len(), model.edges.len(), model.vertices.len())
+        };
 
         let tbl = lua.create_table()?;
-        tbl.set("faces", e.model.faces.len() as i64)?;
-        tbl.set("edges", e.model.edges.len() as i64)?;
-        tbl.set("vertices", e.model.vertices.len() as i64)?;
+        tbl.set("faces", faces as i64)?;
+        tbl.set("edges", edges as i64)?;
+        tbl.set("vertices", vertices as i64)?;
         Ok(tbl)
     })?;
     cad.set("count", f)
 }
 
+fn register_bounds(lua: &Lua, cad: &Table, session: Arc<Mutex<Session>>) -> LuaResult<()> {
+    let f = lua.create_function(move |lua, id: u32| {
+        let outcome = exec_cmd(&session, Command::Bounds { id: SolidId(id) })?;
+        match outcome {
+            Outcome::Bounds { min, max, .. } => {
+                let tbl = lua.create_table()?;
+                tbl.set("min_x", min[0])?;
+                tbl.set("min_y", min[1])?;
+                tbl.set("min_z", min[2])?;
+                tbl.set("max_x", max[0])?;
+                tbl.set("max_y", max[1])?;
+                tbl.set("max_z", max[2])?;
+                Ok(tbl)
+            }
+            other => Err(mlua::Error::external(format!(
+                "unexpected bounds outcome: {other:?}"
+            ))),
+        }
+    })?;
+    cad.set("bounds", f)
+}
+
 // ---------------------------------------------------------------------------
-// I/O — export_stl, export_obj, import_stl
+// I/O - export_stl, export_obj, import_stl
 // ---------------------------------------------------------------------------
 
-fn register_export_stl(lua: &Lua, cad: &Table, store: SolidStore) -> LuaResult<()> {
-    let f = lua.create_function(move |_lua, (id, path): (usize, String)| {
-        store_get_err(&store, id)?;
-
-        let (model, solid) = {
-            let vec = store.lock().unwrap();
-            let e = vec[id].as_ref().unwrap();
-            (e.model.clone(), e.solid)
-        };
-
+fn register_export_stl(lua: &Lua, cad: &Table, session: Arc<Mutex<Session>>) -> LuaResult<()> {
+    let f = lua.create_function(move |_lua, (id, path): (u32, String)| {
+        let (model, solid) = clone_solid_brep(&session, SolidId(id))?;
         let mesh = cadkernel_io::tessellate_solid(&model, solid);
         cadkernel_io::export_stl_ascii(&mesh, Path::new(&path), "cadkernel")
             .map_err(|e| mlua::Error::external(e.to_string()))?;
@@ -557,16 +591,9 @@ fn register_export_stl(lua: &Lua, cad: &Table, store: SolidStore) -> LuaResult<(
     cad.set("export_stl", f)
 }
 
-fn register_export_obj(lua: &Lua, cad: &Table, store: SolidStore) -> LuaResult<()> {
-    let f = lua.create_function(move |_lua, (id, path): (usize, String)| {
-        store_get_err(&store, id)?;
-
-        let (model, solid) = {
-            let vec = store.lock().unwrap();
-            let e = vec[id].as_ref().unwrap();
-            (e.model.clone(), e.solid)
-        };
-
+fn register_export_obj(lua: &Lua, cad: &Table, session: Arc<Mutex<Session>>) -> LuaResult<()> {
+    let f = lua.create_function(move |_lua, (id, path): (u32, String)| {
+        let (model, solid) = clone_solid_brep(&session, SolidId(id))?;
         let mesh = cadkernel_io::tessellate_solid(&model, solid);
         cadkernel_io::export_obj(&mesh, Path::new(&path))
             .map_err(|e| mlua::Error::external(e.to_string()))?;
@@ -575,58 +602,61 @@ fn register_export_obj(lua: &Lua, cad: &Table, store: SolidStore) -> LuaResult<(
     cad.set("export_obj", f)
 }
 
-fn register_import_stl(lua: &Lua, cad: &Table, store: SolidStore) -> LuaResult<()> {
-    let f = lua.create_function(move |_lua, path: String| {
-        let mesh =
-            cadkernel_io::import_stl(&path).map_err(|e| mlua::Error::external(e.to_string()))?;
-
-        // Build a trivial BRepModel containing the mesh as a single solid.
-        let mut model = BRepModel::new();
-        let result = cadkernel_modeling::shape_from_mesh(&mut model, &mesh)
-            .map_err(|e| mlua::Error::external(e.to_string()))?;
-
-        let id = store_insert(&store, model, result.solid);
-        Ok(id as i64)
+fn register_import_stl(lua: &Lua, cad: &Table) -> LuaResult<()> {
+    let f = lua.create_function(move |_lua, _path: String| {
+        // TODO(A2.10): route through Session once raw BRep import commands exist.
+        Err::<i64, _>(mlua::Error::external(
+            "import_stl: not yet routed through Session — A2.10 deliverable",
+        ))
     })?;
     cad.set("import_stl", f)
 }
 
 // ---------------------------------------------------------------------------
-// Utility — list, delete, clear
+// Utility - list, delete, clear
 // ---------------------------------------------------------------------------
 
-fn register_list(lua: &Lua, cad: &Table, store: SolidStore) -> LuaResult<()> {
+fn register_list(lua: &Lua, cad: &Table, session: Arc<Mutex<Session>>) -> LuaResult<()> {
     let f = lua.create_function(move |lua, ()| {
-        let vec = store.lock().unwrap();
-        let tbl = lua.create_table()?;
-        let mut seq = 1i64;
-        for (i, slot) in vec.iter().enumerate() {
-            if slot.is_some() {
-                tbl.set(seq, i as i64)?;
-                seq += 1;
+        let outcome = exec_cmd(&session, Command::ListSolids)?;
+        match outcome {
+            Outcome::SolidsListed { entries } => {
+                let tbl = lua.create_table()?;
+                for (idx, entry) in entries.into_iter().enumerate() {
+                    tbl.set((idx + 1) as i64, entry.id.0 as i64)?;
+                }
+                Ok(tbl)
             }
+            other => Err(mlua::Error::external(format!(
+                "unexpected list outcome: {other:?}"
+            ))),
         }
-        Ok(tbl)
     })?;
     cad.set("list", f)
 }
 
-fn register_delete(lua: &Lua, cad: &Table, store: SolidStore) -> LuaResult<()> {
-    let f = lua.create_function(move |_lua, id: usize| {
-        let mut vec = store.lock().unwrap();
-        if id >= vec.len() || vec[id].is_none() {
-            return Err(mlua::Error::external(format!("no solid with id {id}")));
+fn register_delete(lua: &Lua, cad: &Table, session: Arc<Mutex<Session>>) -> LuaResult<()> {
+    let f = lua.create_function(move |_lua, id: u32| {
+        let outcome = exec_cmd(&session, Command::DeleteSolid { id: SolidId(id) })?;
+        match outcome {
+            Outcome::SolidDeleted { id } => Ok(format!("deleted solid {}", id.0)),
+            other => Err(mlua::Error::external(format!(
+                "unexpected delete outcome: {other:?}"
+            ))),
         }
-        vec[id] = None;
-        Ok(format!("deleted solid {id}"))
     })?;
     cad.set("delete", f)
 }
 
-fn register_clear(lua: &Lua, cad: &Table, store: SolidStore) -> LuaResult<()> {
+fn register_clear(lua: &Lua, cad: &Table, session: Arc<Mutex<Session>>) -> LuaResult<()> {
     let f = lua.create_function(move |_lua, ()| {
-        store.lock().unwrap().clear();
-        Ok("cleared all solids")
+        let outcome = exec_cmd(&session, Command::NewDocument)?;
+        match outcome {
+            Outcome::DocumentReset => Ok("cleared all solids"),
+            other => Err(mlua::Error::external(format!(
+                "unexpected clear outcome: {other:?}"
+            ))),
+        }
     })?;
     cad.set("clear", f)
 }
@@ -638,6 +668,10 @@ fn register_clear(lua: &Lua, cad: &Table, store: SolidStore) -> LuaResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn err_string(result: KernelResult<String>) -> String {
+        result.expect_err("script must fail").to_string()
+    }
 
     #[test]
     fn engine_creation() {
@@ -695,9 +729,8 @@ mod tests {
             "#,
             )
             .unwrap();
-        // c should be id 2 (a=0, b=1, union=2)
         assert_eq!(out, "2");
-        assert_eq!(engine.solid_count(), 3);
+        assert_eq!(engine.solid_count(), 1);
     }
 
     #[test]
@@ -763,6 +796,21 @@ mod tests {
     }
 
     #[test]
+    fn bounds_box() {
+        let mut engine = ScriptEngine::new().unwrap();
+        let out = engine
+            .execute(
+                r#"
+                local b = cad.box(10, 20, 30)
+                local bounds = cad.bounds(b)
+                return string.format("%.0f", bounds.max_z - bounds.min_z)
+            "#,
+            )
+            .unwrap();
+        assert_eq!(out, "30");
+    }
+
+    #[test]
     fn translate_solid() {
         let mut engine = ScriptEngine::new().unwrap();
         let out = engine
@@ -775,7 +823,6 @@ mod tests {
             "#,
             )
             .unwrap();
-        // Volume should be preserved after translation.
         assert_eq!(out, "1000");
     }
 
@@ -791,7 +838,7 @@ mod tests {
             "#,
             )
             .unwrap();
-        assert_eq!(out, "1");
+        assert_eq!(out, "0");
     }
 
     #[test]
@@ -808,6 +855,22 @@ mod tests {
             )
             .unwrap();
         assert_eq!(out, "8000");
+    }
+
+    #[test]
+    fn mirror_solid() {
+        let mut engine = ScriptEngine::new().unwrap();
+        let out = engine
+            .execute(
+                r#"
+                local b = cad.box(10, 10, 10)
+                local m = cad.mirror(b, 0, 0, 0, 1, 0, 0)
+                return m
+            "#,
+            )
+            .unwrap();
+        assert_eq!(out, "1");
+        assert_eq!(engine.solid_count(), 2);
     }
 
     #[test]
@@ -829,31 +892,27 @@ mod tests {
     #[test]
     fn fillet_box() {
         let mut engine = ScriptEngine::new().unwrap();
-        let out = engine
-            .execute(
-                r#"
+        let err = err_string(engine.execute(
+            r#"
                 local b = cad.box(20, 20, 20)
                 local f = cad.fillet(b, 2)
                 return f
             "#,
-            )
-            .unwrap();
-        assert_eq!(out, "1");
+        ));
+        assert!(err.contains("fillet/chamfer: not yet routed through Session"));
     }
 
     #[test]
     fn chamfer_box() {
         let mut engine = ScriptEngine::new().unwrap();
-        let out = engine
-            .execute(
-                r#"
+        let err = err_string(engine.execute(
+            r#"
                 local b = cad.box(20, 20, 20)
                 local c = cad.chamfer(b, 2)
                 return c
             "#,
-            )
-            .unwrap();
-        assert_eq!(out, "1");
+        ));
+        assert!(err.contains("fillet/chamfer: not yet routed through Session"));
     }
 
     #[test]
@@ -898,18 +957,15 @@ mod tests {
         let tmp = std::env::temp_dir().join("scripting_import_test.stl");
         let path = tmp.to_str().unwrap();
 
-        // Export a box, then re-import it.
-        let out = engine
-            .execute(&format!(
-                r#"
+        let err = err_string(engine.execute(&format!(
+            r#"
                 local b = cad.box(10, 10, 10)
                 cad.export_stl(b, "{path}")
                 local imported = cad.import_stl("{path}")
                 return imported
             "#
-            ))
-            .unwrap();
-        assert_eq!(out, "1");
+        )));
+        assert!(err.contains("import_stl: not yet routed through Session"));
         std::fs::remove_file(tmp).ok();
     }
 
@@ -1016,7 +1072,6 @@ mod tests {
             "#,
             )
             .unwrap();
-        // Result should be a valid number, not empty.
         let vol: f64 = out.parse().unwrap();
         assert!(vol > 0.0);
     }

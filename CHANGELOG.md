@@ -11,6 +11,42 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### Commercial CAD Roadmap — A2.9: Lua scripting bridge migrated to Session::execute (2026-05-14)
+- **`crates/viewer/src/scripting.rs` migrated** (+401/-346): every `cad.*` mutating Lua call now routes through `cadkernel_api::Session::execute(Command::*)` instead of calling the modeling/topology kernel directly. The engine's internal `SolidStore` is replaced by a single `Arc<Mutex<Session>>`.
+- **In-place transforms**: `cad.translate`, `cad.rotate`, `cad.scale` use same-id semantics via `Outcome::SolidModified` — observationally identical to the old clone-and-return pattern for every `assign-and-replace` call site in the examples.
+- **`cad.mirror`** unpacks `Outcome::PatternCreated.ids.last()` for the mirrored solid id.
+- **`cad.bounds`** new Lua function for read-only AABB queries via `Command::Bounds`.
+- **`cad.fillet`**, **`cad.chamfer`**, **`cad.import_stl`** return explicit `"not yet routed through Session — A2.10 deliverable"` Lua errors (no Command variant exists yet).
+- **`examples/lua/`** 5 scripts verified backward-compatible — assign-and-replace pattern makes in-place semantics observationally identical.
+- **8 new tests** in `crates/viewer/tests/lua_session_execute.rs` (220 lines): primitives, boolean union, mirror, error propagation, autosave integration (Lua commands → `save_cadk` → `load_cadk` → `canonical_hash` equality). Workspace total: **3,311 passed / 0 failed / 1 ignored** (was 3,301).
+- STOP_LIST clean (no new `Command` / `Outcome` variants; fillet/chamfer/import_stl deferred to A2.10).
+
+#### Commercial CAD Roadmap — A2.4: Extrude ThroughAll + UpToFace variants (2026-05-14)
+- **`ExtrudeKind::ThroughAll`** — computes span from the global AABB of all existing solids projected along `direction`, plus 1% safety margin. Empty document → `InvalidArgument`.
+- **`ExtrudeKind::UpToFace { face_solid, face_index }`** — Newell-normal face plane with cross-product fallback if degenerate; profile-centroid signed distance to target face plane. Missing face / parallel plane → `InvalidArgument`.
+- **`command_schemas()`** updated: `extrude` `kind` doc now lists `through_all | up_to_face` (UpToFace requires `face_solid` and `face_index`).
+- **8 new tests** in `crates/api/tests/command_extrude_through_upto.rs`: happy paths + error cases for both variants, JSON round-trip for new `ExtrudeKind` variants. Workspace total: **3,301 passed / 0 failed / 1 ignored** (was 3,284).
+- Closes A2 deliverable #1 (Blind/MidPlane/TwoSided/ThroughAll/UpToFace all live).
+- STOP_LIST clean (enum-variant extension only; no new Command/Outcome discriminants).
+
+#### Commercial CAD Roadmap — A2.3: LinearPattern full spec — features + mirror_alternate + instance_overrides (2026-05-14)
+- **`features: Vec<FeatureId>`** added to `Command::LinearPattern` (`#[serde(default, skip_serializing_if = "Vec::is_empty")]`). When non-empty, `id` is ignored and each referenced feature's primary solid is patterned.
+- **`mirror_alternate: bool`** (`#[serde(default, skip_serializing_if = "std::ops::Not::not")]`) — every odd-indexed copied instance is reflected about the plane through that instance's position with normal equal to `direction`.
+- **`instance_overrides: Vec<InstanceOverride>`** (`#[serde(default, skip_serializing_if = "Vec::is_empty")]`) — per-instance suppress and offset adjustment.
+- **`InstanceOverride { index: u32, suppress: bool, offset_adjust: [f64; 3] }`** new struct exported from `cadkernel-api` (`pub use command::InstanceOverride`).
+- **Dispatch** refactored into shared helpers (`LinearPatternParams`, `LinearPatternPlan`, `PatternSource`, `linear_pattern_plan`, `mirrored_pattern_model`, `clone_solid_to_clean_model`, `combined_pattern_skip_set`) shared between single-source and features-mode paths.
+- **`command_schemas()`** updated for `linear_pattern`: description and `id`/`skip_instances` docs reflect features-mode semantics.
+- **9 new tests** in `crates/api/tests/command_linearpattern_features.rs`: features list, mirror_alternate, instance_overrides (suppress + offset_adjust + out-of-range), sentinel/unknown FeatureId errors, JSON serde round-trip. Workspace total: **3,284 passed / 0 failed / 1 ignored** (was 3,277).
+- Closes A2 deliverable #2.
+- STOP_LIST clean (field/struct extension only; no new Command/Outcome discriminants).
+
+#### Commercial CAD Roadmap — A2.2: Command::Mirror full spec — features list mode (2026-05-14)
+- **`features: Vec<FeatureId>`** added to `Command::Mirror` (`#[serde(default, skip_serializing_if = "Vec::is_empty")]`). Backward-compat: when empty, legacy single-solid path runs unchanged.
+- **`Session::mirror_features`** resolves each `FeatureId` via `Document::feature`, returns `ApiError::InvalidArgument("unknown feature id: {fid}")` for sentinel/unknown ids, filters events with `primary == None`, and returns `Outcome::PatternCreated { pattern_id: first_resolved, instance_count, total_features, ids }` (same shape as LinearPattern; no separate Booleaned outcome even when `merge: true`).
+- **7 new tests** in `crates/api/tests/command_mirror_features.rs`: legacy path unchanged, features hit/miss, sentinel error, multi-feature, JSON serde, pre-A2.2 deserialise compat. Workspace total: **3,284 passed / 0 failed / 1 ignored** (was 3,277).
+- Closes A2 deliverable #3.
+- STOP_LIST clean (field extension only; no new Command/Outcome discriminants).
+
 #### Commercial CAD Roadmap — A2.1: FeatureId foundation (2026-05-14)
 - **`FeatureId(pub u64)` newtype** in `crates/api/src/document.rs` with `#[serde(transparent)]`, `Display`, `Eq + Hash + Ord` — the stable identifier the A2 feature-based command surface will consume. `FeatureId(0)` is reserved as the "not-yet-assigned" sentinel; live ids start at `1`.
 - **`Document::push_history` auto-assigns** a monotonically-increasing `FeatureId` to every event. Callers construct `HistoryEvent { feature_id: FeatureId::default(), .. }`; the document overwrites it just before insert. Replay paths and undo/redo branches both flow through `push_history` so ids stay consistent.

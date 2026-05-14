@@ -468,12 +468,16 @@ fn command_schemas_cover_every_op_name() {
             spacing: 1.0,
             count: 2,
             skip_instances: Vec::new(),
+            features: Vec::new(),
+            mirror_alternate: false,
+            instance_overrides: Vec::new(),
         },
         Command::Mirror {
             id: cadkernel_api::SolidId(0),
             point: [0.0, 0.0, 0.0],
             normal: [1.0, 0.0, 0.0],
             merge: false,
+            features: Vec::new(),
         },
         Command::Measure {
             id: cadkernel_api::SolidId(0),
@@ -858,6 +862,9 @@ fn linear_pattern_outcome_reports_pattern_id_instance_count_and_total_features()
             spacing: 5.0,
             count: 4,
             skip_instances: Vec::new(),
+            features: Vec::new(),
+            mirror_alternate: false,
+            instance_overrides: Vec::new(),
         })
         .unwrap();
 
@@ -895,6 +902,9 @@ fn linear_pattern_outcome_reports_pattern_id_instance_count_and_total_features()
             spacing: 3.0,
             count: 2,
             skip_instances: Vec::new(),
+            features: Vec::new(),
+            mirror_alternate: false,
+            instance_overrides: Vec::new(),
         })
         .unwrap();
     let json = serde_json::to_value(&pattern2).unwrap();
@@ -911,6 +921,9 @@ fn linear_pattern_outcome_reports_pattern_id_instance_count_and_total_features()
         spacing: 1.0,
         count: 1,
         skip_instances: Vec::new(),
+        features: Vec::new(),
+        mirror_alternate: false,
+        instance_overrides: Vec::new(),
     });
     assert!(bad.is_err(), "count < 2 must be rejected");
 
@@ -1053,6 +1066,9 @@ fn linear_pattern_skip_instances_suppresses_specified_indices_and_reports_correc
             spacing: 5.0,
             count: 5,
             skip_instances: vec![1, 3],
+            features: Vec::new(),
+            mirror_alternate: false,
+            instance_overrides: Vec::new(),
         })
         .unwrap();
 
@@ -1097,6 +1113,9 @@ fn linear_pattern_skip_instance_zero_drops_original_and_keeps_only_copies() {
             spacing: 2.0,
             count: 3,
             skip_instances: vec![0],
+            features: Vec::new(),
+            mirror_alternate: false,
+            instance_overrides: Vec::new(),
         })
         .unwrap();
 
@@ -1146,6 +1165,9 @@ fn linear_pattern_skip_all_instances_is_rejected_with_invalid_argument() {
         spacing: 2.0,
         count: 3,
         skip_instances: vec![0, 1, 2],
+        features: Vec::new(),
+        mirror_alternate: false,
+        instance_overrides: Vec::new(),
     });
     assert!(matches!(result, Err(ApiError::InvalidArgument(_))));
 }
@@ -1160,6 +1182,9 @@ fn linear_pattern_skip_instances_omitted_from_json_when_empty_and_round_trips() 
         spacing: 1.0,
         count: 3,
         skip_instances: Vec::new(),
+        features: Vec::new(),
+        mirror_alternate: false,
+        instance_overrides: Vec::new(),
     };
     let json = serde_json::to_value(&cmd).unwrap();
     assert!(
@@ -1209,6 +1234,7 @@ fn mirror_merge_fuses_original_with_mirrored_copy_into_single_solid() {
             point: [0.0, 0.0, 0.0],
             normal: [1.0, 0.0, 0.0],
             merge: true,
+            features: Vec::new(),
         })
         .unwrap();
 
@@ -1263,6 +1289,7 @@ fn mirror_without_merge_keeps_both_solids_and_omits_merge_from_json() {
         point: [0.0, 0.0, 0.0],
         normal: [1.0, 0.0, 0.0],
         merge: false,
+        features: Vec::new(),
     };
     // JSON wire: merge=false must be omitted (skip_serializing_if=Not::not).
     let json = serde_json::to_value(&cmd).unwrap();

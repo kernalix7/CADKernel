@@ -25,7 +25,7 @@ use cadkernel_modeling::{extrude, mirror_solid};
 use cadkernel_topology::{BRepModel, Handle, SolidData};
 use serde::{Deserialize, Serialize};
 
-use crate::command::Command;
+use crate::command::{Command, ExtrudeKind, InstanceOverride};
 use crate::document::{Document, FeatureId, HistoryEvent, SolidId, SolidSlot};
 use crate::outcome::Outcome;
 use crate::{ApiError, ApiResult};
@@ -255,10 +255,7 @@ impl Session {
     /// thumbnail blob. Output round-trips through [`Self::load_cadk`] /
     /// [`Self::load_cadk_from_path`] (the compression flag is
     /// auto-detected on read).
-    pub fn save_cadk_with_options(
-        &self,
-        options: &crate::cadk::SaveOptions,
-    ) -> ApiResult<Vec<u8>> {
+    pub fn save_cadk_with_options(&self, options: &crate::cadk::SaveOptions) -> ApiResult<Vec<u8>> {
         crate::cadk::encode_with_options(self.log(), options)
     }
 
@@ -377,7 +374,8 @@ impl Session {
     /// Restore a session from a [`SessionSnapshot`] JSON document.
     /// Replays `commands[..cursor]` and keeps `commands[cursor..]` as the
     /// pending redo stack.
-    pub fn load_from_json(json: &str) -> ApiResult<Self> {        let snap: SessionSnapshot = serde_json::from_str(json)?;
+    pub fn load_from_json(json: &str) -> ApiResult<Self> {
+        let snap: SessionSnapshot = serde_json::from_str(json)?;
         if snap.schema_version != SessionSnapshot::CURRENT_SCHEMA {
             return Err(ApiError::Codec(format!(
                 "unsupported session schema version {} (expected {})",
@@ -418,7 +416,44 @@ impl Session {
         // because they don't mutate the document.
         if matches!(
             command,
-            Command::Measure { .. } | Command::Validate | Command::ListSolids | Command::FindByLabel { .. } | Command::HistoryEvents | Command::Stats | Command::Bounds { .. } | Command::Distance { .. } | Command::Volume { .. } | Command::SurfaceArea { .. } | Command::Centroid { .. } | Command::IntersectsAabb { .. } | Command::Exists { .. } | Command::Diagonal { .. } | Command::AabbCenter { .. } | Command::AabbVolume { .. } | Command::ContainsAabb { .. } | Command::AabbCorners { .. } | Command::SolidLabel { .. } | Command::IsEmpty | Command::AabbSurfaceArea { .. } | Command::SolidCount | Command::HistoryCount | Command::HasLabel { .. } | Command::SolidIds | Command::AabbExtents { .. } | Command::AabbLongestAxis { .. } | Command::AabbShortestAxis { .. } | Command::AabbAspectRatio { .. } | Command::IsCubic { .. } | Command::IsSquareXy { .. } | Command::HistoryDescription { .. } | Command::IsSquareYz { .. } | Command::IsSquareXz { .. } | Command::OperationCount { .. } | Command::LastOperation | Command::HasOperation { .. } | Command::FirstOperation
+            Command::Measure { .. }
+                | Command::Validate
+                | Command::ListSolids
+                | Command::FindByLabel { .. }
+                | Command::HistoryEvents
+                | Command::Stats
+                | Command::Bounds { .. }
+                | Command::Distance { .. }
+                | Command::Volume { .. }
+                | Command::SurfaceArea { .. }
+                | Command::Centroid { .. }
+                | Command::IntersectsAabb { .. }
+                | Command::Exists { .. }
+                | Command::Diagonal { .. }
+                | Command::AabbCenter { .. }
+                | Command::AabbVolume { .. }
+                | Command::ContainsAabb { .. }
+                | Command::AabbCorners { .. }
+                | Command::SolidLabel { .. }
+                | Command::IsEmpty
+                | Command::AabbSurfaceArea { .. }
+                | Command::SolidCount
+                | Command::HistoryCount
+                | Command::HasLabel { .. }
+                | Command::SolidIds
+                | Command::AabbExtents { .. }
+                | Command::AabbLongestAxis { .. }
+                | Command::AabbShortestAxis { .. }
+                | Command::AabbAspectRatio { .. }
+                | Command::IsCubic { .. }
+                | Command::IsSquareXy { .. }
+                | Command::HistoryDescription { .. }
+                | Command::IsSquareYz { .. }
+                | Command::IsSquareXz { .. }
+                | Command::OperationCount { .. }
+                | Command::LastOperation
+                | Command::HasOperation { .. }
+                | Command::FirstOperation
         ) {
             return self.dispatch(&command);
         }
@@ -483,19 +518,14 @@ impl Session {
                 dy: y1 + y2,
                 dz: z1 + z2,
             }),
-            (
-                Command::Scale {
-                    id: a,
-                    factor: f1,
-                },
-                Command::Scale {
-                    id: b,
-                    factor: f2,
-                },
-            ) if a == b => Some(Command::Scale {
-                id: *a,
-                factor: f1 * f2,
-            }),
+            (Command::Scale { id: a, factor: f1 }, Command::Scale { id: b, factor: f2 })
+                if a == b =>
+            {
+                Some(Command::Scale {
+                    id: *a,
+                    factor: f1 * f2,
+                })
+            }
             (Command::Rename { id: a, .. }, Command::Rename { id: b, label }) if a == b => {
                 Some(Command::Rename {
                     id: *a,
@@ -614,8 +644,37 @@ impl Session {
                 spacing,
                 count,
                 skip_instances,
-            } => self.linear_pattern(*id, *direction, *spacing, *count, skip_instances),
-            Command::Mirror { id, point, normal, merge } => self.mirror(*id, *point, *normal, *merge),
+                features,
+                mirror_alternate,
+                instance_overrides,
+            } => {
+                let params = LinearPatternParams {
+                    direction: *direction,
+                    spacing: *spacing,
+                    count: *count,
+                    skip_instances,
+                    instance_overrides,
+                    mirror_alternate: *mirror_alternate,
+                };
+                if features.is_empty() {
+                    self.linear_pattern_extended(*id, params)
+                } else {
+                    self.linear_pattern_features(features, params)
+                }
+            }
+            Command::Mirror {
+                id,
+                point,
+                normal,
+                merge,
+                features,
+            } => {
+                if features.is_empty() {
+                    self.mirror(*id, *point, *normal, *merge)
+                } else {
+                    self.mirror_features(features, *point, *normal, *merge)
+                }
+            }
             Command::Measure { id } => self.measure(*id),
             Command::Validate => Ok(Outcome::Validated {
                 issues: self.document.validate(),
@@ -627,11 +686,7 @@ impl Session {
                     .into_iter()
                     .map(|id| crate::outcome::SolidEntry {
                         id,
-                        label: self
-                            .document
-                            .solid_label(id)
-                            .unwrap_or("")
-                            .to_string(),
+                        label: self.document.solid_label(id).unwrap_or("").to_string(),
                     })
                     .collect(),
             }),
@@ -703,21 +758,30 @@ impl Session {
                     .document
                     .measure_solid(*id)
                     .ok_or_else(|| ApiError::UnknownSolid(format!("{id}")))?;
-                Ok(Outcome::Volume { id: *id, volume: m.volume })
+                Ok(Outcome::Volume {
+                    id: *id,
+                    volume: m.volume,
+                })
             }
             Command::SurfaceArea { id } => {
                 let m = self
                     .document
                     .measure_solid(*id)
                     .ok_or_else(|| ApiError::UnknownSolid(format!("{id}")))?;
-                Ok(Outcome::SurfaceArea { id: *id, surface_area: m.surface_area })
+                Ok(Outcome::SurfaceArea {
+                    id: *id,
+                    surface_area: m.surface_area,
+                })
             }
             Command::Centroid { id } => {
                 let m = self
                     .document
                     .measure_solid(*id)
                     .ok_or_else(|| ApiError::UnknownSolid(format!("{id}")))?;
-                Ok(Outcome::Centroid { id: *id, centroid: m.centroid })
+                Ok(Outcome::Centroid {
+                    id: *id,
+                    centroid: m.centroid,
+                })
             }
             Command::IntersectsAabb { id_a, id_b } => {
                 let a = self
@@ -734,7 +798,9 @@ impl Session {
                 for i in 0..3 {
                     let lo = a.min[i].max(b.min[i]);
                     let hi = a.max[i].min(b.max[i]);
-                    if lo > hi { intersects = false; }
+                    if lo > hi {
+                        intersects = false;
+                    }
                     omin[i] = lo;
                     omax[i] = hi;
                 }
@@ -764,11 +830,14 @@ impl Session {
                     bbox.max[1] - bbox.min[1],
                     bbox.max[2] - bbox.min[2],
                 ];
-                let length = (extents[0] * extents[0]
-                    + extents[1] * extents[1]
-                    + extents[2] * extents[2])
-                    .sqrt();
-                Ok(Outcome::Diagonal { id: *id, length, extents })
+                let length =
+                    (extents[0] * extents[0] + extents[1] * extents[1] + extents[2] * extents[2])
+                        .sqrt();
+                Ok(Outcome::Diagonal {
+                    id: *id,
+                    length,
+                    extents,
+                })
             }
             Command::AabbCenter { id } => {
                 let bbox = self
@@ -790,7 +859,10 @@ impl Session {
                 let dx = bbox.max[0] - bbox.min[0];
                 let dy = bbox.max[1] - bbox.min[1];
                 let dz = bbox.max[2] - bbox.min[2];
-                Ok(Outcome::AabbVolume { id: *id, volume: dx * dy * dz })
+                Ok(Outcome::AabbVolume {
+                    id: *id,
+                    volume: dx * dy * dz,
+                })
             }
             Command::ContainsAabb { id_outer, id_inner } => {
                 let outer = self
@@ -801,9 +873,8 @@ impl Session {
                     .document
                     .bounding_box(*id_inner)
                     .ok_or_else(|| ApiError::UnknownSolid(format!("{id_inner}")))?;
-                let contains = (0..3).all(|i| {
-                    outer.min[i] <= inner.min[i] && inner.max[i] <= outer.max[i]
-                });
+                let contains =
+                    (0..3).all(|i| outer.min[i] <= inner.min[i] && inner.max[i] <= outer.max[i]);
                 Ok(Outcome::AabbContainment {
                     id_outer: *id_outer,
                     id_inner: *id_inner,
@@ -849,7 +920,10 @@ impl Session {
                 let dy = bbox.max[1] - bbox.min[1];
                 let dz = bbox.max[2] - bbox.min[2];
                 let surface_area = 2.0 * (dx * dy + dy * dz + dz * dx);
-                Ok(Outcome::AabbSurfaceArea { id: *id, surface_area })
+                Ok(Outcome::AabbSurfaceArea {
+                    id: *id,
+                    surface_area,
+                })
             }
             Command::SolidCount => Ok(Outcome::SolidCount {
                 count: self.document.solid_count() as u32,
@@ -1012,9 +1086,7 @@ impl Session {
                 let history = self.document.history();
                 let len = history.len();
                 if len == 0 {
-                    return Err(ApiError::InvalidArgument(
-                        "history is empty".to_string(),
-                    ));
+                    return Err(ApiError::InvalidArgument("history is empty".to_string()));
                 }
                 let index = (len - 1) as u32;
                 let event = &history[len - 1];
@@ -1038,9 +1110,7 @@ impl Session {
             Command::FirstOperation => {
                 let history = self.document.history();
                 if history.is_empty() {
-                    return Err(ApiError::InvalidArgument(
-                        "history is empty".to_string(),
-                    ));
+                    return Err(ApiError::InvalidArgument("history is empty".to_string()));
                 }
                 let event = &history[0];
                 Ok(Outcome::FirstOperation {
@@ -1345,14 +1415,26 @@ impl Session {
             )));
         }
         let inv_len = 1.0 / len_sq.sqrt();
-        let unit_axis = Vec3::new(axis_vec.x * inv_len, axis_vec.y * inv_len, axis_vec.z * inv_len);
+        let unit_axis = Vec3::new(
+            axis_vec.x * inv_len,
+            axis_vec.y * inv_len,
+            axis_vec.z * inv_len,
+        );
         let q = Quaternion::from_axis_angle(unit_axis, angle_rad);
         let pivot = Point3::new(point[0], point[1], point[2]);
         let slot = slot_mut(&mut self.document, id)?;
         for (_h, v) in slot.model.vertices.iter_mut() {
-            let rel = Vec3::new(v.point.x - pivot.x, v.point.y - pivot.y, v.point.z - pivot.z);
+            let rel = Vec3::new(
+                v.point.x - pivot.x,
+                v.point.y - pivot.y,
+                v.point.z - pivot.z,
+            );
             let rotated = q.rotate_vec(rel);
-            v.point = Point3::new(pivot.x + rotated.x, pivot.y + rotated.y, pivot.z + rotated.z);
+            v.point = Point3::new(
+                pivot.x + rotated.x,
+                pivot.y + rotated.y,
+                pivot.z + rotated.z,
+            );
         }
         Ok(Outcome::SolidModified { id })
     }
@@ -1362,7 +1444,7 @@ impl Session {
         profile: &[[f64; 3]],
         direction: [f64; 3],
         distance: f64,
-        kind: crate::command::ExtrudeKind,
+        kind: ExtrudeKind,
     ) -> ApiResult<Outcome> {
         if profile.len() < 3 {
             return Err(ApiError::InvalidArgument(format!(
@@ -1370,36 +1452,41 @@ impl Session {
                 profile.len()
             )));
         }
-        if distance <= 0.0 {
-            return Err(ApiError::InvalidArgument(format!(
-                "extrude distance must be > 0, got {distance}"
-            )));
-        }
-        if let crate::command::ExtrudeKind::TwoSided { back_distance } = kind {
-            if back_distance <= 0.0 {
-                return Err(ApiError::InvalidArgument(format!(
-                    "extrude TwoSided back_distance must be > 0, got {back_distance}"
-                )));
-            }
-        }
         let dir = Vec3::new(direction[0], direction[1], direction[2]);
         if dir.length() < 1e-12 {
             return Err(ApiError::InvalidArgument(
                 "extrude direction must be non-zero".into(),
             ));
         }
-        // Normalize direction once; ExtrudeKind reuses it as the offset axis.
-        let dir_unit = dir.normalized().ok_or_else(|| {
-            ApiError::Kernel("extrude direction failed to normalize".into())
-        })?;
-        // Determine the back-shift applied to the profile and the final
-        // extrusion length, then forward to the existing kernel API.
+        let dir_unit = dir
+            .normalized()
+            .ok_or_else(|| ApiError::Kernel("extrude direction failed to normalize".into()))?;
         let (back_shift, total_distance) = match kind {
-            crate::command::ExtrudeKind::Blind => (0.0, distance),
-            crate::command::ExtrudeKind::MidPlane => (distance * 0.5, distance),
-            crate::command::ExtrudeKind::TwoSided { back_distance } => {
+            ExtrudeKind::Blind => {
+                validate_extrude_distance(distance)?;
+                (0.0, distance)
+            }
+            ExtrudeKind::MidPlane => {
+                validate_extrude_distance(distance)?;
+                (distance * 0.5, distance)
+            }
+            ExtrudeKind::TwoSided { back_distance } => {
+                validate_extrude_distance(distance)?;
+                if back_distance <= 0.0 {
+                    return Err(ApiError::InvalidArgument(format!(
+                        "extrude TwoSided back_distance must be > 0, got {back_distance}"
+                    )));
+                }
                 (back_distance, distance + back_distance)
             }
+            ExtrudeKind::ThroughAll => (0.0, self.extrude_through_all_distance(dir_unit)?),
+            ExtrudeKind::UpToFace {
+                face_solid,
+                face_index,
+            } => (
+                0.0,
+                self.extrude_up_to_face_distance(profile, dir_unit, face_solid, face_index)?,
+            ),
         };
         let pts: Vec<Point3> = profile
             .iter()
@@ -1422,80 +1509,185 @@ impl Session {
         })
     }
 
-    fn linear_pattern(
-        &mut self,
-        id: SolidId,
-        direction: [f64; 3],
-        spacing: f64,
-        count: u32,
-        skip_instances: &[u32],
-    ) -> ApiResult<Outcome> {
-        if count < 2 {
-            return Err(ApiError::InvalidArgument(format!(
-                "linear_pattern count must be ≥ 2, got {count}"
-            )));
+    fn extrude_through_all_distance(&self, dir_unit: Vec3) -> ApiResult<f64> {
+        let mut found = false;
+        let mut global_min = [f64::INFINITY; 3];
+        let mut global_max = [f64::NEG_INFINITY; 3];
+        for id in self.document.solid_ids() {
+            let Some(bbox) = self.document.bounding_box(id) else {
+                continue;
+            };
+            found = true;
+            for axis in 0..3 {
+                global_min[axis] = global_min[axis].min(bbox.min[axis]);
+                global_max[axis] = global_max[axis].max(bbox.max[axis]);
+            }
         }
-        let dir_v = Vec3::new(direction[0], direction[1], direction[2]);
-        let dir = dir_v.normalized().ok_or_else(|| {
-            ApiError::InvalidArgument("linear_pattern direction must be non-zero".into())
-        })?;
-        // Skip set: filter to in-range indices and dedupe.
-        let skip: std::collections::HashSet<u32> = skip_instances
-            .iter()
-            .copied()
-            .filter(|i| *i < count)
-            .collect();
-        // Reject the degenerate case where every position is skipped —
-        // including the original — since that would produce a pattern
-        // with no surviving members.
-        if skip.len() as u32 == count {
+        if !found {
             return Err(ApiError::InvalidArgument(
-                "linear_pattern skip_instances would suppress every position".into(),
+                "ThroughAll requires at least one existing solid to bound against".into(),
             ));
         }
-        // Snapshot the source model + label up front so subsequent
-        // mutations to the document do not invalidate references.
-        let (src_model, label) = {
-            let slot = self
-                .document
-                .get_slot(id)
-                .ok_or_else(|| ApiError::UnknownSolid(format!("{id}")))?;
-            (slot.model.clone(), slot.label.clone())
-        };
-        let original_skipped = skip.contains(&0);
-        // If index 0 is skipped, the original solid is removed from the
-        // document so the pattern member list never contains a phantom.
-        if original_skipped {
-            self.document.remove(id);
+
+        let corners = [
+            [global_min[0], global_min[1], global_min[2]],
+            [global_min[0], global_min[1], global_max[2]],
+            [global_min[0], global_max[1], global_min[2]],
+            [global_min[0], global_max[1], global_max[2]],
+            [global_max[0], global_min[1], global_min[2]],
+            [global_max[0], global_min[1], global_max[2]],
+            [global_max[0], global_max[1], global_min[2]],
+            [global_max[0], global_max[1], global_max[2]],
+        ];
+        let mut min_dot = f64::INFINITY;
+        let mut max_dot = f64::NEG_INFINITY;
+        for corner in corners {
+            let dot = corner[0] * dir_unit.x + corner[1] * dir_unit.y + corner[2] * dir_unit.z;
+            min_dot = min_dot.min(dot);
+            max_dot = max_dot.max(dot);
         }
-        let mut ids = if original_skipped { Vec::new() } else { vec![id] };
-        for i in 1..count {
-            if skip.contains(&i) {
-                continue;
-            }
-            let mut copy = src_model.clone();
-            let dx = dir.x * spacing * i as f64;
-            let dy = dir.y * spacing * i as f64;
-            let dz = dir.z * spacing * i as f64;
-            for (_h, v) in copy.vertices.iter_mut() {
-                v.point = Point3::new(v.point.x + dx, v.point.y + dy, v.point.z + dz);
-            }
-            let handle = first_solid_handle(&copy).ok_or_else(|| {
-                ApiError::Kernel("linear_pattern source had no solid handle".into())
-            })?;
-            let new_id = self
-                .document
-                .insert(copy, handle, format!("{label} (pattern {i})"));
-            ids.push(new_id);
+        let span = max_dot - min_dot;
+        Ok(span + span * 0.01)
+    }
+
+    fn extrude_up_to_face_distance(
+        &self,
+        profile: &[[f64; 3]],
+        dir_unit: Vec3,
+        face_solid: SolidId,
+        face_index: u32,
+    ) -> ApiResult<f64> {
+        let _slot = self.document.get_slot(face_solid).ok_or_else(|| {
+            ApiError::InvalidArgument(format!("UpToFace target solid {face_solid} not found"))
+        })?;
+        let (model, _) = self.document.solid_brep(face_solid).ok_or_else(|| {
+            ApiError::InvalidArgument(format!("UpToFace target solid {face_solid} not found"))
+        })?;
+        let (face_centroid, face_normal) = face_plane(model, face_index)?;
+        let profile_centroid = profile_centroid(profile);
+        let denom = face_normal.dot(dir_unit);
+        if denom.abs() < 1e-12 {
+            return Err(ApiError::InvalidArgument(
+                "UpToFace target plane is parallel to extrude direction".into(),
+            ));
         }
-        let instance_count = count - skip.len() as u32;
-        let total_features = (ids.len() as u32).saturating_sub(if original_skipped { 0 } else { 1 });
+        let t = (face_centroid - profile_centroid).dot(face_normal) / denom;
+        if t <= 0.0 {
+            return Err(ApiError::InvalidArgument(
+                "UpToFace target plane is behind the profile along direction".into(),
+            ));
+        }
+        Ok(t)
+    }
+
+    fn linear_pattern_extended(
+        &mut self,
+        id: SolidId,
+        params: LinearPatternParams<'_>,
+    ) -> ApiResult<Outcome> {
+        let plan = linear_pattern_plan(params)?;
+        let source = self.pattern_source(id)?;
+        let (ids, total_features) = self.insert_linear_pattern_sources(&[source], &plan)?;
+        let instance_count = ids.len() as u32;
         Ok(Outcome::PatternCreated {
             pattern_id: id,
             instance_count,
             total_features,
             ids,
         })
+    }
+
+    fn linear_pattern_features(
+        &mut self,
+        features: &[FeatureId],
+        params: LinearPatternParams<'_>,
+    ) -> ApiResult<Outcome> {
+        let plan = linear_pattern_plan(params)?;
+
+        let mut sources = Vec::with_capacity(features.len());
+        for fid in features {
+            let event = self
+                .document
+                .feature(*fid)
+                .ok_or_else(|| ApiError::InvalidArgument(format!("unknown feature id: {fid}")))?;
+            if let Some(primary) = event.primary {
+                sources.push(self.pattern_source(primary)?);
+            }
+        }
+        if sources.is_empty() {
+            return Err(ApiError::InvalidArgument(
+                "LinearPattern::features resolved to no patternable solids".into(),
+            ));
+        }
+
+        let pattern_id = sources[0].id;
+        let (ids, total_features) = self.insert_linear_pattern_sources(&sources, &plan)?;
+        Ok(Outcome::PatternCreated {
+            pattern_id,
+            instance_count: ids.len() as u32,
+            total_features,
+            ids,
+        })
+    }
+
+    fn pattern_source(&self, id: SolidId) -> ApiResult<PatternSource> {
+        let slot = self
+            .document
+            .get_slot(id)
+            .ok_or_else(|| ApiError::UnknownSolid(format!("{id}")))?;
+        let handle = slot
+            .handle
+            .ok_or_else(|| ApiError::UnknownSolid(format!("{id} has no solid handle")))?;
+        Ok(PatternSource {
+            id,
+            model: slot.model.clone(),
+            handle,
+            label: slot.label.clone(),
+        })
+    }
+
+    fn insert_linear_pattern_sources(
+        &mut self,
+        sources: &[PatternSource],
+        plan: &LinearPatternPlan<'_>,
+    ) -> ApiResult<(Vec<SolidId>, u32)> {
+        let original_skipped = plan.skip.contains(&0);
+        let mut ids = Vec::with_capacity(sources.len() * plan.count as usize);
+        if !original_skipped {
+            ids.extend(sources.iter().map(|source| source.id));
+        } else {
+            for source in sources {
+                self.document.remove(source.id);
+            }
+        }
+
+        let mut inserted = 0_u32;
+        for source in sources {
+            for i in 1..plan.count {
+                if plan.skip.contains(&i) {
+                    continue;
+                }
+                let adjust = override_offset_for_index(i, plan.instance_overrides);
+                let offset = Vec3::new(
+                    plan.dir.x * plan.spacing * i as f64 + adjust[0],
+                    plan.dir.y * plan.spacing * i as f64 + adjust[1],
+                    plan.dir.z * plan.spacing * i as f64 + adjust[2],
+                );
+                let (copy, handle) = if plan.mirror_alternate && i % 2 == 1 {
+                    mirrored_pattern_model(source, offset, plan.dir)?
+                } else {
+                    let mut copy = source.model.clone();
+                    translate_model(&mut copy, offset);
+                    (copy, source.handle)
+                };
+                let new_id =
+                    self.document
+                        .insert(copy, handle, format!("{} (pattern {i})", source.label));
+                ids.push(new_id);
+                inserted += 1;
+            }
+        }
+        Ok((ids, inserted))
     }
 
     fn mirror(
@@ -1540,9 +1732,7 @@ impl Session {
             .map(|(h, _)| h)
             .filter(|h| *h != src_handle)
             .last()
-            .ok_or_else(|| {
-                ApiError::Kernel("mirror_solid produced no new solid handle".into())
-            })?;
+            .ok_or_else(|| ApiError::Kernel("mirror_solid produced no new solid handle".into()))?;
         let new_id = self
             .document
             .insert(work, mirror_handle, format!("{label} (mirror)"));
@@ -1558,6 +1748,141 @@ impl Session {
             label: format!("{label} (mirror)"),
         })
     }
+
+    /// A2.2 feature-list mirror. Resolves every [`FeatureId`] in `features`
+    /// to its history event's `primary` [`SolidId`], mirrors each, and
+    /// returns a single [`Outcome::PatternCreated`] summarising the batch.
+    ///
+    /// When `merge` is true, each source is fused with its mirrored copy
+    /// (consuming the source slot, mirroring the legacy `merge=true` path)
+    /// and the resulting `SolidId` is what appears in the `ids` vector.
+    /// When `merge` is false, the sources are preserved and the `ids`
+    /// vector starts with the first resolved source followed by every
+    /// newly inserted mirror in resolution order.
+    fn mirror_features(
+        &mut self,
+        features: &[FeatureId],
+        point: [f64; 3],
+        normal: [f64; 3],
+        merge: bool,
+    ) -> ApiResult<Outcome> {
+        let plane_point = Point3::new(point[0], point[1], point[2]);
+        let plane_normal = Vec3::new(normal[0], normal[1], normal[2]);
+        if plane_normal.length() < 1e-12 {
+            return Err(ApiError::InvalidArgument(
+                "mirror plane normal must be non-zero".into(),
+            ));
+        }
+
+        // Resolve every FeatureId to its history event's primary SolidId.
+        // Unknown / sentinel ids fail loudly with the offending id surfaced
+        // so downstream AI/test consumers can debug. Events with `None`
+        // primary (e.g. pure observer events) are silently filtered out.
+        let mut sources: Vec<SolidId> = Vec::with_capacity(features.len());
+        for fid in features {
+            let event = self
+                .document
+                .feature(*fid)
+                .ok_or_else(|| ApiError::InvalidArgument(format!("unknown feature id: {fid}")))?;
+            if let Some(primary) = event.primary {
+                sources.push(primary);
+            }
+        }
+        if sources.is_empty() {
+            return Err(ApiError::InvalidArgument(
+                "Mirror::features resolved to no mirrorable solids".into(),
+            ));
+        }
+
+        // `pattern_id` is the first resolved source; the `ids` vector
+        // mirrors `LinearPattern`'s contract (original at index 0 when
+        // preserved, new instances appended in creation order).
+        let first_source = sources[0];
+        let mut ids: Vec<SolidId> = Vec::with_capacity(sources.len() * 2);
+        let mut new_instance_count: u32 = 0;
+        if !merge {
+            ids.push(first_source);
+        }
+
+        for src_id in &sources {
+            let (src_model, src_handle, label) = {
+                let slot = self
+                    .document
+                    .get_slot(*src_id)
+                    .ok_or_else(|| ApiError::UnknownSolid(format!("{src_id}")))?;
+                let handle = slot.handle.ok_or_else(|| {
+                    ApiError::UnknownSolid(format!("{src_id} has no solid handle"))
+                })?;
+                (slot.model.clone(), handle, slot.label.clone())
+            };
+            let mut work = src_model;
+            let _ = mirror_solid(&mut work, src_handle, plane_point, plane_normal)?;
+            let mirror_handle = work
+                .solids
+                .iter()
+                .map(|(h, _)| h)
+                .filter(|h| *h != src_handle)
+                .last()
+                .ok_or_else(|| {
+                    ApiError::Kernel("mirror_solid produced no new solid handle".into())
+                })?;
+            let new_id = self
+                .document
+                .insert(work, mirror_handle, format!("{label} (mirror)"));
+            if merge {
+                // Each merge consumes the source slot and its mirror, leaving
+                // a single fused id in their place. That id becomes the
+                // "instance" recorded in the pattern.
+                let fused = self.boolean(*src_id, new_id, BooleanKind::Union)?;
+                let fused_id = match fused {
+                    Outcome::Booleaned { result, .. } => result,
+                    other => {
+                        return Err(ApiError::Kernel(format!(
+                            "mirror_features expected Booleaned, got {other:?}"
+                        )));
+                    }
+                };
+                ids.push(fused_id);
+            } else {
+                ids.push(new_id);
+            }
+            new_instance_count += 1;
+        }
+
+        let instance_count = ids.len() as u32;
+        Ok(Outcome::PatternCreated {
+            pattern_id: first_source,
+            instance_count,
+            total_features: new_instance_count,
+            ids,
+        })
+    }
+}
+
+#[derive(Clone)]
+struct PatternSource {
+    id: SolidId,
+    model: BRepModel,
+    handle: Handle<SolidData>,
+    label: String,
+}
+
+struct LinearPatternParams<'a> {
+    direction: [f64; 3],
+    spacing: f64,
+    count: u32,
+    skip_instances: &'a [u32],
+    instance_overrides: &'a [InstanceOverride],
+    mirror_alternate: bool,
+}
+
+struct LinearPatternPlan<'a> {
+    dir: Vec3,
+    spacing: f64,
+    count: u32,
+    skip: std::collections::HashSet<u32>,
+    instance_overrides: &'a [InstanceOverride],
+    mirror_alternate: bool,
 }
 
 #[derive(Copy, Clone)]
@@ -1569,6 +1894,228 @@ enum BooleanKind {
 
 fn first_solid_handle(model: &BRepModel) -> Option<Handle<SolidData>> {
     model.solids.iter().next().map(|(h, _)| h)
+}
+
+fn validate_extrude_distance(distance: f64) -> ApiResult<()> {
+    if distance <= 0.0 {
+        return Err(ApiError::InvalidArgument(format!(
+            "extrude distance must be > 0, got {distance}"
+        )));
+    }
+    Ok(())
+}
+
+fn profile_centroid(profile: &[[f64; 3]]) -> Point3 {
+    let inv = 1.0 / profile.len() as f64;
+    let mut sum = [0.0; 3];
+    for point in profile {
+        sum[0] += point[0];
+        sum[1] += point[1];
+        sum[2] += point[2];
+    }
+    Point3::new(sum[0] * inv, sum[1] * inv, sum[2] * inv)
+}
+
+fn face_plane(model: &BRepModel, face_index: u32) -> ApiResult<(Point3, Vec3)> {
+    let (face_handle, _) = model.faces.iter().nth(face_index as usize).ok_or_else(|| {
+        ApiError::InvalidArgument(format!("UpToFace face_index {face_index} out of range"))
+    })?;
+    let vertex_handles = model.vertices_of_face(face_handle)?;
+    if vertex_handles.len() < 3 {
+        return Err(ApiError::InvalidArgument(
+            "UpToFace target face has fewer than 3 vertices".into(),
+        ));
+    }
+
+    let mut points = Vec::with_capacity(vertex_handles.len());
+    for vertex_handle in vertex_handles {
+        let vertex = model.vertices.get(vertex_handle).ok_or_else(|| {
+            ApiError::Kernel("UpToFace target face references a missing vertex".into())
+        })?;
+        points.push(vertex.point);
+    }
+
+    let inv = 1.0 / points.len() as f64;
+    let mut centroid = Point3::ORIGIN;
+    for point in &points {
+        centroid.x += point.x * inv;
+        centroid.y += point.y * inv;
+        centroid.z += point.z * inv;
+    }
+
+    let mut normal = Vec3::ZERO;
+    for i in 0..points.len() {
+        let current = points[i];
+        let next = points[(i + 1) % points.len()];
+        normal.x += (current.y - next.y) * (current.z + next.z);
+        normal.y += (current.z - next.z) * (current.x + next.x);
+        normal.z += (current.x - next.x) * (current.y + next.y);
+    }
+    if normal.length() < 1e-12 {
+        normal = fallback_face_normal(&points)?;
+    }
+    let normal = normal.normalized().ok_or_else(|| {
+        ApiError::InvalidArgument("UpToFace target face plane is degenerate".into())
+    })?;
+    Ok((centroid, normal))
+}
+
+fn fallback_face_normal(points: &[Point3]) -> ApiResult<Vec3> {
+    let origin = points[0];
+    for i in 1..points.len() {
+        for j in (i + 1)..points.len() {
+            let normal = (points[i] - origin).cross(points[j] - origin);
+            if normal.length() >= 1e-12 {
+                return Ok(normal);
+            }
+        }
+    }
+    Err(ApiError::InvalidArgument(
+        "UpToFace target face plane is degenerate".into(),
+    ))
+}
+
+fn combined_pattern_skip_set(
+    count: u32,
+    skip_instances: &[u32],
+    instance_overrides: &[InstanceOverride],
+) -> std::collections::HashSet<u32> {
+    let mut skip: std::collections::HashSet<u32> = skip_instances
+        .iter()
+        .copied()
+        .filter(|i| *i < count)
+        .collect();
+    skip.extend(
+        instance_overrides
+            .iter()
+            .filter(|ov| ov.suppress && ov.index < count)
+            .map(|ov| ov.index),
+    );
+    skip
+}
+
+fn linear_pattern_plan(params: LinearPatternParams<'_>) -> ApiResult<LinearPatternPlan<'_>> {
+    if params.count < 2 {
+        return Err(ApiError::InvalidArgument(format!(
+            "linear_pattern count must be ≥ 2, got {}",
+            params.count
+        )));
+    }
+    let dir_v = Vec3::new(
+        params.direction[0],
+        params.direction[1],
+        params.direction[2],
+    );
+    let dir = dir_v.normalized().ok_or_else(|| {
+        ApiError::InvalidArgument("linear_pattern direction must be non-zero".into())
+    })?;
+    let skip = combined_pattern_skip_set(
+        params.count,
+        params.skip_instances,
+        params.instance_overrides,
+    );
+    if skip.len() as u32 == params.count {
+        return Err(ApiError::InvalidArgument(
+            "linear_pattern skip_instances would suppress every position".into(),
+        ));
+    }
+    Ok(LinearPatternPlan {
+        dir,
+        spacing: params.spacing,
+        count: params.count,
+        skip,
+        instance_overrides: params.instance_overrides,
+        mirror_alternate: params.mirror_alternate,
+    })
+}
+
+fn override_offset_for_index(index: u32, instance_overrides: &[InstanceOverride]) -> [f64; 3] {
+    let mut offset = [0.0; 3];
+    for ov in instance_overrides {
+        if ov.index == index && !ov.suppress {
+            offset = ov.offset_adjust;
+        }
+    }
+    offset
+}
+
+fn translate_model(model: &mut BRepModel, offset: Vec3) {
+    for (_h, vertex) in model.vertices.iter_mut() {
+        vertex.point = Point3::new(
+            vertex.point.x + offset.x,
+            vertex.point.y + offset.y,
+            vertex.point.z + offset.z,
+        );
+    }
+}
+
+fn mirrored_pattern_model(
+    source: &PatternSource,
+    offset: Vec3,
+    plane_normal: Vec3,
+) -> ApiResult<(BRepModel, Handle<SolidData>)> {
+    let mut work = source.model.clone();
+    translate_model(&mut work, offset);
+    let plane_point = Point3::new(offset.x, offset.y, offset.z);
+    let result = mirror_solid(&mut work, source.handle, plane_point, plane_normal)?;
+    clone_solid_to_clean_model(&work, result.solid)
+}
+
+fn clone_solid_to_clean_model(
+    src: &BRepModel,
+    solid: Handle<SolidData>,
+) -> ApiResult<(BRepModel, Handle<SolidData>)> {
+    let solid_data = src
+        .solids
+        .get(solid)
+        .ok_or_else(|| ApiError::Kernel("pattern mirror result solid is missing".into()))?;
+    let mut dst = BRepModel::new();
+    let mut vertex_map = std::collections::HashMap::new();
+    let mut new_shells = Vec::with_capacity(solid_data.shells.len());
+
+    for shell_handle in &solid_data.shells {
+        let shell = src
+            .shells
+            .get(*shell_handle)
+            .ok_or_else(|| ApiError::Kernel("pattern mirror result shell is missing".into()))?;
+        let mut new_faces = Vec::with_capacity(shell.faces.len());
+        for face_handle in &shell.faces {
+            let vertices = src.vertices_of_face(*face_handle)?;
+            if vertices.len() < 3 {
+                return Err(ApiError::Kernel(
+                    "pattern mirror result face has fewer than 3 vertices".into(),
+                ));
+            }
+            let mut new_vertices = Vec::with_capacity(vertices.len());
+            for vertex_handle in vertices {
+                let key = vertex_handle.index();
+                let new_vertex = if let Some(mapped) = vertex_map.get(&key) {
+                    *mapped
+                } else {
+                    let vertex = src.vertices.get(vertex_handle).ok_or_else(|| {
+                        ApiError::Kernel("pattern mirror result vertex is missing".into())
+                    })?;
+                    let mapped = dst.add_vertex(vertex.point);
+                    vertex_map.insert(key, mapped);
+                    mapped
+                };
+                new_vertices.push(new_vertex);
+            }
+
+            let mut half_edges = Vec::with_capacity(new_vertices.len());
+            for i in 0..new_vertices.len() {
+                let next = (i + 1) % new_vertices.len();
+                let (_, half_edge, _) = dst.add_edge(new_vertices[i], new_vertices[next]);
+                half_edges.push(half_edge);
+            }
+            let loop_handle = dst.make_loop(&half_edges)?;
+            new_faces.push(dst.make_face(loop_handle));
+        }
+        new_shells.push(dst.make_shell(&new_faces));
+    }
+
+    let new_solid = dst.make_solid(&new_shells);
+    Ok((dst, new_solid))
 }
 
 fn create_cone_model(radius: f64, height: f64, top_radius: f64) -> ApiResult<BRepModel> {
@@ -1633,7 +2180,10 @@ fn history_description(cmd: &Command, outcome: &Outcome) -> String {
         }
         (Command::Scale { id, factor }, _) => format!("Scale {id} ×{factor}"),
         (Command::ScaleNonUniform { id, factors, .. }, _) => {
-            format!("ScaleNonUniform {id} [{},{},{}]", factors[0], factors[1], factors[2])
+            format!(
+                "ScaleNonUniform {id} [{},{},{}]",
+                factors[0], factors[1], factors[2]
+            )
         }
         (Command::CenterOnOrigin { id }, _) => format!("CenterOnOrigin {id}"),
         (Command::AlignTo { id, target_id }, _) => format!("AlignTo {id} -> {target_id}"),
@@ -1641,10 +2191,36 @@ fn history_description(cmd: &Command, outcome: &Outcome) -> String {
             format!("ScaleToFit {id} target_size={target_size}")
         }
         (Command::TranslateTo { id, point }, _) => {
-            format!("TranslateTo {id} -> [{}, {}, {}]", point[0], point[1], point[2])
+            format!(
+                "TranslateTo {id} -> [{}, {}, {}]",
+                point[0], point[1], point[2]
+            )
         }
         (Command::Rename { id, label }, _) => format!("Rename {id} → {label:?}"),
         (Command::DeleteSolid { id }, _) => format!("Delete {id}"),
+        (
+            Command::Extrude {
+                profile,
+                kind: ExtrudeKind::ThroughAll,
+                ..
+            },
+            _,
+        ) => format!("Extrude ThroughAll ({} pts)", profile.len()),
+        (
+            Command::Extrude {
+                profile,
+                kind:
+                    ExtrudeKind::UpToFace {
+                        face_solid,
+                        face_index,
+                    },
+                ..
+            },
+            _,
+        ) => format!(
+            "Extrude UpToFace -> {face_solid} face {face_index} ({} pts)",
+            profile.len()
+        ),
         (
             Command::Extrude {
                 profile, distance, ..
@@ -1652,12 +2228,44 @@ fn history_description(cmd: &Command, outcome: &Outcome) -> String {
             _,
         ) => format!("Extrude ({} pts, h={distance})", profile.len()),
         (
-            Command::LinearPattern { id, count, .. },
-            Outcome::PatternCreated { ids, .. },
-        ) => format!("LinearPattern {id} ×{count} ({} solids)", ids.len()),
+            Command::LinearPattern {
+                features, count, ..
+            },
+            _,
+        ) if !features.is_empty() => {
+            format!("LinearPattern {} features ×{count}", features.len())
+        }
+        (Command::LinearPattern { id, count, .. }, Outcome::PatternCreated { ids, .. }) => {
+            format!("LinearPattern {id} ×{count} ({} solids)", ids.len())
+        }
         (Command::LinearPattern { id, count, .. }, _) => {
             format!("LinearPattern {id} ×{count}")
         }
+        (
+            Command::Mirror {
+                normal, features, ..
+            },
+            Outcome::PatternCreated { total_features, .. },
+        ) if !features.is_empty() => format!(
+            "Mirror {} features across ({},{},{}) -> {} solids",
+            features.len(),
+            normal[0],
+            normal[1],
+            normal[2],
+            total_features,
+        ),
+        (
+            Command::Mirror {
+                features, normal, ..
+            },
+            _,
+        ) if !features.is_empty() => format!(
+            "Mirror {} features across ({},{},{})",
+            features.len(),
+            normal[0],
+            normal[1],
+            normal[2],
+        ),
         (Command::Mirror { id, .. }, _) => format!("Mirror {id}"),
         (Command::Measure { id }, _) => format!("Measure {id}"),
         (Command::Validate, _) => "Validate".into(),

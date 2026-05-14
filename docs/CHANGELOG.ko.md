@@ -11,6 +11,37 @@
 
 ### 추가됨
 
+#### 상용 CAD 로드맵 — A2.9: Lua 스크립팅 브리지 Session::execute 마이그레이션 (2026-05-14)
+- **`crates/viewer/src/scripting.rs` 마이그레이션** (+401/-346): 모든 `cad.*` 뮤테이팅 Lua 호출이 모델링/토폴로지 직접 호출 대신 `cadkernel_api::Session::execute(Command::*)`를 경유. 내부 `SolidStore`를 `Arc<Mutex<Session>>`으로 교체.
+- **인플레이스 변환**: `cad.translate` / `cad.rotate` / `cad.scale`이 `Outcome::SolidModified`를 통해 동일 ID 유지. 예제 스크립트의 assign-and-replace 패턴과 동작 동일.
+- **`cad.mirror`**: `Outcome::PatternCreated.ids.last()`에서 미러된 solid ID 추출.
+- **`cad.bounds`**: 읽기 전용 AABB 쿼리(`Command::Bounds`) 신규 Lua 함수.
+- **`cad.fillet` / `cad.chamfer` / `cad.import_stl`**: A2.10 deliverable — 명시적 Lua 에러 반환.
+- **신규 테스트 8개** (`crates/viewer/tests/lua_session_execute.rs`, 220줄): primitive, boolean, mirror, 에러 전파, autosave 통합. 워크스페이스 합계: **3,311 통과 / 0 실패 / 1 무시** (기존 3,301).
+- STOP_LIST 그린.
+
+#### 상용 CAD 로드맵 — A2.4: Extrude ThroughAll + UpToFace variant (2026-05-14)
+- **`ExtrudeKind::ThroughAll`** — 기존 solid 전체 global AABB를 `direction`으로 투영한 스팬 + 1% 여유. 빈 문서 → `InvalidArgument`.
+- **`ExtrudeKind::UpToFace { face_solid, face_index }`** — Newell 법선 face plane, 프로파일 centroid 서명 거리. 누락 face / 평행 평면 → `InvalidArgument`.
+- **신규 테스트 8개** (`crates/api/tests/command_extrude_through_upto.rs`). 워크스페이스 합계: **3,301 통과 / 0 실패 / 1 무시** (기존 3,284).
+- A2 deliverable #1 완결 (Blind/MidPlane/TwoSided/ThroughAll/UpToFace 전부 구현).
+- STOP_LIST 그린.
+
+#### 상용 CAD 로드맵 — A2.3: LinearPattern full spec — features + mirror_alternate + instance_overrides (2026-05-14)
+- **`Command::LinearPattern`에 `features: Vec<FeatureId>`**, **`mirror_alternate: bool`**, **`instance_overrides: Vec<InstanceOverride>`** 추가 (`#[serde(default, skip_serializing_if ...)]`). 모두 backward-compat.
+- **`InstanceOverride { index, suppress, offset_adjust }`** 신규 struct, `cadkernel-api`에서 공개 재노출.
+- **Dispatch** 공유 헬퍼(`LinearPatternParams`, `linear_pattern_plan`, `mirrored_pattern_model`, `clone_solid_to_clean_model`)로 리팩터.
+- **신규 테스트 9개** (`crates/api/tests/command_linearpattern_features.rs`). 워크스페이스 합계: **3,284 통과 / 0 실패 / 1 무시** (기존 3,277).
+- A2 deliverable #2 완결.
+- STOP_LIST 그린.
+
+#### 상용 CAD 로드맵 — A2.2: Command::Mirror full spec — features 리스트 모드 (2026-05-14)
+- **`Command::Mirror`에 `features: Vec<FeatureId>` 추가** (`#[serde(default, skip_serializing_if = "Vec::is_empty")]`). 빈 경우 기존 single-solid 경로 유지.
+- **`Session::mirror_features`**: 각 `FeatureId`를 `Document::feature`로 resolve, 미지/센티넬 → `InvalidArgument("unknown feature id: {fid}")`, `Outcome::PatternCreated` 반환.
+- **신규 테스트 7개** (`crates/api/tests/command_mirror_features.rs`): legacy 경로, features hit/miss, 센티넬 에러, multi-feature, JSON serde, pre-A2.2 역직렬화 호환. 워크스페이스 합계: **3,284 통과 / 0 실패 / 1 무시** (기존 3,277).
+- A2 deliverable #3 완결.
+- STOP_LIST 그린.
+
 #### 상용 CAD 로드맵 — A2.1: FeatureId 기반 구축 (2026-05-14)
 - **`FeatureId(pub u64)` newtype** (`crates/api/src/document.rs`) — `#[serde(transparent)]`, `Display`, `Eq+Hash+Ord`. A2 feature 기반 커맨드가 사용할 stable 식별자. `FeatureId(0)`은 "미할당" 센티넬, 실제 ID는 1부터.
 - **`Document::push_history`가 자동으로 monotonic FeatureId 부여** — 호출자는 `FeatureId::default()`로 생성, 문서가 insert 직전에 덮어씀. replay / undo / redo 경로 모두 `push_history`를 통과해 ID 일관성 유지.
