@@ -53,7 +53,10 @@ fn badge(
         stroke,
         egui::StrokeKind::Inside,
     );
-    let text_pos = egui::pos2(rect.left() + pad_x, rect.center().y - galley.size().y * 0.5 + pad_y * 0.5 - 0.5);
+    let text_pos = egui::pos2(
+        rect.left() + pad_x,
+        rect.center().y - galley.size().y * 0.5 + pad_y * 0.5 - 0.5,
+    );
     painter.galley(text_pos, galley, accent);
     resp
 }
@@ -233,8 +236,7 @@ pub(crate) fn draw_status_bar(
                     badge(ui, "mm", egui::Color32::from_rgb(110, 118, 130), false);
 
                     // Shortcuts hint (press F1 to open reference)
-                    let hint_resp =
-                        badge(ui, "F1", egui::Color32::from_rgb(120, 130, 145), true);
+                    let hint_resp = badge(ui, "F1", egui::Color32::from_rgb(120, 130, 145), true);
                     if hint_resp.hovered() {
                         hint_resp.on_hover_text("Press F1 to open the Keyboard Shortcuts panel");
                     }
@@ -318,12 +320,7 @@ pub(crate) fn draw_status_bar(
                     // FPS (far left of right section, so it renders last = leftmost)
                     if vp.show_fps {
                         vert_divider(ui);
-                        badge(
-                            ui,
-                            &format!("{:.0} FPS", vp.fps),
-                            theme::COLOR_DIM,
-                            false,
-                        );
+                        badge(ui, &format!("{:.0} FPS", vp.fps), theme::COLOR_DIM, false);
                     }
                 });
             });

@@ -18,806 +18,820 @@ pub(crate) fn draw_menu_bar(
             ..egui::Frame::NONE
         })
         .show(ctx, |ui| {
-        egui::menu::bar(ui, |ui| {
-            // ---- File ----
-            ui.menu_button("File", |ui| {
-                menu_section(ui, "Project");
-                if ui
-                    .add(egui::Button::new("New").shortcut_text("Ctrl+N"))
-                    .clicked()
-                {
-                    gui.actions.push(GuiAction::NewModel);
-                    gui.status_message = "New model".into();
-                    ui.close_menu();
-                }
-
-                if ui
-                    .add(egui::Button::new("Open\u{2026}").shortcut_text("Ctrl+O"))
-                    .clicked()
-                {
-                    if let Some(path) = rfd::FileDialog::new()
-                        .add_filter("CADKernel Project", &["cadk"])
-                        .add_filter("Mesh files", &["stl", "obj"])
-                        .add_filter("All supported", &["cadk", "stl", "obj"])
-                        .pick_file()
+            egui::menu::bar(ui, |ui| {
+                // ---- File ----
+                ui.menu_button("File", |ui| {
+                    menu_section(ui, "Project");
+                    if ui
+                        .add(egui::Button::new("New").shortcut_text("Ctrl+N"))
+                        .clicked()
                     {
-                        gui.status_message = format!("Opening {}", path.display());
-                        gui.actions.push(GuiAction::OpenFile(path));
+                        gui.actions.push(GuiAction::NewModel);
+                        gui.status_message = "New model".into();
+                        ui.close_menu();
                     }
-                    ui.close_menu();
-                }
 
-                if ui
-                    .add(egui::Button::new("Save As\u{2026}").shortcut_text("Ctrl+S"))
-                    .clicked()
-                {
-                    if let Some(path) = rfd::FileDialog::new()
-                        .add_filter("CADKernel Project", &["cadk"])
-                        .set_file_name("project.cadk")
-                        .save_file()
+                    if ui
+                        .add(egui::Button::new("Open\u{2026}").shortcut_text("Ctrl+O"))
+                        .clicked()
                     {
-                        gui.status_message = format!("Saving {}", path.display());
-                        gui.actions.push(GuiAction::SaveFile(path));
-                    }
-                    ui.close_menu();
-                }
-
-                // Recent files
-                if !gui.recent_files.is_empty() {
-                    ui.menu_button("Recent Files", |ui| {
-                        for path_str in gui.recent_files.clone() {
-                            let short =
-                                path_str.rsplit('/').next().unwrap_or(&path_str).to_string();
-                            if ui.button(&short).on_hover_text(&path_str).clicked() {
-                                gui.actions
-                                    .push(GuiAction::OpenFile(std::path::PathBuf::from(&path_str)));
-                                ui.close_menu();
-                            }
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("CADKernel Project", &["cadk"])
+                            .add_filter("Mesh files", &["stl", "obj"])
+                            .add_filter("All supported", &["cadk", "stl", "obj"])
+                            .pick_file()
+                        {
+                            gui.status_message = format!("Opening {}", path.display());
+                            gui.actions.push(GuiAction::OpenFile(path));
                         }
-                    });
-                }
+                        ui.close_menu();
+                    }
 
-                if ui
-                    .add(egui::Button::new("Inspect Command File\u{2026}"))
-                    .on_hover_text(
-                        "Decode a .cadk Command-log container and show its header, \
-                         flags, command count, and thumbnail status.",
-                    )
-                    .clicked()
-                {
-                    if let Some(path) = rfd::FileDialog::new()
-                        .add_filter("CADKernel Command Log", &["cadk"])
-                        .pick_file()
+                    if ui
+                        .add(egui::Button::new("Save As\u{2026}").shortcut_text("Ctrl+S"))
+                        .clicked()
                     {
-                        let report = super::inspect_cadk_path(&path);
-                        gui.status_message = format!("Inspected {}", path.display());
-                        gui.cadk_inspector = Some(report);
-                    }
-                    ui.close_menu();
-                }
-
-                ui.separator();
-
-                menu_section(ui, "Transfer");
-                // Import submenu
-                ui.menu_button("Import", |ui| {
-                    // Mesh formats
-                    for (label, exts) in &[
-                        ("STL...", vec!["stl"]),
-                        ("OBJ...", vec!["obj"]),
-                        ("PLY...", vec!["ply"]),
-                    ] {
-                        if ui.button(*label).clicked() {
-                            if let Some(path) = rfd::FileDialog::new()
-                                .add_filter(label.trim_end_matches("..."), exts)
-                                .pick_file()
-                            {
-                                gui.status_message = format!("Importing {}", path.display());
-                                gui.actions.push(GuiAction::ImportFile(path));
-                            }
-                            ui.close_menu();
-                        }
-                    }
-                    ui.separator();
-                    // CAD formats
-                    for (label, exts) in &[
-                        ("STEP...", vec!["step", "stp"]),
-                        ("IGES...", vec!["iges", "igs"]),
-                        ("BREP...", vec!["brep", "brp"]),
-                        ("DXF...", vec!["dxf"]),
-                    ] {
-                        if ui.button(*label).clicked() {
-                            if let Some(path) = rfd::FileDialog::new()
-                                .add_filter(label.trim_end_matches("..."), exts)
-                                .pick_file()
-                            {
-                                gui.status_message = format!("Importing {}", path.display());
-                                gui.actions.push(GuiAction::ImportFile(path));
-                            }
-                            ui.close_menu();
-                        }
-                    }
-                    ui.separator();
-                    // Scene/exchange formats
-                    if ui.button("glTF...").clicked() {
                         if let Some(path) = rfd::FileDialog::new()
-                            .add_filter("glTF", &["gltf", "glb"])
-                            .pick_file()
-                        {
-                            gui.actions.push(GuiAction::ImportGltf(path));
-                        }
-                        ui.close_menu();
-                    }
-                    if ui.button("3MF...").clicked() {
-                        if let Some(path) = rfd::FileDialog::new()
-                            .add_filter("3MF", &["3mf"])
-                            .pick_file()
-                        {
-                            gui.actions.push(GuiAction::Import3mf(path));
-                        }
-                        ui.close_menu();
-                    }
-                    if ui.button("SVG...").clicked() {
-                        if let Some(path) = rfd::FileDialog::new()
-                            .add_filter("SVG", &["svg"])
-                            .pick_file()
-                        {
-                            gui.actions.push(GuiAction::ImportSvg(path));
-                        }
-                        ui.close_menu();
-                    }
-                    if ui.button("DAE (Collada)...").clicked() {
-                        if let Some(path) = rfd::FileDialog::new()
-                            .add_filter("Collada", &["dae"])
-                            .pick_file()
-                        {
-                            gui.actions.push(GuiAction::ImportDae(path));
-                        }
-                        ui.close_menu();
-                    }
-                });
-
-                // Export submenu
-                ui.menu_button("Export", |ui| {
-                    // STL with options dialog
-                    if ui.button("STL...").clicked() {
-                        if let Some(path) = rfd::FileDialog::new()
-                            .add_filter("STL", &["stl"])
-                            .set_file_name("model.stl")
+                            .add_filter("CADKernel Project", &["cadk"])
+                            .set_file_name("project.cadk")
                             .save_file()
                         {
-                            gui.export_path = Some(path);
-                            gui.show_export_options = true;
+                            gui.status_message = format!("Saving {}", path.display());
+                            gui.actions.push(GuiAction::SaveFile(path));
                         }
                         ui.close_menu();
                     }
-                    #[allow(clippy::type_complexity)]
-                    let exports: &[(
-                        &str,
-                        &str,
-                        &[&str],
-                        fn(std::path::PathBuf) -> GuiAction,
-                    )] = &[
-                        ("OBJ...", "model.obj", &["obj"], |p| GuiAction::ExportObj(p)),
-                        ("PLY...", "model.ply", &["ply"], |p| GuiAction::ExportPly(p)),
-                    ];
-                    for (label, filename, exts, make_action) in exports {
-                        if ui.button(*label).clicked() {
-                            if let Some(path) = rfd::FileDialog::new()
-                                .add_filter(label.trim_end_matches("..."), exts)
-                                .set_file_name(*filename)
-                                .save_file()
-                            {
-                                gui.actions.push(make_action(path));
-                            }
-                            ui.close_menu();
-                        }
-                    }
-                    ui.separator();
-                    #[allow(clippy::type_complexity)]
-                    let cad_exports: &[(
-                        &str,
-                        &str,
-                        &[&str],
-                        fn(std::path::PathBuf) -> GuiAction,
-                    )] = &[
-                        ("STEP...", "model.step", &["step", "stp"], |p| {
-                            GuiAction::ExportStep(p)
-                        }),
-                        ("IGES...", "model.iges", &["iges", "igs"], |p| {
-                            GuiAction::ExportIges(p)
-                        }),
-                        ("DXF...", "model.dxf", &["dxf"], |p| GuiAction::ExportDxf(p)),
-                        ("BREP...", "model.brep", &["brep", "brp"], |p| {
-                            GuiAction::ExportBrep(p)
-                        }),
-                    ];
-                    for (label, filename, exts, make_action) in cad_exports {
-                        if ui.button(*label).clicked() {
-                            if let Some(path) = rfd::FileDialog::new()
-                                .add_filter(label.trim_end_matches("..."), exts)
-                                .set_file_name(*filename)
-                                .save_file()
-                            {
-                                gui.actions.push(make_action(path));
-                            }
-                            ui.close_menu();
-                        }
-                    }
-                    ui.separator();
-                    #[allow(clippy::type_complexity)]
-                    let scene_exports: &[(
-                        &str,
-                        &str,
-                        &[&str],
-                        fn(std::path::PathBuf) -> GuiAction,
-                    )] = &[
-                        ("glTF...", "model.gltf", &["gltf"], |p| {
-                            GuiAction::ExportGltf(p)
-                        }),
-                        ("3MF...", "model.3mf", &["3mf"], |p| GuiAction::Export3mf(p)),
-                        ("SVG...", "model.svg", &["svg"], |p| GuiAction::ExportSvg(p)),
-                        ("DAE (Collada)...", "model.dae", &["dae"], |p| {
-                            GuiAction::ExportDae(p)
-                        }),
-                    ];
-                    for (label, filename, exts, make_action) in scene_exports {
-                        if ui.button(*label).clicked() {
-                            if let Some(path) = rfd::FileDialog::new()
-                                .add_filter(label.trim_end_matches("..."), exts)
-                                .set_file_name(*filename)
-                                .save_file()
-                            {
-                                gui.actions.push(make_action(path));
-                            }
-                            ui.close_menu();
-                        }
-                    }
-                });
 
-                ui.separator();
+                    // Recent files
+                    if !gui.recent_files.is_empty() {
+                        ui.menu_button("Recent Files", |ui| {
+                            for path_str in gui.recent_files.clone() {
+                                let short =
+                                    path_str.rsplit('/').next().unwrap_or(&path_str).to_string();
+                                if ui.button(&short).on_hover_text(&path_str).clicked() {
+                                    gui.actions.push(GuiAction::OpenFile(
+                                        std::path::PathBuf::from(&path_str),
+                                    ));
+                                    ui.close_menu();
+                                }
+                            }
+                        });
+                    }
 
-                // Recent Files submenu
-                ui.menu_button("Recent Files", |ui| {
-                    ui.set_min_width(200.0);
-                    if gui.recent_files.is_empty() {
-                        ui.label(
-                            egui::RichText::new("No recent files")
-                                .size(11.0)
-                                .color(super::theme::COLOR_DIM),
-                        );
-                    } else {
-                        let files = gui.recent_files.clone();
-                        for path_str in &files {
-                            let display = std::path::Path::new(path_str)
-                                .file_name()
-                                .and_then(|n| n.to_str())
-                                .unwrap_or(path_str);
-                            if ui
-                                .button(display)
-                                .on_hover_text(path_str.as_str())
-                                .clicked()
-                            {
-                                gui.actions
-                                    .push(GuiAction::OpenFile(std::path::PathBuf::from(path_str)));
+                    if ui
+                        .add(egui::Button::new("Inspect Command File\u{2026}"))
+                        .on_hover_text(
+                            "Decode a .cadk Command-log container and show its header, \
+                         flags, command count, and thumbnail status.",
+                        )
+                        .clicked()
+                    {
+                        if let Some(path) = rfd::FileDialog::new()
+                            .add_filter("CADKernel Command Log", &["cadk"])
+                            .pick_file()
+                        {
+                            let report = super::inspect_cadk_path(&path);
+                            gui.status_message = format!("Inspected {}", path.display());
+                            gui.cadk_inspector = Some(report);
+                        }
+                        ui.close_menu();
+                    }
+
+                    ui.separator();
+
+                    menu_section(ui, "Transfer");
+                    // Import submenu
+                    ui.menu_button("Import", |ui| {
+                        // Mesh formats
+                        for (label, exts) in &[
+                            ("STL...", vec!["stl"]),
+                            ("OBJ...", vec!["obj"]),
+                            ("PLY...", vec!["ply"]),
+                        ] {
+                            if ui.button(*label).clicked() {
+                                if let Some(path) = rfd::FileDialog::new()
+                                    .add_filter(label.trim_end_matches("..."), exts)
+                                    .pick_file()
+                                {
+                                    gui.status_message = format!("Importing {}", path.display());
+                                    gui.actions.push(GuiAction::ImportFile(path));
+                                }
                                 ui.close_menu();
                             }
                         }
                         ui.separator();
-                        if ui
-                            .button(
-                                egui::RichText::new("Clear Recent Files")
+                        // CAD formats
+                        for (label, exts) in &[
+                            ("STEP...", vec!["step", "stp"]),
+                            ("IGES...", vec!["iges", "igs"]),
+                            ("BREP...", vec!["brep", "brp"]),
+                            ("DXF...", vec!["dxf"]),
+                        ] {
+                            if ui.button(*label).clicked() {
+                                if let Some(path) = rfd::FileDialog::new()
+                                    .add_filter(label.trim_end_matches("..."), exts)
+                                    .pick_file()
+                                {
+                                    gui.status_message = format!("Importing {}", path.display());
+                                    gui.actions.push(GuiAction::ImportFile(path));
+                                }
+                                ui.close_menu();
+                            }
+                        }
+                        ui.separator();
+                        // Scene/exchange formats
+                        if ui.button("glTF...").clicked() {
+                            if let Some(path) = rfd::FileDialog::new()
+                                .add_filter("glTF", &["gltf", "glb"])
+                                .pick_file()
+                            {
+                                gui.actions.push(GuiAction::ImportGltf(path));
+                            }
+                            ui.close_menu();
+                        }
+                        if ui.button("3MF...").clicked() {
+                            if let Some(path) = rfd::FileDialog::new()
+                                .add_filter("3MF", &["3mf"])
+                                .pick_file()
+                            {
+                                gui.actions.push(GuiAction::Import3mf(path));
+                            }
+                            ui.close_menu();
+                        }
+                        if ui.button("SVG...").clicked() {
+                            if let Some(path) = rfd::FileDialog::new()
+                                .add_filter("SVG", &["svg"])
+                                .pick_file()
+                            {
+                                gui.actions.push(GuiAction::ImportSvg(path));
+                            }
+                            ui.close_menu();
+                        }
+                        if ui.button("DAE (Collada)...").clicked() {
+                            if let Some(path) = rfd::FileDialog::new()
+                                .add_filter("Collada", &["dae"])
+                                .pick_file()
+                            {
+                                gui.actions.push(GuiAction::ImportDae(path));
+                            }
+                            ui.close_menu();
+                        }
+                    });
+
+                    // Export submenu
+                    ui.menu_button("Export", |ui| {
+                        // STL with options dialog
+                        if ui.button("STL...").clicked() {
+                            if let Some(path) = rfd::FileDialog::new()
+                                .add_filter("STL", &["stl"])
+                                .set_file_name("model.stl")
+                                .save_file()
+                            {
+                                gui.export_path = Some(path);
+                                gui.show_export_options = true;
+                            }
+                            ui.close_menu();
+                        }
+                        #[allow(clippy::type_complexity)]
+                        let exports: &[(
+                            &str,
+                            &str,
+                            &[&str],
+                            fn(std::path::PathBuf) -> GuiAction,
+                        )] = &[
+                            ("OBJ...", "model.obj", &["obj"], |p| GuiAction::ExportObj(p)),
+                            ("PLY...", "model.ply", &["ply"], |p| GuiAction::ExportPly(p)),
+                        ];
+                        for (label, filename, exts, make_action) in exports {
+                            if ui.button(*label).clicked() {
+                                if let Some(path) = rfd::FileDialog::new()
+                                    .add_filter(label.trim_end_matches("..."), exts)
+                                    .set_file_name(*filename)
+                                    .save_file()
+                                {
+                                    gui.actions.push(make_action(path));
+                                }
+                                ui.close_menu();
+                            }
+                        }
+                        ui.separator();
+                        #[allow(clippy::type_complexity)]
+                        let cad_exports: &[(
+                            &str,
+                            &str,
+                            &[&str],
+                            fn(std::path::PathBuf) -> GuiAction,
+                        )] = &[
+                            ("STEP...", "model.step", &["step", "stp"], |p| {
+                                GuiAction::ExportStep(p)
+                            }),
+                            ("IGES...", "model.iges", &["iges", "igs"], |p| {
+                                GuiAction::ExportIges(p)
+                            }),
+                            ("DXF...", "model.dxf", &["dxf"], |p| GuiAction::ExportDxf(p)),
+                            ("BREP...", "model.brep", &["brep", "brp"], |p| {
+                                GuiAction::ExportBrep(p)
+                            }),
+                        ];
+                        for (label, filename, exts, make_action) in cad_exports {
+                            if ui.button(*label).clicked() {
+                                if let Some(path) = rfd::FileDialog::new()
+                                    .add_filter(label.trim_end_matches("..."), exts)
+                                    .set_file_name(*filename)
+                                    .save_file()
+                                {
+                                    gui.actions.push(make_action(path));
+                                }
+                                ui.close_menu();
+                            }
+                        }
+                        ui.separator();
+                        #[allow(clippy::type_complexity)]
+                        let scene_exports: &[(
+                            &str,
+                            &str,
+                            &[&str],
+                            fn(std::path::PathBuf) -> GuiAction,
+                        )] = &[
+                            ("glTF...", "model.gltf", &["gltf"], |p| {
+                                GuiAction::ExportGltf(p)
+                            }),
+                            ("3MF...", "model.3mf", &["3mf"], |p| GuiAction::Export3mf(p)),
+                            ("SVG...", "model.svg", &["svg"], |p| GuiAction::ExportSvg(p)),
+                            ("DAE (Collada)...", "model.dae", &["dae"], |p| {
+                                GuiAction::ExportDae(p)
+                            }),
+                        ];
+                        for (label, filename, exts, make_action) in scene_exports {
+                            if ui.button(*label).clicked() {
+                                if let Some(path) = rfd::FileDialog::new()
+                                    .add_filter(label.trim_end_matches("..."), exts)
+                                    .set_file_name(*filename)
+                                    .save_file()
+                                {
+                                    gui.actions.push(make_action(path));
+                                }
+                                ui.close_menu();
+                            }
+                        }
+                    });
+
+                    ui.separator();
+
+                    // Recent Files submenu
+                    ui.menu_button("Recent Files", |ui| {
+                        ui.set_min_width(200.0);
+                        if gui.recent_files.is_empty() {
+                            ui.label(
+                                egui::RichText::new("No recent files")
                                     .size(11.0)
                                     .color(super::theme::COLOR_DIM),
-                            )
-                            .clicked()
-                        {
-                            gui.actions.push(GuiAction::ClearRecentFiles);
-                            ui.close_menu();
-                        }
-                    }
-                });
-
-                ui.separator();
-
-                if ui
-                    .add(egui::Button::new("Quit").shortcut_text("Ctrl+Q"))
-                    .clicked()
-                {
-                    gui.request_quit = true;
-                }
-            });
-
-            // ---- Edit ----
-            ui.menu_button("Edit", |ui| {
-                menu_section(ui, "History");
-                menu_action_sc(ui, gui, "Undo", "Ctrl+Z", GuiAction::Undo);
-                menu_action_sc(ui, gui, "Redo", "Ctrl+Y", GuiAction::Redo);
-                ui.separator();
-                menu_action_sc(
-                    ui,
-                    gui,
-                    "Copy",
-                    "Ctrl+C",
-                    GuiAction::StatusMessage("Copy: select an object first".into()),
-                );
-                menu_action_sc(
-                    ui,
-                    gui,
-                    "Paste",
-                    "Ctrl+V",
-                    GuiAction::StatusMessage("Paste: clipboard empty".into()),
-                );
-                ui.separator();
-                menu_action_sc(ui, gui, "Select All", "Ctrl+A", GuiAction::SelectAll);
-                menu_action_sc(ui, gui, "Deselect All", "Esc", GuiAction::DeselectAll);
-                ui.separator();
-                menu_action_sc(ui, gui, "Delete", "Del", GuiAction::DeleteSelected);
-                ui.separator();
-
-                ui.menu_button("Groups", |ui| {
-                    ui.set_min_width(240.0);
-                    ui.weak("Group selected objects");
-                    ui.horizontal(|ui| {
-                        let resp = ui.add(
-                            egui::TextEdit::singleline(&mut gui.group_name_input)
-                                .hint_text("New group name...")
-                                .desired_width(160.0),
-                        );
-                        let enter =
-                            resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-                        let create = ui
-                            .add_enabled(
-                                !gui.group_name_input.trim().is_empty(),
-                                egui::Button::new("Create"),
-                            )
-                            .clicked();
-                        if (create || enter) && !gui.group_name_input.trim().is_empty() {
-                            let name = gui.group_name_input.trim().to_string();
-                            gui.actions.push(GuiAction::CreateGroup(name));
-                            gui.group_name_input.clear();
-                            ui.close_menu();
-                        }
-                    });
-                    ui.separator();
-                    let groups: Vec<(u32, String, bool, usize)> = gui
-                        .scene_groups
-                        .iter()
-                        .map(|(id, name, vis, count)| (*id, name.clone(), *vis, *count))
-                        .collect();
-                    if groups.is_empty() {
-                        ui.add_space(4.0);
-                        ui.weak("No groups. Select objects and\ncreate a group to manage them.");
-                        ui.add_space(4.0);
-                    } else {
-                        for (gid, name, vis, count) in groups {
-                            ui.horizontal(|ui| {
-                                // Visibility eye toggle
-                                let eye_icon = if vis { "\u{25C9}" } else { "\u{25CB}" };
-                                let eye_color = if vis {
-                                    egui::Color32::from_rgb(100, 200, 120)
-                                } else {
-                                    egui::Color32::from_gray(100)
-                                };
+                            );
+                        } else {
+                            let files = gui.recent_files.clone();
+                            for path_str in &files {
+                                let display = std::path::Path::new(path_str)
+                                    .file_name()
+                                    .and_then(|n| n.to_str())
+                                    .unwrap_or(path_str);
                                 if ui
-                                    .add(
-                                        egui::Button::new(
-                                            egui::RichText::new(eye_icon)
-                                                .color(eye_color)
-                                                .size(14.0),
-                                        )
-                                        .frame(false),
-                                    )
-                                    .on_hover_text(if vis { "Hide group" } else { "Show group" })
+                                    .button(display)
+                                    .on_hover_text(path_str.as_str())
                                     .clicked()
                                 {
-                                    gui.actions.push(GuiAction::ToggleGroupVisibility(gid));
-                                }
-                                // Group name + member count
-                                let label = format!("{name} ({count})");
-                                if ui
-                                    .button(&label)
-                                    .on_hover_text("Add selected objects to this group")
-                                    .clicked()
-                                {
-                                    gui.actions.push(GuiAction::GroupSelected(gid));
+                                    gui.actions.push(GuiAction::OpenFile(
+                                        std::path::PathBuf::from(path_str),
+                                    ));
                                     ui.close_menu();
                                 }
-                                ui.with_layout(
-                                    egui::Layout::right_to_left(egui::Align::Center),
-                                    |ui| {
-                                        if ui
-                                            .small_button(
-                                                egui::RichText::new("\u{2715}").weak().size(11.0),
+                            }
+                            ui.separator();
+                            if ui
+                                .button(
+                                    egui::RichText::new("Clear Recent Files")
+                                        .size(11.0)
+                                        .color(super::theme::COLOR_DIM),
+                                )
+                                .clicked()
+                            {
+                                gui.actions.push(GuiAction::ClearRecentFiles);
+                                ui.close_menu();
+                            }
+                        }
+                    });
+
+                    ui.separator();
+
+                    if ui
+                        .add(egui::Button::new("Quit").shortcut_text("Ctrl+Q"))
+                        .clicked()
+                    {
+                        gui.request_quit = true;
+                    }
+                });
+
+                // ---- Edit ----
+                ui.menu_button("Edit", |ui| {
+                    menu_section(ui, "History");
+                    menu_action_sc(ui, gui, "Undo", "Ctrl+Z", GuiAction::Undo);
+                    menu_action_sc(ui, gui, "Redo", "Ctrl+Y", GuiAction::Redo);
+                    ui.separator();
+                    menu_action_sc(
+                        ui,
+                        gui,
+                        "Copy",
+                        "Ctrl+C",
+                        GuiAction::StatusMessage("Copy: select an object first".into()),
+                    );
+                    menu_action_sc(
+                        ui,
+                        gui,
+                        "Paste",
+                        "Ctrl+V",
+                        GuiAction::StatusMessage("Paste: clipboard empty".into()),
+                    );
+                    ui.separator();
+                    menu_action_sc(ui, gui, "Select All", "Ctrl+A", GuiAction::SelectAll);
+                    menu_action_sc(ui, gui, "Deselect All", "Esc", GuiAction::DeselectAll);
+                    ui.separator();
+                    menu_action_sc(ui, gui, "Delete", "Del", GuiAction::DeleteSelected);
+                    ui.separator();
+
+                    ui.menu_button("Groups", |ui| {
+                        ui.set_min_width(240.0);
+                        ui.weak("Group selected objects");
+                        ui.horizontal(|ui| {
+                            let resp = ui.add(
+                                egui::TextEdit::singleline(&mut gui.group_name_input)
+                                    .hint_text("New group name...")
+                                    .desired_width(160.0),
+                            );
+                            let enter =
+                                resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                            let create = ui
+                                .add_enabled(
+                                    !gui.group_name_input.trim().is_empty(),
+                                    egui::Button::new("Create"),
+                                )
+                                .clicked();
+                            if (create || enter) && !gui.group_name_input.trim().is_empty() {
+                                let name = gui.group_name_input.trim().to_string();
+                                gui.actions.push(GuiAction::CreateGroup(name));
+                                gui.group_name_input.clear();
+                                ui.close_menu();
+                            }
+                        });
+                        ui.separator();
+                        let groups: Vec<(u32, String, bool, usize)> = gui
+                            .scene_groups
+                            .iter()
+                            .map(|(id, name, vis, count)| (*id, name.clone(), *vis, *count))
+                            .collect();
+                        if groups.is_empty() {
+                            ui.add_space(4.0);
+                            ui.weak(
+                                "No groups. Select objects and\ncreate a group to manage them.",
+                            );
+                            ui.add_space(4.0);
+                        } else {
+                            for (gid, name, vis, count) in groups {
+                                ui.horizontal(|ui| {
+                                    // Visibility eye toggle
+                                    let eye_icon = if vis { "\u{25C9}" } else { "\u{25CB}" };
+                                    let eye_color = if vis {
+                                        egui::Color32::from_rgb(100, 200, 120)
+                                    } else {
+                                        egui::Color32::from_gray(100)
+                                    };
+                                    if ui
+                                        .add(
+                                            egui::Button::new(
+                                                egui::RichText::new(eye_icon)
+                                                    .color(eye_color)
+                                                    .size(14.0),
                                             )
-                                            .on_hover_text("Delete group (keeps objects)")
-                                            .clicked()
-                                        {
-                                            gui.actions.push(GuiAction::DeleteGroup(gid));
-                                            ui.close_menu();
-                                        }
-                                    },
-                                );
-                            });
-                        }
-                    }
-                });
-                ui.separator();
-                if ui.button("Settings...").clicked() {
-                    gui.show_settings = true;
-                    ui.close_menu();
-                }
-            });
-
-            // ---- Create ----
-            ui.menu_button("Create", |ui| {
-                menu_section(ui, "Basic Primitives");
-                if ui.button("Box...").clicked() {
-                    gui.active_task = Some(task_panel::ActiveTask::Box {
-                        width: 10.0,
-                        height: 10.0,
-                        depth: 10.0,
-                        preview_id: None,
-                    });
-                    ui.close_menu();
-                }
-                if ui.button("Cylinder...").clicked() {
-                    gui.active_task = Some(task_panel::ActiveTask::Cylinder {
-                        radius: 5.0,
-                        height: 10.0,
-                        preview_id: None,
-                    });
-                    ui.close_menu();
-                }
-                if ui.button("Sphere...").clicked() {
-                    gui.active_task = Some(task_panel::ActiveTask::Sphere {
-                        radius: 5.0,
-                        preview_id: None,
-                    });
-                    ui.close_menu();
-                }
-                if ui.button("Cone...").clicked() {
-                    gui.active_task = Some(task_panel::ActiveTask::Cone {
-                        base_radius: 5.0,
-                        top_radius: 0.0,
-                        height: 10.0,
-                        preview_id: None,
-                    });
-                    ui.close_menu();
-                }
-                if ui.button("Torus...").clicked() {
-                    gui.active_task = Some(task_panel::ActiveTask::Torus {
-                        major_radius: 5.0,
-                        minor_radius: 1.5,
-                        preview_id: None,
-                    });
-                    ui.close_menu();
-                }
-                ui.separator();
-                menu_section(ui, "Extended Primitives");
-                if ui.button("Tube...").clicked() {
-                    gui.active_task = Some(task_panel::ActiveTask::Tube {
-                        outer_radius: 5.0,
-                        inner_radius: 3.0,
-                        height: 10.0,
-                        preview_id: None,
-                    });
-                    ui.close_menu();
-                }
-                if ui.button("Prism...").clicked() {
-                    gui.active_task = Some(task_panel::ActiveTask::Prism {
-                        radius: 5.0,
-                        height: 10.0,
-                        sides: 6,
-                        preview_id: None,
-                    });
-                    ui.close_menu();
-                }
-                if ui.button("Wedge...").clicked() {
-                    gui.active_task = Some(task_panel::ActiveTask::Wedge {
-                        dx: 10.0,
-                        dy: 10.0,
-                        dz: 10.0,
-                        dx2: 5.0,
-                        dy2: 5.0,
-                        preview_id: None,
-                    });
-                    ui.close_menu();
-                }
-                if ui.button("Ellipsoid...").clicked() {
-                    gui.active_task = Some(task_panel::ActiveTask::Ellipsoid {
-                        rx: 5.0,
-                        ry: 3.0,
-                        rz: 2.0,
-                        preview_id: None,
-                    });
-                    ui.close_menu();
-                }
-                if ui.button("Helix...").clicked() {
-                    gui.active_task = Some(task_panel::ActiveTask::Helix {
-                        radius: 5.0,
-                        pitch: 3.0,
-                        turns: 3.0,
-                        tube_radius: 0.5,
-                        preview_id: None,
-                    });
-                    ui.close_menu();
-                }
-            });
-
-            // ---- Macro ----
-            ui.menu_button("Macro", |ui| {
-                menu_action(
-                    ui,
-                    gui,
-                    "Run Script...",
-                    GuiAction::StatusMessage("Python scripting: coming soon".into()),
-                );
-                ui.separator();
-                ui.add_enabled_ui(false, |ui| {
-                    let _ = ui.button("Macro Console");
-                    let _ = ui.button("Start Recording");
-                    let _ = ui.button("Stop Recording");
-                });
-            });
-
-            // ---- View ----
-            ui.menu_button("View", |ui| {
-                menu_section(ui, "Layout");
-                // Panels
-                ui.menu_button("Panels", |ui| {
-                    ui.checkbox(&mut gui.show_model_tree, "Model Tree");
-                    ui.checkbox(&mut gui.show_properties, "Properties");
-                    ui.checkbox(&mut gui.show_report_panel, "Report View");
-                });
-                ui.separator();
-
-                // Display modes
-                ui.menu_button("Display Mode", |ui| {
-                    for &mode in DisplayMode::ALL {
-                        let selected = mode == display_mode;
-                        let text = format!("{}    {}", mode.label(), mode.shortcut());
-                        if ui.selectable_label(selected, text).clicked() {
-                            gui.actions.push(GuiAction::SetDisplayMode(mode));
-                            ui.close_menu();
-                        }
-                    }
-                });
-                ui.separator();
-
-                let proj_label = match camera.projection {
-                    Projection::Perspective => "Switch to Orthographic",
-                    Projection::Orthographic => "Switch to Perspective",
-                };
-                if ui
-                    .add(egui::Button::new(proj_label).shortcut_text("5"))
-                    .clicked()
-                {
-                    gui.actions.push(GuiAction::ToggleProjection);
-                    ui.close_menu();
-                }
-                ui.separator();
-
-                ui.menu_button("Standard Views", |ui| {
-                    for &(view, key) in &[
-                        (StandardView::Front, "1"),
-                        (StandardView::Back, "Ctrl+1"),
-                        (StandardView::Right, "3"),
-                        (StandardView::Left, "Ctrl+3"),
-                        (StandardView::Top, "7"),
-                        (StandardView::Bottom, "Ctrl+7"),
-                        (StandardView::Isometric, "0"),
-                    ] {
-                        if ui
-                            .add(egui::Button::new(view.label()).shortcut_text(key))
-                            .clicked()
-                        {
-                            gui.actions.push(GuiAction::SetStandardView(view));
-                            ui.close_menu();
-                        }
-                    }
-                });
-
-                ui.separator();
-                menu_section(ui, "Overlays");
-                menu_action_sc(ui, gui, "Toggle Grid", "G", GuiAction::ToggleGrid);
-                menu_action(ui, gui, "Toggle Origin", GuiAction::ToggleOrigin);
-                menu_action(ui, gui, "Toggle 3D Grid", GuiAction::ToggleGrid3d);
-                menu_action_sc(
-                    ui,
-                    gui,
-                    "Section Plane",
-                    "Shift+S",
-                    GuiAction::ToggleSectionPlane,
-                );
-
-                ui.separator();
-
-                // -- View Bookmarks --
-                ui.menu_button("Bookmarks", |ui| {
-                    ui.set_min_width(220.0);
-                    ui.weak("Save current view");
-                    ui.horizontal(|ui| {
-                        let resp = ui.add(
-                            egui::TextEdit::singleline(&mut gui.bookmark_name_input)
-                                .hint_text("Bookmark name...")
-                                .desired_width(150.0),
-                        );
-                        let enter =
-                            resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-                        let save = ui
-                            .add_enabled(
-                                !gui.bookmark_name_input.trim().is_empty(),
-                                egui::Button::new("Save"),
-                            )
-                            .clicked();
-                        if (save || enter) && !gui.bookmark_name_input.trim().is_empty() {
-                            let name = gui.bookmark_name_input.trim().to_string();
-                            gui.actions.push(GuiAction::SaveBookmark(name));
-                            gui.bookmark_name_input.clear();
-                            ui.close_menu();
+                                            .frame(false),
+                                        )
+                                        .on_hover_text(if vis {
+                                            "Hide group"
+                                        } else {
+                                            "Show group"
+                                        })
+                                        .clicked()
+                                    {
+                                        gui.actions.push(GuiAction::ToggleGroupVisibility(gid));
+                                    }
+                                    // Group name + member count
+                                    let label = format!("{name} ({count})");
+                                    if ui
+                                        .button(&label)
+                                        .on_hover_text("Add selected objects to this group")
+                                        .clicked()
+                                    {
+                                        gui.actions.push(GuiAction::GroupSelected(gid));
+                                        ui.close_menu();
+                                    }
+                                    ui.with_layout(
+                                        egui::Layout::right_to_left(egui::Align::Center),
+                                        |ui| {
+                                            if ui
+                                                .small_button(
+                                                    egui::RichText::new("\u{2715}")
+                                                        .weak()
+                                                        .size(11.0),
+                                                )
+                                                .on_hover_text("Delete group (keeps objects)")
+                                                .clicked()
+                                            {
+                                                gui.actions.push(GuiAction::DeleteGroup(gid));
+                                                ui.close_menu();
+                                            }
+                                        },
+                                    );
+                                });
+                            }
                         }
                     });
                     ui.separator();
-                    let bookmarks: Vec<(usize, String, f32, f32, f32)> = gui
-                        .nav_bookmarks
-                        .iter()
-                        .enumerate()
-                        .map(|(i, (name, yaw, pitch, dist))| (i, name.clone(), *yaw, *pitch, *dist))
-                        .collect();
-                    if bookmarks.is_empty() {
-                        ui.add_space(4.0);
-                        ui.weak(
+                    if ui.button("Settings...").clicked() {
+                        gui.show_settings = true;
+                        ui.close_menu();
+                    }
+                });
+
+                // ---- Create ----
+                ui.menu_button("Create", |ui| {
+                    menu_section(ui, "Basic Primitives");
+                    if ui.button("Box...").clicked() {
+                        gui.active_task = Some(task_panel::ActiveTask::Box {
+                            width: 10.0,
+                            height: 10.0,
+                            depth: 10.0,
+                            preview_id: None,
+                        });
+                        ui.close_menu();
+                    }
+                    if ui.button("Cylinder...").clicked() {
+                        gui.active_task = Some(task_panel::ActiveTask::Cylinder {
+                            radius: 5.0,
+                            height: 10.0,
+                            preview_id: None,
+                        });
+                        ui.close_menu();
+                    }
+                    if ui.button("Sphere...").clicked() {
+                        gui.active_task = Some(task_panel::ActiveTask::Sphere {
+                            radius: 5.0,
+                            preview_id: None,
+                        });
+                        ui.close_menu();
+                    }
+                    if ui.button("Cone...").clicked() {
+                        gui.active_task = Some(task_panel::ActiveTask::Cone {
+                            base_radius: 5.0,
+                            top_radius: 0.0,
+                            height: 10.0,
+                            preview_id: None,
+                        });
+                        ui.close_menu();
+                    }
+                    if ui.button("Torus...").clicked() {
+                        gui.active_task = Some(task_panel::ActiveTask::Torus {
+                            major_radius: 5.0,
+                            minor_radius: 1.5,
+                            preview_id: None,
+                        });
+                        ui.close_menu();
+                    }
+                    ui.separator();
+                    menu_section(ui, "Extended Primitives");
+                    if ui.button("Tube...").clicked() {
+                        gui.active_task = Some(task_panel::ActiveTask::Tube {
+                            outer_radius: 5.0,
+                            inner_radius: 3.0,
+                            height: 10.0,
+                            preview_id: None,
+                        });
+                        ui.close_menu();
+                    }
+                    if ui.button("Prism...").clicked() {
+                        gui.active_task = Some(task_panel::ActiveTask::Prism {
+                            radius: 5.0,
+                            height: 10.0,
+                            sides: 6,
+                            preview_id: None,
+                        });
+                        ui.close_menu();
+                    }
+                    if ui.button("Wedge...").clicked() {
+                        gui.active_task = Some(task_panel::ActiveTask::Wedge {
+                            dx: 10.0,
+                            dy: 10.0,
+                            dz: 10.0,
+                            dx2: 5.0,
+                            dy2: 5.0,
+                            preview_id: None,
+                        });
+                        ui.close_menu();
+                    }
+                    if ui.button("Ellipsoid...").clicked() {
+                        gui.active_task = Some(task_panel::ActiveTask::Ellipsoid {
+                            rx: 5.0,
+                            ry: 3.0,
+                            rz: 2.0,
+                            preview_id: None,
+                        });
+                        ui.close_menu();
+                    }
+                    if ui.button("Helix...").clicked() {
+                        gui.active_task = Some(task_panel::ActiveTask::Helix {
+                            radius: 5.0,
+                            pitch: 3.0,
+                            turns: 3.0,
+                            tube_radius: 0.5,
+                            preview_id: None,
+                        });
+                        ui.close_menu();
+                    }
+                });
+
+                // ---- Macro ----
+                ui.menu_button("Macro", |ui| {
+                    menu_action(
+                        ui,
+                        gui,
+                        "Run Script...",
+                        GuiAction::StatusMessage("Python scripting: coming soon".into()),
+                    );
+                    ui.separator();
+                    ui.add_enabled_ui(false, |ui| {
+                        let _ = ui.button("Macro Console");
+                        let _ = ui.button("Start Recording");
+                        let _ = ui.button("Stop Recording");
+                    });
+                });
+
+                // ---- View ----
+                ui.menu_button("View", |ui| {
+                    menu_section(ui, "Layout");
+                    // Panels
+                    ui.menu_button("Panels", |ui| {
+                        ui.checkbox(&mut gui.show_model_tree, "Model Tree");
+                        ui.checkbox(&mut gui.show_properties, "Properties");
+                        ui.checkbox(&mut gui.show_report_panel, "Report View");
+                    });
+                    ui.separator();
+
+                    // Display modes
+                    ui.menu_button("Display Mode", |ui| {
+                        for &mode in DisplayMode::ALL {
+                            let selected = mode == display_mode;
+                            let text = format!("{}    {}", mode.label(), mode.shortcut());
+                            if ui.selectable_label(selected, text).clicked() {
+                                gui.actions.push(GuiAction::SetDisplayMode(mode));
+                                ui.close_menu();
+                            }
+                        }
+                    });
+                    ui.separator();
+
+                    let proj_label = match camera.projection {
+                        Projection::Perspective => "Switch to Orthographic",
+                        Projection::Orthographic => "Switch to Perspective",
+                    };
+                    if ui
+                        .add(egui::Button::new(proj_label).shortcut_text("5"))
+                        .clicked()
+                    {
+                        gui.actions.push(GuiAction::ToggleProjection);
+                        ui.close_menu();
+                    }
+                    ui.separator();
+
+                    ui.menu_button("Standard Views", |ui| {
+                        for &(view, key) in &[
+                            (StandardView::Front, "1"),
+                            (StandardView::Back, "Ctrl+1"),
+                            (StandardView::Right, "3"),
+                            (StandardView::Left, "Ctrl+3"),
+                            (StandardView::Top, "7"),
+                            (StandardView::Bottom, "Ctrl+7"),
+                            (StandardView::Isometric, "0"),
+                        ] {
+                            if ui
+                                .add(egui::Button::new(view.label()).shortcut_text(key))
+                                .clicked()
+                            {
+                                gui.actions.push(GuiAction::SetStandardView(view));
+                                ui.close_menu();
+                            }
+                        }
+                    });
+
+                    ui.separator();
+                    menu_section(ui, "Overlays");
+                    menu_action_sc(ui, gui, "Toggle Grid", "G", GuiAction::ToggleGrid);
+                    menu_action(ui, gui, "Toggle Origin", GuiAction::ToggleOrigin);
+                    menu_action(ui, gui, "Toggle 3D Grid", GuiAction::ToggleGrid3d);
+                    menu_action_sc(
+                        ui,
+                        gui,
+                        "Section Plane",
+                        "Shift+S",
+                        GuiAction::ToggleSectionPlane,
+                    );
+
+                    ui.separator();
+
+                    // -- View Bookmarks --
+                    ui.menu_button("Bookmarks", |ui| {
+                        ui.set_min_width(220.0);
+                        ui.weak("Save current view");
+                        ui.horizontal(|ui| {
+                            let resp = ui.add(
+                                egui::TextEdit::singleline(&mut gui.bookmark_name_input)
+                                    .hint_text("Bookmark name...")
+                                    .desired_width(150.0),
+                            );
+                            let enter =
+                                resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                            let save = ui
+                                .add_enabled(
+                                    !gui.bookmark_name_input.trim().is_empty(),
+                                    egui::Button::new("Save"),
+                                )
+                                .clicked();
+                            if (save || enter) && !gui.bookmark_name_input.trim().is_empty() {
+                                let name = gui.bookmark_name_input.trim().to_string();
+                                gui.actions.push(GuiAction::SaveBookmark(name));
+                                gui.bookmark_name_input.clear();
+                                ui.close_menu();
+                            }
+                        });
+                        ui.separator();
+                        let bookmarks: Vec<(usize, String, f32, f32, f32)> = gui
+                            .nav_bookmarks
+                            .iter()
+                            .enumerate()
+                            .map(|(i, (name, yaw, pitch, dist))| {
+                                (i, name.clone(), *yaw, *pitch, *dist)
+                            })
+                            .collect();
+                        if bookmarks.is_empty() {
+                            ui.add_space(4.0);
+                            ui.weak(
                             "No bookmarks saved yet.\nSave a view to quickly return to it later.",
                         );
-                        ui.add_space(4.0);
-                    } else {
-                        ui.weak(format!("{}/20 bookmarks", bookmarks.len()));
-                        ui.add_space(2.0);
-                        for (idx, name, yaw_d, pitch_d, dist) in bookmarks {
-                            ui.horizontal(|ui| {
-                                // Numbered label
-                                ui.label(
-                                    egui::RichText::new(format!("{}.", idx + 1))
-                                        .weak()
-                                        .size(11.0),
-                                );
-                                let tooltip = format!(
-                                    "Yaw: {:.1}\u{00B0}  Pitch: {:.1}\u{00B0}  Dist: {:.1}",
-                                    yaw_d, pitch_d, dist,
-                                );
-                                if ui.button(&name).on_hover_text(&tooltip).clicked() {
-                                    gui.actions.push(GuiAction::RestoreBookmark(idx));
-                                    ui.close_menu();
-                                }
-                                ui.with_layout(
-                                    egui::Layout::right_to_left(egui::Align::Center),
-                                    |ui| {
-                                        if ui
-                                            .small_button(
-                                                egui::RichText::new("\u{2715}").weak().size(11.0),
-                                            )
-                                            .on_hover_text("Delete bookmark")
-                                            .clicked()
-                                        {
-                                            gui.actions.push(GuiAction::DeleteBookmark(idx));
-                                            ui.close_menu();
-                                        }
-                                    },
-                                );
-                            });
-                        }
-                    }
-                });
-
-                ui.separator();
-                menu_section(ui, "Camera");
-                menu_action(ui, gui, "Reset Camera", GuiAction::ResetCamera);
-                menu_action_sc(ui, gui, "Fit All", "V", GuiAction::FitAll);
-            });
-
-            // ---- Workbench ----
-            ui.menu_button("Workbench", |ui| {
-                for &wb in super::Workbench::ALL {
-                    let selected = gui.active_workbench == wb;
-                    if ui.selectable_label(selected, wb.label()).clicked() {
-                        gui.active_workbench = wb;
-                        ui.close_menu();
-                    }
-                }
-            });
-
-            // ---- Tools ----
-            ui.menu_button("Tools", |ui| {
-                menu_section(ui, "Analysis");
-                menu_action(ui, gui, "Check Geometry", GuiAction::CheckGeometry);
-                menu_action(ui, gui, "Mass Properties", GuiAction::MeasureSolid);
-                ui.separator();
-                menu_section(ui, "Measurement");
-                menu_action(ui, gui, "Measure Distance", GuiAction::ToggleMeasurement);
-                menu_action(ui, gui, "Clear Measurement", GuiAction::ClearMeasurement);
-                ui.separator();
-
-                // -- Scripting submenu --
-                ui.menu_button("\u{1F4DC} Scripting", |ui| {
-                    if ui.button("Run Lua Script\u{2026}").clicked() {
-                        if let Some(path) = rfd::FileDialog::new()
-                            .add_filter("Lua scripts", &["lua"])
-                            .pick_file()
-                        {
-                            gui.actions.push(GuiAction::ExecuteLuaFile(
-                                path.to_string_lossy().to_string(),
-                            ));
-                        }
-                        ui.close_menu();
-                    }
-                    if ui.button("Clear Lua Console").clicked() {
-                        gui.actions.push(GuiAction::ClearLuaConsole);
-                        ui.close_menu();
-                    }
-                });
-
-                // -- Plugins submenu --
-                ui.menu_button("\u{1F9E9} Plugins", |ui| {
-                    if ui.button("Plugin Manager\u{2026}").clicked() {
-                        gui.actions.push(GuiAction::TogglePluginManager);
-                        ui.close_menu();
-                    }
-                    if ui.button("Initialize Plugins").clicked() {
-                        gui.actions.push(GuiAction::InitPlugins);
-                        ui.close_menu();
-                    }
-                });
-
-                // -- MCP submenu --
-                ui.menu_button("\u{1F310} MCP", |ui| {
-                    let label = if gui.mcp_running {
-                        "Stop MCP Server"
-                    } else {
-                        "Start MCP Server"
-                    };
-                    if ui.button(label).clicked() {
-                        if gui.mcp_running {
-                            gui.actions.push(GuiAction::StopMcpServer);
+                            ui.add_space(4.0);
                         } else {
-                            gui.actions.push(GuiAction::StartMcpServer);
+                            ui.weak(format!("{}/20 bookmarks", bookmarks.len()));
+                            ui.add_space(2.0);
+                            for (idx, name, yaw_d, pitch_d, dist) in bookmarks {
+                                ui.horizontal(|ui| {
+                                    // Numbered label
+                                    ui.label(
+                                        egui::RichText::new(format!("{}.", idx + 1))
+                                            .weak()
+                                            .size(11.0),
+                                    );
+                                    let tooltip = format!(
+                                        "Yaw: {:.1}\u{00B0}  Pitch: {:.1}\u{00B0}  Dist: {:.1}",
+                                        yaw_d, pitch_d, dist,
+                                    );
+                                    if ui.button(&name).on_hover_text(&tooltip).clicked() {
+                                        gui.actions.push(GuiAction::RestoreBookmark(idx));
+                                        ui.close_menu();
+                                    }
+                                    ui.with_layout(
+                                        egui::Layout::right_to_left(egui::Align::Center),
+                                        |ui| {
+                                            if ui
+                                                .small_button(
+                                                    egui::RichText::new("\u{2715}")
+                                                        .weak()
+                                                        .size(11.0),
+                                                )
+                                                .on_hover_text("Delete bookmark")
+                                                .clicked()
+                                            {
+                                                gui.actions.push(GuiAction::DeleteBookmark(idx));
+                                                ui.close_menu();
+                                            }
+                                        },
+                                    );
+                                });
+                            }
                         }
+                    });
+
+                    ui.separator();
+                    menu_section(ui, "Camera");
+                    menu_action(ui, gui, "Reset Camera", GuiAction::ResetCamera);
+                    menu_action_sc(ui, gui, "Fit All", "V", GuiAction::FitAll);
+                });
+
+                // ---- Workbench ----
+                ui.menu_button("Workbench", |ui| {
+                    for &wb in super::Workbench::ALL {
+                        let selected = gui.active_workbench == wb;
+                        if ui.selectable_label(selected, wb.label()).clicked() {
+                            gui.active_workbench = wb;
+                            ui.close_menu();
+                        }
+                    }
+                });
+
+                // ---- Tools ----
+                ui.menu_button("Tools", |ui| {
+                    menu_section(ui, "Analysis");
+                    menu_action(ui, gui, "Check Geometry", GuiAction::CheckGeometry);
+                    menu_action(ui, gui, "Mass Properties", GuiAction::MeasureSolid);
+                    ui.separator();
+                    menu_section(ui, "Measurement");
+                    menu_action(ui, gui, "Measure Distance", GuiAction::ToggleMeasurement);
+                    menu_action(ui, gui, "Clear Measurement", GuiAction::ClearMeasurement);
+                    ui.separator();
+
+                    // -- Scripting submenu --
+                    ui.menu_button("\u{1F4DC} Scripting", |ui| {
+                        if ui.button("Run Lua Script\u{2026}").clicked() {
+                            if let Some(path) = rfd::FileDialog::new()
+                                .add_filter("Lua scripts", &["lua"])
+                                .pick_file()
+                            {
+                                gui.actions.push(GuiAction::ExecuteLuaFile(
+                                    path.to_string_lossy().to_string(),
+                                ));
+                            }
+                            ui.close_menu();
+                        }
+                        if ui.button("Clear Lua Console").clicked() {
+                            gui.actions.push(GuiAction::ClearLuaConsole);
+                            ui.close_menu();
+                        }
+                    });
+
+                    // -- Plugins submenu --
+                    ui.menu_button("\u{1F9E9} Plugins", |ui| {
+                        if ui.button("Plugin Manager\u{2026}").clicked() {
+                            gui.actions.push(GuiAction::TogglePluginManager);
+                            ui.close_menu();
+                        }
+                        if ui.button("Initialize Plugins").clicked() {
+                            gui.actions.push(GuiAction::InitPlugins);
+                            ui.close_menu();
+                        }
+                    });
+
+                    // -- MCP submenu --
+                    ui.menu_button("\u{1F310} MCP", |ui| {
+                        let label = if gui.mcp_running {
+                            "Stop MCP Server"
+                        } else {
+                            "Start MCP Server"
+                        };
+                        if ui.button(label).clicked() {
+                            if gui.mcp_running {
+                                gui.actions.push(GuiAction::StopMcpServer);
+                            } else {
+                                gui.actions.push(GuiAction::StartMcpServer);
+                            }
+                            ui.close_menu();
+                        }
+                    });
+                });
+
+                // ---- Workbench-specific menus ----
+                match gui.active_workbench {
+                    Workbench::Part => draw_part_menu(ui, gui),
+                    Workbench::PartDesign => draw_part_design_menu(ui, gui),
+                    Workbench::Sketcher => draw_sketch_menu(ui, gui),
+                    Workbench::Mesh => draw_mesh_menu(ui, gui),
+                    Workbench::TechDraw => draw_techdraw_menu(ui, gui),
+                    Workbench::Assembly => draw_assembly_menu(ui, gui),
+                    Workbench::Draft => draw_draft_menu(ui, gui),
+                    Workbench::Surface => draw_surface_menu(ui, gui),
+                    Workbench::Fem => draw_fem_menu(ui, gui),
+                }
+                // Also show Sketch menu when in sketch mode (regardless of workbench)
+                if gui.sketch_mode.is_some() && gui.active_workbench != Workbench::Sketcher {
+                    draw_sketch_menu(ui, gui);
+                }
+
+                // ---- Help ----
+                ui.menu_button("Help", |ui| {
+                    if ui.button("About CADKernel").clicked() {
+                        gui.show_about = true;
+                        ui.close_menu();
+                    }
+                    ui.separator();
+                    if ui.button("Keyboard Shortcuts  (?)").clicked() {
+                        gui.show_shortcuts = true;
                         ui.close_menu();
                     }
                 });
-            });
-
-            // ---- Workbench-specific menus ----
-            match gui.active_workbench {
-                Workbench::Part => draw_part_menu(ui, gui),
-                Workbench::PartDesign => draw_part_design_menu(ui, gui),
-                Workbench::Sketcher => draw_sketch_menu(ui, gui),
-                Workbench::Mesh => draw_mesh_menu(ui, gui),
-                Workbench::TechDraw => draw_techdraw_menu(ui, gui),
-                Workbench::Assembly => draw_assembly_menu(ui, gui),
-                Workbench::Draft => draw_draft_menu(ui, gui),
-                Workbench::Surface => draw_surface_menu(ui, gui),
-                Workbench::Fem => draw_fem_menu(ui, gui),
-            }
-            // Also show Sketch menu when in sketch mode (regardless of workbench)
-            if gui.sketch_mode.is_some() && gui.active_workbench != Workbench::Sketcher {
-                draw_sketch_menu(ui, gui);
-            }
-
-            // ---- Help ----
-            ui.menu_button("Help", |ui| {
-                if ui.button("About CADKernel").clicked() {
-                    gui.show_about = true;
-                    ui.close_menu();
-                }
-                ui.separator();
-                if ui.button("Keyboard Shortcuts  (?)").clicked() {
-                    gui.show_shortcuts = true;
-                    ui.close_menu();
-                }
             });
         });
-    });
 }
 
 // ---------------------------------------------------------------------------

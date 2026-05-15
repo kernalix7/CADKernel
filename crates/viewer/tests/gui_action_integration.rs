@@ -801,7 +801,7 @@ fn draft_rectangle_fills_patch_and_adds_to_scene() {
             width: 2.0,
             height: 1.0,
         }),
-    None,
+        None,
     );
     assert_eq!(scene.len(), 1);
     assert!(!scene.get(id).unwrap().vertices.is_empty());
@@ -822,7 +822,7 @@ fn draft_polygon_fills_patch_and_adds_to_scene() {
             radius: 1.0,
             sides: 6,
         }),
-    None,
+        None,
     );
     assert_eq!(scene.len(), 1);
     assert!(!scene.get(id).unwrap().vertices.is_empty());
@@ -879,7 +879,7 @@ fn surface_pipe_creates_solid_along_path() {
             radius: 0.25,
             length: 2.0,
         }),
-    None,
+        None,
     );
     assert_eq!(scene.len(), 1);
     let obj = scene.get(id).unwrap();
@@ -1211,7 +1211,7 @@ fn duplicate_object_via_clone_increases_len() {
         obj_a.model.clone(),
         obj_a.solid,
         obj_a.params.clone(),
-    None,
+        None,
     );
     assert_eq!(scene.len(), 2);
     assert_ne!(new_id, id_a);

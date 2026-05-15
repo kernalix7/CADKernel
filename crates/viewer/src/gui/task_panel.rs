@@ -80,11 +80,27 @@ pub(crate) enum ActiveTask {
         through_all: bool,
         preview_id: Option<crate::scene::ObjectId>,
     },
+    Revolve {
+        axis: u8,
+        angle: f64,
+        symmetric: bool,
+        preview_id: Option<crate::scene::ObjectId>,
+    },
     Hole {
         radius: f64,
         depth: f64,
         countersink: bool,
         countersink_angle: f64,
+        preview_id: Option<crate::scene::ObjectId>,
+    },
+    Loft {
+        mode: u8,
+        ruled: bool,
+        closed: bool,
+        preview_id: Option<crate::scene::ObjectId>,
+    },
+    Sweep {
+        mode: u8,
         preview_id: Option<crate::scene::ObjectId>,
     },
     Groove {
@@ -101,6 +117,11 @@ pub(crate) enum ActiveTask {
     },
     Shell {
         thickness: f64,
+        preview_id: Option<crate::scene::ObjectId>,
+    },
+    Draft {
+        angle: f64,
+        direction: u8,
         preview_id: Option<crate::scene::ObjectId>,
     },
     MirrorOp {
@@ -207,11 +228,15 @@ impl ActiveTask {
             Self::Helix { .. } => "Create Helix",
             Self::Pad { .. } => "Pad Sketch",
             Self::Pocket { .. } => "Pocket Sketch",
+            Self::Revolve { .. } => "Revolve",
             Self::Hole { .. } => "Create Hole",
+            Self::Loft { .. } => "Loft",
+            Self::Sweep { .. } => "Sweep",
             Self::Groove { .. } => "Groove",
             Self::Fillet { .. } => "Fillet Edges",
             Self::Chamfer { .. } => "Chamfer Edges",
             Self::Shell { .. } => "Shell Solid",
+            Self::Draft { .. } => "Draft",
             Self::MirrorOp { .. } => "Mirror Solid",
             Self::Pattern { .. } => "Linear Pattern",
             Self::Sprocket { .. } => "Create Sprocket",
@@ -246,11 +271,16 @@ impl ActiveTask {
             Self::Wedge { .. } => "\u{25C7}",
             Self::Ellipsoid { .. } => "\u{2B2D}",
             Self::Helix { .. } => "\u{223F}",
-            Self::Pad { .. } | Self::Pocket { .. } | Self::Groove { .. } => "\u{2B06}",
+            Self::Pad { .. } | Self::Pocket { .. } | Self::Revolve { .. } | Self::Groove { .. } => {
+                "\u{2B06}"
+            }
             Self::Hole { .. } => "\u{25CB}",
+            Self::Loft { .. } => "\u{25B1}",
+            Self::Sweep { .. } => "\u{21DD}",
             Self::Fillet { .. } => "\u{25D5}",
             Self::Chamfer { .. } => "\u{25C8}",
             Self::Shell { .. } => "\u{25A2}",
+            Self::Draft { .. } => "\u{25F1}",
             Self::MirrorOp { .. } => "\u{21C6}",
             Self::Pattern { .. } => "\u{2237}",
             Self::Sprocket { .. } | Self::InvoluteGear { .. } => "\u{2699}",
@@ -282,11 +312,15 @@ impl ActiveTask {
             | Self::Helix { preview_id, .. }
             | Self::Pad { preview_id, .. }
             | Self::Pocket { preview_id, .. }
+            | Self::Revolve { preview_id, .. }
             | Self::Hole { preview_id, .. }
+            | Self::Loft { preview_id, .. }
+            | Self::Sweep { preview_id, .. }
             | Self::Groove { preview_id, .. }
             | Self::Fillet { preview_id, .. }
             | Self::Chamfer { preview_id, .. }
             | Self::Shell { preview_id, .. }
+            | Self::Draft { preview_id, .. }
             | Self::MirrorOp { preview_id, .. }
             | Self::Pattern { preview_id, .. }
             | Self::Sprocket { preview_id, .. }
@@ -319,11 +353,15 @@ impl ActiveTask {
             | Self::Helix { preview_id, .. }
             | Self::Pad { preview_id, .. }
             | Self::Pocket { preview_id, .. }
+            | Self::Revolve { preview_id, .. }
             | Self::Hole { preview_id, .. }
+            | Self::Loft { preview_id, .. }
+            | Self::Sweep { preview_id, .. }
             | Self::Groove { preview_id, .. }
             | Self::Fillet { preview_id, .. }
             | Self::Chamfer { preview_id, .. }
             | Self::Shell { preview_id, .. }
+            | Self::Draft { preview_id, .. }
             | Self::MirrorOp { preview_id, .. }
             | Self::Pattern { preview_id, .. }
             | Self::Sprocket { preview_id, .. }
@@ -658,6 +696,43 @@ pub(crate) fn draw_task_panel_inline(ui: &mut egui::Ui, gui: &mut GuiState) -> b
                         ui.end_row();
                     });
             }
+            ActiveTask::Revolve {
+                axis,
+                angle,
+                symmetric,
+                ..
+            } => {
+                theme::draw_task_section(ui, "Revolve");
+                egui::Grid::new("task_revolve")
+                    .num_columns(2)
+                    .spacing(grid_sp)
+                    .show(ui, |ui| {
+                        plabel!(ui, "Axis");
+                        let labels = ["X", "Y", "Z"];
+                        let mut axis_f = *axis as f64;
+                        if ui
+                            .add(
+                                egui::DragValue::new(&mut axis_f)
+                                    .range(0.0..=2.0)
+                                    .speed(0.1)
+                                    .custom_formatter(|v, _| {
+                                        labels[v as usize % labels.len()].to_string()
+                                    }),
+                            )
+                            .changed()
+                        {
+                            *axis = axis_f.clamp(0.0, 2.0) as u8;
+                            changed = true;
+                        }
+                        ui.end_row();
+                        plabel!(ui, "Angle");
+                        pdeg!(ui, angle, 1.0..=360.0, 1.0, changed);
+                        ui.end_row();
+                        plabel!(ui, "Symmetric");
+                        changed |= ui.checkbox(symmetric, "").changed();
+                        ui.end_row();
+                    });
+            }
             ActiveTask::Hole {
                 radius,
                 depth,
@@ -684,6 +759,69 @@ pub(crate) fn draw_task_panel_inline(ui: &mut egui::Ui, gui: &mut GuiState) -> b
                             pdeg!(ui, countersink_angle, 0.0..=180.0, 0.5, changed);
                             ui.end_row();
                         }
+                    });
+            }
+            ActiveTask::Loft {
+                mode,
+                ruled,
+                closed,
+                ..
+            } => {
+                theme::draw_task_section(ui, "Loft");
+                egui::Grid::new("task_loft")
+                    .num_columns(2)
+                    .spacing(grid_sp)
+                    .show(ui, |ui| {
+                        plabel!(ui, "Mode");
+                        let labels = ["Straight", "Smooth"];
+                        let mut mode_f = *mode as f64;
+                        if ui
+                            .add(
+                                egui::DragValue::new(&mut mode_f)
+                                    .range(0.0..=1.0)
+                                    .speed(0.1)
+                                    .custom_formatter(|v, _| {
+                                        labels[v as usize % labels.len()].to_string()
+                                    }),
+                            )
+                            .changed()
+                        {
+                            *mode = mode_f.clamp(0.0, 1.0) as u8;
+                            changed = true;
+                        }
+                        ui.end_row();
+                        plabel!(ui, "Ruled");
+                        changed |= ui.checkbox(ruled, "").changed();
+                        ui.end_row();
+                        plabel!(ui, "Closed");
+                        changed |= ui.checkbox(closed, "").changed();
+                        ui.end_row();
+                    });
+            }
+            ActiveTask::Sweep { mode, .. } => {
+                theme::draw_task_section(ui, "Sweep");
+                egui::Grid::new("task_sweep")
+                    .num_columns(2)
+                    .spacing(grid_sp)
+                    .show(ui, |ui| {
+                        plabel!(ui, "Mode");
+                        let labels = ["Standard", "Frenet", "Auxiliary"];
+                        let mut mode_f = *mode as f64;
+                        if ui
+                            .add(
+                                egui::DragValue::new(&mut mode_f)
+                                    .range(0.0..=2.0)
+                                    .speed(0.1)
+                                    .custom_formatter(|v, _| {
+                                        labels[v as usize % labels.len()].to_string()
+                                    }),
+                            )
+                            .changed()
+                        {
+                            *mode = mode_f.clamp(0.0, 2.0) as u8;
+                            changed = true;
+                        }
+                        ui.end_row();
                     });
             }
             ActiveTask::Groove { angle, .. } => {
@@ -755,6 +893,37 @@ pub(crate) fn draw_task_panel_inline(ui: &mut egui::Ui, gui: &mut GuiState) -> b
                     .show(ui, |ui| {
                         plabel!(ui, "Thickness");
                         pmm!(ui, thickness, 0.01..=50.0, 0.1, changed);
+                        ui.end_row();
+                    });
+            }
+            ActiveTask::Draft {
+                angle, direction, ..
+            } => {
+                theme::draw_task_section(ui, "Draft");
+                egui::Grid::new("task_draft_feature")
+                    .num_columns(2)
+                    .spacing(grid_sp)
+                    .show(ui, |ui| {
+                        plabel!(ui, "Angle");
+                        pdeg!(ui, angle, -30.0..=30.0, 0.5, changed);
+                        ui.end_row();
+                        plabel!(ui, "Direction");
+                        let labels = ["Pull", "Push"];
+                        let mut direction_f = *direction as f64;
+                        if ui
+                            .add(
+                                egui::DragValue::new(&mut direction_f)
+                                    .range(0.0..=1.0)
+                                    .speed(0.1)
+                                    .custom_formatter(|v, _| {
+                                        labels[v as usize % labels.len()].to_string()
+                                    }),
+                            )
+                            .changed()
+                        {
+                            *direction = direction_f.clamp(0.0, 1.0) as u8;
+                            changed = true;
+                        }
                         ui.end_row();
                     });
             }
@@ -1159,7 +1328,7 @@ pub(crate) fn draw_task_panel_inline(ui: &mut egui::Ui, gui: &mut GuiState) -> b
     true
 }
 
-fn emit_create_action(gui: &mut GuiState, task: &ActiveTask) {
+pub(crate) fn emit_create_action(gui: &mut GuiState, task: &ActiveTask) {
     match task {
         ActiveTask::Box {
             width,
@@ -1285,6 +1454,10 @@ fn emit_create_action(gui: &mut GuiState, task: &ActiveTask) {
                 },
             ));
         }
+        ActiveTask::Revolve { .. } => {
+            gui.actions
+                .push(GuiAction::StatusMessage("Revolve dispatched".into()));
+        }
         ActiveTask::Hole {
             radius,
             depth,
@@ -1308,6 +1481,14 @@ fn emit_create_action(gui: &mut GuiState, task: &ActiveTask) {
                     }));
             }
         }
+        ActiveTask::Loft { .. } => {
+            gui.actions
+                .push(GuiAction::PartDesign(super::PartDesignAction::AdditiveLoft));
+        }
+        ActiveTask::Sweep { .. } => {
+            gui.actions
+                .push(GuiAction::PartDesign(super::PartDesignAction::AdditivePipe));
+        }
         ActiveTask::Groove { angle, .. } => {
             gui.actions.push(GuiAction::PartDesign(
                 super::PartDesignAction::GrooveSketch { angle: *angle },
@@ -1326,6 +1507,10 @@ fn emit_create_action(gui: &mut GuiState, task: &ActiveTask) {
             gui.actions.push(GuiAction::ShellSolid {
                 thickness: *thickness,
             });
+        }
+        ActiveTask::Draft { .. } => {
+            gui.actions
+                .push(GuiAction::StatusMessage("Draft dispatched".into()));
         }
         ActiveTask::MirrorOp { plane, .. } => {
             let mp = match plane {

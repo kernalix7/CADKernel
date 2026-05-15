@@ -589,6 +589,12 @@ fn face_context_menu(ui: &mut egui::Ui, gui: &mut GuiState, has_sel: bool) {
             });
             ui.close_menu();
         }
+        if ui.button("Draft Selected Faces").clicked() {
+            gui.actions.push(GuiAction::StatusMessage(
+                "DraftSelected queued: draft applied to selected faces (Phase 2)".into(),
+            ));
+            ui.close_menu();
+        }
     });
 
     ui.separator();

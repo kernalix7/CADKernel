@@ -586,11 +586,7 @@ pub(crate) fn inspect_cadk_path(path: &std::path::Path) -> CadkInspectorReport {
     match cadkernel_api::cadk::decode(&bytes) {
         Ok(commands) => {
             report.command_count = commands.len();
-            report.commands_preview = commands
-                .iter()
-                .take(64)
-                .map(|c| format!("{c:?}"))
-                .collect();
+            report.commands_preview = commands.iter().take(64).map(|c| format!("{c:?}")).collect();
         }
         Err(e) => {
             report.error = Some(format!("decode failed: {e}"));
@@ -1262,10 +1258,7 @@ fn draw_inspector_tabs(ui: &mut egui::Ui, gui: &mut GuiState) {
     let tab_w = (avail_w / TABS.len() as f32).max(60.0);
     for (i, tab) in TABS.iter().copied().enumerate() {
         let x0 = strip_rect.left() + tab_w * i as f32;
-        let tab_rect = egui::Rect::from_min_size(
-            egui::pos2(x0, strip_rect.top()),
-            vec2(tab_w, h),
-        );
+        let tab_rect = egui::Rect::from_min_size(egui::pos2(x0, strip_rect.top()), vec2(tab_w, h));
         let id = ui.id().with(("inspector_tab", i));
         let resp = ui.interact(tab_rect, id, Sense::click());
         let active = gui.inspector_tab == tab;

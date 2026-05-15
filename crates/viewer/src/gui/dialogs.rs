@@ -17,11 +17,8 @@ fn dialog_section(ui: &mut egui::Ui, label: &str) {
     let (rect, _) =
         ui.allocate_exact_size(egui::vec2(ui.available_width(), 20.0), egui::Sense::hover());
     if ui.is_rect_visible(rect) {
-        ui.painter().rect_filled(
-            rect,
-            2.0,
-            super::theme::COLOR_ACCENT.gamma_multiply(0.16),
-        );
+        ui.painter()
+            .rect_filled(rect, 2.0, super::theme::COLOR_ACCENT.gamma_multiply(0.16));
         // Left accent bar
         ui.painter().rect_filled(
             egui::Rect::from_min_size(rect.left_top(), egui::vec2(3.0, rect.height())),
@@ -4560,4 +4557,3 @@ pub(crate) fn draw_autosave_recovery_dialog(ctx: &egui::Context, gui: &mut GuiSt
             });
         });
 }
-

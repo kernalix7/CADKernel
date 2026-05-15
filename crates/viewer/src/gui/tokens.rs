@@ -84,9 +84,9 @@ pub const STROKE_BOLD: f32 = 2.5;
 // Elevation — drop-shadow blur radius for floating surfaces
 // ---------------------------------------------------------------------------
 
-pub const ELEVATION_RAISED: f32 = 4.0;   // toolbar, dock header
+pub const ELEVATION_RAISED: f32 = 4.0; // toolbar, dock header
 pub const ELEVATION_OVERLAY: f32 = 12.0; // dropdown, tooltip
-pub const ELEVATION_DIALOG: f32 = 24.0;  // modal
+pub const ELEVATION_DIALOG: f32 = 24.0; // modal
 pub const ELEVATION_TOAST: f32 = 16.0;
 
 // ---------------------------------------------------------------------------

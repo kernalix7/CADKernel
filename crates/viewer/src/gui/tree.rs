@@ -699,11 +699,7 @@ pub(crate) fn draw_model_tree_inline(ui: &mut egui::Ui, gui: &mut GuiState, scen
                 let painter = ui.painter();
 
                 if row_resp.hovered() {
-                    painter.rect_filled(
-                        row_rect,
-                        0.0,
-                        egui::Color32::from_rgb(0x24, 0x29, 0x33),
-                    );
+                    painter.rect_filled(row_rect, 0.0, egui::Color32::from_rgb(0x24, 0x29, 0x33));
                 }
 
                 let cy = row_rect.center().y;

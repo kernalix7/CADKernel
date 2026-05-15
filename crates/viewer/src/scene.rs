@@ -4,7 +4,7 @@
 //! The `Scene` holds all objects and provides methods for adding, removing,
 //! toggling visibility, and iterating visible objects for rendering.
 
-use cadkernel_api::SolidId;
+use cadkernel_api::{EdgeRef, FaceRef, SolidId};
 use cadkernel_io::{Mesh, tessellate_solid_with_face_map};
 use cadkernel_topology::{BRepModel, EdgeData, FaceData, Handle, SolidData, VertexData};
 use serde::{Deserialize, Serialize};
@@ -577,6 +577,130 @@ impl Scene {
             .filter(|o| o.group_id == group_id)
             .map(|o| o.id)
             .collect()
+    }
+
+    /// Convert edge handles from one scene object into persistent API refs.
+    pub fn selected_edges(
+        &self,
+        object_id: ObjectId,
+        selected: &[Handle<EdgeData>],
+    ) -> Vec<EdgeRef> {
+        let Some(obj) = self.get(object_id) else {
+            return Vec::new();
+        };
+        let Some(solid_id) = obj.solid_id else {
+            return Vec::new();
+        };
+
+        let mut out = Vec::new();
+        for &eh in selected {
+            let Some(edge_data) = obj.model.edges.get(eh) else {
+                continue;
+            };
+            let Some(tag) = edge_data.tag.as_ref() else {
+                continue;
+            };
+            out.push(EdgeRef {
+                solid: solid_id,
+                tag: tag.clone(),
+            });
+        }
+        out
+    }
+
+    /// Convert face handles from one scene object into persistent API refs.
+    pub fn selected_faces(
+        &self,
+        object_id: ObjectId,
+        selected: &[Handle<FaceData>],
+    ) -> Vec<FaceRef> {
+        let Some(obj) = self.get(object_id) else {
+            return Vec::new();
+        };
+        let Some(solid_id) = obj.solid_id else {
+            return Vec::new();
+        };
+
+        let mut out = Vec::new();
+        for &fh in selected {
+            let Some(face_data) = obj.model.faces.get(fh) else {
+                continue;
+            };
+            let Some(tag) = face_data.tag.as_ref() else {
+                continue;
+            };
+            out.push(FaceRef {
+                solid: solid_id,
+                tag: tag.clone(),
+            });
+        }
+        out
+    }
+
+    /// Convert edge handles into persistent refs by searching scene objects.
+    pub fn selected_edges_any_object(&self, selected: &[Handle<EdgeData>]) -> Vec<EdgeRef> {
+        let mut out = Vec::new();
+        for &eh in selected {
+            let mut found = None;
+            for obj in self
+                .objects
+                .iter()
+                .filter(|obj| obj.selected)
+                .chain(self.objects.iter().filter(|obj| !obj.selected))
+            {
+                let Some(solid_id) = obj.solid_id else {
+                    continue;
+                };
+                let Some(edge_data) = obj.model.edges.get(eh) else {
+                    continue;
+                };
+                let Some(tag) = edge_data.tag.as_ref() else {
+                    continue;
+                };
+                found = Some(EdgeRef {
+                    solid: solid_id,
+                    tag: tag.clone(),
+                });
+                break;
+            }
+            if let Some(edge_ref) = found {
+                out.push(edge_ref);
+            }
+        }
+        out
+    }
+
+    /// Convert face handles into persistent refs by searching scene objects.
+    pub fn selected_faces_any_object(&self, selected: &[Handle<FaceData>]) -> Vec<FaceRef> {
+        let mut out = Vec::new();
+        for &fh in selected {
+            let mut found = None;
+            for obj in self
+                .objects
+                .iter()
+                .filter(|obj| obj.selected)
+                .chain(self.objects.iter().filter(|obj| !obj.selected))
+            {
+                let Some(solid_id) = obj.solid_id else {
+                    continue;
+                };
+                let Some(face_data) = obj.model.faces.get(fh) else {
+                    continue;
+                };
+                let Some(tag) = face_data.tag.as_ref() else {
+                    continue;
+                };
+                found = Some(FaceRef {
+                    solid: solid_id,
+                    tag: tag.clone(),
+                });
+                break;
+            }
+            if let Some(face_ref) = found {
+                out.push(face_ref);
+            }
+        }
+        out
     }
 }
 

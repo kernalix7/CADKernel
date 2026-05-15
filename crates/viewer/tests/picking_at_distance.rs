@@ -71,8 +71,7 @@ fn setup(gap: f32) -> (Scene, Camera, [f32; 3], [f32; 3], f32, f32) {
     camera.zfar = (distance * 10.0).max(10000.0);
 
     let inv_vp = camera.inv_view_proj();
-    let (origin, dir) =
-        screen_to_ray(SCREEN_W * 0.5, SCREEN_H * 0.5, SCREEN_W, SCREEN_H, inv_vp);
+    let (origin, dir) = screen_to_ray(SCREEN_W * 0.5, SCREEN_H * 0.5, SCREEN_W, SCREEN_H, inv_vp);
 
     let vert_threshold = camera.distance * VERT_FACTOR;
     let edge_threshold = camera.distance * EDGE_FACTOR;
@@ -124,12 +123,7 @@ fn lookup_face(
 
 /// `pick_edge` at a given distance must find at least one edge along a ray
 /// aimed at a box corner. The returned edge handle must be in `edge_handles`.
-fn assert_edge_hit_near_corner(
-    scene: &Scene,
-    camera: &Camera,
-    edge_threshold: f32,
-    distance: f32,
-) {
+fn assert_edge_hit_near_corner(scene: &Scene, camera: &Camera, edge_threshold: f32, distance: f32) {
     // Aim the ray at the (W, 0, 0) corner — slightly off-screen-centre. Project
     // that world point to screen, then build the ray from those pixel coords.
     let corner = [W as f32, 0.0, 0.0];
@@ -151,12 +145,7 @@ fn assert_edge_hit_near_corner(
 
 /// `pick_vertex` at a given distance must find a vertex when aiming at a
 /// known corner.
-fn assert_vertex_hit_at_corner(
-    scene: &Scene,
-    camera: &Camera,
-    vert_threshold: f32,
-    distance: f32,
-) {
+fn assert_vertex_hit_at_corner(scene: &Scene, camera: &Camera, vert_threshold: f32, distance: f32) {
     let corner = [W as f32, 0.0, 0.0];
     let (sx, sy) = project_to_screen(corner, camera.view_proj());
     let (origin, dir) = screen_to_ray(sx, sy, SCREEN_W, SCREEN_H, camera.inv_view_proj());

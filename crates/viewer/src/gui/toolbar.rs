@@ -1,6 +1,6 @@
 use super::{
-    theme, AssemblyJointType, BcKind, GizmoMode, GuiAction, GuiState, SelectionMode, SketchTool,
-    Workbench,
+    AssemblyJointType, BcKind, GizmoMode, GuiAction, GuiState, SelectionMode, SketchTool,
+    Workbench, theme,
 };
 use cadkernel_sketch::WorkPlane;
 use egui::{Color32, Pos2, Stroke, StrokeKind, Vec2};
@@ -3400,10 +3400,8 @@ pub(crate) fn draw_activity_rail(ctx: &egui::Context, gui: &mut GuiState) {
 
             for &wb in Workbench::ALL {
                 let selected = gui.active_workbench == wb;
-                let (rect, resp) = ui.allocate_exact_size(
-                    Vec2::new(rail_w, icon_h),
-                    egui::Sense::click(),
-                );
+                let (rect, resp) =
+                    ui.allocate_exact_size(Vec2::new(rail_w, icon_h), egui::Sense::click());
 
                 let painter = ui.painter_at(rect);
 
@@ -3451,7 +3449,8 @@ pub(crate) fn draw_activity_rail(ctx: &egui::Context, gui: &mut GuiState) {
                 );
 
                 if resp.hovered() {
-                    ui.ctx().output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
+                    ui.ctx()
+                        .output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
                 }
                 if resp.clicked() {
                     gui.active_workbench = wb;
@@ -3524,7 +3523,8 @@ fn rail_toggle_button(
         color,
     );
     if resp.hovered() {
-        ui.ctx().output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
+        ui.ctx()
+            .output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
     }
     if resp.clicked() {
         *target = !*target;
@@ -3855,10 +3855,18 @@ fn draw_part_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
             });
         }
     );
-    let has_edges = gui
+    let n_edges = gui
         .selected_entities
         .iter()
-        .any(|e| matches!(e, super::SelectedEntity::Edge(_)));
+        .filter(|e| matches!(e, super::SelectedEntity::Edge(_)))
+        .count();
+    let n_faces = gui
+        .selected_entities
+        .iter()
+        .filter(|e| matches!(e, super::SelectedEntity::Face(_)))
+        .count();
+    let has_edges = n_edges > 0;
+    let has_faces = n_faces > 0;
     let fillet_enabled = sel || has_edges;
     let fillet_tip = if has_edges {
         "Fillet selected edges"
@@ -3898,6 +3906,63 @@ fn draw_part_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
             });
         }
     );
+    toolbar_separator(ui);
+    section_label(ui, "Selection");
+    gated_button!(
+        ui,
+        has_edges,
+        ToolIcon::Fillet,
+        "F-Sel",
+        "Fillet Selected Edges",
+        "",
+        {
+            gui.actions.push(GuiAction::StatusMessage(format!(
+                "FilletSelected queued: {n_edges} edges"
+            )));
+        }
+    );
+    gated_button!(
+        ui,
+        has_edges,
+        ToolIcon::Chamfer,
+        "C-Sel",
+        "Chamfer Selected Edges",
+        "",
+        {
+            gui.actions.push(GuiAction::StatusMessage(format!(
+                "ChamferSelected queued: {n_edges} edges"
+            )));
+        }
+    );
+    gated_button!(
+        ui,
+        has_faces,
+        ToolIcon::Shell,
+        "S-Sel",
+        "Shell — remove Selected Faces",
+        "",
+        {
+            gui.actions.push(GuiAction::StatusMessage(format!(
+                "ShellSelected queued: {n_faces} faces removed"
+            )));
+        }
+    );
+    gated_button!(
+        ui,
+        has_faces,
+        ToolIcon::Mirror,
+        "D-Sel",
+        "Draft Selected Faces",
+        "",
+        {
+            gui.actions.push(GuiAction::StatusMessage(format!(
+                "DraftSelected queued: {n_faces} faces"
+            )));
+        }
+    );
+
+    toolbar_separator(ui);
+    section_label(ui, "Pattern");
     gated_button!(
         ui,
         sel,

@@ -69,51 +69,324 @@ struct Entry {
 fn catalogue() -> Vec<Entry> {
     vec![
         // ---- File ----
-        Entry { label: "New Model",          category: "File",    shortcut: Some("Ctrl+N"),       run: |g| g.actions.push(GuiAction::NewModel) },
-        Entry { label: "Clear Recent Files", category: "File",    shortcut: None,                  run: |g| g.actions.push(GuiAction::ClearRecentFiles) },
+        Entry {
+            label: "New Model",
+            category: "File",
+            shortcut: Some("Ctrl+N"),
+            run: |g| g.actions.push(GuiAction::NewModel),
+        },
+        Entry {
+            label: "Clear Recent Files",
+            category: "File",
+            shortcut: None,
+            run: |g| g.actions.push(GuiAction::ClearRecentFiles),
+        },
         // ---- View / Camera ----
-        Entry { label: "Reset Camera",       category: "View",    shortcut: Some("Home"),          run: |g| g.actions.push(GuiAction::ResetCamera) },
-        Entry { label: "Fit All",            category: "View",    shortcut: Some("F"),             run: |g| g.actions.push(GuiAction::FitAll) },
-        Entry { label: "Toggle Projection",  category: "View",    shortcut: Some("5"),             run: |g| g.actions.push(GuiAction::ToggleProjection) },
-        Entry { label: "Toggle Grid",        category: "View",    shortcut: Some("G"),             run: |g| g.actions.push(GuiAction::ToggleGrid) },
-        Entry { label: "View: Front",        category: "View",    shortcut: Some("1"),             run: |g| g.actions.push(GuiAction::SetStandardView(StandardView::Front)) },
-        Entry { label: "View: Back",         category: "View",    shortcut: Some("Shift+1"),       run: |g| g.actions.push(GuiAction::SetStandardView(StandardView::Back)) },
-        Entry { label: "View: Right",        category: "View",    shortcut: Some("3"),             run: |g| g.actions.push(GuiAction::SetStandardView(StandardView::Right)) },
-        Entry { label: "View: Left",         category: "View",    shortcut: Some("Shift+3"),       run: |g| g.actions.push(GuiAction::SetStandardView(StandardView::Left)) },
-        Entry { label: "View: Top",          category: "View",    shortcut: Some("7"),             run: |g| g.actions.push(GuiAction::SetStandardView(StandardView::Top)) },
-        Entry { label: "View: Bottom",       category: "View",    shortcut: Some("Shift+7"),       run: |g| g.actions.push(GuiAction::SetStandardView(StandardView::Bottom)) },
-        Entry { label: "View: Isometric",    category: "View",    shortcut: Some("0"),             run: |g| g.actions.push(GuiAction::SetStandardView(StandardView::Isometric)) },
+        Entry {
+            label: "Reset Camera",
+            category: "View",
+            shortcut: Some("Home"),
+            run: |g| g.actions.push(GuiAction::ResetCamera),
+        },
+        Entry {
+            label: "Fit All",
+            category: "View",
+            shortcut: Some("F"),
+            run: |g| g.actions.push(GuiAction::FitAll),
+        },
+        Entry {
+            label: "Toggle Projection",
+            category: "View",
+            shortcut: Some("5"),
+            run: |g| g.actions.push(GuiAction::ToggleProjection),
+        },
+        Entry {
+            label: "Toggle Grid",
+            category: "View",
+            shortcut: Some("G"),
+            run: |g| g.actions.push(GuiAction::ToggleGrid),
+        },
+        Entry {
+            label: "View: Front",
+            category: "View",
+            shortcut: Some("1"),
+            run: |g| {
+                g.actions
+                    .push(GuiAction::SetStandardView(StandardView::Front))
+            },
+        },
+        Entry {
+            label: "View: Back",
+            category: "View",
+            shortcut: Some("Shift+1"),
+            run: |g| {
+                g.actions
+                    .push(GuiAction::SetStandardView(StandardView::Back))
+            },
+        },
+        Entry {
+            label: "View: Right",
+            category: "View",
+            shortcut: Some("3"),
+            run: |g| {
+                g.actions
+                    .push(GuiAction::SetStandardView(StandardView::Right))
+            },
+        },
+        Entry {
+            label: "View: Left",
+            category: "View",
+            shortcut: Some("Shift+3"),
+            run: |g| {
+                g.actions
+                    .push(GuiAction::SetStandardView(StandardView::Left))
+            },
+        },
+        Entry {
+            label: "View: Top",
+            category: "View",
+            shortcut: Some("7"),
+            run: |g| {
+                g.actions
+                    .push(GuiAction::SetStandardView(StandardView::Top))
+            },
+        },
+        Entry {
+            label: "View: Bottom",
+            category: "View",
+            shortcut: Some("Shift+7"),
+            run: |g| {
+                g.actions
+                    .push(GuiAction::SetStandardView(StandardView::Bottom))
+            },
+        },
+        Entry {
+            label: "View: Isometric",
+            category: "View",
+            shortcut: Some("0"),
+            run: |g| {
+                g.actions
+                    .push(GuiAction::SetStandardView(StandardView::Isometric))
+            },
+        },
         // ---- Display modes ----
-        Entry { label: "Display: Shading",      category: "Display", shortcut: Some(DisplayMode::Shading.shortcut()),    run: |g| g.actions.push(GuiAction::SetDisplayMode(DisplayMode::Shading)) },
-        Entry { label: "Display: Wireframe",    category: "Display", shortcut: Some(DisplayMode::Wireframe.shortcut()),  run: |g| g.actions.push(GuiAction::SetDisplayMode(DisplayMode::Wireframe)) },
-        Entry { label: "Display: Hidden Line",  category: "Display", shortcut: Some(DisplayMode::HiddenLine.shortcut()), run: |g| g.actions.push(GuiAction::SetDisplayMode(DisplayMode::HiddenLine)) },
-        Entry { label: "Display: Flat Lines",   category: "Display", shortcut: Some(DisplayMode::FlatLines.shortcut()),  run: |g| g.actions.push(GuiAction::SetDisplayMode(DisplayMode::FlatLines)) },
-        Entry { label: "Display: Points",       category: "Display", shortcut: Some(DisplayMode::Points.shortcut()),     run: |g| g.actions.push(GuiAction::SetDisplayMode(DisplayMode::Points)) },
-        Entry { label: "Display: Transparent",  category: "Display", shortcut: Some(DisplayMode::Transparent.shortcut()), run: |g| g.actions.push(GuiAction::SetDisplayMode(DisplayMode::Transparent)) },
+        Entry {
+            label: "Display: Shading",
+            category: "Display",
+            shortcut: Some(DisplayMode::Shading.shortcut()),
+            run: |g| {
+                g.actions
+                    .push(GuiAction::SetDisplayMode(DisplayMode::Shading))
+            },
+        },
+        Entry {
+            label: "Display: Wireframe",
+            category: "Display",
+            shortcut: Some(DisplayMode::Wireframe.shortcut()),
+            run: |g| {
+                g.actions
+                    .push(GuiAction::SetDisplayMode(DisplayMode::Wireframe))
+            },
+        },
+        Entry {
+            label: "Display: Hidden Line",
+            category: "Display",
+            shortcut: Some(DisplayMode::HiddenLine.shortcut()),
+            run: |g| {
+                g.actions
+                    .push(GuiAction::SetDisplayMode(DisplayMode::HiddenLine))
+            },
+        },
+        Entry {
+            label: "Display: Flat Lines",
+            category: "Display",
+            shortcut: Some(DisplayMode::FlatLines.shortcut()),
+            run: |g| {
+                g.actions
+                    .push(GuiAction::SetDisplayMode(DisplayMode::FlatLines))
+            },
+        },
+        Entry {
+            label: "Display: Points",
+            category: "Display",
+            shortcut: Some(DisplayMode::Points.shortcut()),
+            run: |g| {
+                g.actions
+                    .push(GuiAction::SetDisplayMode(DisplayMode::Points))
+            },
+        },
+        Entry {
+            label: "Display: Transparent",
+            category: "Display",
+            shortcut: Some(DisplayMode::Transparent.shortcut()),
+            run: |g| {
+                g.actions
+                    .push(GuiAction::SetDisplayMode(DisplayMode::Transparent))
+            },
+        },
         // ---- Edit ----
-        Entry { label: "Undo", category: "Edit", shortcut: Some("Ctrl+Z"),       run: |g| g.actions.push(GuiAction::Undo) },
-        Entry { label: "Redo", category: "Edit", shortcut: Some("Ctrl+Shift+Z"), run: |g| g.actions.push(GuiAction::Redo) },
-        Entry { label: "Select All",      category: "Edit", shortcut: Some("Ctrl+A"),    run: |g| g.actions.push(GuiAction::SelectAll) },
-        Entry { label: "Deselect All",    category: "Edit", shortcut: Some("Esc"),       run: |g| g.actions.push(GuiAction::DeselectAll) },
-        Entry { label: "Delete Selected", category: "Edit", shortcut: Some("Delete"),    run: |g| g.actions.push(GuiAction::DeleteSelected) },
+        Entry {
+            label: "Undo",
+            category: "Edit",
+            shortcut: Some("Ctrl+Z"),
+            run: |g| g.actions.push(GuiAction::Undo),
+        },
+        Entry {
+            label: "Redo",
+            category: "Edit",
+            shortcut: Some("Ctrl+Shift+Z"),
+            run: |g| g.actions.push(GuiAction::Redo),
+        },
+        Entry {
+            label: "Select All",
+            category: "Edit",
+            shortcut: Some("Ctrl+A"),
+            run: |g| g.actions.push(GuiAction::SelectAll),
+        },
+        Entry {
+            label: "Deselect All",
+            category: "Edit",
+            shortcut: Some("Esc"),
+            run: |g| g.actions.push(GuiAction::DeselectAll),
+        },
+        Entry {
+            label: "Delete Selected",
+            category: "Edit",
+            shortcut: Some("Delete"),
+            run: |g| g.actions.push(GuiAction::DeleteSelected),
+        },
         // ---- Visibility ----
-        Entry { label: "Show All", category: "Visibility", shortcut: None, run: |g| g.actions.push(GuiAction::ShowAll) },
-        Entry { label: "Hide All", category: "Visibility", shortcut: None, run: |g| g.actions.push(GuiAction::HideAll) },
+        Entry {
+            label: "Show All",
+            category: "Visibility",
+            shortcut: None,
+            run: |g| g.actions.push(GuiAction::ShowAll),
+        },
+        Entry {
+            label: "Hide All",
+            category: "Visibility",
+            shortcut: None,
+            run: |g| g.actions.push(GuiAction::HideAll),
+        },
         // ---- Boolean (scene) ----
-        Entry { label: "Boolean: Union (Selected)",     category: "Boolean", shortcut: None, run: |g| g.actions.push(GuiAction::BooleanSceneUnion) },
-        Entry { label: "Boolean: Subtract (Selected)",  category: "Boolean", shortcut: None, run: |g| g.actions.push(GuiAction::BooleanSceneSubtract) },
-        Entry { label: "Boolean: Intersect (Selected)", category: "Boolean", shortcut: None, run: |g| g.actions.push(GuiAction::BooleanSceneIntersect) },
+        Entry {
+            label: "Boolean: Union (Selected)",
+            category: "Boolean",
+            shortcut: None,
+            run: |g| g.actions.push(GuiAction::BooleanSceneUnion),
+        },
+        Entry {
+            label: "Boolean: Subtract (Selected)",
+            category: "Boolean",
+            shortcut: None,
+            run: |g| g.actions.push(GuiAction::BooleanSceneSubtract),
+        },
+        Entry {
+            label: "Boolean: Intersect (Selected)",
+            category: "Boolean",
+            shortcut: None,
+            run: |g| g.actions.push(GuiAction::BooleanSceneIntersect),
+        },
         // ---- Create ----
-        Entry { label: "Create: Box (10×10×10)",        category: "Create", shortcut: None, run: |g| g.actions.push(GuiAction::CreateBox      { width: 10.0, height: 10.0, depth: 10.0 }) },
-        Entry { label: "Create: Cylinder (r=5, h=10)",  category: "Create", shortcut: None, run: |g| g.actions.push(GuiAction::CreateCylinder { radius: 5.0, height: 10.0 }) },
-        Entry { label: "Create: Sphere (r=5)",          category: "Create", shortcut: None, run: |g| g.actions.push(GuiAction::CreateSphere   { radius: 5.0 }) },
-        Entry { label: "Create: Cone (5→0, h=10)",      category: "Create", shortcut: None, run: |g| g.actions.push(GuiAction::CreateCone     { base_radius: 5.0, top_radius: 0.0, height: 10.0 }) },
-        Entry { label: "Create: Torus (R=10, r=2)",     category: "Create", shortcut: None, run: |g| g.actions.push(GuiAction::CreateTorus    { major_radius: 10.0, minor_radius: 2.0 }) },
-        Entry { label: "Create: Tube (R=10, r=8, h=10)",category: "Create", shortcut: None, run: |g| g.actions.push(GuiAction::CreateTube     { outer_radius: 10.0, inner_radius: 8.0, height: 10.0 }) },
-        Entry { label: "Create: Wedge",                 category: "Create", shortcut: None, run: |g| g.actions.push(GuiAction::CreateWedge    { dx: 10.0, dy: 10.0, dz: 5.0, dx2: 6.0, dy2: 6.0 }) },
-        Entry { label: "Create: Ellipsoid (5,3,2)",     category: "Create", shortcut: None, run: |g| g.actions.push(GuiAction::CreateEllipsoid{ rx: 5.0, ry: 3.0, rz: 2.0 }) },
+        Entry {
+            label: "Create: Box (10×10×10)",
+            category: "Create",
+            shortcut: None,
+            run: |g| {
+                g.actions.push(GuiAction::CreateBox {
+                    width: 10.0,
+                    height: 10.0,
+                    depth: 10.0,
+                })
+            },
+        },
+        Entry {
+            label: "Create: Cylinder (r=5, h=10)",
+            category: "Create",
+            shortcut: None,
+            run: |g| {
+                g.actions.push(GuiAction::CreateCylinder {
+                    radius: 5.0,
+                    height: 10.0,
+                })
+            },
+        },
+        Entry {
+            label: "Create: Sphere (r=5)",
+            category: "Create",
+            shortcut: None,
+            run: |g| g.actions.push(GuiAction::CreateSphere { radius: 5.0 }),
+        },
+        Entry {
+            label: "Create: Cone (5→0, h=10)",
+            category: "Create",
+            shortcut: None,
+            run: |g| {
+                g.actions.push(GuiAction::CreateCone {
+                    base_radius: 5.0,
+                    top_radius: 0.0,
+                    height: 10.0,
+                })
+            },
+        },
+        Entry {
+            label: "Create: Torus (R=10, r=2)",
+            category: "Create",
+            shortcut: None,
+            run: |g| {
+                g.actions.push(GuiAction::CreateTorus {
+                    major_radius: 10.0,
+                    minor_radius: 2.0,
+                })
+            },
+        },
+        Entry {
+            label: "Create: Tube (R=10, r=8, h=10)",
+            category: "Create",
+            shortcut: None,
+            run: |g| {
+                g.actions.push(GuiAction::CreateTube {
+                    outer_radius: 10.0,
+                    inner_radius: 8.0,
+                    height: 10.0,
+                })
+            },
+        },
+        Entry {
+            label: "Create: Wedge",
+            category: "Create",
+            shortcut: None,
+            run: |g| {
+                g.actions.push(GuiAction::CreateWedge {
+                    dx: 10.0,
+                    dy: 10.0,
+                    dz: 5.0,
+                    dx2: 6.0,
+                    dy2: 6.0,
+                })
+            },
+        },
+        Entry {
+            label: "Create: Ellipsoid (5,3,2)",
+            category: "Create",
+            shortcut: None,
+            run: |g| {
+                g.actions.push(GuiAction::CreateEllipsoid {
+                    rx: 5.0,
+                    ry: 3.0,
+                    rz: 2.0,
+                })
+            },
+        },
         // ---- Help ----
-        Entry { label: "Help: Keyboard Shortcuts", category: "Help", shortcut: Some("F1"), run: |g| { g.show_shortcuts = true; } },
+        Entry {
+            label: "Help: Keyboard Shortcuts",
+            category: "Help",
+            shortcut: Some("F1"),
+            run: |g| {
+                g.show_shortcuts = true;
+            },
+        },
     ]
 }
 
@@ -324,7 +597,11 @@ pub(crate) fn draw_command_palette(ctx: &egui::Context, gui: &mut GuiState) {
                 let chip_text = if scored.is_empty() {
                     "no matches".to_string()
                 } else {
-                    format!("{} match{}", scored.len(), if scored.len() == 1 { "" } else { "es" })
+                    format!(
+                        "{} match{}",
+                        scored.len(),
+                        if scored.len() == 1 { "" } else { "es" }
+                    )
                 };
                 let chip_color = if scored.is_empty() {
                     egui::Color32::from_rgb(180, 110, 110)
@@ -350,10 +627,13 @@ pub(crate) fn draw_command_palette(ctx: &egui::Context, gui: &mut GuiState) {
                                 .size(12.0),
                         );
                         ui.label(
-                            egui::RichText::new(format!("\u{201C}{}\u{201D}", gui.command_palette.query))
-                                .color(egui::Color32::from_rgb(200, 210, 225))
-                                .size(13.0)
-                                .italics(),
+                            egui::RichText::new(format!(
+                                "\u{201C}{}\u{201D}",
+                                gui.command_palette.query
+                            ))
+                            .color(egui::Color32::from_rgb(200, 210, 225))
+                            .size(13.0)
+                            .italics(),
                         );
                     });
                     ui.add_space(20.0);
@@ -471,9 +751,7 @@ pub(crate) fn draw_command_palette(ctx: &egui::Context, gui: &mut GuiState) {
 
                 // -- Footer hints --
                 let footer_h = 26.0;
-                let footer_rect = ui
-                    .allocate_space(egui::vec2(palette_width, footer_h))
-                    .1;
+                let footer_rect = ui.allocate_space(egui::vec2(palette_width, footer_h)).1;
                 let painter = ui.painter();
                 painter.rect_filled(
                     footer_rect,

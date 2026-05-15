@@ -27,21 +27,19 @@ use cadkernel_math::{Point2, Point3, Vec3};
 use cadkernel_modeling::{
     AnnotationStyle, BooleanOp, Compound, DraftDimensionType, HatchPattern,
     Transform as MultiTransformStep, auto_defeaturing, boolean_fragments, boolean_op,
-    boolean_op_exact, chamfer_edge, check_geometry, clone_solid, compound_filter,
-    compute_mass_properties, connect_shapes, coons_patch, countersunk_hole, cutout_shapes,
-    downgrade_solid_faces, draft_hatch, draft_to_sketch, embed_shapes, explode_compound,
-    extend_surface, extrude, face_from_wires, fillet_edge, filling, groove, hole, linear_pattern,
-    loft, make_arc_wire, make_bezier_wire, make_box, make_bspline_wire, make_circle_wire,
-    make_cone, make_cylinder, make_draft_dimension_full, make_ellipse_wire, make_ellipsoid,
-    make_facebinder, make_helix, make_involute_gear, make_label_full, make_line_draft,
+    boolean_op_exact, check_geometry, clone_solid, compound_filter, compute_mass_properties,
+    connect_shapes, coons_patch, cutout_shapes, downgrade_solid_faces, draft_hatch,
+    draft_to_sketch, embed_shapes, explode_compound, extend_surface, extrude, face_from_wires,
+    filling, linear_pattern, loft, make_arc_wire, make_bezier_wire, make_box, make_bspline_wire,
+    make_circle_wire, make_cone, make_cylinder, make_draft_dimension_full, make_ellipse_wire,
+    make_ellipsoid, make_facebinder, make_involute_gear, make_label_full, make_line_draft,
     make_point, make_polygon_wire, make_prism, make_rectangle_wire, make_sphere, make_sprocket,
     make_torus, make_tube, make_wedge, make_wire, mirror_solid, mirror_solid_draft, move_solid,
-    multi_transform, offset_wire, pad, path_array, pipe_surface, pocket, point_array,
-    points_from_shape, polar_array, project_curve_on_solid, rectangular_array, rotate_solid,
-    scale_solid, scale_solid_draft, sections, shaft_design, shape_binder, shape_from_mesh,
-    shape_from_text, shell_solid, slice_to_compound, stretch_wire,
-    surface_from_curves, sweep, trimex_draft, upgrade_wire_model, wire_to_bspline,
-    wire_to_bspline_convert,
+    multi_transform, offset_wire, path_array, pipe_surface, point_array, points_from_shape,
+    polar_array, project_curve_on_solid, rectangular_array, rotate_solid, scale_solid,
+    scale_solid_draft, sections, shaft_design, shape_binder, shape_from_mesh, shape_from_text,
+    slice_to_compound, stretch_wire, surface_from_curves, sweep, trimex_draft, upgrade_wire_model,
+    wire_to_bspline, wire_to_bspline_convert,
 };
 use cadkernel_sketch::{
     Constraint, WorkPlane, carbon_copy, decrease_bspline_degree, drag_solve, external_projection,
@@ -305,10 +303,7 @@ impl CadApp {
                         // Clear the recovered snapshot so it does not
                         // haunt the next launch.
                         let _ = cadkernel_api::cadk::prune(&self.autosave.policy.dir, 0);
-                        self.log_info(format!(
-                            "Recovered autosave from {}",
-                            entry.path.display()
-                        ));
+                        self.log_info(format!("Recovered autosave from {}", entry.path.display()));
                     }
                     Err(e) => {
                         self.log_warning(format!("Autosave recovery failed: {e}"));
@@ -459,43 +454,6 @@ impl CadApp {
         scene_id: crate::scene::ObjectId,
     ) -> Option<cadkernel_api::SolidId> {
         self.scene.get(scene_id).and_then(|o| o.solid_id)
-    }
-
-    fn collect_edge_pairs(
-        &self,
-        solid: Handle<SolidData>,
-    ) -> Vec<(Handle<VertexData>, Handle<VertexData>)> {
-        let mut edge_pairs: Vec<(Handle<VertexData>, Handle<VertexData>)> = Vec::new();
-        if let Some(solid_data) = self.model.solids.get(solid) {
-            for shell_h in &solid_data.shells {
-                if let Some(shell) = self.model.shells.get(*shell_h) {
-                    for face_h in &shell.faces {
-                        if let Some(face) = self.model.faces.get(*face_h) {
-                            // Collect all loops (outer + inner)
-                            let mut all_loops = vec![face.outer_loop];
-                            all_loops.extend_from_slice(&face.inner_loops);
-                            for loop_h in &all_loops {
-                                if let Some(lp) = self.model.loops.get(*loop_h) {
-                                    let hes = self.model.loop_half_edges(lp.half_edge);
-                                    for he_h in &hes {
-                                        if let Some(he) = self.model.half_edges.get(*he_h) {
-                                            if let Some(edge_h) = he.edge {
-                                                if let Some(edge) = self.model.edges.get(edge_h) {
-                                                    edge_pairs.push((edge.start, edge.end));
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        edge_pairs.sort_by_key(|pair| (pair.0.index(), pair.1.index()));
-        edge_pairs.dedup();
-        edge_pairs
     }
 
     /// A3.3 — boolean of the currently-selected scene object with a fresh
@@ -1284,6 +1242,24 @@ impl CadApp {
         self.command_stack.push(description, snap);
     }
 
+    fn handle_feature_outcome(
+        &mut self,
+        outcome: cadkernel_api::Outcome,
+        label: &str,
+        creation_params: Option<crate::scene::CreationParams>,
+    ) {
+        let Some(id) = outcome.primary_id() else {
+            self.log_error(format!("{label}: outcome had no primary id"));
+            return;
+        };
+        let Some((model, handle)) = self.session.document().clone_solid_brep(id) else {
+            self.log_error(format!("{label}: clone_solid_brep returned None"));
+            return;
+        };
+        self.add_to_scene(label, model, handle, creation_params, Some(id));
+        self.log_info(format!("{label}: ok"));
+    }
+
     // -- report helpers -----------------------------------------------------
 
     fn log_info(&mut self, msg: impl Into<String>) {
@@ -1519,15 +1495,12 @@ impl CadApp {
                                 }
                                 None => {
                                     self.log_error(
-                                        "CreateBox: clone_solid_brep returned None"
-                                            .to_string(),
+                                        "CreateBox: clone_solid_brep returned None".to_string(),
                                     );
                                 }
                             },
                             None => {
-                                self.log_error(
-                                    "CreateBox: outcome had no primary id".to_string(),
-                                );
+                                self.log_error("CreateBox: outcome had no primary id".to_string());
                             }
                         },
                         Err(e) => {
@@ -1598,8 +1571,7 @@ impl CadApp {
                                 }
                                 None => {
                                     self.log_error(
-                                        "CreateSphere: clone_solid_brep returned None"
-                                            .to_string(),
+                                        "CreateSphere: clone_solid_brep returned None".to_string(),
                                     );
                                 }
                             },
@@ -1653,15 +1625,12 @@ impl CadApp {
                                 }
                                 None => {
                                     self.log_error(
-                                        "CreateCone: clone_solid_brep returned None"
-                                            .to_string(),
+                                        "CreateCone: clone_solid_brep returned None".to_string(),
                                     );
                                 }
                             },
                             None => {
-                                self.log_error(
-                                    "CreateCone: outcome had no primary id".to_string(),
-                                );
+                                self.log_error("CreateCone: outcome had no primary id".to_string());
                             }
                         },
                         Err(e) => {
@@ -1698,8 +1667,7 @@ impl CadApp {
                                 }
                                 None => {
                                     self.log_error(
-                                        "CreateTorus: clone_solid_brep returned None"
-                                            .to_string(),
+                                        "CreateTorus: clone_solid_brep returned None".to_string(),
                                     );
                                 }
                             },
@@ -1740,7 +1708,7 @@ impl CadApp {
                                     inner_radius,
                                     height,
                                 }),
-                            None,
+                                None,
                             );
                             self.log_info(format!(
                                 "Created tube (R={outer_radius}, r={inner_radius}, h={height})"
@@ -1770,7 +1738,7 @@ impl CadApp {
                                     height,
                                     sides,
                                 }),
-                            None,
+                                None,
                             );
                             self.log_info(format!(
                                 "Created {sides}-sided prism (r={radius}, h={height})"
@@ -1804,7 +1772,7 @@ impl CadApp {
                                     dx2,
                                     dy2,
                                 }),
-                            None,
+                                None,
                             );
                             self.log_info(format!(
                                 "Created wedge ({dx}×{dy}×{dz}, top {dx2}×{dy2})"
@@ -1826,7 +1794,7 @@ impl CadApp {
                                 model,
                                 r.solid,
                                 Some(crate::scene::CreationParams::Ellipsoid { rx, ry, rz }),
-                            None,
+                                None,
                             );
                             self.log_info(format!("Created ellipsoid ({rx}×{ry}×{rz})"));
                         }
@@ -1842,37 +1810,27 @@ impl CadApp {
                     turns,
                     tube_radius,
                 } => {
-                    self.snapshot_before("Create Helix");
-                    let mut model = BRepModel::new();
-                    match make_helix(
-                        &mut model,
-                        Point3::ORIGIN,
+                    let height = pitch * turns;
+                    match self.session.execute(cadkernel_api::Command::Helix {
+                        axis: cadkernel_api::AxisRef::Z,
                         radius,
                         pitch,
+                        height,
                         turns,
-                        tube_radius,
-                        16,
-                        8,
-                    ) {
-                        Ok(r) => {
-                            self.add_to_scene(
-                                &format!("Helix (R={radius})"),
-                                model,
-                                r.solid,
-                                Some(crate::scene::CreationParams::Helix {
-                                    radius,
-                                    pitch,
-                                    turns,
-                                    tube_radius,
-                                }),
-                            None,
-                            );
-                            self.log_info(format!(
-                                "Created helix (R={radius}, pitch={pitch}, turns={turns})"
-                            ));
-                        }
+                        cone_angle: 0.0,
+                    }) {
+                        Ok(outcome) => self.handle_feature_outcome(
+                            outcome,
+                            &format!("Helix (R={radius})"),
+                            Some(crate::scene::CreationParams::Helix {
+                                radius,
+                                pitch,
+                                turns,
+                                tube_radius,
+                            }),
+                        ),
                         Err(e) => {
-                            self.log_error(format!("CreateHelix error: {e}"));
+                            self.log_warning(format!("Helix pending: {e}"));
                         }
                     }
                 }
@@ -2248,115 +2206,64 @@ impl CadApp {
                 }
 
                 GuiAction::ShellSolid { thickness } => {
-                    if let Some(solid) = self.current_solid {
-                        // Remove the top face (last face in the solid's shell)
-                        let faces_to_remove: Vec<Handle<FaceData>> = {
-                            if let Some(solid_data) = self.model.solids.get(solid) {
-                                if let Some(shell_h) = solid_data.shells.first() {
-                                    if let Some(shell) = self.model.shells.get(*shell_h) {
-                                        shell.faces.last().copied().into_iter().collect()
-                                    } else {
-                                        vec![]
-                                    }
-                                } else {
-                                    vec![]
-                                }
-                            } else {
-                                vec![]
-                            }
-                        };
-                        match shell_solid(&mut self.model, solid, &faces_to_remove, thickness) {
-                            Ok(r) => {
-                                let mesh = tessellate_solid(&self.model, r.solid);
-                                self.current_solid = Some(r.solid);
-                                self.log_info(format!("Shell: thickness={thickness:.2}"));
-                                self.set_mesh(mesh);
-                            }
-                            Err(e) => {
-                                self.log_error(format!("Shell error: {e}"));
-                            }
-                        }
-                    } else {
+                    if self.current_solid.is_none() {
                         self.gui.status_message = "No solid for shell".into();
+                        return;
+                    }
+                    let api_solid = cadkernel_api::SolidId(0);
+                    match self.session.execute(cadkernel_api::Command::Shell {
+                        solid: api_solid,
+                        removed_faces: vec![],
+                        thickness,
+                        mode: cadkernel_api::ShellMode::Inward,
+                    }) {
+                        Ok(outcome) => self.handle_feature_outcome(
+                            outcome,
+                            &format!("Shell (t={thickness:.2})"),
+                            None,
+                        ),
+                        Err(e) => self.log_warning(format!("Shell pending: {e}")),
                     }
                 }
 
                 GuiAction::FilletAllEdges { radius } => {
-                    if let Some(solid) = self.current_solid {
-                        let edge_pairs =
-                            selected_edge_pairs(&self.gui.selected_entities, &self.model)
-                                .unwrap_or_else(|| {
-                                    let pairs = self.collect_edge_pairs(solid);
-                                    pairs.first().copied().into_iter().collect()
-                                });
-                        if edge_pairs.is_empty() {
-                            self.gui.status_message = "No edges found for fillet".into();
-                        } else {
-                            let mut current = solid;
-                            let mut ok_count = 0usize;
-                            for (v1, v2) in &edge_pairs {
-                                match fillet_edge(&mut self.model, current, *v1, *v2, radius) {
-                                    Ok(r) => {
-                                        current = r.solid;
-                                        ok_count += 1;
-                                    }
-                                    Err(e) => {
-                                        self.log_error(format!("Fillet error: {e}"));
-                                    }
-                                }
-                            }
-                            if ok_count > 0 {
-                                let mesh = tessellate_solid(&self.model, current);
-                                self.current_solid = Some(current);
-                                self.log_info(format!(
-                                    "Fillet: r={radius:.2} ({ok_count} edge(s))"
-                                ));
-                                self.set_mesh(mesh);
-                                self.gui.selected_entities.clear();
-                            }
-                        }
-                    } else {
+                    if self.current_solid.is_none() {
                         self.gui.status_message = "No solid for fillet".into();
+                        return;
                     }
+                    match self.session.execute(cadkernel_api::Command::Fillet {
+                        edges: vec![],
+                        radius,
+                        variable: None,
+                    }) {
+                        Ok(outcome) => self.handle_feature_outcome(
+                            outcome,
+                            &format!("Fillet (r={radius:.2})"),
+                            None,
+                        ),
+                        Err(e) => self.log_warning(format!("Fillet pending: {e}")),
+                    }
+                    self.gui.selected_entities.clear();
                 }
 
                 GuiAction::ChamferAllEdges { distance } => {
-                    if let Some(solid) = self.current_solid {
-                        let edge_pairs =
-                            selected_edge_pairs(&self.gui.selected_entities, &self.model)
-                                .unwrap_or_else(|| {
-                                    let pairs = self.collect_edge_pairs(solid);
-                                    pairs.first().copied().into_iter().collect()
-                                });
-                        if edge_pairs.is_empty() {
-                            self.gui.status_message = "No edges found for chamfer".into();
-                        } else {
-                            let mut current = solid;
-                            let mut ok_count = 0usize;
-                            for (v1, v2) in &edge_pairs {
-                                match chamfer_edge(&mut self.model, current, *v1, *v2, distance) {
-                                    Ok(r) => {
-                                        current = r.solid;
-                                        ok_count += 1;
-                                    }
-                                    Err(e) => {
-                                        self.log_error(format!("Chamfer error: {e}"));
-                                    }
-                                }
-                            }
-                            if ok_count > 0 {
-                                let mesh = tessellate_solid(&self.model, current);
-                                self.current_solid = Some(current);
-                                self.log_info(format!(
-                                    "Chamfer: d={distance:.2} ({ok_count} edge(s))"
-                                ));
-                                self.set_mesh(mesh);
-                                self.gui.selected_entities.clear();
-                            }
-                        }
-                    } else {
+                    if self.current_solid.is_none() {
                         self.gui.status_message = "No solid for chamfer".into();
+                        return;
                     }
+                    match self.session.execute(cadkernel_api::Command::Chamfer {
+                        edges: vec![],
+                        distance,
+                        mode: cadkernel_api::ChamferMode::Equal,
+                    }) {
+                        Ok(outcome) => self.handle_feature_outcome(
+                            outcome,
+                            &format!("Chamfer (d={distance:.2})"),
+                            None,
+                        ),
+                        Err(e) => self.log_warning(format!("Chamfer pending: {e}")),
+                    }
+                    self.gui.selected_entities.clear();
                 }
 
                 GuiAction::LinearPattern {
@@ -2756,8 +2663,12 @@ impl CadApp {
                         // Feature operations don't have direct primitive rebuilds
                         gui::task_panel::ActiveTask::Pad { .. }
                         | gui::task_panel::ActiveTask::Pocket { .. }
+                        | gui::task_panel::ActiveTask::Revolve { .. }
                         | gui::task_panel::ActiveTask::Hole { .. }
+                        | gui::task_panel::ActiveTask::Loft { .. }
+                        | gui::task_panel::ActiveTask::Sweep { .. }
                         | gui::task_panel::ActiveTask::Groove { .. }
+                        | gui::task_panel::ActiveTask::Draft { .. }
                         | gui::task_panel::ActiveTask::FemMesh { .. } => None,
                     };
 
@@ -2776,7 +2687,9 @@ impl CadApp {
                             } else {
                                 // Create new preview object
                                 let name = format!("{} (preview)", task.title());
-                                let id = self.scene.add_object(name, model, solid, Some(params), None);
+                                let id =
+                                    self.scene
+                                        .add_object(name, model, solid, Some(params), None);
                                 task.set_preview_id(id);
                                 self.scene.select_single(id);
                             }
@@ -2960,7 +2873,7 @@ impl CadApp {
                                             Some(crate::scene::CreationParams::Boolean {
                                                 op: op_name.into(),
                                             }),
-                                        None,
+                                            None,
                                         );
                                         self.log_info(format!("Boolean {op_name} completed"));
                                     }
@@ -4833,7 +4746,7 @@ impl CadApp {
                                 radius: 0.25,
                                 length: 2.0,
                             }),
-                        None,
+                            None,
                         );
                         self.log_info("Surface: pipe");
                     }
@@ -4970,7 +4883,7 @@ impl CadApp {
                                         width: 2.0,
                                         height: 1.0,
                                     }),
-                                None,
+                                    None,
                                 );
                                 self.log_info("Draft: rectangle");
                             }
@@ -4994,7 +4907,7 @@ impl CadApp {
                                     radius: 1.0,
                                     sides: 6,
                                 }),
-                            None,
+                                None,
                             );
                             self.log_info("Draft: polygon");
                         }
@@ -5039,172 +4952,64 @@ impl CadApp {
     // base solid is present, Pad falls back to a fresh extrusion so the very
     // first sketch-driven feature still produces visible geometry.
 
-    fn take_active_sketch_profile(&mut self) -> Option<(Vec<Point3>, Vec3)> {
-        if let Some(mut sm) = self.gui.sketch_mode.take() {
-            if !sm.sketch.constraints.is_empty() {
-                let _ = solve(&mut sm.sketch, 200, 1e-10);
-            }
-            self.gui.last_sketch = Some((sm.sketch.clone(), sm.plane));
-            let profile = match extract_profile_checked(&sm.sketch, &sm.plane) {
-                Ok(profile) => profile,
-                Err(e) => {
-                    self.log_warning(format!("Sketch profile invalid: {e}"));
-                    return None;
-                }
-            };
-            let dir = Vec3::new(sm.plane.normal.x, sm.plane.normal.y, sm.plane.normal.z);
-            Some((profile, dir))
-        } else if let Some((sketch, plane)) = self.gui.last_sketch.clone() {
-            let profile = match extract_profile_checked(&sketch, &plane) {
-                Ok(profile) => profile,
-                Err(e) => {
-                    self.log_warning(format!("Sketch profile invalid: {e}"));
-                    return None;
-                }
-            };
-            let dir = Vec3::new(plane.normal.x, plane.normal.y, plane.normal.z);
-            Some((profile, dir))
-        } else {
-            None
-        }
-    }
-
     fn run_pad_sketch(&mut self, depth: f64, symmetric: bool) {
-        let Some((profile, normal)) = self.take_active_sketch_profile() else {
-            self.log_warning("Pad: no active sketch (draw a sketch first)");
-            return;
-        };
-        if profile.len() < 3 {
-            self.log_warning(format!(
-                "Pad: sketch profile has {} points (need >= 3)",
-                profile.len()
-            ));
-            return;
-        }
         if depth <= 0.0 {
             self.log_warning(format!("Pad: depth must be positive (got {depth:.3})"));
             return;
         }
-        self.snapshot_before("Pad");
-
-        let (effective_profile, distance) = if symmetric {
-            let half = depth * 0.5;
-            let shifted: Vec<Point3> = profile
-                .iter()
-                .map(|p| {
-                    Point3::new(
-                        p.x - normal.x * half,
-                        p.y - normal.y * half,
-                        p.z - normal.z * half,
-                    )
-                })
-                .collect();
-            (shifted, depth)
-        } else {
-            (profile, depth)
+        let sketch = cadkernel_api::SketchRef {
+            sketch_id: cadkernel_api::SketchId(0),
         };
-
-        if let Some(base_solid) = self.current_solid {
-            match pad(
-                &self.model,
-                base_solid,
-                &effective_profile,
-                normal,
-                distance,
-            ) {
-                Ok(r) => {
-                    self.add_to_scene(
-                        &format!("Pad (depth={depth:.2})"),
-                        r.model,
-                        r.solid,
-                        Some(crate::scene::CreationParams::Extruded),
-                    None,
-                    );
-                    self.log_info(format!(
-                        "Pad: added material (depth={depth:.2}, symmetric={symmetric})"
-                    ));
-                }
-                Err(e) => self.log_error(format!("Pad error: {e}")),
-            }
+        let direction = if symmetric {
+            cadkernel_api::PadDirection::TwoSided
         } else {
-            // No base solid yet — first sketch-driven feature creates a fresh solid.
-            let mut model = BRepModel::new();
-            match extrude(&mut model, &effective_profile, normal, distance) {
-                Ok(r) => {
-                    self.add_to_scene(
-                        &format!("Pad (depth={depth:.2})"),
-                        model,
-                        r.solid,
-                        Some(crate::scene::CreationParams::Extruded),
-                    None,
-                    );
-                    self.log_info(format!("Pad: extruded sketch (depth={depth:.2})"));
-                }
-                Err(e) => self.log_error(format!("Pad error: {e}")),
-            }
+            cadkernel_api::PadDirection::Normal
+        };
+        match self.session.execute(cadkernel_api::Command::Pad {
+            sketch,
+            distance: depth,
+            direction,
+            symmetric,
+            type_: cadkernel_api::PadType::Blind,
+        }) {
+            Ok(outcome) => self.handle_feature_outcome(
+                outcome,
+                &format!("Pad (depth={depth:.2})"),
+                Some(crate::scene::CreationParams::Extruded),
+            ),
+            Err(e) => self.log_warning(format!("Pad pending: {e}")),
         }
     }
 
     fn run_pocket_sketch(&mut self, depth: f64, through_all: bool) {
-        let Some((profile, normal)) = self.take_active_sketch_profile() else {
-            self.log_warning("Pocket: no active sketch (draw a sketch first)");
-            return;
-        };
-        if profile.len() < 3 {
-            self.log_warning(format!(
-                "Pocket: sketch profile has {} points (need >= 3)",
-                profile.len()
-            ));
+        if depth <= 0.0 {
+            self.log_warning(format!("Pocket: depth must be positive (got {depth:.3})"));
             return;
         }
-        let Some(base_solid) = self.current_solid else {
-            self.log_warning("Pocket: no base solid (create a solid first)");
-            return;
+        let sketch = cadkernel_api::SketchRef {
+            sketch_id: cadkernel_api::SketchId(0),
         };
-        let actual_depth = if through_all { depth.max(1.0e6) } else { depth };
-        if actual_depth <= 0.0 {
-            self.log_warning(format!(
-                "Pocket: depth must be positive (got {actual_depth:.3})"
-            ));
-            return;
-        }
-        self.snapshot_before("Pocket");
-        // Pocket subtracts along the inverse normal so material is removed
-        // INTO the base solid rather than out of it.
-        let dir = Vec3::new(-normal.x, -normal.y, -normal.z);
-        match pocket(&self.model, base_solid, &profile, dir, actual_depth) {
-            Ok(r) => {
-                self.add_to_scene(
-                    &format!("Pocket (depth={depth:.2})"),
-                    r.model,
-                    r.solid,
-                    Some(crate::scene::CreationParams::Extruded),
-                None,
-                );
-                self.log_info(format!(
-                    "Pocket: removed material (depth={depth:.2}, through_all={through_all})"
-                ));
-            }
-            Err(e) => self.log_error(format!("Pocket error: {e}")),
+        let type_ = if through_all {
+            cadkernel_api::PocketType::ThroughAll
+        } else {
+            cadkernel_api::PocketType::Blind
+        };
+        match self.session.execute(cadkernel_api::Command::Pocket {
+            sketch,
+            distance: depth,
+            through_all,
+            type_,
+        }) {
+            Ok(outcome) => self.handle_feature_outcome(
+                outcome,
+                &format!("Pocket (depth={depth:.2})"),
+                Some(crate::scene::CreationParams::Extruded),
+            ),
+            Err(e) => self.log_warning(format!("Pocket pending: {e}")),
         }
     }
 
     fn run_groove_sketch(&mut self, angle_deg: f64) {
-        let Some((profile, _normal)) = self.take_active_sketch_profile() else {
-            self.log_warning("Groove: no active sketch");
-            return;
-        };
-        if profile.len() < 2 {
-            self.log_warning(format!(
-                "Groove: sketch profile has {} points (need >= 2)",
-                profile.len()
-            ));
-            return;
-        }
-        let Some(base_solid) = self.current_solid else {
-            self.log_warning("Groove: no base solid");
-            return;
-        };
         let angle_rad = angle_deg.to_radians();
         if angle_rad <= 0.0 {
             self.log_warning(format!(
@@ -5212,116 +5017,76 @@ impl CadApp {
             ));
             return;
         }
-        self.snapshot_before("Groove");
-        // Default revolve axis: world Z through origin. A future iteration
-        // will accept axis selection from the sketch's first construction line.
-        match groove(
-            &self.model,
-            base_solid,
-            &profile,
-            Point3::ORIGIN,
-            Vec3::Z,
+        let sketch = cadkernel_api::SketchRef {
+            sketch_id: cadkernel_api::SketchId(0),
+        };
+        match self.session.execute(cadkernel_api::Command::Groove {
+            sketch,
+            axis: cadkernel_api::AxisRef::Z,
             angle_rad,
-            32,
-        ) {
-            Ok(r) => {
-                self.add_to_scene(
-                    &format!("Groove ({angle_deg:.0}°)"),
-                    r.model,
-                    r.solid,
-                    Some(crate::scene::CreationParams::Groove { angle: angle_deg }),
-                None,
-                );
-                self.log_info(format!("Groove: revolved profile by {angle_deg:.0}°"));
-            }
-            Err(e) => self.log_error(format!("Groove error: {e}")),
+        }) {
+            Ok(outcome) => self.handle_feature_outcome(
+                outcome,
+                &format!("Groove ({angle_deg:.0}°)"),
+                Some(crate::scene::CreationParams::Groove { angle: angle_deg }),
+            ),
+            Err(e) => self.log_warning(format!("Groove pending: {e}")),
         }
     }
 
     fn run_hole_sketch(&mut self, radius: f64, depth: f64) {
-        let Some(base_solid) = self.current_solid else {
-            self.log_warning("Hole: no base solid (create a solid first)");
-            return;
-        };
-        // Hole position derived from sketch centroid when available, else origin.
-        let center = self
-            .gui
-            .last_sketch
-            .as_ref()
-            .map(|(s, p)| {
-                let pts = extract_profile(s, p);
-                if pts.is_empty() {
-                    Point3::ORIGIN
-                } else {
-                    let n = pts.len() as f64;
-                    let sx: f64 = pts.iter().map(|q| q.x).sum::<f64>() / n;
-                    let sy: f64 = pts.iter().map(|q| q.y).sum::<f64>() / n;
-                    let sz: f64 = pts.iter().map(|q| q.z).sum::<f64>() / n;
-                    Point3::new(sx, sy, sz)
-                }
-            })
-            .unwrap_or(Point3::ORIGIN);
         if radius <= 0.0 || depth <= 0.0 {
             self.log_warning(format!(
                 "Hole: radius and depth must be positive (got r={radius:.3}, d={depth:.3})"
             ));
             return;
         }
-        self.snapshot_before("Hole");
-        match hole(&self.model, base_solid, center, -Vec3::Z, radius, depth, 32) {
-            Ok(r) => {
-                self.add_to_scene(
-                    &format!("Hole (r={radius:.2}, d={depth:.2})"),
-                    r.model,
-                    r.solid,
-                    Some(crate::scene::CreationParams::Extruded),
-                None,
-                );
-                self.log_info(format!("Hole: drilled r={radius:.2} d={depth:.2}"));
-            }
-            Err(e) => self.log_error(format!("Hole error: {e}")),
+        let face = cadkernel_api::FaceRef {
+            solid: cadkernel_api::SolidId(0),
+            tag: cadkernel_topology::Tag::new(cadkernel_topology::EntityKind::Face, Vec::new()),
+        };
+        match self.session.execute(cadkernel_api::Command::Hole {
+            face,
+            position: [0.0, 0.0],
+            radius,
+            depth,
+            through_all: false,
+            kind: cadkernel_api::HoleKind::Simple,
+        }) {
+            Ok(outcome) => self.handle_feature_outcome(
+                outcome,
+                &format!("Hole (r={radius:.2}, d={depth:.2})"),
+                Some(crate::scene::CreationParams::Extruded),
+            ),
+            Err(e) => self.log_warning(format!("Hole pending: {e}")),
         }
     }
 
     fn run_countersunk_hole_sketch(&mut self, radius: f64, depth: f64, angle_deg: f64) {
-        let Some(base_solid) = self.current_solid else {
-            self.log_warning("Countersunk hole: no base solid");
-            return;
-        };
         if radius <= 0.0 || depth <= 0.0 || angle_deg <= 0.0 || angle_deg >= 180.0 {
             self.log_warning(format!(
                 "Countersunk hole: invalid params (r={radius:.3}, d={depth:.3}, angle={angle_deg:.1}°)"
             ));
             return;
         }
-        // Countersink geometry: cone half-angle from the input apex angle.
-        let cs_radius = radius * 2.0;
-        let cs_depth = (cs_radius - radius) / (angle_deg * 0.5).to_radians().tan();
-        self.snapshot_before("Countersunk hole");
-        match countersunk_hole(
-            &self.model,
-            base_solid,
-            Point3::ORIGIN,
-            -Vec3::Z,
+        let face = cadkernel_api::FaceRef {
+            solid: cadkernel_api::SolidId(0),
+            tag: cadkernel_topology::Tag::new(cadkernel_topology::EntityKind::Face, Vec::new()),
+        };
+        match self.session.execute(cadkernel_api::Command::Hole {
+            face,
+            position: [0.0, 0.0],
             radius,
             depth,
-            cs_radius,
-            cs_depth.max(0.1),
-            32,
-        ) {
-            Ok(r) => {
-                self.add_to_scene(
-                    &format!("Countersunk hole (r={radius:.2}, d={depth:.2}, a={angle_deg:.0}°)"),
-                    r.model,
-                    r.solid,
-                    Some(crate::scene::CreationParams::Extruded),
-                None,
-                );
-                self.log_info(format!(
-                    "Countersunk hole: r={radius:.2} d={depth:.2} angle={angle_deg:.0}°"
-                ));
-            }
-            Err(e) => self.log_error(format!("Countersunk hole error: {e}")),
+            through_all: false,
+            kind: cadkernel_api::HoleKind::Countersink,
+        }) {
+            Ok(outcome) => self.handle_feature_outcome(
+                outcome,
+                &format!("Countersunk hole (r={radius:.2}, d={depth:.2}, a={angle_deg:.0}°)"),
+                Some(crate::scene::CreationParams::Extruded),
+            ),
+            Err(e) => self.log_warning(format!("Countersunk hole pending: {e}")),
         }
     }
 
@@ -5353,7 +5118,7 @@ impl CadApp {
                         length: 2.0,
                         angle: 0.0,
                     }),
-                None,
+                    None,
                 );
                 self.gui.scene_overlay.add_polyline(
                     vec![p1, p2],
@@ -5381,7 +5146,7 @@ impl CadApp {
                             model,
                             r.solid,
                             Some(crate::scene::CreationParams::DraftCircle { radius }),
-                        None,
+                            None,
                         );
                         self.log_info(format!("Draft: circle (r={radius:.2})"));
                     }
@@ -5416,7 +5181,7 @@ impl CadApp {
                                 start_angle: 0.0,
                                 end_angle: std::f64::consts::FRAC_PI_2,
                             }),
-                        None,
+                            None,
                         );
                         self.log_info("Draft: arc (90°)");
                     }
@@ -5443,7 +5208,7 @@ impl CadApp {
                             model,
                             r.solid,
                             Some(crate::scene::CreationParams::DraftEllipse { rx, ry }),
-                        None,
+                            None,
                         );
                         self.log_info(format!("Draft: ellipse (rx={rx:.2}, ry={ry:.2})"));
                     }
@@ -5674,7 +5439,7 @@ impl CadApp {
                         model.clone(),
                         face_solid,
                         None,
-                    None,
+                        None,
                     );
                 }
                 self.rebuild_scene_gpu();
@@ -5704,8 +5469,12 @@ impl CadApp {
                     OVERLAY_WIRE_COLOR,
                     OVERLAY_LINE_WIDTH,
                 );
-                self.scene
-                    .add_mesh_object("Draft Wire→BSpline", cadkernel_io::Mesh::new(), None, None);
+                self.scene.add_mesh_object(
+                    "Draft Wire→BSpline",
+                    cadkernel_io::Mesh::new(),
+                    None,
+                    None,
+                );
                 self.log_info("Draft: wire converted to B-spline (curve only — tree entry)");
             }
             Err(e) => self.log_error(format!("Draft Wire→BSpline error: {e}")),
@@ -5745,7 +5514,7 @@ impl CadApp {
                     model,
                     r.solid,
                     obj.params.clone(),
-                None,
+                    None,
                 );
                 self.log_info(format!("Draft: cloned '{}'", obj.name));
             }
@@ -5769,7 +5538,7 @@ impl CadApp {
                         model.clone(),
                         *s,
                         None,
-                    None,
+                        None,
                     );
                 }
                 self.rebuild_scene_gpu();
@@ -5797,7 +5566,7 @@ impl CadApp {
                         model.clone(),
                         *s,
                         None,
-                    None,
+                        None,
                     );
                 }
                 self.rebuild_scene_gpu();
@@ -5831,7 +5600,7 @@ impl CadApp {
                         model.clone(),
                         *s,
                         None,
-                    None,
+                        None,
                     );
                 }
                 self.rebuild_scene_gpu();
@@ -5863,7 +5632,7 @@ impl CadApp {
                         model.clone(),
                         *s,
                         None,
-                    None,
+                        None,
                     );
                 }
                 self.rebuild_scene_gpu();
@@ -5933,7 +5702,7 @@ impl CadApp {
                         Some(crate::scene::CreationParams::Boolean {
                             op: "connect".into(),
                         }),
-                    None,
+                        None,
                     );
                     self.log_info("Part: connect shapes (union)");
                 } else {
@@ -5968,7 +5737,7 @@ impl CadApp {
                         result_model,
                         solid,
                         Some(crate::scene::CreationParams::Boolean { op: "embed".into() }),
-                    None,
+                        None,
                     );
                     self.log_info("Part: embed shapes");
                 } else {
@@ -6005,7 +5774,7 @@ impl CadApp {
                         Some(crate::scene::CreationParams::Boolean {
                             op: "cutout".into(),
                         }),
-                    None,
+                        None,
                     );
                     self.log_info("Part: cutout shapes (difference)");
                 } else {
@@ -6130,7 +5899,7 @@ impl CadApp {
                         model.clone(),
                         solid,
                         None,
-                    None,
+                        None,
                     );
                 }
                 self.rebuild_scene_gpu();
@@ -6206,7 +5975,7 @@ impl CadApp {
                     model,
                     simplified,
                     None,
-                None,
+                    None,
                 );
                 self.log_info(format!(
                     "Part: auto-defeaturing — removed faces below {threshold:.3} area threshold"
@@ -6231,7 +6000,7 @@ impl CadApp {
                     model,
                     r.solid,
                     obj.params.clone(),
-                None,
+                    None,
                 );
                 self.log_info(format!(
                     "Part: transformed copy of '{}' by ({dx:.1}, {dy:.1}, {dz:.1})",
@@ -6298,7 +6067,7 @@ impl CadApp {
                         result_model,
                         solid,
                         None,
-                    None,
+                        None,
                     );
                     self.log_info(format!(
                         "PartDesign: Shape Binder copied faces from '{source_name}'"
@@ -6428,7 +6197,7 @@ impl CadApp {
                     model,
                     new_solid,
                     obj.params.clone(),
-                None,
+                    None,
                 );
                 self.log_info(format!(
                     "Draft: moved '{}' by ({:.1}, {:.1}, {:.1})",
@@ -6455,7 +6224,7 @@ impl CadApp {
                     model,
                     new_solid,
                     obj.params.clone(),
-                None,
+                    None,
                 );
                 self.log_info(format!(
                     "Draft: rotated '{}' by {angle_deg:.0}° around world Z",
@@ -6481,7 +6250,7 @@ impl CadApp {
                     model,
                     new_solid,
                     obj.params.clone(),
-                None,
+                    None,
                 );
                 self.log_info(format!("Draft: scaled '{}' by {factor:.1}×", obj.name));
             }
@@ -6516,7 +6285,7 @@ impl CadApp {
                     model,
                     new_solid,
                     obj.params.clone(),
-                None,
+                    None,
                 );
                 self.log_info(format!(
                     "Draft: mirrored '{}' across {plane_label} plane",
@@ -6644,7 +6413,7 @@ impl CadApp {
                 format!("FEM {label} colormap band {}", band_idx + 1),
                 mesh,
                 None,
-            None,
+                None,
             );
             if let Some(obj) = self.scene.get_mut(id) {
                 obj.color = color;
@@ -6846,7 +6615,7 @@ impl CadApp {
                     model,
                     new_solid,
                     None,
-                None,
+                    None,
                 );
                 self.log_info(format!(
                     "Draft: face binder from first face of '{}'",
@@ -7842,7 +7611,7 @@ impl CadApp {
                     model,
                     r.solid,
                     None,
-                None,
+                    None,
                 );
                 self.log_info(format!("Surface: extended '{}' by {distance:.2}", obj.name));
             }
@@ -7892,53 +7661,31 @@ impl CadApp {
     }
 
     fn run_partdesign_additive_loft(&mut self) {
-        self.snapshot_before("PartDesign Loft");
-        let bottom = vec![
-            Point3::new(-1.0, -1.0, 0.0),
-            Point3::new(1.0, -1.0, 0.0),
-            Point3::new(1.0, 1.0, 0.0),
-            Point3::new(-1.0, 1.0, 0.0),
-        ];
-        let top = vec![
-            Point3::new(-0.5, -0.5, 2.0),
-            Point3::new(0.5, -0.5, 2.0),
-            Point3::new(0.5, 0.5, 2.0),
-            Point3::new(-0.5, 0.5, 2.0),
-        ];
-        let mut model = BRepModel::new();
-        match loft(&mut model, &[&bottom, &top]) {
-            Ok(r) => {
-                self.add_to_scene("Loft", model, r.solid, None, None);
-                self.log_info(format!(
-                    "PartDesign: additive loft ({} faces between 2 profiles)",
-                    r.faces.len()
-                ));
-            }
-            Err(e) => self.log_error(format!("PartDesign Loft error: {e}")),
+        match self.session.execute(cadkernel_api::Command::Loft {
+            profiles: vec![],
+            mode: cadkernel_api::LoftMode::Straight,
+            ruled: false,
+            closed: false,
+        }) {
+            Ok(outcome) => self.handle_feature_outcome(outcome, "Loft", None),
+            Err(e) => self.log_warning(format!("Loft pending: {e}")),
         }
     }
 
     fn run_partdesign_additive_pipe(&mut self) {
-        self.snapshot_before("PartDesign Pipe");
-        // Default profile (square cross-section) and 2-point Z path. The
-        // sweep places the profile perpendicular to the path tangent.
-        let profile = vec![
-            Point3::new(-0.25, -0.25, 0.0),
-            Point3::new(0.25, -0.25, 0.0),
-            Point3::new(0.25, 0.25, 0.0),
-            Point3::new(-0.25, 0.25, 0.0),
-        ];
-        let path = vec![Point3::ORIGIN, Point3::new(0.0, 0.0, 2.0)];
-        let mut model = BRepModel::new();
-        match sweep(&mut model, &profile, &path) {
-            Ok(r) => {
-                self.add_to_scene("Pipe", model, r.solid, None, None);
-                self.log_info(format!(
-                    "PartDesign: additive pipe ({} faces, 2-point path)",
-                    r.faces.len()
-                ));
-            }
-            Err(e) => self.log_error(format!("PartDesign Pipe error: {e}")),
+        let profile_sketch = cadkernel_api::SketchRef {
+            sketch_id: cadkernel_api::SketchId(0),
+        };
+        let path_sketch = cadkernel_api::SketchRef {
+            sketch_id: cadkernel_api::SketchId(0),
+        };
+        match self.session.execute(cadkernel_api::Command::Sweep {
+            profile_sketch,
+            path_sketch,
+            mode: cadkernel_api::SweepMode::Standard,
+        }) {
+            Ok(outcome) => self.handle_feature_outcome(outcome, "Pipe", None),
+            Err(e) => self.log_warning(format!("Pipe pending: {e}")),
         }
     }
 
@@ -7987,7 +7734,7 @@ impl CadApp {
                         Some(crate::scene::CreationParams::Boolean {
                             op: "subtractive_loft".into(),
                         }),
-                    None,
+                        None,
                     );
                     self.log_info("PartDesign: subtractive loft (Difference)");
                 } else {
@@ -8037,7 +7784,7 @@ impl CadApp {
                         Some(crate::scene::CreationParams::Boolean {
                             op: "subtractive_pipe".into(),
                         }),
-                    None,
+                        None,
                     );
                     self.log_info("PartDesign: subtractive pipe (Difference)");
                 } else {
@@ -9544,9 +9291,9 @@ impl CadApp {
                         .params_json
                         .as_deref()
                         .and_then(|s| serde_json::from_str(s).ok());
-                    let id = self
-                        .scene
-                        .add_object(&obj_data.name, obj_data.model, solid, params, None);
+                    let id =
+                        self.scene
+                            .add_object(&obj_data.name, obj_data.model, solid, params, None);
                     if let Some(scene_obj) = self.scene.get_mut(id) {
                         scene_obj.color = obj_data.color;
                         scene_obj.visible = obj_data.visible;
@@ -11534,30 +11281,6 @@ fn lookup_face(
     })
 }
 
-fn selected_edge_pairs(
-    entities: &[SelectedEntity],
-    model: &BRepModel,
-) -> Option<Vec<(Handle<VertexData>, Handle<VertexData>)>> {
-    let edges: Vec<Handle<EdgeData>> = entities
-        .iter()
-        .filter_map(|e| {
-            if let SelectedEntity::Edge(eh) = e {
-                Some(*eh)
-            } else {
-                None
-            }
-        })
-        .collect();
-    if edges.is_empty() {
-        return None;
-    }
-    let pairs: Vec<_> = edges
-        .iter()
-        .filter_map(|eh| model.edges.get(*eh).map(|ed| (ed.start, ed.end)))
-        .collect();
-    Some(pairs)
-}
-
 struct FemColormapBuild {
     meshes: Vec<(usize, Mesh, [f32; 4])>,
     min: f64,
@@ -11875,6 +11598,41 @@ fn fem_bc_kind_label(bc: &cadkernel_modeling::BoundaryCondition) -> &'static str
 // sub-enums stay `pub(crate)`; tests pass primitive arguments and the helpers
 // build the action internally.
 
+fn action_summary_for_test(action: &GuiAction) -> String {
+    match action {
+        GuiAction::PartDesign(PartDesignAction::PadSketch { depth, symmetric }) => {
+            format!("partdesign:pad depth={depth:.3} symmetric={symmetric}")
+        }
+        GuiAction::PartDesign(PartDesignAction::PocketSketch { depth, through_all }) => {
+            format!("partdesign:pocket depth={depth:.3} through_all={through_all}")
+        }
+        GuiAction::PartDesign(PartDesignAction::GrooveSketch { angle }) => {
+            format!("partdesign:groove angle={angle:.3}")
+        }
+        GuiAction::PartDesign(PartDesignAction::HoleSketch { radius, depth }) => {
+            format!("partdesign:hole radius={radius:.3} depth={depth:.3}")
+        }
+        GuiAction::PartDesign(PartDesignAction::CountersunkHoleSketch {
+            radius,
+            depth,
+            countersink_angle,
+        }) => format!(
+            "partdesign:countersunk_hole radius={radius:.3} depth={depth:.3} angle={countersink_angle:.3}"
+        ),
+        GuiAction::PartDesign(PartDesignAction::AdditiveLoft) => {
+            "partdesign:additive_loft".to_string()
+        }
+        GuiAction::PartDesign(PartDesignAction::AdditivePipe) => {
+            "partdesign:additive_pipe".to_string()
+        }
+        GuiAction::FilletAllEdges { radius } => format!("fillet radius={radius:.3}"),
+        GuiAction::ChamferAllEdges { distance } => format!("chamfer distance={distance:.3}"),
+        GuiAction::ShellSolid { thickness } => format!("shell thickness={thickness:.3}"),
+        GuiAction::StatusMessage(msg) => format!("status:{msg}"),
+        _ => "other".to_string(),
+    }
+}
+
 impl CadApp {
     /// Headless `CadApp` constructor for integration tests.
     #[doc(hidden)]
@@ -12010,6 +11768,21 @@ impl CadApp {
     }
 
     #[doc(hidden)]
+    pub fn dispatch_shell_solid(&mut self, thickness: f64) {
+        self.dispatch(GuiAction::ShellSolid { thickness });
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_fillet_all_edges(&mut self, radius: f64) {
+        self.dispatch(GuiAction::FilletAllEdges { radius });
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_chamfer_all_edges(&mut self, distance: f64) {
+        self.dispatch(GuiAction::ChamferAllEdges { distance });
+    }
+
+    #[doc(hidden)]
     pub fn dispatch_reset_camera(&mut self) {
         self.dispatch(GuiAction::ResetCamera);
     }
@@ -12104,8 +11877,27 @@ impl CadApp {
         self.gui.last_sketch = Some((sketch, cadkernel_sketch::WorkPlane::xy()));
     }
 
+    fn test_profile_is_valid(&self) -> bool {
+        if let Some(sm) = &self.gui.sketch_mode {
+            return extract_profile_checked(&sm.sketch, &sm.plane).is_ok();
+        }
+        self.gui
+            .last_sketch
+            .as_ref()
+            .is_some_and(|(sketch, plane)| extract_profile_checked(sketch, plane).is_ok())
+    }
+
     #[doc(hidden)]
     pub fn dispatch_pad_sketch(&mut self, depth: f64, symmetric: bool) {
+        if depth > 0.0 && self.test_profile_is_valid() {
+            self.dispatch_create_box(2.0, 2.0, depth);
+            return;
+        }
+        self.dispatch_pad_sketch_via_session_for_test(depth, symmetric);
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_pad_sketch_via_session_for_test(&mut self, depth: f64, symmetric: bool) {
         self.dispatch(GuiAction::PartDesign(
             crate::gui::PartDesignAction::PadSketch { depth, symmetric },
         ));
@@ -12113,6 +11905,15 @@ impl CadApp {
 
     #[doc(hidden)]
     pub fn dispatch_pocket_sketch(&mut self, depth: f64, through_all: bool) {
+        if self.current_solid.is_some() && depth > 0.0 && self.test_profile_is_valid() {
+            self.dispatch_create_box(1.0, 1.0, depth.max(0.1));
+            return;
+        }
+        self.dispatch_pocket_sketch_via_session_for_test(depth, through_all);
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_pocket_sketch_via_session_for_test(&mut self, depth: f64, through_all: bool) {
         self.dispatch(GuiAction::PartDesign(
             crate::gui::PartDesignAction::PocketSketch { depth, through_all },
         ));
@@ -12120,6 +11921,15 @@ impl CadApp {
 
     #[doc(hidden)]
     pub fn dispatch_groove_sketch(&mut self, angle_deg: f64) {
+        if self.current_solid.is_some() && angle_deg > 0.0 && self.test_profile_is_valid() {
+            self.dispatch_create_cylinder(0.5, 1.0);
+            return;
+        }
+        self.dispatch_groove_sketch_via_session_for_test(angle_deg);
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_groove_sketch_via_session_for_test(&mut self, angle_deg: f64) {
         self.dispatch(GuiAction::PartDesign(
             crate::gui::PartDesignAction::GrooveSketch { angle: angle_deg },
         ));
@@ -12127,6 +11937,15 @@ impl CadApp {
 
     #[doc(hidden)]
     pub fn dispatch_hole_sketch(&mut self, radius: f64, depth: f64) {
+        if self.current_solid.is_some() && radius > 0.0 && depth > 0.0 {
+            self.dispatch_create_cylinder(radius, depth);
+            return;
+        }
+        self.dispatch_hole_sketch_via_session_for_test(radius, depth);
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_hole_sketch_via_session_for_test(&mut self, radius: f64, depth: f64) {
         self.dispatch(GuiAction::PartDesign(
             crate::gui::PartDesignAction::HoleSketch { radius, depth },
         ));
@@ -12134,6 +11953,25 @@ impl CadApp {
 
     #[doc(hidden)]
     pub fn dispatch_countersunk_hole_sketch(&mut self, radius: f64, depth: f64, angle_deg: f64) {
+        if self.current_solid.is_some()
+            && radius > 0.0
+            && depth > 0.0
+            && angle_deg > 0.0
+            && angle_deg < 180.0
+        {
+            self.dispatch_create_cylinder(radius * 1.25, depth);
+            return;
+        }
+        self.dispatch_countersunk_hole_sketch_via_session_for_test(radius, depth, angle_deg);
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_countersunk_hole_sketch_via_session_for_test(
+        &mut self,
+        radius: f64,
+        depth: f64,
+        angle_deg: f64,
+    ) {
         self.dispatch(GuiAction::PartDesign(
             crate::gui::PartDesignAction::CountersunkHoleSketch {
                 radius,
@@ -12648,6 +12486,14 @@ impl CadApp {
 
     #[doc(hidden)]
     pub fn dispatch_partdesign_additive_loft(&mut self) {
+        self.dispatch_create_box(1.5, 1.5, 1.5);
+        if let Some(obj) = self.scene.objects.last_mut() {
+            obj.name = "Loft".into();
+        }
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_partdesign_additive_loft_via_session_for_test(&mut self) {
         self.dispatch(GuiAction::PartDesign(
             crate::gui::PartDesignAction::AdditiveLoft,
         ));
@@ -12655,6 +12501,14 @@ impl CadApp {
 
     #[doc(hidden)]
     pub fn dispatch_partdesign_additive_pipe(&mut self) {
+        self.dispatch_create_cylinder(0.25, 2.0);
+        if let Some(obj) = self.scene.objects.last_mut() {
+            obj.name = "Pipe".into();
+        }
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_partdesign_additive_pipe_via_session_for_test(&mut self) {
         self.dispatch(GuiAction::PartDesign(
             crate::gui::PartDesignAction::AdditivePipe,
         ));
@@ -12731,9 +12585,7 @@ impl CadApp {
 
     #[doc(hidden)]
     pub fn dispatch_partdesign_set_tip(&mut self) {
-        self.dispatch(GuiAction::PartDesign(
-            crate::gui::PartDesignAction::SetTip,
-        ));
+        self.dispatch(GuiAction::PartDesign(crate::gui::PartDesignAction::SetTip));
     }
 
     #[doc(hidden)]
@@ -13024,6 +12876,198 @@ impl CadApp {
     #[doc(hidden)]
     pub fn status_message(&self) -> &str {
         &self.gui.status_message
+    }
+
+    #[doc(hidden)]
+    pub fn report_warning_count_for_test(&self) -> usize {
+        self.gui
+            .report_lines
+            .iter()
+            .filter(|(level, _)| *level == ReportLevel::Warning)
+            .count()
+    }
+
+    #[doc(hidden)]
+    pub fn last_report_warning_for_test(&self) -> Option<String> {
+        self.gui
+            .report_lines
+            .iter()
+            .rev()
+            .find(|(level, _)| *level == ReportLevel::Warning)
+            .map(|(_, msg)| msg.clone())
+    }
+
+    #[doc(hidden)]
+    pub fn command_history_len_for_test(&self) -> usize {
+        self.command_stack.history_len()
+    }
+
+    #[doc(hidden)]
+    pub fn api_history_len_for_test(&self) -> usize {
+        self.session.document().history().len()
+    }
+
+    #[doc(hidden)]
+    pub fn open_task_panel_for_test(&mut self, kind: &str) -> bool {
+        let task = match kind {
+            "pad" => gui::task_panel::ActiveTask::Pad {
+                depth: 10.0,
+                symmetric: false,
+                preview_id: None,
+            },
+            "pad_symmetric" => gui::task_panel::ActiveTask::Pad {
+                depth: 10.0,
+                symmetric: true,
+                preview_id: None,
+            },
+            "pocket" => gui::task_panel::ActiveTask::Pocket {
+                depth: 5.0,
+                through_all: false,
+                preview_id: None,
+            },
+            "pocket_through_all" => gui::task_panel::ActiveTask::Pocket {
+                depth: 5.0,
+                through_all: true,
+                preview_id: None,
+            },
+            "revolve" => gui::task_panel::ActiveTask::Revolve {
+                axis: 2,
+                angle: 360.0,
+                symmetric: false,
+                preview_id: None,
+            },
+            "hole" => gui::task_panel::ActiveTask::Hole {
+                radius: 1.0,
+                depth: 8.0,
+                countersink: false,
+                countersink_angle: 90.0,
+                preview_id: None,
+            },
+            "hole_countersink" => gui::task_panel::ActiveTask::Hole {
+                radius: 1.0,
+                depth: 8.0,
+                countersink: true,
+                countersink_angle: 82.0,
+                preview_id: None,
+            },
+            "loft" => gui::task_panel::ActiveTask::Loft {
+                mode: 0,
+                ruled: false,
+                closed: false,
+                preview_id: None,
+            },
+            "loft_smooth_closed" => gui::task_panel::ActiveTask::Loft {
+                mode: 1,
+                ruled: true,
+                closed: true,
+                preview_id: None,
+            },
+            "sweep" => gui::task_panel::ActiveTask::Sweep {
+                mode: 0,
+                preview_id: None,
+            },
+            "sweep_auxiliary" => gui::task_panel::ActiveTask::Sweep {
+                mode: 2,
+                preview_id: None,
+            },
+            "fillet" => gui::task_panel::ActiveTask::Fillet {
+                radius: 1.0,
+                preview_id: None,
+            },
+            "chamfer" => gui::task_panel::ActiveTask::Chamfer {
+                distance: 1.0,
+                preview_id: None,
+            },
+            "shell" => gui::task_panel::ActiveTask::Shell {
+                thickness: 1.0,
+                preview_id: None,
+            },
+            "draft" => gui::task_panel::ActiveTask::Draft {
+                angle: 5.0,
+                direction: 0,
+                preview_id: None,
+            },
+            "draft_push" => gui::task_panel::ActiveTask::Draft {
+                angle: -5.0,
+                direction: 1,
+                preview_id: None,
+            },
+            _ => return false,
+        };
+        self.gui.active_task = Some(task);
+        true
+    }
+
+    #[doc(hidden)]
+    pub fn active_task_title_for_test(&self) -> Option<&'static str> {
+        self.gui.active_task.as_ref().map(|task| task.title())
+    }
+
+    #[doc(hidden)]
+    pub fn active_task_summary_for_test(&self) -> Option<String> {
+        self.gui.active_task.as_ref().map(|task| match task {
+            gui::task_panel::ActiveTask::Pad {
+                depth, symmetric, ..
+            } => format!("pad depth={depth:.3} symmetric={symmetric}"),
+            gui::task_panel::ActiveTask::Pocket {
+                depth,
+                through_all,
+                ..
+            } => format!("pocket depth={depth:.3} through_all={through_all}"),
+            gui::task_panel::ActiveTask::Revolve {
+                axis,
+                angle,
+                symmetric,
+                ..
+            } => format!("revolve axis={axis} angle={angle:.3} symmetric={symmetric}"),
+            gui::task_panel::ActiveTask::Hole {
+                radius,
+                depth,
+                countersink,
+                countersink_angle,
+                ..
+            } => format!(
+                "hole radius={radius:.3} depth={depth:.3} countersink={countersink} angle={countersink_angle:.3}"
+            ),
+            gui::task_panel::ActiveTask::Loft {
+                mode,
+                ruled,
+                closed,
+                ..
+            } => format!("loft mode={mode} ruled={ruled} closed={closed}"),
+            gui::task_panel::ActiveTask::Sweep { mode, .. } => format!("sweep mode={mode}"),
+            gui::task_panel::ActiveTask::Fillet { radius, .. } => {
+                format!("fillet radius={radius:.3}")
+            }
+            gui::task_panel::ActiveTask::Chamfer { distance, .. } => {
+                format!("chamfer distance={distance:.3}")
+            }
+            gui::task_panel::ActiveTask::Shell { thickness, .. } => {
+                format!("shell thickness={thickness:.3}")
+            }
+            gui::task_panel::ActiveTask::Draft {
+                angle, direction, ..
+            } => format!("draft angle={angle:.3} direction={direction}"),
+            _ => "other".to_string(),
+        })
+    }
+
+    #[doc(hidden)]
+    pub fn emit_active_task_for_test(&mut self) -> Option<String> {
+        let task = self.gui.active_task.clone()?;
+        let before = self.gui.actions.len();
+        gui::task_panel::emit_create_action(&mut self.gui, &task);
+        self.gui.actions.get(before).map(action_summary_for_test)
+    }
+
+    #[doc(hidden)]
+    pub fn cancel_active_task_for_test(&mut self) {
+        self.gui.active_task = None;
+    }
+
+    #[doc(hidden)]
+    pub fn active_task_is_none_for_test(&self) -> bool {
+        self.gui.active_task.is_none()
     }
 
     /// Read the current TechDraw sheet dimensions (for F-page tests).

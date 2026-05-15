@@ -1758,7 +1758,8 @@ pub(crate) fn draw_welcome_screen(ctx: &egui::Context, gui: &mut GuiState) {
         );
 
         if hovered {
-            ui.ctx().output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
+            ui.ctx()
+                .output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
         }
         resp
     }
@@ -1766,10 +1767,7 @@ pub(crate) fn draw_welcome_screen(ctx: &egui::Context, gui: &mut GuiState) {
     // Shortcut chip helper
     fn chip(ui: &mut egui::Ui, key: &str, label: &str, border: egui::Color32) {
         ui.horizontal(|ui| {
-            let key_size = egui::vec2(
-                (key.len() as f32 * 7.5).max(22.0),
-                18.0,
-            );
+            let key_size = egui::vec2((key.len() as f32 * 7.5).max(22.0), 18.0);
             let (key_rect, _) = ui.allocate_exact_size(key_size, egui::Sense::hover());
             let painter = ui.painter_at(key_rect);
             painter.rect_filled(key_rect, 3.0, egui::Color32::from_rgb(0x2B, 0x30, 0x3B));
@@ -2190,7 +2188,10 @@ pub(crate) fn draw_viewport_hud(
     let vp = ctx.available_rect();
     let pos = match nav.cube_corner {
         1 => egui::pos2(vp.left() + edge, vp.top() + cube_full),
-        2 => egui::pos2(vp.left() + edge, vp.bottom() - cube_full - btn * 4.0 - gap * 3.0 - 8.0),
+        2 => egui::pos2(
+            vp.left() + edge,
+            vp.bottom() - cube_full - btn * 4.0 - gap * 3.0 - 8.0,
+        ),
         3 => egui::pos2(
             vp.right() - edge - btn - 8.0,
             vp.bottom() - cube_full - btn * 4.0 - gap * 3.0 - 8.0,
@@ -2215,10 +2216,8 @@ pub(crate) fn draw_viewport_hud(
                 ui.spacing_mut().item_spacing.y = gap;
 
                 // Determine projection state for tinted toggle button.
-                let perspective_active = matches!(
-                    camera.projection,
-                    crate::render::Projection::Perspective
-                );
+                let perspective_active =
+                    matches!(camera.projection, crate::render::Projection::Perspective);
 
                 hud_button(ui, btn, "\u{26F6}", "Fit All  (F)", false, || {
                     gui.actions.push(GuiAction::FitAll);

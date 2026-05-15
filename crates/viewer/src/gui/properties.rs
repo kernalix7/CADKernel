@@ -2068,7 +2068,7 @@ mod bbox_tests {
                 height: 1.0,
                 depth: 1.0,
             }),
-        None,
+            None,
         );
         let obj = scene.get(id).unwrap();
         let (dx, dy, dz) = bbox_extents(obj);
