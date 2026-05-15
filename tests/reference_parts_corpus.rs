@@ -87,7 +87,8 @@ fn r1_cadk_byte_deterministic_across_two_runs() {
     let a = r1_session().save_cadk().expect("R1 cadk run 1");
     let b = r1_session().save_cadk().expect("R1 cadk run 2");
     assert_eq!(
-        a, b,
+        a,
+        b,
         "R1 .cadk must be byte-identical across runs (got len {} vs {})",
         a.len(),
         b.len()
@@ -99,7 +100,8 @@ fn r2_cadk_byte_deterministic_across_two_runs() {
     let a = r2_session().save_cadk().expect("R2 cadk run 1");
     let b = r2_session().save_cadk().expect("R2 cadk run 2");
     assert_eq!(
-        a, b,
+        a,
+        b,
         "R2 .cadk must be byte-identical across runs (got len {} vs {})",
         a.len(),
         b.len()

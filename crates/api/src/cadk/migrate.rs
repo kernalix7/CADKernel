@@ -6,13 +6,14 @@
 //! integer constants through the rest of the codebase.
 //!
 //! [`migrate_to_current`] is the entry point that transparently brings
-//! older containers up to [`SchemaVersion::current()`]. As of A3.0.7
-//! (2026-05-13) the format has exactly one version (V1), so the
-//! function is always a no-op for healthy bytes. The scaffold exists
-//! to pin the contract for future schema bumps: when V2 ships, the
-//! match in [`migrate_to_current`] grows a `V1 → V2` transform and
-//! callers reading old files transparently call this before
-//! [`crate::cadk::decode`].
+//! older containers up to [`SchemaVersion::current()`]. As of Wave 1
+//! sub-phase 5a (2026-05-15), V1 is still the only version emitted by
+//! the encoder, while V2 is a known-but-unused future variant for Body
+//! persistence. The function is therefore still a no-op for healthy
+//! bytes. The scaffold exists to pin the contract for future schema
+//! bumps: when V2 ships, the match in [`migrate_to_current`] grows a
+//! real `V1 -> V2` transform and callers reading old files transparently
+//! call this before [`crate::cadk::decode`].
 //!
 //! Note that [`migrate_to_current`] deliberately does **not** route
 //! through [`crate::cadk::inspect`] — `inspect`'s
@@ -35,6 +36,10 @@ pub enum SchemaVersion {
     /// version line, written by every build through A3.0.x. Carries
     /// integer `1` on disk.
     V1,
+    /// Adds Body persistence. Wave 1 sub-phase 5a only reserves the
+    /// variant; no encoder emits V2 bytes until Wave 3 fills the codec
+    /// path.
+    V2,
 }
 
 impl SchemaVersion {
@@ -44,6 +49,7 @@ impl SchemaVersion {
     pub fn from_u32(n: u32) -> Option<Self> {
         match n {
             1 => Some(Self::V1),
+            2 => Some(Self::V2),
             _ => None,
         }
     }
@@ -53,11 +59,13 @@ impl SchemaVersion {
     pub fn as_u32(self) -> u32 {
         match self {
             Self::V1 => 1,
+            Self::V2 => 2,
         }
     }
 
     /// Returns the version this build writes by default — the head of
-    /// the version line that every fresh `encode` produces.
+    /// the version line that every fresh `encode` produces. Wave 1 keeps
+    /// this at V1; Wave 3 flips it to V2 once Body persistence is emitted.
     pub fn current() -> Self {
         Self::V1
     }
@@ -67,9 +75,10 @@ impl SchemaVersion {
 /// to [`SchemaVersion::current()`]. Returns the migrated bytes, which
 /// are byte-identical to the input when no migration was necessary.
 ///
-/// As of A3.0.7 the format has exactly one supported version (V1) so
-/// this function is always a no-op for healthy bytes — it exists to
-/// pin the migrator contract for future schema bumps.
+/// As of Wave 1 sub-phase 5a, V1 is still the current encoder target
+/// and V2 is a reserved future variant, so this function is always a
+/// no-op for healthy bytes. It exists to pin the migrator contract for
+/// future schema bumps.
 ///
 /// Bypasses [`crate::cadk::inspect`] on purpose: that path rejects
 /// unknown schema versions via
@@ -96,15 +105,24 @@ pub fn migrate_to_current(bytes: &[u8]) -> ApiResult<Vec<u8>> {
         bytes[MAGIC.len() + 2],
         bytes[MAGIC.len() + 3],
     ]);
-    let version = SchemaVersion::from_u32(raw).ok_or_else(|| {
-        ApiError::Codec(format!("unsupported schema version: {raw}"))
-    })?;
+    let version = SchemaVersion::from_u32(raw)
+        .ok_or_else(|| ApiError::Codec(format!("unsupported schema version: {raw}")))?;
     match version {
-        // No migration needed — already at the current schema head.
         SchemaVersion::V1 => Ok(bytes.to_vec()),
-        // Future bumps:
-        // SchemaVersion::V2 => migrate_v2_to_v3(bytes),
+        SchemaVersion::V2 => Ok(bytes.to_vec()),
     }
+}
+
+/// Migrate a V1 container to V2. Wave 1 placeholder: this is a pure
+/// no-op until Wave 3 lands. When Body persistence ships, this will
+/// rewrite the document blob to include `bodies` and `BodyFeature.spec`
+/// fields and bump the on-disk `schema_version` from 1 to 2.
+///
+/// This exists now to lock the migrator dispatch shape so Wave 3 can
+/// drop in the real implementation without touching call sites.
+#[allow(dead_code)]
+fn v1_to_v2(bytes: &[u8]) -> ApiResult<Vec<u8>> {
+    Ok(bytes.to_vec())
 }
 
 #[cfg(test)]
@@ -113,7 +131,15 @@ mod tests {
 
     #[test]
     fn schema_version_round_trips_through_u32() {
-        let v = SchemaVersion::V1;
+        for v in [SchemaVersion::V1, SchemaVersion::V2] {
+            assert_eq!(SchemaVersion::from_u32(v.as_u32()), Some(v));
+        }
+    }
+
+    #[test]
+    fn schema_version_v2_round_trips_through_u32() {
+        let v = SchemaVersion::V2;
+        assert_eq!(v.as_u32(), 2);
         assert_eq!(SchemaVersion::from_u32(v.as_u32()), Some(v));
     }
 
@@ -129,8 +155,15 @@ mod tests {
     #[test]
     fn from_u32_rejects_unknown_versions() {
         assert_eq!(SchemaVersion::from_u32(0), None);
-        assert_eq!(SchemaVersion::from_u32(2), None);
+        assert_eq!(SchemaVersion::from_u32(3), None);
         assert_eq!(SchemaVersion::from_u32(u32::MAX), None);
+    }
+
+    #[test]
+    fn v1_to_v2_placeholder_is_byte_identical_no_op() {
+        let bytes = [1, 2, 3, 4];
+        let migrated = v1_to_v2(&bytes).expect("placeholder migration");
+        assert_eq!(migrated, bytes);
     }
 
     #[test]
@@ -156,10 +189,9 @@ mod tests {
         bytes.extend_from_slice(&999u32.to_le_bytes());
         let err = migrate_to_current(&bytes).unwrap_err();
         match err {
-            ApiError::Codec(msg) => assert!(
-                msg.contains("unsupported schema version"),
-                "got: {msg}"
-            ),
+            ApiError::Codec(msg) => {
+                assert!(msg.contains("unsupported schema version"), "got: {msg}")
+            }
             other => panic!("expected Codec, got {other:?}"),
         }
     }

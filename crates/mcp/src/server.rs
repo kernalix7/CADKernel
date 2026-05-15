@@ -368,7 +368,10 @@ impl McpServer {
             }
             "sphere" => {
                 let radius = get_f64(dims, "radius").unwrap_or(1.0);
-                (Command::CreateSphere { radius }, format!("sphere(r={radius})"))
+                (
+                    Command::CreateSphere { radius },
+                    format!("sphere(r={radius})"),
+                )
             }
             "cone" => {
                 let base_radius = get_f64(dims, "base_radius").unwrap_or(1.0);

@@ -35,10 +35,22 @@ fn default_run_against_v0_fixture_exits_zero_and_reports_all_crcs() {
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("magic:"), "stdout missing magic line:\n{stdout}");
-    assert!(stdout.contains("schema:         1"), "stdout missing schema line:\n{stdout}");
-    assert!(stdout.contains("blobs:          1"), "stdout missing blob count line:\n{stdout}");
-    assert!(stdout.contains("thumbnail:      absent"), "stdout missing thumbnail line:\n{stdout}");
+    assert!(
+        stdout.contains("magic:"),
+        "stdout missing magic line:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("schema:         1"),
+        "stdout missing schema line:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("blobs:          1"),
+        "stdout missing blob count line:\n{stdout}"
+    );
+    assert!(
+        stdout.contains("thumbnail:      absent"),
+        "stdout missing thumbnail line:\n{stdout}"
+    );
     assert!(
         stdout.contains("status:         OK (all CRCs verified)"),
         "default run must claim full CRC verification:\n{stdout}"
@@ -52,7 +64,10 @@ fn quick_run_skips_decode_and_reports_quick_status() {
         .arg(fixture_path())
         .output()
         .expect("spawn cadk-inspect");
-    assert!(output.status.success(), "quick mode must succeed on a healthy fixture");
+    assert!(
+        output.status.success(),
+        "quick mode must succeed on a healthy fixture"
+    );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
         stdout.contains("status:         OK (header + manifest verified, --quick)"),
@@ -74,8 +89,14 @@ fn verbose_run_prints_command_listing() {
         .expect("spawn cadk-inspect");
     assert!(output.status.success(), "verbose mode must succeed");
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("--- commands ---"), "verbose must print commands section");
-    assert!(stdout.contains("CreateBox"), "v0 fixture starts with CreateBox: {stdout}");
+    assert!(
+        stdout.contains("--- commands ---"),
+        "verbose must print commands section"
+    );
+    assert!(
+        stdout.contains("CreateBox"),
+        "v0 fixture starts with CreateBox: {stdout}"
+    );
 }
 
 #[test]
@@ -91,7 +112,10 @@ fn verbose_run_prints_blob_listing_with_kinds_and_lengths() {
         .expect("spawn cadk-inspect");
     assert!(output.status.success());
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("--- blobs ---"), "verbose must print blobs section");
+    assert!(
+        stdout.contains("--- blobs ---"),
+        "verbose must print blobs section"
+    );
     assert!(
         stdout.contains("Document"),
         "blob listing must surface kind=Document: {stdout}"
@@ -109,7 +133,11 @@ fn missing_path_exits_with_io_error_code_one() {
         .arg(&missing)
         .output()
         .expect("spawn cadk-inspect");
-    assert_eq!(output.status.code(), Some(1), "missing-file must yield exit 1");
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "missing-file must yield exit 1"
+    );
 }
 
 #[test]
@@ -128,7 +156,10 @@ fn corrupted_bytes_exit_with_format_error_code_two() {
     let path = dir.join("garbage.cadk");
     std::fs::write(&path, vec![0u8; 128]).expect("write garbage");
 
-    let output = Command::new(BIN).arg(&path).output().expect("spawn cadk-inspect");
+    let output = Command::new(BIN)
+        .arg(&path)
+        .output()
+        .expect("spawn cadk-inspect");
     assert_eq!(
         output.status.code(),
         Some(2),

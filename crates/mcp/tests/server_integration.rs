@@ -430,7 +430,9 @@ fn mcp_boolean_union_consumes_inputs_and_returns_new_slot() {
         r["error"].is_null(),
         "boolean union should succeed, got: {r:?}"
     );
-    let result_id = r["result"]["id"].as_u64().expect("result must have integer id");
+    let result_id = r["result"]["id"]
+        .as_u64()
+        .expect("result must have integer id");
     // Slot 0 was freed first, so result reuses slot 0.
     assert_eq!(result_id, 0);
 

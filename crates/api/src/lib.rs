@@ -64,11 +64,16 @@ mod session;
 pub mod cadk;
 pub mod reference_parts;
 
-pub use command::{Command, ExtrudeKind, InstanceOverride, command_schemas};
+pub use cadkernel_topology::Tag;
+pub use command::{
+    AxisRef, BodyId, ChamferMode, Command, DraftDirection, EdgeRef, ExtrudeKind, FaceRef, HoleKind,
+    InstanceOverride, LoftMode, PadDirection, PadType, PocketType, ShellMode, SketchId, SketchRef,
+    SweepMode, VariableRadius, command_schemas,
+};
 pub use document::{
     AabbSummary, Document, DocumentIssue, FeatureId, HistoryEvent, MeasureSummary, SolidId,
 };
-pub use outcome::{Outcome, OutcomeKind, SolidEntry};
+pub use outcome::{Outcome, OutcomeKind, Plane, SolidEntry};
 pub use session::{Session, SessionSnapshot};
 
 /// Result type returned by the API surface.

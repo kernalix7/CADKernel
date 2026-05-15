@@ -122,8 +122,8 @@ fn inspect(path: &Path, verbose: bool, quick: bool) -> Result<(), InspectError> 
     let bytes = std::fs::read(path)
         .map_err(|e| InspectError::Io(format!("read {}: {e}", path.display())))?;
 
-    let summary = cadk::inspect(&bytes)
-        .map_err(|e| InspectError::Format(format!("inspect failed: {e}")))?;
+    let summary =
+        cadk::inspect(&bytes).map_err(|e| InspectError::Format(format!("inspect failed: {e}")))?;
     print_summary(path, bytes.len(), &summary);
 
     if quick {
@@ -139,8 +139,8 @@ fn inspect(path: &Path, verbose: bool, quick: bool) -> Result<(), InspectError> 
 
     // Full path: verify the document blob CRC by decoding it. This also
     // exercises the zstd path when DOCUMENT_COMPRESSED is set.
-    let commands = cadk::decode(&bytes)
-        .map_err(|e| InspectError::Format(format!("decode failed: {e}")))?;
+    let commands =
+        cadk::decode(&bytes).map_err(|e| InspectError::Format(format!("decode failed: {e}")))?;
 
     // Thumbnail CRC check is independent of the document blob.
     let thumb = cadk::decode_thumbnail(&bytes)

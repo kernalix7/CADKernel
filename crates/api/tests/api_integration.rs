@@ -539,15 +539,31 @@ fn command_schemas_cover_every_op_name() {
         Command::HistoryCount,
         Command::HasLabel { query: "x".into() },
         Command::SolidIds,
-        Command::AabbExtents { id: cadkernel_api::SolidId(0) },
-        Command::AabbLongestAxis { id: cadkernel_api::SolidId(0) },
-        Command::AabbShortestAxis { id: cadkernel_api::SolidId(0) },
-        Command::AabbAspectRatio { id: cadkernel_api::SolidId(0) },
-        Command::IsCubic { id: cadkernel_api::SolidId(0) },
-        Command::IsSquareXy { id: cadkernel_api::SolidId(0) },
+        Command::AabbExtents {
+            id: cadkernel_api::SolidId(0),
+        },
+        Command::AabbLongestAxis {
+            id: cadkernel_api::SolidId(0),
+        },
+        Command::AabbShortestAxis {
+            id: cadkernel_api::SolidId(0),
+        },
+        Command::AabbAspectRatio {
+            id: cadkernel_api::SolidId(0),
+        },
+        Command::IsCubic {
+            id: cadkernel_api::SolidId(0),
+        },
+        Command::IsSquareXy {
+            id: cadkernel_api::SolidId(0),
+        },
         Command::HistoryDescription { index: 0 },
-        Command::IsSquareYz { id: cadkernel_api::SolidId(0) },
-        Command::IsSquareXz { id: cadkernel_api::SolidId(0) },
+        Command::IsSquareYz {
+            id: cadkernel_api::SolidId(0),
+        },
+        Command::IsSquareXz {
+            id: cadkernel_api::SolidId(0),
+        },
         Command::OperationCount {
             op_name: "create_box".to_string(),
         },
@@ -564,6 +580,105 @@ fn command_schemas_cover_every_op_name() {
             axis: [0.0, 0.0, 1.0],
             angle_rad: 0.0,
             point: [0.0, 0.0, 0.0],
+        },
+        Command::Pad {
+            sketch: cadkernel_api::SketchRef {
+                sketch_id: cadkernel_api::SketchId(0),
+            },
+            distance: 1.0,
+            direction: cadkernel_api::PadDirection::Normal,
+            symmetric: false,
+            type_: cadkernel_api::PadType::Blind,
+        },
+        Command::Pocket {
+            sketch: cadkernel_api::SketchRef {
+                sketch_id: cadkernel_api::SketchId(0),
+            },
+            distance: 1.0,
+            through_all: false,
+            type_: cadkernel_api::PocketType::Blind,
+        },
+        Command::Revolve {
+            sketch: cadkernel_api::SketchRef {
+                sketch_id: cadkernel_api::SketchId(0),
+            },
+            axis: cadkernel_api::AxisRef::Z,
+            angle_rad: 1.0,
+            symmetric: false,
+        },
+        Command::Groove {
+            sketch: cadkernel_api::SketchRef {
+                sketch_id: cadkernel_api::SketchId(0),
+            },
+            axis: cadkernel_api::AxisRef::Z,
+            angle_rad: 1.0,
+        },
+        Command::Hole {
+            face: cadkernel_api::FaceRef {
+                solid: cadkernel_api::SolidId(0),
+                tag: cadkernel_api::Tag::generated(
+                    cadkernel_topology::EntityKind::Face,
+                    cadkernel_topology::OperationId(1),
+                    0,
+                ),
+            },
+            position: [0.0, 0.0],
+            radius: 0.5,
+            depth: 1.0,
+            through_all: false,
+            kind: cadkernel_api::HoleKind::Simple,
+        },
+        Command::Sweep {
+            profile_sketch: cadkernel_api::SketchRef {
+                sketch_id: cadkernel_api::SketchId(0),
+            },
+            path_sketch: cadkernel_api::SketchRef {
+                sketch_id: cadkernel_api::SketchId(1),
+            },
+            mode: cadkernel_api::SweepMode::Standard,
+        },
+        Command::Loft {
+            profiles: vec![],
+            mode: cadkernel_api::LoftMode::Straight,
+            ruled: false,
+            closed: false,
+        },
+        Command::Helix {
+            axis: cadkernel_api::AxisRef::Z,
+            radius: 1.0,
+            pitch: 1.0,
+            height: 1.0,
+            turns: 1.0,
+            cone_angle: 0.0,
+        },
+        Command::Fillet {
+            edges: vec![],
+            radius: 0.5,
+            variable: None,
+        },
+        Command::Chamfer {
+            edges: vec![],
+            distance: 0.5,
+            mode: cadkernel_api::ChamferMode::Equal,
+        },
+        Command::Shell {
+            solid: cadkernel_api::SolidId(0),
+            removed_faces: vec![],
+            thickness: 0.5,
+            mode: cadkernel_api::ShellMode::Inward,
+        },
+        Command::Draft {
+            faces: vec![],
+            neutral_plane: cadkernel_api::FaceRef {
+                solid: cadkernel_api::SolidId(0),
+                tag: cadkernel_api::Tag::generated(
+                    cadkernel_topology::EntityKind::Face,
+                    cadkernel_topology::OperationId(1),
+                    0,
+                ),
+            },
+            angle_rad: 0.1,
+            direction: cadkernel_api::DraftDirection::Pull,
         },
         Command::NewDocument,
         Command::Noop,
@@ -817,7 +932,7 @@ fn session_save_cadk_round_trip_preserves_solid_count() {
 
 #[test]
 fn session_save_cadk_with_thumbnail_round_trips_payload() {
-    use cadkernel_api::{cadk, Command, Session};
+    use cadkernel_api::{Command, Session, cadk};
 
     let mut session = Session::new();
     session
@@ -876,7 +991,10 @@ fn linear_pattern_outcome_reports_pattern_id_instance_count_and_total_features()
             ids,
         } => {
             assert_eq!(pattern_id, source_id, "pattern_id must echo the source");
-            assert_eq!(instance_count, 4, "instance_count must equal Command::count");
+            assert_eq!(
+                instance_count, 4,
+                "instance_count must equal Command::count"
+            );
             assert_eq!(
                 total_features, 3,
                 "total_features must equal new instances (count - 1)"
@@ -886,7 +1004,10 @@ fn linear_pattern_outcome_reports_pattern_id_instance_count_and_total_features()
             // every ID after [0] must be unique and not equal to the source
             assert!(ids[1..].iter().all(|i| *i != source_id));
             assert_eq!(
-                ids.iter().copied().collect::<std::collections::HashSet<_>>().len(),
+                ids.iter()
+                    .copied()
+                    .collect::<std::collections::HashSet<_>>()
+                    .len(),
                 4,
                 "all pattern ids must be unique"
             );
@@ -961,7 +1082,12 @@ fn extrude_kind_mid_plane_centers_solid_and_total_span_matches_distance() {
     let mut session = Session::new();
     let blind = session
         .execute(Command::Extrude {
-            profile: vec![[0.0, 0.0, 0.0], [4.0, 0.0, 0.0], [4.0, 4.0, 0.0], [0.0, 4.0, 0.0]],
+            profile: vec![
+                [0.0, 0.0, 0.0],
+                [4.0, 0.0, 0.0],
+                [4.0, 4.0, 0.0],
+                [0.0, 4.0, 0.0],
+            ],
             direction: [0.0, 0.0, 1.0],
             distance: 10.0,
             kind: ExtrudeKind::Blind,
@@ -975,7 +1101,12 @@ fn extrude_kind_mid_plane_centers_solid_and_total_span_matches_distance() {
 
     let mid = session
         .execute(Command::Extrude {
-            profile: vec![[0.0, 0.0, 0.0], [4.0, 0.0, 0.0], [4.0, 4.0, 0.0], [0.0, 4.0, 0.0]],
+            profile: vec![
+                [0.0, 0.0, 0.0],
+                [4.0, 0.0, 0.0],
+                [4.0, 4.0, 0.0],
+                [0.0, 4.0, 0.0],
+            ],
             direction: [0.0, 0.0, 1.0],
             distance: 10.0,
             kind: ExtrudeKind::MidPlane,
@@ -1003,7 +1134,12 @@ fn extrude_kind_two_sided_extends_in_both_directions_with_correct_total_span() {
     let mut session = Session::new();
     let two = session
         .execute(Command::Extrude {
-            profile: vec![[0.0, 0.0, 0.0], [3.0, 0.0, 0.0], [3.0, 3.0, 0.0], [0.0, 3.0, 0.0]],
+            profile: vec![
+                [0.0, 0.0, 0.0],
+                [3.0, 0.0, 0.0],
+                [3.0, 3.0, 0.0],
+                [0.0, 3.0, 0.0],
+            ],
             direction: [0.0, 0.0, 1.0],
             distance: 4.0,
             kind: ExtrudeKind::TwoSided { back_distance: 2.0 },
@@ -1015,9 +1151,17 @@ fn extrude_kind_two_sided_extends_in_both_directions_with_correct_total_span() {
     };
     let m = session.document().measure_solid(two_id).unwrap();
     // 3x3 base, total height 6 → volume 54.
-    assert!((m.volume - 54.0).abs() < 1e-6, "expected volume 54, got {}", m.volume);
+    assert!(
+        (m.volume - 54.0).abs() < 1e-6,
+        "expected volume 54, got {}",
+        m.volume
+    );
     // Centroid z = midpoint of [-2, +4] = 1.0.
-    assert!((m.centroid[2] - 1.0).abs() < 1e-6, "expected centroid z=1, got {}", m.centroid[2]);
+    assert!(
+        (m.centroid[2] - 1.0).abs() < 1e-6,
+        "expected centroid z=1, got {}",
+        m.centroid[2]
+    );
 
     // back_distance must be positive.
     let bad = session.execute(Command::Extrude {
@@ -1080,7 +1224,10 @@ fn linear_pattern_skip_instances_suppresses_specified_indices_and_reports_correc
             ids,
         } => {
             assert_eq!(pattern_id, source_id);
-            assert_eq!(instance_count, 3, "5 minus 2 skipped = 3 surviving instances");
+            assert_eq!(
+                instance_count, 3,
+                "5 minus 2 skipped = 3 surviving instances"
+            );
             assert_eq!(total_features, 2, "two new solids inserted (i=2 and i=4)");
             assert_eq!(ids.len(), 3);
             assert_eq!(ids[0], source_id, "original retained at index 0");
@@ -1128,9 +1275,15 @@ fn linear_pattern_skip_instance_zero_drops_original_and_keeps_only_copies() {
         } => {
             assert_eq!(pattern_id, source_id);
             assert_eq!(instance_count, 2);
-            assert_eq!(total_features, 2, "both copies count as new features when original is dropped");
+            assert_eq!(
+                total_features, 2,
+                "both copies count as new features when original is dropped"
+            );
             assert_eq!(ids.len(), 2);
-            assert!(!ids.contains(&source_id), "original id must not appear when index 0 is skipped");
+            assert!(
+                !ids.contains(&source_id),
+                "original id must not appear when index 0 is skipped"
+            );
         }
         other => panic!("expected PatternCreated, got {other:?}"),
     }
@@ -1255,7 +1408,11 @@ fn mirror_merge_fuses_original_with_mirrored_copy_into_single_solid() {
     // the API contract being tested here. We just assert the result is a
     // valid measurable solid.
     let summary = session.document().measure_solid(merged_id).unwrap();
-    assert!(summary.volume > 0.0, "merged solid must have positive volume, got {}", summary.volume);
+    assert!(
+        summary.volume > 0.0,
+        "merged solid must have positive volume, got {}",
+        summary.volume
+    );
     assert!(summary.surface_area > 0.0);
 }
 
@@ -1328,7 +1485,11 @@ fn bounding_box_of_unit_box_matches_creation_dimensions() {
 
     let mut session = Session::new();
     let id = match session
-        .execute(Command::CreateBox { dx: 4.0, dy: 6.0, dz: 8.0 })
+        .execute(Command::CreateBox {
+            dx: 4.0,
+            dy: 6.0,
+            dz: 8.0,
+        })
         .unwrap()
     {
         Outcome::SolidCreated { id, .. } => id,
@@ -1356,7 +1517,11 @@ fn bounding_box_tracks_translation_delta() {
 
     let mut session = Session::new();
     let id = match session
-        .execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 })
+        .execute(Command::CreateBox {
+            dx: 2.0,
+            dy: 2.0,
+            dz: 2.0,
+        })
         .unwrap()
     {
         Outcome::SolidCreated { id, .. } => id,
@@ -1364,7 +1529,12 @@ fn bounding_box_tracks_translation_delta() {
     };
     let before = session.document().bounding_box(id).unwrap();
     session
-        .execute(Command::Translate { id, dx: 5.0, dy: -3.0, dz: 1.5 })
+        .execute(Command::Translate {
+            id,
+            dx: 5.0,
+            dy: -3.0,
+            dz: 1.5,
+        })
         .unwrap();
     let after = session.document().bounding_box(id).unwrap();
     assert!((after.min[0] - (before.min[0] + 5.0)).abs() < 1e-9);
@@ -1387,7 +1557,11 @@ fn bounding_box_summary_serializes_with_id_min_max() {
     use cadkernel_api::{Command, Outcome, Session};
     let mut session = Session::new();
     let id = match session
-        .execute(Command::CreateBox { dx: 1.0, dy: 2.0, dz: 3.0 })
+        .execute(Command::CreateBox {
+            dx: 1.0,
+            dy: 2.0,
+            dz: 3.0,
+        })
         .unwrap()
     {
         Outcome::SolidCreated { id, .. } => id,
@@ -1407,7 +1581,11 @@ fn measure_command_returns_volume_surface_area_centroid_and_bbox() {
     use cadkernel_api::{Command, Outcome, Session};
     let mut session = Session::new();
     let id = match session
-        .execute(Command::CreateBox { dx: 2.0, dy: 4.0, dz: 6.0 })
+        .execute(Command::CreateBox {
+            dx: 2.0,
+            dy: 4.0,
+            dz: 6.0,
+        })
         .unwrap()
     {
         Outcome::SolidCreated { id, .. } => id,
@@ -1425,7 +1603,10 @@ fn measure_command_returns_volume_surface_area_centroid_and_bbox() {
         } => {
             assert_eq!(mid, id);
             assert!((volume - 48.0).abs() < 1e-6, "volume = {volume}");
-            assert!((surface_area - 88.0).abs() < 1e-6, "surface_area = {surface_area}");
+            assert!(
+                (surface_area - 88.0).abs() < 1e-6,
+                "surface_area = {surface_area}"
+            );
             assert!(centroid[0].is_finite());
             assert_eq!(bbox_min, [0.0, 0.0, 0.0]);
             assert_eq!(bbox_max, [2.0, 4.0, 6.0]);
@@ -1439,7 +1620,11 @@ fn measure_command_does_not_mutate_log_or_history() {
     use cadkernel_api::{Command, Outcome, Session};
     let mut session = Session::new();
     let id = match session
-        .execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 })
+        .execute(Command::CreateBox {
+            dx: 1.0,
+            dy: 1.0,
+            dz: 1.0,
+        })
         .unwrap()
     {
         Outcome::SolidCreated { id, .. } => id,
@@ -1448,7 +1633,11 @@ fn measure_command_does_not_mutate_log_or_history() {
     let log_len_before = session.log().len();
     let history_len_before = session.document().history().len();
     let _ = session.execute(Command::Measure { id }).unwrap();
-    assert_eq!(session.log().len(), log_len_before, "Measure must not append to log");
+    assert_eq!(
+        session.log().len(),
+        log_len_before,
+        "Measure must not append to log"
+    );
     assert_eq!(
         session.document().history().len(),
         history_len_before,
@@ -1465,7 +1654,9 @@ fn measure_command_does_not_mutate_log_or_history() {
 fn measure_command_returns_unknown_solid_for_invalid_id() {
     use cadkernel_api::{ApiError, Command, Session, SolidId};
     let mut session = Session::new();
-    let err = session.execute(Command::Measure { id: SolidId(999) }).unwrap_err();
+    let err = session
+        .execute(Command::Measure { id: SolidId(999) })
+        .unwrap_err();
     assert!(matches!(err, ApiError::UnknownSolid(_)), "got {err:?}");
 }
 
@@ -1495,7 +1686,11 @@ fn validate_command_returns_empty_issues_for_clean_document() {
     use cadkernel_api::{Command, Outcome, Session};
     let mut session = Session::new();
     session
-        .execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 })
+        .execute(Command::CreateBox {
+            dx: 1.0,
+            dy: 1.0,
+            dz: 1.0,
+        })
         .unwrap();
     match session.execute(Command::Validate).unwrap() {
         Outcome::Validated { issues } => {
@@ -1510,7 +1705,11 @@ fn validate_command_does_not_mutate_log_or_history() {
     use cadkernel_api::{Command, Session};
     let mut session = Session::new();
     session
-        .execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 })
+        .execute(Command::CreateBox {
+            dx: 1.0,
+            dy: 1.0,
+            dz: 1.0,
+        })
         .unwrap();
     let log_len = session.log().len();
     let history_len = session.document().history().len();
@@ -1555,13 +1754,20 @@ fn list_solids_command_enumerates_ids_and_labels_in_creation_order() {
     use cadkernel_api::{Command, Outcome, Session};
     let mut session = Session::new();
     session
-        .execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 })
+        .execute(Command::CreateBox {
+            dx: 1.0,
+            dy: 1.0,
+            dz: 1.0,
+        })
         .unwrap();
     session
         .execute(Command::CreateSphere { radius: 0.5 })
         .unwrap();
     session
-        .execute(Command::CreateCylinder { radius: 1.0, height: 2.0 })
+        .execute(Command::CreateCylinder {
+            radius: 1.0,
+            height: 2.0,
+        })
         .unwrap();
     match session.execute(Command::ListSolids).unwrap() {
         Outcome::SolidsListed { entries } => {
@@ -1582,7 +1788,11 @@ fn list_solids_command_does_not_mutate_log_or_history() {
     use cadkernel_api::{Command, Session};
     let mut session = Session::new();
     session
-        .execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 })
+        .execute(Command::CreateBox {
+            dx: 1.0,
+            dy: 1.0,
+            dz: 1.0,
+        })
         .unwrap();
     let log_len = session.log().len();
     let history_len = session.document().history().len();
@@ -1597,8 +1807,14 @@ fn list_solids_outcome_serializes_with_kind_solids_listed_and_flat_entries() {
     use cadkernel_api::{Outcome, SolidEntry, SolidId};
     let outcome = Outcome::SolidsListed {
         entries: vec![
-            SolidEntry { id: SolidId(0), label: "Box".into() },
-            SolidEntry { id: SolidId(1), label: "Sphere".into() },
+            SolidEntry {
+                id: SolidId(0),
+                label: "Box".into(),
+            },
+            SolidEntry {
+                id: SolidId(1),
+                label: "Sphere".into(),
+            },
         ],
     };
     let json = serde_json::to_value(&outcome).unwrap();
@@ -1626,7 +1842,11 @@ fn duplicate_command_creates_new_solid_with_copy_suffix_label() {
     use cadkernel_api::{Command, Outcome, Session};
     let mut session = Session::new();
     let src_id = match session
-        .execute(Command::CreateBox { dx: 2.0, dy: 3.0, dz: 4.0 })
+        .execute(Command::CreateBox {
+            dx: 2.0,
+            dy: 3.0,
+            dz: 4.0,
+        })
         .unwrap()
     {
         Outcome::SolidCreated { id, .. } => id,
@@ -1648,7 +1868,11 @@ fn duplicate_command_preserves_geometry_volume_and_bbox() {
     use cadkernel_api::{Command, Outcome, Session};
     let mut session = Session::new();
     let src_id = match session
-        .execute(Command::CreateBox { dx: 2.0, dy: 4.0, dz: 6.0 })
+        .execute(Command::CreateBox {
+            dx: 2.0,
+            dy: 4.0,
+            dz: 6.0,
+        })
         .unwrap()
     {
         Outcome::SolidCreated { id, .. } => id,
@@ -1673,7 +1897,11 @@ fn duplicate_command_creates_independent_copy_translate_does_not_affect_source()
     use cadkernel_api::{Command, Outcome, Session};
     let mut session = Session::new();
     let src_id = match session
-        .execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 })
+        .execute(Command::CreateBox {
+            dx: 1.0,
+            dy: 1.0,
+            dz: 1.0,
+        })
         .unwrap()
     {
         Outcome::SolidCreated { id, .. } => id,
@@ -1684,12 +1912,21 @@ fn duplicate_command_creates_independent_copy_translate_does_not_affect_source()
         other => panic!("expected SolidCreated, got {other:?}"),
     };
     session
-        .execute(Command::Translate { id: dup_id, dx: 10.0, dy: 0.0, dz: 0.0 })
+        .execute(Command::Translate {
+            id: dup_id,
+            dx: 10.0,
+            dy: 0.0,
+            dz: 0.0,
+        })
         .unwrap();
     let src_b = session.document().bounding_box(src_id).unwrap();
     let dup_b = session.document().bounding_box(dup_id).unwrap();
     assert!(src_b.min[0] < 5.0, "source must not move");
-    assert!(dup_b.min[0] >= 10.0, "duplicate must shift, got {:?}", dup_b.min);
+    assert!(
+        dup_b.min[0] >= 10.0,
+        "duplicate must shift, got {:?}",
+        dup_b.min
+    );
 }
 
 #[test]
@@ -1697,7 +1934,11 @@ fn duplicate_command_appends_history_event() {
     use cadkernel_api::{Command, Outcome, Session};
     let mut session = Session::new();
     let src_id = match session
-        .execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 })
+        .execute(Command::CreateBox {
+            dx: 1.0,
+            dy: 1.0,
+            dz: 1.0,
+        })
         .unwrap()
     {
         Outcome::SolidCreated { id, .. } => id,
@@ -1715,7 +1956,11 @@ fn duplicate_command_undo_removes_only_the_copy() {
     use cadkernel_api::{Command, Outcome, Session};
     let mut session = Session::new();
     let src_id = match session
-        .execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 })
+        .execute(Command::CreateBox {
+            dx: 1.0,
+            dy: 1.0,
+            dz: 1.0,
+        })
         .unwrap()
     {
         Outcome::SolidCreated { id, .. } => id,
@@ -1744,7 +1989,11 @@ fn rotate_command_90deg_around_z_swaps_x_and_y_extents_for_unit_box_at_origin() 
     use std::f64::consts::FRAC_PI_2;
     let mut session = Session::new();
     let id = match session
-        .execute(Command::CreateBox { dx: 2.0, dy: 4.0, dz: 6.0 })
+        .execute(Command::CreateBox {
+            dx: 2.0,
+            dy: 4.0,
+            dz: 6.0,
+        })
         .unwrap()
     {
         Outcome::SolidCreated { id, .. } => id,
@@ -1752,7 +2001,12 @@ fn rotate_command_90deg_around_z_swaps_x_and_y_extents_for_unit_box_at_origin() 
     };
     // Centre at origin so the rotation produces a clean swap.
     session
-        .execute(Command::Translate { id, dx: -1.0, dy: -2.0, dz: -3.0 })
+        .execute(Command::Translate {
+            id,
+            dx: -1.0,
+            dy: -2.0,
+            dz: -3.0,
+        })
         .unwrap();
     let before = session.document().bounding_box(id).unwrap();
     assert!((before.size()[0] - 2.0).abs() < 1e-9);
@@ -1768,8 +2022,14 @@ fn rotate_command_90deg_around_z_swaps_x_and_y_extents_for_unit_box_at_origin() 
     assert!(matches!(outcome, Outcome::SolidModified { .. }));
     let after = session.document().bounding_box(id).unwrap();
     let size = after.size();
-    assert!((size[0] - 4.0).abs() < 1e-6, "x-extent now matches old y, got {size:?}");
-    assert!((size[1] - 2.0).abs() < 1e-6, "y-extent now matches old x, got {size:?}");
+    assert!(
+        (size[0] - 4.0).abs() < 1e-6,
+        "x-extent now matches old y, got {size:?}"
+    );
+    assert!(
+        (size[1] - 2.0).abs() < 1e-6,
+        "y-extent now matches old x, got {size:?}"
+    );
     assert!((size[2] - 6.0).abs() < 1e-9, "z unchanged");
 }
 
@@ -1779,7 +2039,11 @@ fn rotate_command_preserves_volume() {
     use std::f64::consts::PI;
     let mut session = Session::new();
     let id = match session
-        .execute(Command::CreateBox { dx: 3.0, dy: 5.0, dz: 7.0 })
+        .execute(Command::CreateBox {
+            dx: 3.0,
+            dy: 5.0,
+            dz: 7.0,
+        })
         .unwrap()
     {
         Outcome::SolidCreated { id, .. } => id,
@@ -1795,7 +2059,10 @@ fn rotate_command_preserves_volume() {
         })
         .unwrap();
     let v_after = session.document().measure_solid(id).unwrap().volume;
-    assert!((v_before - v_after).abs() < 1e-6, "volume must be preserved by rotation");
+    assert!(
+        (v_before - v_after).abs() < 1e-6,
+        "volume must be preserved by rotation"
+    );
 }
 
 #[test]
@@ -1803,7 +2070,11 @@ fn rotate_command_with_zero_axis_is_rejected() {
     use cadkernel_api::{ApiError, Command, Outcome, Session};
     let mut session = Session::new();
     let id = match session
-        .execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 })
+        .execute(Command::CreateBox {
+            dx: 1.0,
+            dy: 1.0,
+            dz: 1.0,
+        })
         .unwrap()
     {
         Outcome::SolidCreated { id, .. } => id,
@@ -1852,7 +2123,12 @@ fn rotate_command_round_trips_through_json() {
     assert_eq!(json["point"], serde_json::json!([1.0, 2.0, 3.0]));
     let back: Command = serde_json::from_value(json).unwrap();
     match back {
-        Command::Rotate { id, axis, angle_rad, point } => {
+        Command::Rotate {
+            id,
+            axis,
+            angle_rad,
+            point,
+        } => {
             assert_eq!(id, SolidId(7));
             assert_eq!(axis, [0.0, 1.0, 0.0]);
             assert_eq!(angle_rad, std::f64::consts::FRAC_PI_2);
@@ -1868,7 +2144,11 @@ fn rotate_command_undo_restores_original_geometry() {
     use std::f64::consts::FRAC_PI_2;
     let mut session = Session::new();
     let id = match session
-        .execute(Command::CreateBox { dx: 2.0, dy: 4.0, dz: 6.0 })
+        .execute(Command::CreateBox {
+            dx: 2.0,
+            dy: 4.0,
+            dz: 6.0,
+        })
         .unwrap()
     {
         Outcome::SolidCreated { id, .. } => id,
@@ -1893,11 +2173,33 @@ fn rotate_command_undo_restores_original_geometry() {
 fn find_by_label_command_returns_only_matching_solids_case_insensitive() {
     use cadkernel_api::{Command, Outcome, Session, SolidId};
     let mut session = Session::new();
-    session.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    session.execute(Command::CreateSphere { radius: 1.0 }).unwrap();
-    session.execute(Command::CreateCylinder { radius: 1.0, height: 1.0 }).unwrap();
-    session.execute(Command::Rename { id: SolidId(1), label: "MySphere".into() }).unwrap();
-    let outcome = session.execute(Command::FindByLabel { query: "SPH".into() }).unwrap();
+    session
+        .execute(Command::CreateBox {
+            dx: 1.0,
+            dy: 1.0,
+            dz: 1.0,
+        })
+        .unwrap();
+    session
+        .execute(Command::CreateSphere { radius: 1.0 })
+        .unwrap();
+    session
+        .execute(Command::CreateCylinder {
+            radius: 1.0,
+            height: 1.0,
+        })
+        .unwrap();
+    session
+        .execute(Command::Rename {
+            id: SolidId(1),
+            label: "MySphere".into(),
+        })
+        .unwrap();
+    let outcome = session
+        .execute(Command::FindByLabel {
+            query: "SPH".into(),
+        })
+        .unwrap();
     match outcome {
         Outcome::SolidsListed { entries } => {
             assert_eq!(entries.len(), 1);
@@ -1912,9 +2214,21 @@ fn find_by_label_command_returns_only_matching_solids_case_insensitive() {
 fn find_by_label_command_with_empty_query_returns_every_solid() {
     use cadkernel_api::{Command, Outcome, Session};
     let mut session = Session::new();
-    session.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    session.execute(Command::CreateSphere { radius: 1.0 }).unwrap();
-    let outcome = session.execute(Command::FindByLabel { query: String::new() }).unwrap();
+    session
+        .execute(Command::CreateBox {
+            dx: 1.0,
+            dy: 1.0,
+            dz: 1.0,
+        })
+        .unwrap();
+    session
+        .execute(Command::CreateSphere { radius: 1.0 })
+        .unwrap();
+    let outcome = session
+        .execute(Command::FindByLabel {
+            query: String::new(),
+        })
+        .unwrap();
     match outcome {
         Outcome::SolidsListed { entries } => assert_eq!(entries.len(), 2),
         other => panic!("expected SolidsListed, got {other:?}"),
@@ -1925,8 +2239,18 @@ fn find_by_label_command_with_empty_query_returns_every_solid() {
 fn find_by_label_command_returns_empty_when_no_match() {
     use cadkernel_api::{Command, Outcome, Session};
     let mut session = Session::new();
-    session.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    let outcome = session.execute(Command::FindByLabel { query: "nonexistent".into() }).unwrap();
+    session
+        .execute(Command::CreateBox {
+            dx: 1.0,
+            dy: 1.0,
+            dz: 1.0,
+        })
+        .unwrap();
+    let outcome = session
+        .execute(Command::FindByLabel {
+            query: "nonexistent".into(),
+        })
+        .unwrap();
     match outcome {
         Outcome::SolidsListed { entries } => assert!(entries.is_empty()),
         other => panic!("expected SolidsListed, got {other:?}"),
@@ -1937,16 +2261,28 @@ fn find_by_label_command_returns_empty_when_no_match() {
 fn find_by_label_command_does_not_append_history() {
     use cadkernel_api::{Command, Session};
     let mut session = Session::new();
-    session.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    session
+        .execute(Command::CreateBox {
+            dx: 1.0,
+            dy: 1.0,
+            dz: 1.0,
+        })
+        .unwrap();
     let history_len_before = session.document().history().len();
-    session.execute(Command::FindByLabel { query: "Box".into() }).unwrap();
+    session
+        .execute(Command::FindByLabel {
+            query: "Box".into(),
+        })
+        .unwrap();
     assert_eq!(session.document().history().len(), history_len_before);
 }
 
 #[test]
 fn find_by_label_command_round_trips_through_json() {
     use cadkernel_api::Command;
-    let cmd = Command::FindByLabel { query: "myPart".into() };
+    let cmd = Command::FindByLabel {
+        query: "myPart".into(),
+    };
     let json = serde_json::to_value(&cmd).unwrap();
     assert_eq!(json["op"], "find_by_label");
     assert_eq!(json["query"], "myPart");
@@ -1961,9 +2297,24 @@ fn find_by_label_command_round_trips_through_json() {
 fn history_events_command_returns_recorded_events_in_execution_order() {
     use cadkernel_api::{Command, Outcome, Session, SolidId};
     let mut session = Session::new();
-    session.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    session.execute(Command::CreateSphere { radius: 1.0 }).unwrap();
-    session.execute(Command::Translate { id: SolidId(0), dx: 1.0, dy: 0.0, dz: 0.0 }).unwrap();
+    session
+        .execute(Command::CreateBox {
+            dx: 1.0,
+            dy: 1.0,
+            dz: 1.0,
+        })
+        .unwrap();
+    session
+        .execute(Command::CreateSphere { radius: 1.0 })
+        .unwrap();
+    session
+        .execute(Command::Translate {
+            id: SolidId(0),
+            dx: 1.0,
+            dy: 0.0,
+            dz: 0.0,
+        })
+        .unwrap();
     let outcome = session.execute(Command::HistoryEvents).unwrap();
     match outcome {
         Outcome::HistoryListed { events } => {
@@ -1992,7 +2343,13 @@ fn history_events_command_on_fresh_session_returns_empty_list() {
 fn history_events_command_does_not_append_history() {
     use cadkernel_api::{Command, Session};
     let mut session = Session::new();
-    session.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    session
+        .execute(Command::CreateBox {
+            dx: 1.0,
+            dy: 1.0,
+            dz: 1.0,
+        })
+        .unwrap();
     let len_before = session.document().history().len();
     session.execute(Command::HistoryEvents).unwrap();
     session.execute(Command::HistoryEvents).unwrap();
@@ -2013,7 +2370,13 @@ fn history_events_command_round_trips_through_json() {
 fn history_events_outcome_round_trips_through_json() {
     use cadkernel_api::{Command, Outcome, Session};
     let mut session = Session::new();
-    session.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    session
+        .execute(Command::CreateBox {
+            dx: 1.0,
+            dy: 1.0,
+            dz: 1.0,
+        })
+        .unwrap();
     let outcome = session.execute(Command::HistoryEvents).unwrap();
     let json = serde_json::to_value(&outcome).unwrap();
     let back: Outcome = serde_json::from_value(json).unwrap();
@@ -2032,7 +2395,10 @@ fn stats_command_reports_zero_on_fresh_session() {
     let mut s = Session::new();
     let outcome = s.execute(Command::Stats).unwrap();
     match outcome {
-        Outcome::Stats { solid_count, history_count } => {
+        Outcome::Stats {
+            solid_count,
+            history_count,
+        } => {
             assert_eq!(solid_count, 0);
             assert_eq!(history_count, 0);
         }
@@ -2044,12 +2410,24 @@ fn stats_command_reports_zero_on_fresh_session() {
 fn stats_command_reflects_solid_and_history_counts() {
     use cadkernel_api::{Command, Outcome, Session};
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     s.execute(Command::CreateSphere { radius: 1.0 }).unwrap();
-    s.execute(Command::CreateCylinder { radius: 1.0, height: 1.0 }).unwrap();
+    s.execute(Command::CreateCylinder {
+        radius: 1.0,
+        height: 1.0,
+    })
+    .unwrap();
     let outcome = s.execute(Command::Stats).unwrap();
     match outcome {
-        Outcome::Stats { solid_count, history_count } => {
+        Outcome::Stats {
+            solid_count,
+            history_count,
+        } => {
             assert_eq!(solid_count, 3);
             assert_eq!(history_count, 3);
         }
@@ -2061,12 +2439,20 @@ fn stats_command_reflects_solid_and_history_counts() {
 fn stats_command_after_delete_decreases_solid_count_but_keeps_history() {
     use cadkernel_api::{Command, Outcome, Session, SolidId};
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     s.execute(Command::CreateSphere { radius: 1.0 }).unwrap();
     s.execute(Command::DeleteSolid { id: SolidId(0) }).unwrap();
     let outcome = s.execute(Command::Stats).unwrap();
     match outcome {
-        Outcome::Stats { solid_count, history_count } => {
+        Outcome::Stats {
+            solid_count,
+            history_count,
+        } => {
             assert_eq!(solid_count, 1);
             assert_eq!(history_count, 3);
         }
@@ -2078,7 +2464,12 @@ fn stats_command_after_delete_decreases_solid_count_but_keeps_history() {
 fn stats_command_does_not_append_history() {
     use cadkernel_api::{Command, Session};
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let len = s.document().history().len();
     s.execute(Command::Stats).unwrap();
     s.execute(Command::Stats).unwrap();
@@ -2093,12 +2484,20 @@ fn stats_command_round_trips_through_json() {
     assert_eq!(cjson["op"], "stats");
     let _: Command = serde_json::from_value(cjson).unwrap();
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let outcome = s.execute(Command::Stats).unwrap();
     let ojson = serde_json::to_value(&outcome).unwrap();
     let back: Outcome = serde_json::from_value(ojson).unwrap();
     match back {
-        Outcome::Stats { solid_count, history_count } => {
+        Outcome::Stats {
+            solid_count,
+            history_count,
+        } => {
             assert_eq!(solid_count, 1);
             assert_eq!(history_count, 1);
         }
@@ -2110,14 +2509,24 @@ fn stats_command_round_trips_through_json() {
 fn scale_non_uniform_command_stretches_unit_box_per_axis() {
     use cadkernel_api::{Command, Outcome, Session, SolidId};
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    let outcome = s.execute(Command::ScaleNonUniform {
-        id: SolidId(0),
-        factors: [2.0, 3.0, 4.0],
-        point: [0.0, 0.0, 0.0],
-    }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    let outcome = s
+        .execute(Command::ScaleNonUniform {
+            id: SolidId(0),
+            factors: [2.0, 3.0, 4.0],
+            point: [0.0, 0.0, 0.0],
+        })
+        .unwrap();
     assert!(matches!(outcome, Outcome::SolidModified { id } if id == SolidId(0)));
-    if let Outcome::Measured { bbox_min, bbox_max, .. } = s.execute(Command::Measure { id: SolidId(0) }).unwrap() {
+    if let Outcome::Measured {
+        bbox_min, bbox_max, ..
+    } = s.execute(Command::Measure { id: SolidId(0) }).unwrap()
+    {
         let dx = bbox_max[0] - bbox_min[0];
         let dy = bbox_max[1] - bbox_min[1];
         let dz = bbox_max[2] - bbox_min[2];
@@ -2133,13 +2542,22 @@ fn scale_non_uniform_command_stretches_unit_box_per_axis() {
 fn scale_non_uniform_command_with_pivot_holds_pivot_point_invariant() {
     use cadkernel_api::{Command, Outcome, Session, SolidId};
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 2.0,
+        dy: 2.0,
+        dz: 2.0,
+    })
+    .unwrap();
     s.execute(Command::ScaleNonUniform {
         id: SolidId(0),
         factors: [3.0, 3.0, 3.0],
         point: [0.0, 0.0, 0.0],
-    }).unwrap();
-    if let Outcome::Measured { bbox_min, bbox_max, .. } = s.execute(Command::Measure { id: SolidId(0) }).unwrap() {
+    })
+    .unwrap();
+    if let Outcome::Measured {
+        bbox_min, bbox_max, ..
+    } = s.execute(Command::Measure { id: SolidId(0) }).unwrap()
+    {
         assert!((bbox_min[0] - 0.0).abs() < 1e-9);
         assert!((bbox_max[0] - 6.0).abs() < 1e-9);
     } else {
@@ -2151,18 +2569,27 @@ fn scale_non_uniform_command_with_pivot_holds_pivot_point_invariant() {
 fn scale_non_uniform_command_rejects_zero_or_negative_factor() {
     use cadkernel_api::{ApiError, Command, Session, SolidId};
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    let err = s.execute(Command::ScaleNonUniform {
-        id: SolidId(0),
-        factors: [1.0, 0.0, 1.0],
-        point: [0.0, 0.0, 0.0],
-    }).unwrap_err();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    let err = s
+        .execute(Command::ScaleNonUniform {
+            id: SolidId(0),
+            factors: [1.0, 0.0, 1.0],
+            point: [0.0, 0.0, 0.0],
+        })
+        .unwrap_err();
     assert!(matches!(err, ApiError::InvalidArgument(_)));
-    let err = s.execute(Command::ScaleNonUniform {
-        id: SolidId(0),
-        factors: [1.0, 1.0, -2.0],
-        point: [0.0, 0.0, 0.0],
-    }).unwrap_err();
+    let err = s
+        .execute(Command::ScaleNonUniform {
+            id: SolidId(0),
+            factors: [1.0, 1.0, -2.0],
+            point: [0.0, 0.0, 0.0],
+        })
+        .unwrap_err();
     assert!(matches!(err, ApiError::InvalidArgument(_)));
 }
 
@@ -2170,11 +2597,13 @@ fn scale_non_uniform_command_rejects_zero_or_negative_factor() {
 fn scale_non_uniform_command_returns_unknown_solid_for_invalid_id() {
     use cadkernel_api::{ApiError, Command, Session, SolidId};
     let mut s = Session::new();
-    let err = s.execute(Command::ScaleNonUniform {
-        id: SolidId(99),
-        factors: [2.0, 2.0, 2.0],
-        point: [0.0, 0.0, 0.0],
-    }).unwrap_err();
+    let err = s
+        .execute(Command::ScaleNonUniform {
+            id: SolidId(99),
+            factors: [2.0, 2.0, 2.0],
+            point: [0.0, 0.0, 0.0],
+        })
+        .unwrap_err();
     assert!(matches!(err, ApiError::UnknownSolid(_)));
 }
 
@@ -2204,19 +2633,35 @@ fn scale_non_uniform_command_round_trips_through_json() {
 fn scale_non_uniform_command_undo_restores_original_geometry() {
     use cadkernel_api::{Command, Outcome, Session, SolidId};
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
-    let before = if let Outcome::Measured { bbox_min, bbox_max, .. } =
-        s.execute(Command::Measure { id: SolidId(0) }).unwrap()
-    { (bbox_min, bbox_max) } else { panic!() };
+    s.execute(Command::CreateBox {
+        dx: 2.0,
+        dy: 2.0,
+        dz: 2.0,
+    })
+    .unwrap();
+    let before = if let Outcome::Measured {
+        bbox_min, bbox_max, ..
+    } = s.execute(Command::Measure { id: SolidId(0) }).unwrap()
+    {
+        (bbox_min, bbox_max)
+    } else {
+        panic!()
+    };
     s.execute(Command::ScaleNonUniform {
         id: SolidId(0),
         factors: [5.0, 0.5, 2.0],
         point: [0.0, 0.0, 0.0],
-    }).unwrap();
+    })
+    .unwrap();
     s.undo().unwrap();
-    let after = if let Outcome::Measured { bbox_min, bbox_max, .. } =
-        s.execute(Command::Measure { id: SolidId(0) }).unwrap()
-    { (bbox_min, bbox_max) } else { panic!() };
+    let after = if let Outcome::Measured {
+        bbox_min, bbox_max, ..
+    } = s.execute(Command::Measure { id: SolidId(0) }).unwrap()
+    {
+        (bbox_min, bbox_max)
+    } else {
+        panic!()
+    };
     for i in 0..3 {
         assert!((before.0[i] - after.0[i]).abs() < 1e-9);
         assert!((before.1[i] - after.1[i]).abs() < 1e-9);
@@ -2227,37 +2672,73 @@ fn scale_non_uniform_command_undo_restores_original_geometry() {
 fn center_on_origin_command_moves_translated_box_back_to_origin() {
     use cadkernel_api::{Command, Outcome, Session, SolidId};
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
-    s.execute(Command::Translate { id: SolidId(0), dx: 10.0, dy: 20.0, dz: 30.0 }).unwrap();
-    let outcome = s.execute(Command::CenterOnOrigin { id: SolidId(0) }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 2.0,
+        dy: 2.0,
+        dz: 2.0,
+    })
+    .unwrap();
+    s.execute(Command::Translate {
+        id: SolidId(0),
+        dx: 10.0,
+        dy: 20.0,
+        dz: 30.0,
+    })
+    .unwrap();
+    let outcome = s
+        .execute(Command::CenterOnOrigin { id: SolidId(0) })
+        .unwrap();
     assert!(matches!(outcome, Outcome::SolidModified { id } if id == SolidId(0)));
-    if let Outcome::Measured { centroid, .. } = s.execute(Command::Measure { id: SolidId(0) }).unwrap() {
+    if let Outcome::Measured { centroid, .. } =
+        s.execute(Command::Measure { id: SolidId(0) }).unwrap()
+    {
         assert!(centroid[0].abs() < 1e-9, "x={}", centroid[0]);
         assert!(centroid[1].abs() < 1e-9, "y={}", centroid[1]);
         assert!(centroid[2].abs() < 1e-9, "z={}", centroid[2]);
-    } else { panic!("expected Measured"); }
+    } else {
+        panic!("expected Measured");
+    }
 }
 
 #[test]
 fn center_on_origin_command_already_centered_box_stays_at_origin() {
     use cadkernel_api::{Command, Outcome, Session, SolidId};
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    s.execute(Command::Translate { id: SolidId(0), dx: -0.5, dy: -0.5, dz: -0.5 }).unwrap();
-    s.execute(Command::CenterOnOrigin { id: SolidId(0) }).unwrap();
-    if let Outcome::Measured { bbox_min, bbox_max, .. } = s.execute(Command::Measure { id: SolidId(0) }).unwrap() {
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    s.execute(Command::Translate {
+        id: SolidId(0),
+        dx: -0.5,
+        dy: -0.5,
+        dz: -0.5,
+    })
+    .unwrap();
+    s.execute(Command::CenterOnOrigin { id: SolidId(0) })
+        .unwrap();
+    if let Outcome::Measured {
+        bbox_min, bbox_max, ..
+    } = s.execute(Command::Measure { id: SolidId(0) }).unwrap()
+    {
         for i in 0..3 {
             assert!((bbox_min[i] + 0.5).abs() < 1e-9);
             assert!((bbox_max[i] - 0.5).abs() < 1e-9);
         }
-    } else { panic!("expected Measured"); }
+    } else {
+        panic!("expected Measured");
+    }
 }
 
 #[test]
 fn center_on_origin_command_returns_unknown_solid_for_invalid_id() {
     use cadkernel_api::{ApiError, Command, Session, SolidId};
     let mut s = Session::new();
-    let err = s.execute(Command::CenterOnOrigin { id: SolidId(7) }).unwrap_err();
+    let err = s
+        .execute(Command::CenterOnOrigin { id: SolidId(7) })
+        .unwrap_err();
     assert!(matches!(err, ApiError::UnknownSolid(_)));
 }
 
@@ -2279,62 +2760,159 @@ fn center_on_origin_command_round_trips_through_json() {
 fn center_on_origin_command_undo_restores_original_position() {
     use cadkernel_api::{Command, Outcome, Session, SolidId};
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    s.execute(Command::Translate { id: SolidId(0), dx: 5.0, dy: 0.0, dz: 0.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    s.execute(Command::Translate {
+        id: SolidId(0),
+        dx: 5.0,
+        dy: 0.0,
+        dz: 0.0,
+    })
+    .unwrap();
     let before = if let Outcome::Measured { centroid, .. } =
-        s.execute(Command::Measure { id: SolidId(0) }).unwrap() { centroid } else { panic!() };
-    s.execute(Command::CenterOnOrigin { id: SolidId(0) }).unwrap();
+        s.execute(Command::Measure { id: SolidId(0) }).unwrap()
+    {
+        centroid
+    } else {
+        panic!()
+    };
+    s.execute(Command::CenterOnOrigin { id: SolidId(0) })
+        .unwrap();
     s.undo().unwrap();
-    if let Outcome::Measured { centroid, .. } = s.execute(Command::Measure { id: SolidId(0) }).unwrap() {
-        for i in 0..3 { assert!((before[i] - centroid[i]).abs() < 1e-9); }
-    } else { panic!("expected Measured"); }
+    if let Outcome::Measured { centroid, .. } =
+        s.execute(Command::Measure { id: SolidId(0) }).unwrap()
+    {
+        for i in 0..3 {
+            assert!((before[i] - centroid[i]).abs() < 1e-9);
+        }
+    } else {
+        panic!("expected Measured");
+    }
 }
 
 #[test]
 fn align_to_command_translates_source_centroid_onto_target_centroid() {
     let mut s = Session::new();
     // source: 1×1×1 box at origin, centroid (0.5, 0.5, 0.5)
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     // target: 1×1×1 box translated to (10, 20, 30), centroid (10.5, 20.5, 30.5)
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    s.execute(Command::Translate { id: SolidId(1), dx: 10.0, dy: 20.0, dz: 30.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    s.execute(Command::Translate {
+        id: SolidId(1),
+        dx: 10.0,
+        dy: 20.0,
+        dz: 30.0,
+    })
+    .unwrap();
     let target_c = if let Outcome::Measured { centroid, .. } =
         s.execute(Command::Measure { id: SolidId(1) }).unwrap()
-    { centroid } else { panic!("expected Measured") };
-    let outcome = s.execute(Command::AlignTo { id: SolidId(0), target_id: SolidId(1) }).unwrap();
+    {
+        centroid
+    } else {
+        panic!("expected Measured")
+    };
+    let outcome = s
+        .execute(Command::AlignTo {
+            id: SolidId(0),
+            target_id: SolidId(1),
+        })
+        .unwrap();
     assert!(matches!(outcome, Outcome::SolidModified { id } if id == SolidId(0)));
-    if let Outcome::Measured { centroid, .. } = s.execute(Command::Measure { id: SolidId(0) }).unwrap() {
-        for i in 0..3 { assert!((centroid[i] - target_c[i]).abs() < 1e-9); }
-    } else { panic!("expected Measured"); }
+    if let Outcome::Measured { centroid, .. } =
+        s.execute(Command::Measure { id: SolidId(0) }).unwrap()
+    {
+        for i in 0..3 {
+            assert!((centroid[i] - target_c[i]).abs() < 1e-9);
+        }
+    } else {
+        panic!("expected Measured");
+    }
 }
 
 #[test]
 fn align_to_command_self_alignment_is_noop() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 2.0, dy: 4.0, dz: 6.0 }).unwrap();
-    s.execute(Command::Translate { id: SolidId(0), dx: 5.0, dy: -3.0, dz: 7.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 2.0,
+        dy: 4.0,
+        dz: 6.0,
+    })
+    .unwrap();
+    s.execute(Command::Translate {
+        id: SolidId(0),
+        dx: 5.0,
+        dy: -3.0,
+        dz: 7.0,
+    })
+    .unwrap();
     let before = if let Outcome::Measured { centroid, .. } =
         s.execute(Command::Measure { id: SolidId(0) }).unwrap()
-    { centroid } else { panic!("expected Measured") };
-    s.execute(Command::AlignTo { id: SolidId(0), target_id: SolidId(0) }).unwrap();
-    if let Outcome::Measured { centroid, .. } = s.execute(Command::Measure { id: SolidId(0) }).unwrap() {
-        for i in 0..3 { assert!((before[i] - centroid[i]).abs() < 1e-12); }
-    } else { panic!("expected Measured"); }
+    {
+        centroid
+    } else {
+        panic!("expected Measured")
+    };
+    s.execute(Command::AlignTo {
+        id: SolidId(0),
+        target_id: SolidId(0),
+    })
+    .unwrap();
+    if let Outcome::Measured { centroid, .. } =
+        s.execute(Command::Measure { id: SolidId(0) }).unwrap()
+    {
+        for i in 0..3 {
+            assert!((before[i] - centroid[i]).abs() < 1e-12);
+        }
+    } else {
+        panic!("expected Measured");
+    }
 }
 
 #[test]
 fn align_to_command_returns_unknown_solid_for_invalid_source_or_target() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    let err = s.execute(Command::AlignTo { id: SolidId(0), target_id: SolidId(7) }).unwrap_err();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    let err = s
+        .execute(Command::AlignTo {
+            id: SolidId(0),
+            target_id: SolidId(7),
+        })
+        .unwrap_err();
     assert!(matches!(err, ApiError::UnknownSolid(_)));
-    let err2 = s.execute(Command::AlignTo { id: SolidId(7), target_id: SolidId(0) }).unwrap_err();
+    let err2 = s
+        .execute(Command::AlignTo {
+            id: SolidId(7),
+            target_id: SolidId(0),
+        })
+        .unwrap_err();
     assert!(matches!(err2, ApiError::UnknownSolid(_)));
 }
 
 #[test]
 fn align_to_command_round_trips_through_json() {
-    let cmd = Command::AlignTo { id: SolidId(2), target_id: SolidId(5) };
+    let cmd = Command::AlignTo {
+        id: SolidId(2),
+        target_id: SolidId(5),
+    };
     let json = serde_json::to_string(&cmd).unwrap();
     assert!(json.contains("\"op\":\"align_to\""));
     let back: Command = serde_json::from_str(&json).unwrap();
@@ -2350,27 +2928,68 @@ fn align_to_command_round_trips_through_json() {
 #[test]
 fn align_to_command_undo_restores_original_position() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    s.execute(Command::Translate { id: SolidId(1), dx: 100.0, dy: 0.0, dz: 0.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    s.execute(Command::Translate {
+        id: SolidId(1),
+        dx: 100.0,
+        dy: 0.0,
+        dz: 0.0,
+    })
+    .unwrap();
     let before = if let Outcome::Measured { centroid, .. } =
         s.execute(Command::Measure { id: SolidId(0) }).unwrap()
-    { centroid } else { panic!("expected Measured") };
-    s.execute(Command::AlignTo { id: SolidId(0), target_id: SolidId(1) }).unwrap();
+    {
+        centroid
+    } else {
+        panic!("expected Measured")
+    };
+    s.execute(Command::AlignTo {
+        id: SolidId(0),
+        target_id: SolidId(1),
+    })
+    .unwrap();
     s.undo().unwrap();
-    if let Outcome::Measured { centroid, .. } = s.execute(Command::Measure { id: SolidId(0) }).unwrap() {
-        for i in 0..3 { assert!((before[i] - centroid[i]).abs() < 1e-9); }
-    } else { panic!("expected Measured"); }
+    if let Outcome::Measured { centroid, .. } =
+        s.execute(Command::Measure { id: SolidId(0) }).unwrap()
+    {
+        for i in 0..3 {
+            assert!((before[i] - centroid[i]).abs() < 1e-9);
+        }
+    } else {
+        panic!("expected Measured");
+    }
 }
 
 #[test]
 fn scale_to_fit_command_normalises_largest_extent_to_target_size() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 2.0, dy: 4.0, dz: 8.0 }).unwrap();
-    let outcome = s.execute(Command::ScaleToFit { id: SolidId(0), target_size: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 2.0,
+        dy: 4.0,
+        dz: 8.0,
+    })
+    .unwrap();
+    let outcome = s
+        .execute(Command::ScaleToFit {
+            id: SolidId(0),
+            target_size: 1.0,
+        })
+        .unwrap();
     assert!(matches!(outcome, Outcome::SolidModified { id } if id == SolidId(0)));
-    if let Outcome::Measured { bbox_min, bbox_max, .. } =
-        s.execute(Command::Measure { id: SolidId(0) }).unwrap()
+    if let Outcome::Measured {
+        bbox_min, bbox_max, ..
+    } = s.execute(Command::Measure { id: SolidId(0) }).unwrap()
     {
         let extents = [
             bbox_max[0] - bbox_min[0],
@@ -2383,29 +3002,54 @@ fn scale_to_fit_command_normalises_largest_extent_to_target_size() {
         assert!((extents[0] - 0.25).abs() < 1e-9);
         assert!((extents[1] - 0.5).abs() < 1e-9);
         assert!((extents[2] - 1.0).abs() < 1e-9);
-    } else { panic!("expected Measured"); }
+    } else {
+        panic!("expected Measured");
+    }
 }
 
 #[test]
 fn scale_to_fit_command_rejects_non_positive_target_size() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    let err = s.execute(Command::ScaleToFit { id: SolidId(0), target_size: 0.0 }).unwrap_err();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    let err = s
+        .execute(Command::ScaleToFit {
+            id: SolidId(0),
+            target_size: 0.0,
+        })
+        .unwrap_err();
     assert!(matches!(err, ApiError::InvalidArgument(_)));
-    let err2 = s.execute(Command::ScaleToFit { id: SolidId(0), target_size: -2.0 }).unwrap_err();
+    let err2 = s
+        .execute(Command::ScaleToFit {
+            id: SolidId(0),
+            target_size: -2.0,
+        })
+        .unwrap_err();
     assert!(matches!(err2, ApiError::InvalidArgument(_)));
 }
 
 #[test]
 fn scale_to_fit_command_returns_unknown_solid_for_invalid_id() {
     let mut s = Session::new();
-    let err = s.execute(Command::ScaleToFit { id: SolidId(7), target_size: 1.0 }).unwrap_err();
+    let err = s
+        .execute(Command::ScaleToFit {
+            id: SolidId(7),
+            target_size: 1.0,
+        })
+        .unwrap_err();
     assert!(matches!(err, ApiError::UnknownSolid(_)));
 }
 
 #[test]
 fn scale_to_fit_command_round_trips_through_json() {
-    let cmd = Command::ScaleToFit { id: SolidId(3), target_size: 5.5 };
+    let cmd = Command::ScaleToFit {
+        id: SolidId(3),
+        target_size: 5.5,
+    };
     let json = serde_json::to_string(&cmd).unwrap();
     assert!(json.contains("\"op\":\"scale_to_fit\""));
     let back: Command = serde_json::from_str(&json).unwrap();
@@ -2421,58 +3065,114 @@ fn scale_to_fit_command_round_trips_through_json() {
 #[test]
 fn scale_to_fit_command_undo_restores_original_size() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 4.0, dy: 4.0, dz: 4.0 }).unwrap();
-    let before = if let Outcome::Measured { bbox_min, bbox_max, .. } =
-        s.execute(Command::Measure { id: SolidId(0) }).unwrap()
-    { (bbox_min, bbox_max) } else { panic!() };
-    s.execute(Command::ScaleToFit { id: SolidId(0), target_size: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 4.0,
+        dy: 4.0,
+        dz: 4.0,
+    })
+    .unwrap();
+    let before = if let Outcome::Measured {
+        bbox_min, bbox_max, ..
+    } = s.execute(Command::Measure { id: SolidId(0) }).unwrap()
+    {
+        (bbox_min, bbox_max)
+    } else {
+        panic!()
+    };
+    s.execute(Command::ScaleToFit {
+        id: SolidId(0),
+        target_size: 1.0,
+    })
+    .unwrap();
     s.undo().unwrap();
-    if let Outcome::Measured { bbox_min, bbox_max, .. } =
-        s.execute(Command::Measure { id: SolidId(0) }).unwrap()
+    if let Outcome::Measured {
+        bbox_min, bbox_max, ..
+    } = s.execute(Command::Measure { id: SolidId(0) }).unwrap()
     {
         for i in 0..3 {
             assert!((before.0[i] - bbox_min[i]).abs() < 1e-9);
             assert!((before.1[i] - bbox_max[i]).abs() < 1e-9);
         }
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 #[test]
 fn translate_to_command_moves_centroid_to_target_point() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
-    let outcome = s.execute(Command::TranslateTo { id: SolidId(0), point: [10.0, -5.0, 3.5] }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 2.0,
+        dy: 2.0,
+        dz: 2.0,
+    })
+    .unwrap();
+    let outcome = s
+        .execute(Command::TranslateTo {
+            id: SolidId(0),
+            point: [10.0, -5.0, 3.5],
+        })
+        .unwrap();
     assert!(matches!(outcome, Outcome::SolidModified { id } if id == SolidId(0)));
-    if let Outcome::Measured { centroid, .. } = s.execute(Command::Measure { id: SolidId(0) }).unwrap() {
+    if let Outcome::Measured { centroid, .. } =
+        s.execute(Command::Measure { id: SolidId(0) }).unwrap()
+    {
         assert!((centroid[0] - 10.0).abs() < 1e-9);
         assert!((centroid[1] - (-5.0)).abs() < 1e-9);
         assert!((centroid[2] - 3.5).abs() < 1e-9);
-    } else { panic!("expected Measured"); }
+    } else {
+        panic!("expected Measured");
+    }
 }
 
 #[test]
 fn translate_to_command_preserves_size() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 2.0, dy: 4.0, dz: 6.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 2.0,
+        dy: 4.0,
+        dz: 6.0,
+    })
+    .unwrap();
     let before = if let Outcome::Measured { volume, .. } =
         s.execute(Command::Measure { id: SolidId(0) }).unwrap()
-    { volume } else { panic!() };
-    s.execute(Command::TranslateTo { id: SolidId(0), point: [100.0, 200.0, 300.0] }).unwrap();
-    if let Outcome::Measured { volume, .. } = s.execute(Command::Measure { id: SolidId(0) }).unwrap() {
+    {
+        volume
+    } else {
+        panic!()
+    };
+    s.execute(Command::TranslateTo {
+        id: SolidId(0),
+        point: [100.0, 200.0, 300.0],
+    })
+    .unwrap();
+    if let Outcome::Measured { volume, .. } =
+        s.execute(Command::Measure { id: SolidId(0) }).unwrap()
+    {
         assert!((volume - before).abs() < 1e-9);
-    } else { panic!("expected Measured"); }
+    } else {
+        panic!("expected Measured");
+    }
 }
 
 #[test]
 fn translate_to_command_returns_unknown_solid_for_invalid_id() {
     let mut s = Session::new();
-    let err = s.execute(Command::TranslateTo { id: SolidId(7), point: [0.0, 0.0, 0.0] }).unwrap_err();
+    let err = s
+        .execute(Command::TranslateTo {
+            id: SolidId(7),
+            point: [0.0, 0.0, 0.0],
+        })
+        .unwrap_err();
     assert!(matches!(err, ApiError::UnknownSolid(_)));
 }
 
 #[test]
 fn translate_to_command_round_trips_through_json() {
-    let cmd = Command::TranslateTo { id: SolidId(4), point: [1.5, -2.5, 9.0] };
+    let cmd = Command::TranslateTo {
+        id: SolidId(4),
+        point: [1.5, -2.5, 9.0],
+    };
     let json = serde_json::to_string(&cmd).unwrap();
     assert!(json.contains("\"op\":\"translate_to\""));
     let back: Command = serde_json::from_str(&json).unwrap();
@@ -2490,39 +3190,82 @@ fn translate_to_command_round_trips_through_json() {
 #[test]
 fn translate_to_command_undo_restores_original_centroid() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    s.execute(Command::Translate { id: SolidId(0), dx: 7.0, dy: 8.0, dz: 9.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    s.execute(Command::Translate {
+        id: SolidId(0),
+        dx: 7.0,
+        dy: 8.0,
+        dz: 9.0,
+    })
+    .unwrap();
     let before = if let Outcome::Measured { centroid, .. } =
         s.execute(Command::Measure { id: SolidId(0) }).unwrap()
-    { centroid } else { panic!() };
-    s.execute(Command::TranslateTo { id: SolidId(0), point: [0.0, 0.0, 0.0] }).unwrap();
+    {
+        centroid
+    } else {
+        panic!()
+    };
+    s.execute(Command::TranslateTo {
+        id: SolidId(0),
+        point: [0.0, 0.0, 0.0],
+    })
+    .unwrap();
     s.undo().unwrap();
-    if let Outcome::Measured { centroid, .. } = s.execute(Command::Measure { id: SolidId(0) }).unwrap() {
-        for i in 0..3 { assert!((before[i] - centroid[i]).abs() < 1e-9); }
-    } else { panic!(); }
+    if let Outcome::Measured { centroid, .. } =
+        s.execute(Command::Measure { id: SolidId(0) }).unwrap()
+    {
+        for i in 0..3 {
+            assert!((before[i] - centroid[i]).abs() < 1e-9);
+        }
+    } else {
+        panic!();
+    }
 }
 
 #[test]
 fn bounds_command_returns_axis_aligned_bbox() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 2.0, dy: 4.0, dz: 6.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 2.0,
+        dy: 4.0,
+        dz: 6.0,
+    })
+    .unwrap();
     let outcome = s.execute(Command::Bounds { id: SolidId(0) }).unwrap();
     if let Outcome::Bounds { id, min, max } = outcome {
         assert_eq!(id, SolidId(0));
-        for i in 0..3 { assert!(min[i] <= max[i]); }
+        for i in 0..3 {
+            assert!(min[i] <= max[i]);
+        }
         assert!((max[0] - min[0] - 2.0).abs() < 1e-9);
         assert!((max[1] - min[1] - 4.0).abs() < 1e-9);
         assert!((max[2] - min[2] - 6.0).abs() < 1e-9);
-    } else { panic!("expected Bounds, got {outcome:?}"); }
+    } else {
+        panic!("expected Bounds, got {outcome:?}");
+    }
 }
 
 #[test]
 fn bounds_command_does_not_append_history_event() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let before = s.document().history().len();
     s.execute(Command::Bounds { id: SolidId(0) }).unwrap();
-    assert_eq!(s.document().history().len(), before, "Bounds is a pure observer");
+    assert_eq!(
+        s.document().history().len(),
+        before,
+        "Bounds is a pure observer"
+    );
 }
 
 #[test]
@@ -2547,7 +3290,12 @@ fn bounds_command_round_trips_through_json() {
 #[test]
 fn bounds_outcome_kind_is_bounds() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let outcome = s.execute(Command::Bounds { id: SolidId(0) }).unwrap();
     assert_eq!(outcome.kind(), OutcomeKind::Bounds);
 }
@@ -2555,11 +3303,38 @@ fn bounds_outcome_kind_is_bounds() {
 #[test]
 fn distance_command_returns_centroid_distance_and_delta() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    s.execute(Command::Translate { id: SolidId(1), dx: 3.0, dy: 4.0, dz: 0.0 }).unwrap();
-    let outcome = s.execute(Command::Distance { id_a: SolidId(0), id_b: SolidId(1) }).unwrap();
-    if let Outcome::Distance { id_a, id_b, distance, delta } = outcome {
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    s.execute(Command::Translate {
+        id: SolidId(1),
+        dx: 3.0,
+        dy: 4.0,
+        dz: 0.0,
+    })
+    .unwrap();
+    let outcome = s
+        .execute(Command::Distance {
+            id_a: SolidId(0),
+            id_b: SolidId(1),
+        })
+        .unwrap();
+    if let Outcome::Distance {
+        id_a,
+        id_b,
+        distance,
+        delta,
+    } = outcome
+    {
         assert_eq!(id_a, SolidId(0));
         assert_eq!(id_b, SolidId(1));
         // Both 1×1×1 at origin and (3,4,0) → centroids (0.5,0.5,0.5) and (3.5,4.5,0.5)
@@ -2568,43 +3343,94 @@ fn distance_command_returns_centroid_distance_and_delta() {
         assert!((delta[1] - 4.0).abs() < 1e-9);
         assert!((delta[2] - 0.0).abs() < 1e-9);
         assert!((distance - 5.0).abs() < 1e-9);
-    } else { panic!("expected Distance, got {outcome:?}"); }
+    } else {
+        panic!("expected Distance, got {outcome:?}");
+    }
 }
 
 #[test]
 fn distance_command_self_distance_is_zero() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
-    let outcome = s.execute(Command::Distance { id_a: SolidId(0), id_b: SolidId(0) }).unwrap();
-    if let Outcome::Distance { distance, delta, .. } = outcome {
+    s.execute(Command::CreateBox {
+        dx: 2.0,
+        dy: 2.0,
+        dz: 2.0,
+    })
+    .unwrap();
+    let outcome = s
+        .execute(Command::Distance {
+            id_a: SolidId(0),
+            id_b: SolidId(0),
+        })
+        .unwrap();
+    if let Outcome::Distance {
+        distance, delta, ..
+    } = outcome
+    {
         assert!(distance.abs() < 1e-12);
-        for d in delta { assert!(d.abs() < 1e-12); }
-    } else { panic!(); }
+        for d in delta {
+            assert!(d.abs() < 1e-12);
+        }
+    } else {
+        panic!();
+    }
 }
 
 #[test]
 fn distance_command_returns_unknown_solid_for_invalid_id() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    let err = s.execute(Command::Distance { id_a: SolidId(0), id_b: SolidId(7) }).unwrap_err();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    let err = s
+        .execute(Command::Distance {
+            id_a: SolidId(0),
+            id_b: SolidId(7),
+        })
+        .unwrap_err();
     assert!(matches!(err, ApiError::UnknownSolid(_)));
-    let err2 = s.execute(Command::Distance { id_a: SolidId(7), id_b: SolidId(0) }).unwrap_err();
+    let err2 = s
+        .execute(Command::Distance {
+            id_a: SolidId(7),
+            id_b: SolidId(0),
+        })
+        .unwrap_err();
     assert!(matches!(err2, ApiError::UnknownSolid(_)));
 }
 
 #[test]
 fn distance_command_does_not_append_history_event() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let before = s.document().history().len();
-    s.execute(Command::Distance { id_a: SolidId(0), id_b: SolidId(1) }).unwrap();
+    s.execute(Command::Distance {
+        id_a: SolidId(0),
+        id_b: SolidId(1),
+    })
+    .unwrap();
     assert_eq!(s.document().history().len(), before);
 }
 
 #[test]
 fn distance_command_round_trips_through_json() {
-    let cmd = Command::Distance { id_a: SolidId(2), id_b: SolidId(5) };
+    let cmd = Command::Distance {
+        id_a: SolidId(2),
+        id_b: SolidId(5),
+    };
     let json = serde_json::to_string(&cmd).unwrap();
     assert!(json.contains("\"op\":\"distance\""));
     let back: Command = serde_json::from_str(&json).unwrap();
@@ -2620,12 +3446,19 @@ fn distance_command_round_trips_through_json() {
 #[test]
 fn volume_command_returns_box_volume() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 2.0, dy: 3.0, dz: 4.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 2.0,
+        dy: 3.0,
+        dz: 4.0,
+    })
+    .unwrap();
     let outcome = s.execute(Command::Volume { id: SolidId(0) }).unwrap();
     if let Outcome::Volume { id, volume } = outcome {
         assert_eq!(id, SolidId(0));
         assert!((volume - 24.0).abs() < 1e-9, "got {volume}");
-    } else { panic!("expected Volume, got {outcome:?}"); }
+    } else {
+        panic!("expected Volume, got {outcome:?}");
+    }
 }
 
 #[test]
@@ -2638,7 +3471,12 @@ fn volume_command_returns_unknown_solid_for_invalid_id() {
 #[test]
 fn volume_command_does_not_append_history_event() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let before = s.document().history().len();
     s.execute(Command::Volume { id: SolidId(0) }).unwrap();
     assert_eq!(s.document().history().len(), before);
@@ -2659,26 +3497,40 @@ fn volume_command_round_trips_through_json() {
 #[test]
 fn surface_area_command_returns_box_area() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 2.0, dy: 3.0, dz: 4.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 2.0,
+        dy: 3.0,
+        dz: 4.0,
+    })
+    .unwrap();
     let outcome = s.execute(Command::SurfaceArea { id: SolidId(0) }).unwrap();
     if let Outcome::SurfaceArea { id, surface_area } = outcome {
         assert_eq!(id, SolidId(0));
         // 2*(2*3 + 3*4 + 2*4) = 2*(6 + 12 + 8) = 52
         assert!((surface_area - 52.0).abs() < 1e-9, "got {surface_area}");
-    } else { panic!("expected SurfaceArea, got {outcome:?}"); }
+    } else {
+        panic!("expected SurfaceArea, got {outcome:?}");
+    }
 }
 
 #[test]
 fn surface_area_command_returns_unknown_solid_for_invalid_id() {
     let mut s = Session::new();
-    let err = s.execute(Command::SurfaceArea { id: SolidId(7) }).unwrap_err();
+    let err = s
+        .execute(Command::SurfaceArea { id: SolidId(7) })
+        .unwrap_err();
     assert!(matches!(err, ApiError::UnknownSolid(_)));
 }
 
 #[test]
 fn surface_area_command_does_not_append_history_event() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let before = s.document().history().len();
     s.execute(Command::SurfaceArea { id: SolidId(0) }).unwrap();
     assert_eq!(s.document().history().len(), before);
@@ -2699,14 +3551,21 @@ fn surface_area_command_round_trips_through_json() {
 #[test]
 fn centroid_command_returns_box_centroid() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 2.0, dy: 4.0, dz: 6.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 2.0,
+        dy: 4.0,
+        dz: 6.0,
+    })
+    .unwrap();
     let outcome = s.execute(Command::Centroid { id: SolidId(0) }).unwrap();
     if let Outcome::Centroid { id, centroid } = outcome {
         assert_eq!(id, SolidId(0));
         assert!((centroid[0] - 1.0).abs() < 1e-9);
         assert!((centroid[1] - 2.0).abs() < 1e-9);
         assert!((centroid[2] - 3.0).abs() < 1e-9);
-    } else { panic!("expected Centroid, got {outcome:?}"); }
+    } else {
+        panic!("expected Centroid, got {outcome:?}");
+    }
 }
 
 #[test]
@@ -2719,7 +3578,12 @@ fn centroid_command_returns_unknown_solid_for_invalid_id() {
 #[test]
 fn centroid_command_does_not_append_history_event() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let before = s.document().history().len();
     s.execute(Command::Centroid { id: SolidId(0) }).unwrap();
     assert_eq!(s.document().history().len(), before);
@@ -2740,94 +3604,232 @@ fn centroid_command_round_trips_through_json() {
 #[test]
 fn centroid_command_tracks_translation() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
-    s.execute(Command::Translate { id: SolidId(0), dx: 10.0, dy: 0.0, dz: 0.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 2.0,
+        dy: 2.0,
+        dz: 2.0,
+    })
+    .unwrap();
+    s.execute(Command::Translate {
+        id: SolidId(0),
+        dx: 10.0,
+        dy: 0.0,
+        dz: 0.0,
+    })
+    .unwrap();
     let outcome = s.execute(Command::Centroid { id: SolidId(0) }).unwrap();
     if let Outcome::Centroid { centroid, .. } = outcome {
         assert!((centroid[0] - 11.0).abs() < 1e-9, "got {}", centroid[0]);
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 #[test]
 fn intersects_aabb_command_returns_true_for_overlapping_boxes() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
-    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 2.0,
+        dy: 2.0,
+        dz: 2.0,
+    })
+    .unwrap();
+    s.execute(Command::CreateBox {
+        dx: 2.0,
+        dy: 2.0,
+        dz: 2.0,
+    })
+    .unwrap();
     // Box 0 spans [0,2]^3; box 1 translated to [1,3]^3 → overlap [1,2]^3.
-    s.execute(Command::Translate { id: SolidId(1), dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    let outcome = s.execute(Command::IntersectsAabb { id_a: SolidId(0), id_b: SolidId(1) }).unwrap();
-    if let Outcome::AabbIntersection { intersects, overlap_min, overlap_max, .. } = outcome {
+    s.execute(Command::Translate {
+        id: SolidId(1),
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    let outcome = s
+        .execute(Command::IntersectsAabb {
+            id_a: SolidId(0),
+            id_b: SolidId(1),
+        })
+        .unwrap();
+    if let Outcome::AabbIntersection {
+        intersects,
+        overlap_min,
+        overlap_max,
+        ..
+    } = outcome
+    {
         assert!(intersects);
         for i in 0..3 {
             assert!((overlap_min[i] - 1.0).abs() < 1e-9);
             assert!((overlap_max[i] - 2.0).abs() < 1e-9);
         }
-    } else { panic!("expected AabbIntersection, got {outcome:?}"); }
+    } else {
+        panic!("expected AabbIntersection, got {outcome:?}");
+    }
 }
 
 #[test]
 fn intersects_aabb_command_returns_false_for_disjoint_boxes() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    s.execute(Command::Translate { id: SolidId(1), dx: 5.0, dy: 0.0, dz: 0.0 }).unwrap();
-    let outcome = s.execute(Command::IntersectsAabb { id_a: SolidId(0), id_b: SolidId(1) }).unwrap();
-    if let Outcome::AabbIntersection { intersects, overlap_min, overlap_max, .. } = outcome {
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    s.execute(Command::Translate {
+        id: SolidId(1),
+        dx: 5.0,
+        dy: 0.0,
+        dz: 0.0,
+    })
+    .unwrap();
+    let outcome = s
+        .execute(Command::IntersectsAabb {
+            id_a: SolidId(0),
+            id_b: SolidId(1),
+        })
+        .unwrap();
+    if let Outcome::AabbIntersection {
+        intersects,
+        overlap_min,
+        overlap_max,
+        ..
+    } = outcome
+    {
         assert!(!intersects);
         // Disjoint → zero intervals.
         for i in 0..3 {
             assert_eq!(overlap_min[i], 0.0);
             assert_eq!(overlap_max[i], 0.0);
         }
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 #[test]
 fn intersects_aabb_command_self_intersection_is_true() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
-    let outcome = s.execute(Command::IntersectsAabb { id_a: SolidId(0), id_b: SolidId(0) }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 2.0,
+        dy: 2.0,
+        dz: 2.0,
+    })
+    .unwrap();
+    let outcome = s
+        .execute(Command::IntersectsAabb {
+            id_a: SolidId(0),
+            id_b: SolidId(0),
+        })
+        .unwrap();
     if let Outcome::AabbIntersection { intersects, .. } = outcome {
         assert!(intersects);
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 #[test]
 fn intersects_aabb_command_touching_boxes_count_as_intersecting() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     // Box 0: [0,1]^3, box 1 translated to [1,2]^3 → share face at x=1.
-    s.execute(Command::Translate { id: SolidId(1), dx: 1.0, dy: 0.0, dz: 0.0 }).unwrap();
-    let outcome = s.execute(Command::IntersectsAabb { id_a: SolidId(0), id_b: SolidId(1) }).unwrap();
+    s.execute(Command::Translate {
+        id: SolidId(1),
+        dx: 1.0,
+        dy: 0.0,
+        dz: 0.0,
+    })
+    .unwrap();
+    let outcome = s
+        .execute(Command::IntersectsAabb {
+            id_a: SolidId(0),
+            id_b: SolidId(1),
+        })
+        .unwrap();
     if let Outcome::AabbIntersection { intersects, .. } = outcome {
         assert!(intersects, "touching boxes should count as intersecting");
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 #[test]
 fn intersects_aabb_command_returns_unknown_solid_for_invalid_id() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    let err = s.execute(Command::IntersectsAabb { id_a: SolidId(0), id_b: SolidId(7) }).unwrap_err();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    let err = s
+        .execute(Command::IntersectsAabb {
+            id_a: SolidId(0),
+            id_b: SolidId(7),
+        })
+        .unwrap_err();
     assert!(matches!(err, ApiError::UnknownSolid(_)));
-    let err2 = s.execute(Command::IntersectsAabb { id_a: SolidId(7), id_b: SolidId(0) }).unwrap_err();
+    let err2 = s
+        .execute(Command::IntersectsAabb {
+            id_a: SolidId(7),
+            id_b: SolidId(0),
+        })
+        .unwrap_err();
     assert!(matches!(err2, ApiError::UnknownSolid(_)));
 }
 
 #[test]
 fn intersects_aabb_command_does_not_append_history_event() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let before = s.document().history().len();
-    s.execute(Command::IntersectsAabb { id_a: SolidId(0), id_b: SolidId(1) }).unwrap();
+    s.execute(Command::IntersectsAabb {
+        id_a: SolidId(0),
+        id_b: SolidId(1),
+    })
+    .unwrap();
     assert_eq!(s.document().history().len(), before);
 }
 
 #[test]
 fn intersects_aabb_command_round_trips_through_json() {
-    let cmd = Command::IntersectsAabb { id_a: SolidId(2), id_b: SolidId(5) };
+    let cmd = Command::IntersectsAabb {
+        id_a: SolidId(2),
+        id_b: SolidId(5),
+    };
     let json = serde_json::to_string(&cmd).unwrap();
     assert!(json.contains("\"op\":\"intersects_aabb\""));
     let back: Command = serde_json::from_str(&json).unwrap();
@@ -2843,40 +3845,66 @@ fn intersects_aabb_command_round_trips_through_json() {
 #[test]
 fn exists_command_returns_true_for_present_solid() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let outcome = s.execute(Command::Exists { id: SolidId(0) }).unwrap();
     if let Outcome::Exists { id, exists } = outcome {
         assert_eq!(id, SolidId(0));
         assert!(exists);
-    } else { panic!("expected Exists, got {outcome:?}"); }
+    } else {
+        panic!("expected Exists, got {outcome:?}");
+    }
 }
 
 #[test]
 fn exists_command_returns_false_for_missing_id_without_error() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let outcome = s.execute(Command::Exists { id: SolidId(7) }).unwrap();
     if let Outcome::Exists { id, exists } = outcome {
         assert_eq!(id, SolidId(7));
         assert!(!exists, "missing id should report exists=false, not error");
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 #[test]
 fn exists_command_returns_false_after_delete() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     s.execute(Command::DeleteSolid { id: SolidId(0) }).unwrap();
     let outcome = s.execute(Command::Exists { id: SolidId(0) }).unwrap();
     if let Outcome::Exists { exists, .. } = outcome {
         assert!(!exists);
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 #[test]
 fn exists_command_does_not_append_history_event() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let before = s.document().history().len();
     s.execute(Command::Exists { id: SolidId(0) }).unwrap();
     s.execute(Command::Exists { id: SolidId(99) }).unwrap();
@@ -2898,16 +3926,28 @@ fn exists_command_round_trips_through_json() {
 #[test]
 fn diagonal_command_returns_345_box_diagonal() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 3.0, dy: 4.0, dz: 12.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 3.0,
+        dy: 4.0,
+        dz: 12.0,
+    })
+    .unwrap();
     let outcome = s.execute(Command::Diagonal { id: SolidId(0) }).unwrap();
-    if let Outcome::Diagonal { id, length, extents } = outcome {
+    if let Outcome::Diagonal {
+        id,
+        length,
+        extents,
+    } = outcome
+    {
         assert_eq!(id, SolidId(0));
         assert!((extents[0] - 3.0).abs() < 1e-9);
         assert!((extents[1] - 4.0).abs() < 1e-9);
         assert!((extents[2] - 12.0).abs() < 1e-9);
         // sqrt(9 + 16 + 144) = sqrt(169) = 13
         assert!((length - 13.0).abs() < 1e-9, "got {length}");
-    } else { panic!("expected Diagonal, got {outcome:?}"); }
+    } else {
+        panic!("expected Diagonal, got {outcome:?}");
+    }
 }
 
 #[test]
@@ -2920,7 +3960,12 @@ fn diagonal_command_returns_unknown_solid_for_invalid_id() {
 #[test]
 fn diagonal_command_does_not_append_history_event() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let before = s.document().history().len();
     s.execute(Command::Diagonal { id: SolidId(0) }).unwrap();
     assert_eq!(s.document().history().len(), before);
@@ -2941,43 +3986,71 @@ fn diagonal_command_round_trips_through_json() {
 #[test]
 fn diagonal_command_invariant_under_translation() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 2.0,
+        dy: 2.0,
+        dz: 2.0,
+    })
+    .unwrap();
     let before = match s.execute(Command::Diagonal { id: SolidId(0) }).unwrap() {
         Outcome::Diagonal { length, .. } => length,
         _ => panic!(),
     };
-    s.execute(Command::Translate { id: SolidId(0), dx: 100.0, dy: -50.0, dz: 7.5 }).unwrap();
+    s.execute(Command::Translate {
+        id: SolidId(0),
+        dx: 100.0,
+        dy: -50.0,
+        dz: 7.5,
+    })
+    .unwrap();
     let after = match s.execute(Command::Diagonal { id: SolidId(0) }).unwrap() {
         Outcome::Diagonal { length, .. } => length,
         _ => panic!(),
     };
-    assert!((before - after).abs() < 1e-9, "diagonal must be translation-invariant");
+    assert!(
+        (before - after).abs() < 1e-9,
+        "diagonal must be translation-invariant"
+    );
 }
 
 #[test]
 fn aabb_center_command_returns_box_center() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 4.0, dy: 6.0, dz: 8.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 4.0,
+        dy: 6.0,
+        dz: 8.0,
+    })
+    .unwrap();
     let outcome = s.execute(Command::AabbCenter { id: SolidId(0) }).unwrap();
     if let Outcome::AabbCenter { id, center } = outcome {
         assert_eq!(id, SolidId(0));
         assert!((center[0] - 2.0).abs() < 1e-9);
         assert!((center[1] - 3.0).abs() < 1e-9);
         assert!((center[2] - 4.0).abs() < 1e-9);
-    } else { panic!("expected AabbCenter, got {outcome:?}"); }
+    } else {
+        panic!("expected AabbCenter, got {outcome:?}");
+    }
 }
 
 #[test]
 fn aabb_center_command_returns_unknown_solid_for_invalid_id() {
     let mut s = Session::new();
-    let err = s.execute(Command::AabbCenter { id: SolidId(7) }).unwrap_err();
+    let err = s
+        .execute(Command::AabbCenter { id: SolidId(7) })
+        .unwrap_err();
     assert!(matches!(err, ApiError::UnknownSolid(_)));
 }
 
 #[test]
 fn aabb_center_command_does_not_append_history_event() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let before = s.document().history().len();
     s.execute(Command::AabbCenter { id: SolidId(0) }).unwrap();
     assert_eq!(s.document().history().len(), before);
@@ -2998,20 +4071,38 @@ fn aabb_center_command_round_trips_through_json() {
 #[test]
 fn aabb_center_command_tracks_translation() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
-    s.execute(Command::Translate { id: SolidId(0), dx: 10.0, dy: 20.0, dz: 30.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 2.0,
+        dy: 2.0,
+        dz: 2.0,
+    })
+    .unwrap();
+    s.execute(Command::Translate {
+        id: SolidId(0),
+        dx: 10.0,
+        dy: 20.0,
+        dz: 30.0,
+    })
+    .unwrap();
     let outcome = s.execute(Command::AabbCenter { id: SolidId(0) }).unwrap();
     if let Outcome::AabbCenter { center, .. } = outcome {
         assert!((center[0] - 11.0).abs() < 1e-9);
         assert!((center[1] - 21.0).abs() < 1e-9);
         assert!((center[2] - 31.0).abs() < 1e-9);
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 #[test]
 fn aabb_volume_command_returns_box_extent_product() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 4.0, dy: 6.0, dz: 8.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 4.0,
+        dy: 6.0,
+        dz: 8.0,
+    })
+    .unwrap();
     let outcome = s.execute(Command::AabbVolume { id: SolidId(0) }).unwrap();
     if let Outcome::AabbVolume { id, volume } = outcome {
         assert_eq!(id, SolidId(0));
@@ -3024,14 +4115,21 @@ fn aabb_volume_command_returns_box_extent_product() {
 #[test]
 fn aabb_volume_command_returns_unknown_solid_for_invalid_id() {
     let mut s = Session::new();
-    let err = s.execute(Command::AabbVolume { id: SolidId(9) }).unwrap_err();
+    let err = s
+        .execute(Command::AabbVolume { id: SolidId(9) })
+        .unwrap_err();
     assert!(matches!(err, ApiError::UnknownSolid(_)));
 }
 
 #[test]
 fn aabb_volume_command_does_not_append_history_event() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let before = s.document().history().len();
     s.execute(Command::AabbVolume { id: SolidId(0) }).unwrap();
     assert_eq!(s.document().history().len(), before);
@@ -3052,12 +4150,23 @@ fn aabb_volume_command_round_trips_through_json() {
 #[test]
 fn aabb_volume_command_is_invariant_under_translation() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 2.0, dy: 3.0, dz: 5.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 2.0,
+        dy: 3.0,
+        dz: 5.0,
+    })
+    .unwrap();
     let v0 = match s.execute(Command::AabbVolume { id: SolidId(0) }).unwrap() {
         Outcome::AabbVolume { volume, .. } => volume,
         other => panic!("expected AabbVolume, got {other:?}"),
     };
-    s.execute(Command::Translate { id: SolidId(0), dx: 10.0, dy: -20.0, dz: 30.0 }).unwrap();
+    s.execute(Command::Translate {
+        id: SolidId(0),
+        dx: 10.0,
+        dy: -20.0,
+        dz: 30.0,
+    })
+    .unwrap();
     let v1 = match s.execute(Command::AabbVolume { id: SolidId(0) }).unwrap() {
         Outcome::AabbVolume { volume, .. } => volume,
         other => panic!("expected AabbVolume, got {other:?}"),
@@ -3069,68 +4178,168 @@ fn aabb_volume_command_is_invariant_under_translation() {
 #[test]
 fn contains_aabb_command_true_when_outer_covers_inner() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 10.0, dy: 10.0, dz: 10.0 }).unwrap();
-    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
-    s.execute(Command::Translate { id: SolidId(1), dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    let outcome = s.execute(Command::ContainsAabb { id_outer: SolidId(0), id_inner: SolidId(1) }).unwrap();
-    if let Outcome::AabbContainment { id_outer, id_inner, contains } = outcome {
+    s.execute(Command::CreateBox {
+        dx: 10.0,
+        dy: 10.0,
+        dz: 10.0,
+    })
+    .unwrap();
+    s.execute(Command::CreateBox {
+        dx: 2.0,
+        dy: 2.0,
+        dz: 2.0,
+    })
+    .unwrap();
+    s.execute(Command::Translate {
+        id: SolidId(1),
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    let outcome = s
+        .execute(Command::ContainsAabb {
+            id_outer: SolidId(0),
+            id_inner: SolidId(1),
+        })
+        .unwrap();
+    if let Outcome::AabbContainment {
+        id_outer,
+        id_inner,
+        contains,
+    } = outcome
+    {
         assert_eq!(id_outer, SolidId(0));
         assert_eq!(id_inner, SolidId(1));
         assert!(contains);
-    } else { panic!("expected AabbContainment, got {outcome:?}"); }
+    } else {
+        panic!("expected AabbContainment, got {outcome:?}");
+    }
 }
 
 #[test]
 fn contains_aabb_command_false_when_inner_pokes_out() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 4.0, dy: 4.0, dz: 4.0 }).unwrap();
-    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
-    s.execute(Command::Translate { id: SolidId(1), dx: 5.0, dy: 0.0, dz: 0.0 }).unwrap();
-    let outcome = s.execute(Command::ContainsAabb { id_outer: SolidId(0), id_inner: SolidId(1) }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 4.0,
+        dy: 4.0,
+        dz: 4.0,
+    })
+    .unwrap();
+    s.execute(Command::CreateBox {
+        dx: 2.0,
+        dy: 2.0,
+        dz: 2.0,
+    })
+    .unwrap();
+    s.execute(Command::Translate {
+        id: SolidId(1),
+        dx: 5.0,
+        dy: 0.0,
+        dz: 0.0,
+    })
+    .unwrap();
+    let outcome = s
+        .execute(Command::ContainsAabb {
+            id_outer: SolidId(0),
+            id_inner: SolidId(1),
+        })
+        .unwrap();
     if let Outcome::AabbContainment { contains, .. } = outcome {
         assert!(!contains);
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 #[test]
 fn contains_aabb_command_self_contains_self() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 2.0, dz: 3.0 }).unwrap();
-    let outcome = s.execute(Command::ContainsAabb { id_outer: SolidId(0), id_inner: SolidId(0) }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 2.0,
+        dz: 3.0,
+    })
+    .unwrap();
+    let outcome = s
+        .execute(Command::ContainsAabb {
+            id_outer: SolidId(0),
+            id_inner: SolidId(0),
+        })
+        .unwrap();
     if let Outcome::AabbContainment { contains, .. } = outcome {
         assert!(contains, "self-containment must be true (closed intervals)");
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 #[test]
 fn contains_aabb_command_returns_unknown_solid_for_invalid_outer() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    let err = s.execute(Command::ContainsAabb { id_outer: SolidId(9), id_inner: SolidId(0) }).unwrap_err();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    let err = s
+        .execute(Command::ContainsAabb {
+            id_outer: SolidId(9),
+            id_inner: SolidId(0),
+        })
+        .unwrap_err();
     assert!(matches!(err, ApiError::UnknownSolid(_)));
 }
 
 #[test]
 fn contains_aabb_command_returns_unknown_solid_for_invalid_inner() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    let err = s.execute(Command::ContainsAabb { id_outer: SolidId(0), id_inner: SolidId(9) }).unwrap_err();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    let err = s
+        .execute(Command::ContainsAabb {
+            id_outer: SolidId(0),
+            id_inner: SolidId(9),
+        })
+        .unwrap_err();
     assert!(matches!(err, ApiError::UnknownSolid(_)));
 }
 
 #[test]
 fn contains_aabb_command_does_not_append_history_event() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 5.0, dy: 5.0, dz: 5.0 }).unwrap();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 5.0,
+        dy: 5.0,
+        dz: 5.0,
+    })
+    .unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let before = s.document().history().len();
-    s.execute(Command::ContainsAabb { id_outer: SolidId(0), id_inner: SolidId(1) }).unwrap();
+    s.execute(Command::ContainsAabb {
+        id_outer: SolidId(0),
+        id_inner: SolidId(1),
+    })
+    .unwrap();
     assert_eq!(s.document().history().len(), before);
 }
 
 #[test]
 fn contains_aabb_command_round_trips_through_json() {
-    let cmd = Command::ContainsAabb { id_outer: SolidId(2), id_inner: SolidId(7) };
+    let cmd = Command::ContainsAabb {
+        id_outer: SolidId(2),
+        id_inner: SolidId(7),
+    };
     let json = serde_json::to_string(&cmd).unwrap();
     assert!(json.contains("\"op\":\"contains_aabb\""), "json = {json}");
     let back: Command = serde_json::from_str(&json).unwrap();
@@ -3146,7 +4355,12 @@ fn contains_aabb_command_round_trips_through_json() {
 #[test]
 fn aabb_corners_command_returns_eight_canonical_corners() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 4.0, dy: 6.0, dz: 8.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 4.0,
+        dy: 6.0,
+        dz: 8.0,
+    })
+    .unwrap();
     let outcome = s.execute(Command::AabbCorners { id: SolidId(0) }).unwrap();
     if let Outcome::AabbCorners { id, corners } = outcome {
         assert_eq!(id, SolidId(0));
@@ -3166,23 +4380,35 @@ fn aabb_corners_command_returns_eight_canonical_corners() {
         ];
         for (got, want) in corners.iter().zip(expected.iter()) {
             for axis in 0..3 {
-                assert!((got[axis] - want[axis]).abs() < 1e-9, "got={got:?} want={want:?}");
+                assert!(
+                    (got[axis] - want[axis]).abs() < 1e-9,
+                    "got={got:?} want={want:?}"
+                );
             }
         }
-    } else { panic!("expected AabbCorners, got {outcome:?}"); }
+    } else {
+        panic!("expected AabbCorners, got {outcome:?}");
+    }
 }
 
 #[test]
 fn aabb_corners_command_returns_unknown_solid_for_invalid_id() {
     let mut s = Session::new();
-    let err = s.execute(Command::AabbCorners { id: SolidId(9) }).unwrap_err();
+    let err = s
+        .execute(Command::AabbCorners { id: SolidId(9) })
+        .unwrap_err();
     assert!(matches!(err, ApiError::UnknownSolid(_)));
 }
 
 #[test]
 fn aabb_corners_command_does_not_append_history_event() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let before = s.document().history().len();
     s.execute(Command::AabbCorners { id: SolidId(0) }).unwrap();
     assert_eq!(s.document().history().len(), before);
@@ -3203,8 +4429,19 @@ fn aabb_corners_command_round_trips_through_json() {
 #[test]
 fn aabb_corners_command_tracks_translation() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
-    s.execute(Command::Translate { id: SolidId(0), dx: 10.0, dy: 20.0, dz: 30.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 2.0,
+        dy: 2.0,
+        dz: 2.0,
+    })
+    .unwrap();
+    s.execute(Command::Translate {
+        id: SolidId(0),
+        dx: 10.0,
+        dy: 20.0,
+        dz: 30.0,
+    })
+    .unwrap();
     let outcome = s.execute(Command::AabbCorners { id: SolidId(0) }).unwrap();
     if let Outcome::AabbCorners { corners, .. } = outcome {
         // First corner is the (min,min,min) corner; last is (max,max,max).
@@ -3214,42 +4451,69 @@ fn aabb_corners_command_tracks_translation() {
         assert!((corners[7][0] - 12.0).abs() < 1e-9);
         assert!((corners[7][1] - 22.0).abs() < 1e-9);
         assert!((corners[7][2] - 32.0).abs() < 1e-9);
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 #[test]
 fn solid_label_command_returns_default_box_label() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let outcome = s.execute(Command::SolidLabel { id: SolidId(0) }).unwrap();
     if let Outcome::SolidLabel { id, label } = outcome {
         assert_eq!(id, SolidId(0));
         assert!(!label.is_empty(), "label should not be empty");
-    } else { panic!("expected SolidLabel, got {outcome:?}"); }
+    } else {
+        panic!("expected SolidLabel, got {outcome:?}");
+    }
 }
 
 #[test]
 fn solid_label_command_reflects_rename() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    s.execute(Command::Rename { id: SolidId(0), label: "MyPart".to_string() }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    s.execute(Command::Rename {
+        id: SolidId(0),
+        label: "MyPart".to_string(),
+    })
+    .unwrap();
     let outcome = s.execute(Command::SolidLabel { id: SolidId(0) }).unwrap();
     if let Outcome::SolidLabel { label, .. } = outcome {
         assert_eq!(label, "MyPart");
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 #[test]
 fn solid_label_command_returns_unknown_solid_for_invalid_id() {
     let mut s = Session::new();
-    let err = s.execute(Command::SolidLabel { id: SolidId(9) }).unwrap_err();
+    let err = s
+        .execute(Command::SolidLabel { id: SolidId(9) })
+        .unwrap_err();
     assert!(matches!(err, ApiError::UnknownSolid(_)));
 }
 
 #[test]
 fn solid_label_command_does_not_append_history_event() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let before = s.document().history().len();
     s.execute(Command::SolidLabel { id: SolidId(0) }).unwrap();
     assert_eq!(s.document().history().len(), before);
@@ -3273,34 +4537,55 @@ fn is_empty_command_true_on_fresh_session() {
     let outcome = s.execute(Command::IsEmpty).unwrap();
     if let Outcome::IsEmpty { is_empty } = outcome {
         assert!(is_empty);
-    } else { panic!("expected IsEmpty, got {outcome:?}"); }
+    } else {
+        panic!("expected IsEmpty, got {outcome:?}");
+    }
 }
 
 #[test]
 fn is_empty_command_false_after_create_box() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let outcome = s.execute(Command::IsEmpty).unwrap();
     if let Outcome::IsEmpty { is_empty } = outcome {
         assert!(!is_empty);
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 #[test]
 fn is_empty_command_true_after_delete_only_solid() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     s.execute(Command::DeleteSolid { id: SolidId(0) }).unwrap();
     let outcome = s.execute(Command::IsEmpty).unwrap();
     if let Outcome::IsEmpty { is_empty } = outcome {
         assert!(is_empty);
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 #[test]
 fn is_empty_command_does_not_append_history_event() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let before = s.document().history().len();
     s.execute(Command::IsEmpty).unwrap();
     assert_eq!(s.document().history().len(), before);
@@ -3318,28 +4603,48 @@ fn is_empty_command_round_trips_through_json() {
 #[test]
 fn aabb_surface_area_command_returns_box_surface_area() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 4.0, dy: 6.0, dz: 8.0 }).unwrap();
-    let outcome = s.execute(Command::AabbSurfaceArea { id: SolidId(0) }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 4.0,
+        dy: 6.0,
+        dz: 8.0,
+    })
+    .unwrap();
+    let outcome = s
+        .execute(Command::AabbSurfaceArea { id: SolidId(0) })
+        .unwrap();
     if let Outcome::AabbSurfaceArea { id, surface_area } = outcome {
         assert_eq!(id, SolidId(0));
         // 2 * (4*6 + 6*8 + 8*4) = 2 * (24 + 48 + 32) = 208
-        assert!((surface_area - 208.0).abs() < 1e-9, "surface_area = {surface_area}");
-    } else { panic!("expected AabbSurfaceArea, got {outcome:?}"); }
+        assert!(
+            (surface_area - 208.0).abs() < 1e-9,
+            "surface_area = {surface_area}"
+        );
+    } else {
+        panic!("expected AabbSurfaceArea, got {outcome:?}");
+    }
 }
 
 #[test]
 fn aabb_surface_area_command_returns_unknown_solid_for_invalid_id() {
     let mut s = Session::new();
-    let err = s.execute(Command::AabbSurfaceArea { id: SolidId(9) }).unwrap_err();
+    let err = s
+        .execute(Command::AabbSurfaceArea { id: SolidId(9) })
+        .unwrap_err();
     assert!(matches!(err, ApiError::UnknownSolid(_)));
 }
 
 #[test]
 fn aabb_surface_area_command_does_not_append_history_event() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let before = s.document().history().len();
-    s.execute(Command::AabbSurfaceArea { id: SolidId(0) }).unwrap();
+    s.execute(Command::AabbSurfaceArea { id: SolidId(0) })
+        .unwrap();
     assert_eq!(s.document().history().len(), before);
 }
 
@@ -3347,7 +4652,10 @@ fn aabb_surface_area_command_does_not_append_history_event() {
 fn aabb_surface_area_command_round_trips_through_json() {
     let cmd = Command::AabbSurfaceArea { id: SolidId(2) };
     let json = serde_json::to_string(&cmd).unwrap();
-    assert!(json.contains("\"op\":\"aabb_surface_area\""), "json = {json}");
+    assert!(
+        json.contains("\"op\":\"aabb_surface_area\""),
+        "json = {json}"
+    );
     let back: Command = serde_json::from_str(&json).unwrap();
     match back {
         Command::AabbSurfaceArea { id } => assert_eq!(id, SolidId(2)),
@@ -3358,13 +4666,30 @@ fn aabb_surface_area_command_round_trips_through_json() {
 #[test]
 fn aabb_surface_area_command_is_invariant_under_translation() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 2.0, dy: 3.0, dz: 5.0 }).unwrap();
-    let a0 = match s.execute(Command::AabbSurfaceArea { id: SolidId(0) }).unwrap() {
+    s.execute(Command::CreateBox {
+        dx: 2.0,
+        dy: 3.0,
+        dz: 5.0,
+    })
+    .unwrap();
+    let a0 = match s
+        .execute(Command::AabbSurfaceArea { id: SolidId(0) })
+        .unwrap()
+    {
         Outcome::AabbSurfaceArea { surface_area, .. } => surface_area,
         other => panic!("expected AabbSurfaceArea, got {other:?}"),
     };
-    s.execute(Command::Translate { id: SolidId(0), dx: 50.0, dy: -100.0, dz: 7.5 }).unwrap();
-    let a1 = match s.execute(Command::AabbSurfaceArea { id: SolidId(0) }).unwrap() {
+    s.execute(Command::Translate {
+        id: SolidId(0),
+        dx: 50.0,
+        dy: -100.0,
+        dz: 7.5,
+    })
+    .unwrap();
+    let a1 = match s
+        .execute(Command::AabbSurfaceArea { id: SolidId(0) })
+        .unwrap()
+    {
         Outcome::AabbSurfaceArea { surface_area, .. } => surface_area,
         other => panic!("expected AabbSurfaceArea, got {other:?}"),
     };
@@ -3379,15 +4704,32 @@ fn solid_count_command_zero_on_fresh_session() {
     let outcome = s.execute(Command::SolidCount).unwrap();
     if let Outcome::SolidCount { count } = outcome {
         assert_eq!(count, 0);
-    } else { panic!("expected SolidCount, got {outcome:?}"); }
+    } else {
+        panic!("expected SolidCount, got {outcome:?}");
+    }
 }
 
 #[test]
 fn solid_count_command_tracks_creates_and_deletes() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let after_three = match s.execute(Command::SolidCount).unwrap() {
         Outcome::SolidCount { count } => count,
         _ => panic!(),
@@ -3404,7 +4746,12 @@ fn solid_count_command_tracks_creates_and_deletes() {
 #[test]
 fn solid_count_command_does_not_append_history_event() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let before = s.document().history().len();
     s.execute(Command::SolidCount).unwrap();
     assert_eq!(s.document().history().len(), before);
@@ -3422,8 +4769,18 @@ fn solid_count_command_round_trips_through_json() {
 #[test]
 fn solid_count_command_agrees_with_stats() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let solid_count = match s.execute(Command::SolidCount).unwrap() {
         Outcome::SolidCount { count } => count,
         _ => panic!(),
@@ -3441,14 +4798,26 @@ fn history_count_command_zero_on_fresh_session() {
     let outcome = s.execute(Command::HistoryCount).unwrap();
     if let Outcome::HistoryCount { count } = outcome {
         assert_eq!(count, 0);
-    } else { panic!("expected HistoryCount, got {outcome:?}"); }
+    } else {
+        panic!("expected HistoryCount, got {outcome:?}");
+    }
 }
 
 #[test]
 fn history_count_command_grows_with_mutations() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let after_two = match s.execute(Command::HistoryCount).unwrap() {
         Outcome::HistoryCount { count } => count,
         _ => panic!(),
@@ -3465,7 +4834,12 @@ fn history_count_command_grows_with_mutations() {
 #[test]
 fn history_count_command_does_not_append_history_event() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let before = s.document().history().len();
     s.execute(Command::HistoryCount).unwrap();
     assert_eq!(s.document().history().len(), before);
@@ -3483,8 +4857,18 @@ fn history_count_command_round_trips_through_json() {
 #[test]
 fn history_count_command_agrees_with_stats() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let history_count = match s.execute(Command::HistoryCount).unwrap() {
         Outcome::HistoryCount { count } => count,
         _ => panic!(),
@@ -3499,56 +4883,133 @@ fn history_count_command_agrees_with_stats() {
 #[test]
 fn has_label_command_false_on_empty_session() {
     let mut s = Session::new();
-    let outcome = s.execute(Command::HasLabel { query: "Box".into() }).unwrap();
+    let outcome = s
+        .execute(Command::HasLabel {
+            query: "Box".into(),
+        })
+        .unwrap();
     if let Outcome::HasLabel { query, has_label } = outcome {
         assert_eq!(query, "Box");
         assert!(!has_label);
-    } else { panic!("expected HasLabel, got {outcome:?}"); }
+    } else {
+        panic!("expected HasLabel, got {outcome:?}");
+    }
 }
 
 #[test]
 fn has_label_command_finds_default_box() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    let outcome = s.execute(Command::HasLabel { query: "box".into() }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    let outcome = s
+        .execute(Command::HasLabel {
+            query: "box".into(),
+        })
+        .unwrap();
     if let Outcome::HasLabel { has_label, .. } = outcome {
         assert!(has_label);
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 #[test]
 fn has_label_command_case_insensitive() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    s.execute(Command::Rename { id: SolidId(0), label: "Widget".into() }).unwrap();
-    let upper = s.execute(Command::HasLabel { query: "WIDGET".into() }).unwrap();
-    let lower = s.execute(Command::HasLabel { query: "widg".into() }).unwrap();
-    let miss = s.execute(Command::HasLabel { query: "Gadget".into() }).unwrap();
-    assert!(matches!(upper, Outcome::HasLabel { has_label: true, .. }));
-    assert!(matches!(lower, Outcome::HasLabel { has_label: true, .. }));
-    assert!(matches!(miss, Outcome::HasLabel { has_label: false, .. }));
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    s.execute(Command::Rename {
+        id: SolidId(0),
+        label: "Widget".into(),
+    })
+    .unwrap();
+    let upper = s
+        .execute(Command::HasLabel {
+            query: "WIDGET".into(),
+        })
+        .unwrap();
+    let lower = s
+        .execute(Command::HasLabel {
+            query: "widg".into(),
+        })
+        .unwrap();
+    let miss = s
+        .execute(Command::HasLabel {
+            query: "Gadget".into(),
+        })
+        .unwrap();
+    assert!(matches!(
+        upper,
+        Outcome::HasLabel {
+            has_label: true,
+            ..
+        }
+    ));
+    assert!(matches!(
+        lower,
+        Outcome::HasLabel {
+            has_label: true,
+            ..
+        }
+    ));
+    assert!(matches!(
+        miss,
+        Outcome::HasLabel {
+            has_label: false,
+            ..
+        }
+    ));
 }
 
 #[test]
 fn has_label_command_empty_query_returns_false() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let outcome = s.execute(Command::HasLabel { query: "".into() }).unwrap();
-    assert!(matches!(outcome, Outcome::HasLabel { has_label: false, .. }));
+    assert!(matches!(
+        outcome,
+        Outcome::HasLabel {
+            has_label: false,
+            ..
+        }
+    ));
 }
 
 #[test]
 fn has_label_command_does_not_append_history_event() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let before = s.document().history().len();
-    s.execute(Command::HasLabel { query: "Box".into() }).unwrap();
+    s.execute(Command::HasLabel {
+        query: "Box".into(),
+    })
+    .unwrap();
     assert_eq!(s.document().history().len(), before);
 }
 
 #[test]
 fn has_label_command_round_trips_through_json() {
-    let cmd = Command::HasLabel { query: "Widget".into() };
+    let cmd = Command::HasLabel {
+        query: "Widget".into(),
+    };
     let json = serde_json::to_string(&cmd).unwrap();
     assert!(json.contains("\"op\":\"has_label\""), "json = {json}");
     assert!(json.contains("\"query\":\"Widget\""), "json = {json}");
@@ -3562,15 +5023,32 @@ fn solid_ids_command_empty_on_fresh_session() {
     let outcome = s.execute(Command::SolidIds).unwrap();
     if let Outcome::SolidIds { ids } = outcome {
         assert!(ids.is_empty());
-    } else { panic!("expected SolidIds, got {outcome:?}"); }
+    } else {
+        panic!("expected SolidIds, got {outcome:?}");
+    }
 }
 
 #[test]
 fn solid_ids_command_lists_all_after_creates() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let ids = match s.execute(Command::SolidIds).unwrap() {
         Outcome::SolidIds { ids } => ids,
         _ => panic!(),
@@ -3581,9 +5059,24 @@ fn solid_ids_command_lists_all_after_creates() {
 #[test]
 fn solid_ids_command_skips_deleted() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     s.execute(Command::DeleteSolid { id: SolidId(1) }).unwrap();
     let ids = match s.execute(Command::SolidIds).unwrap() {
         Outcome::SolidIds { ids } => ids,
@@ -3595,7 +5088,12 @@ fn solid_ids_command_skips_deleted() {
 #[test]
 fn solid_ids_command_does_not_append_history_event() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let before = s.document().history().len();
     s.execute(Command::SolidIds).unwrap();
     assert_eq!(s.document().history().len(), before);
@@ -3613,8 +5111,18 @@ fn solid_ids_command_round_trips_through_json() {
 #[test]
 fn solid_ids_command_agrees_with_list_solids() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let ids = match s.execute(Command::SolidIds).unwrap() {
         Outcome::SolidIds { ids } => ids,
         _ => panic!(),
@@ -3629,43 +5137,70 @@ fn solid_ids_command_agrees_with_list_solids() {
 #[test]
 fn aabb_extents_command_returns_box_dimensions() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 4.0, dy: 6.0, dz: 8.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 4.0,
+        dy: 6.0,
+        dz: 8.0,
+    })
+    .unwrap();
     let outcome = s.execute(Command::AabbExtents { id: SolidId(0) }).unwrap();
     if let Outcome::AabbExtents { id, extents } = outcome {
         assert_eq!(id, SolidId(0));
         assert!((extents[0] - 4.0).abs() < 1e-9);
         assert!((extents[1] - 6.0).abs() < 1e-9);
         assert!((extents[2] - 8.0).abs() < 1e-9);
-    } else { panic!("expected AabbExtents, got {outcome:?}"); }
+    } else {
+        panic!("expected AabbExtents, got {outcome:?}");
+    }
 }
 
 #[test]
 fn aabb_extents_command_unknown_solid() {
     let mut s = Session::new();
-    let err = s.execute(Command::AabbExtents { id: SolidId(99) }).unwrap_err();
+    let err = s
+        .execute(Command::AabbExtents { id: SolidId(99) })
+        .unwrap_err();
     assert!(matches!(err, ApiError::UnknownSolid(_)));
 }
 
 #[test]
 fn aabb_extents_command_translation_invariant() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 2.0, dy: 3.0, dz: 5.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 2.0,
+        dy: 3.0,
+        dz: 5.0,
+    })
+    .unwrap();
     let before = match s.execute(Command::AabbExtents { id: SolidId(0) }).unwrap() {
         Outcome::AabbExtents { extents, .. } => extents,
         _ => panic!(),
     };
-    s.execute(Command::Translate { id: SolidId(0), dx: 100.0, dy: -50.0, dz: 7.0 }).unwrap();
+    s.execute(Command::Translate {
+        id: SolidId(0),
+        dx: 100.0,
+        dy: -50.0,
+        dz: 7.0,
+    })
+    .unwrap();
     let after = match s.execute(Command::AabbExtents { id: SolidId(0) }).unwrap() {
         Outcome::AabbExtents { extents, .. } => extents,
         _ => panic!(),
     };
-    for i in 0..3 { assert!((before[i] - after[i]).abs() < 1e-9); }
+    for i in 0..3 {
+        assert!((before[i] - after[i]).abs() < 1e-9);
+    }
 }
 
 #[test]
 fn aabb_extents_command_does_not_append_history_event() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let before = s.document().history().len();
     s.execute(Command::AabbExtents { id: SolidId(0) }).unwrap();
     assert_eq!(s.document().history().len(), before);
@@ -3683,7 +5218,12 @@ fn aabb_extents_command_round_trips_through_json() {
 #[test]
 fn aabb_extents_command_diagonal_consistent() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 3.0, dy: 4.0, dz: 12.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 3.0,
+        dy: 4.0,
+        dz: 12.0,
+    })
+    .unwrap();
     let extents = match s.execute(Command::AabbExtents { id: SolidId(0) }).unwrap() {
         Outcome::AabbExtents { extents, .. } => extents,
         _ => panic!(),
@@ -3692,7 +5232,8 @@ fn aabb_extents_command_diagonal_consistent() {
         Outcome::Diagonal { length, .. } => length,
         _ => panic!(),
     };
-    let computed = (extents[0]*extents[0] + extents[1]*extents[1] + extents[2]*extents[2]).sqrt();
+    let computed =
+        (extents[0] * extents[0] + extents[1] * extents[1] + extents[2] * extents[2]).sqrt();
     assert!((diag - computed).abs() < 1e-9);
     assert!((diag - 13.0).abs() < 1e-9);
 }
@@ -3700,24 +5241,51 @@ fn aabb_extents_command_diagonal_consistent() {
 #[test]
 fn aabb_longest_axis_command_picks_z() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 2.0, dy: 3.0, dz: 10.0 }).unwrap();
-    let outcome = s.execute(Command::AabbLongestAxis { id: SolidId(0) }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 2.0,
+        dy: 3.0,
+        dz: 10.0,
+    })
+    .unwrap();
+    let outcome = s
+        .execute(Command::AabbLongestAxis { id: SolidId(0) })
+        .unwrap();
     if let Outcome::AabbLongestAxis { id, axis } = outcome {
         assert_eq!(id, SolidId(0));
         assert_eq!(axis, 2);
-    } else { panic!("expected AabbLongestAxis, got {outcome:?}"); }
+    } else {
+        panic!("expected AabbLongestAxis, got {outcome:?}");
+    }
 }
 
 #[test]
 fn aabb_longest_axis_command_picks_x_and_y() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 9.0, dy: 2.0, dz: 3.0 }).unwrap();
-    s.execute(Command::CreateBox { dx: 2.0, dy: 9.0, dz: 3.0 }).unwrap();
-    let ax_x = match s.execute(Command::AabbLongestAxis { id: SolidId(0) }).unwrap() {
-        Outcome::AabbLongestAxis { axis, .. } => axis, _ => panic!(),
+    s.execute(Command::CreateBox {
+        dx: 9.0,
+        dy: 2.0,
+        dz: 3.0,
+    })
+    .unwrap();
+    s.execute(Command::CreateBox {
+        dx: 2.0,
+        dy: 9.0,
+        dz: 3.0,
+    })
+    .unwrap();
+    let ax_x = match s
+        .execute(Command::AabbLongestAxis { id: SolidId(0) })
+        .unwrap()
+    {
+        Outcome::AabbLongestAxis { axis, .. } => axis,
+        _ => panic!(),
     };
-    let ax_y = match s.execute(Command::AabbLongestAxis { id: SolidId(1) }).unwrap() {
-        Outcome::AabbLongestAxis { axis, .. } => axis, _ => panic!(),
+    let ax_y = match s
+        .execute(Command::AabbLongestAxis { id: SolidId(1) })
+        .unwrap()
+    {
+        Outcome::AabbLongestAxis { axis, .. } => axis,
+        _ => panic!(),
     };
     assert_eq!(ax_x, 0);
     assert_eq!(ax_y, 1);
@@ -3726,9 +5294,18 @@ fn aabb_longest_axis_command_picks_x_and_y() {
 #[test]
 fn aabb_longest_axis_command_ties_favour_lower_index() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 5.0, dy: 5.0, dz: 5.0 }).unwrap();
-    let axis = match s.execute(Command::AabbLongestAxis { id: SolidId(0) }).unwrap() {
-        Outcome::AabbLongestAxis { axis, .. } => axis, _ => panic!(),
+    s.execute(Command::CreateBox {
+        dx: 5.0,
+        dy: 5.0,
+        dz: 5.0,
+    })
+    .unwrap();
+    let axis = match s
+        .execute(Command::AabbLongestAxis { id: SolidId(0) })
+        .unwrap()
+    {
+        Outcome::AabbLongestAxis { axis, .. } => axis,
+        _ => panic!(),
     };
     assert_eq!(axis, 0);
 }
@@ -3736,16 +5313,24 @@ fn aabb_longest_axis_command_ties_favour_lower_index() {
 #[test]
 fn aabb_longest_axis_command_unknown_solid() {
     let mut s = Session::new();
-    let err = s.execute(Command::AabbLongestAxis { id: SolidId(99) }).unwrap_err();
+    let err = s
+        .execute(Command::AabbLongestAxis { id: SolidId(99) })
+        .unwrap_err();
     assert!(matches!(err, ApiError::UnknownSolid(_)));
 }
 
 #[test]
 fn aabb_longest_axis_command_does_not_append_history_event() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 2.0, dz: 3.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 2.0,
+        dz: 3.0,
+    })
+    .unwrap();
     let before = s.document().history().len();
-    s.execute(Command::AabbLongestAxis { id: SolidId(0) }).unwrap();
+    s.execute(Command::AabbLongestAxis { id: SolidId(0) })
+        .unwrap();
     assert_eq!(s.document().history().len(), before);
 }
 
@@ -3753,7 +5338,10 @@ fn aabb_longest_axis_command_does_not_append_history_event() {
 fn aabb_longest_axis_command_round_trips_through_json() {
     let cmd = Command::AabbLongestAxis { id: SolidId(0) };
     let json = serde_json::to_string(&cmd).unwrap();
-    assert!(json.contains("\"op\":\"aabb_longest_axis\""), "json = {json}");
+    assert!(
+        json.contains("\"op\":\"aabb_longest_axis\""),
+        "json = {json}"
+    );
     let back: Command = serde_json::from_str(&json).unwrap();
     assert!(matches!(back, Command::AabbLongestAxis { id: SolidId(0) }));
 }
@@ -3761,24 +5349,51 @@ fn aabb_longest_axis_command_round_trips_through_json() {
 #[test]
 fn aabb_shortest_axis_command_picks_x() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 5.0, dz: 8.0 }).unwrap();
-    let outcome = s.execute(Command::AabbShortestAxis { id: SolidId(0) }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 5.0,
+        dz: 8.0,
+    })
+    .unwrap();
+    let outcome = s
+        .execute(Command::AabbShortestAxis { id: SolidId(0) })
+        .unwrap();
     if let Outcome::AabbShortestAxis { id, axis } = outcome {
         assert_eq!(id, SolidId(0));
         assert_eq!(axis, 0);
-    } else { panic!("expected AabbShortestAxis, got {outcome:?}"); }
+    } else {
+        panic!("expected AabbShortestAxis, got {outcome:?}");
+    }
 }
 
 #[test]
 fn aabb_shortest_axis_command_picks_y_and_z() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 9.0, dy: 1.0, dz: 5.0 }).unwrap();
-    s.execute(Command::CreateBox { dx: 9.0, dy: 5.0, dz: 1.0 }).unwrap();
-    let ax_y = match s.execute(Command::AabbShortestAxis { id: SolidId(0) }).unwrap() {
-        Outcome::AabbShortestAxis { axis, .. } => axis, _ => panic!(),
+    s.execute(Command::CreateBox {
+        dx: 9.0,
+        dy: 1.0,
+        dz: 5.0,
+    })
+    .unwrap();
+    s.execute(Command::CreateBox {
+        dx: 9.0,
+        dy: 5.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    let ax_y = match s
+        .execute(Command::AabbShortestAxis { id: SolidId(0) })
+        .unwrap()
+    {
+        Outcome::AabbShortestAxis { axis, .. } => axis,
+        _ => panic!(),
     };
-    let ax_z = match s.execute(Command::AabbShortestAxis { id: SolidId(1) }).unwrap() {
-        Outcome::AabbShortestAxis { axis, .. } => axis, _ => panic!(),
+    let ax_z = match s
+        .execute(Command::AabbShortestAxis { id: SolidId(1) })
+        .unwrap()
+    {
+        Outcome::AabbShortestAxis { axis, .. } => axis,
+        _ => panic!(),
     };
     assert_eq!(ax_y, 1);
     assert_eq!(ax_z, 2);
@@ -3787,9 +5402,18 @@ fn aabb_shortest_axis_command_picks_y_and_z() {
 #[test]
 fn aabb_shortest_axis_command_ties_favour_lower_index() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 5.0, dy: 5.0, dz: 5.0 }).unwrap();
-    let axis = match s.execute(Command::AabbShortestAxis { id: SolidId(0) }).unwrap() {
-        Outcome::AabbShortestAxis { axis, .. } => axis, _ => panic!(),
+    s.execute(Command::CreateBox {
+        dx: 5.0,
+        dy: 5.0,
+        dz: 5.0,
+    })
+    .unwrap();
+    let axis = match s
+        .execute(Command::AabbShortestAxis { id: SolidId(0) })
+        .unwrap()
+    {
+        Outcome::AabbShortestAxis { axis, .. } => axis,
+        _ => panic!(),
     };
     assert_eq!(axis, 0);
 }
@@ -3797,16 +5421,24 @@ fn aabb_shortest_axis_command_ties_favour_lower_index() {
 #[test]
 fn aabb_shortest_axis_command_unknown_solid() {
     let mut s = Session::new();
-    let err = s.execute(Command::AabbShortestAxis { id: SolidId(99) }).unwrap_err();
+    let err = s
+        .execute(Command::AabbShortestAxis { id: SolidId(99) })
+        .unwrap_err();
     assert!(matches!(err, ApiError::UnknownSolid(_)));
 }
 
 #[test]
 fn aabb_shortest_axis_command_does_not_append_history_event() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 2.0, dz: 3.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 2.0,
+        dz: 3.0,
+    })
+    .unwrap();
     let before = s.document().history().len();
-    s.execute(Command::AabbShortestAxis { id: SolidId(0) }).unwrap();
+    s.execute(Command::AabbShortestAxis { id: SolidId(0) })
+        .unwrap();
     assert_eq!(s.document().history().len(), before);
 }
 
@@ -3814,7 +5446,10 @@ fn aabb_shortest_axis_command_does_not_append_history_event() {
 fn aabb_shortest_axis_command_round_trips_through_json() {
     let cmd = Command::AabbShortestAxis { id: SolidId(0) };
     let json = serde_json::to_string(&cmd).unwrap();
-    assert!(json.contains("\"op\":\"aabb_shortest_axis\""), "json = {json}");
+    assert!(
+        json.contains("\"op\":\"aabb_shortest_axis\""),
+        "json = {json}"
+    );
     let back: Command = serde_json::from_str(&json).unwrap();
     assert!(matches!(back, Command::AabbShortestAxis { id: SolidId(0) }));
 }
@@ -3822,12 +5457,25 @@ fn aabb_shortest_axis_command_round_trips_through_json() {
 #[test]
 fn aabb_shortest_axis_disagrees_with_longest_for_non_cube() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 2.0, dy: 7.0, dz: 4.0 }).unwrap();
-    let longest = match s.execute(Command::AabbLongestAxis { id: SolidId(0) }).unwrap() {
-        Outcome::AabbLongestAxis { axis, .. } => axis, _ => panic!(),
+    s.execute(Command::CreateBox {
+        dx: 2.0,
+        dy: 7.0,
+        dz: 4.0,
+    })
+    .unwrap();
+    let longest = match s
+        .execute(Command::AabbLongestAxis { id: SolidId(0) })
+        .unwrap()
+    {
+        Outcome::AabbLongestAxis { axis, .. } => axis,
+        _ => panic!(),
     };
-    let shortest = match s.execute(Command::AabbShortestAxis { id: SolidId(0) }).unwrap() {
-        Outcome::AabbShortestAxis { axis, .. } => axis, _ => panic!(),
+    let shortest = match s
+        .execute(Command::AabbShortestAxis { id: SolidId(0) })
+        .unwrap()
+    {
+        Outcome::AabbShortestAxis { axis, .. } => axis,
+        _ => panic!(),
     };
     assert_eq!(longest, 1);
     assert_eq!(shortest, 0);
@@ -3837,20 +5485,38 @@ fn aabb_shortest_axis_disagrees_with_longest_for_non_cube() {
 #[test]
 fn aabb_aspect_ratio_command_cube_returns_one() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 5.0, dy: 5.0, dz: 5.0 }).unwrap();
-    let outcome = s.execute(Command::AabbAspectRatio { id: SolidId(0) }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 5.0,
+        dy: 5.0,
+        dz: 5.0,
+    })
+    .unwrap();
+    let outcome = s
+        .execute(Command::AabbAspectRatio { id: SolidId(0) })
+        .unwrap();
     if let Outcome::AabbAspectRatio { id, ratio } = outcome {
         assert_eq!(id, SolidId(0));
         assert!((ratio - 1.0).abs() < 1e-9);
-    } else { panic!("expected AabbAspectRatio, got {outcome:?}"); }
+    } else {
+        panic!("expected AabbAspectRatio, got {outcome:?}");
+    }
 }
 
 #[test]
 fn aabb_aspect_ratio_command_slender_box() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 2.0, dy: 4.0, dz: 20.0 }).unwrap();
-    let ratio = match s.execute(Command::AabbAspectRatio { id: SolidId(0) }).unwrap() {
-        Outcome::AabbAspectRatio { ratio, .. } => ratio, _ => panic!(),
+    s.execute(Command::CreateBox {
+        dx: 2.0,
+        dy: 4.0,
+        dz: 20.0,
+    })
+    .unwrap();
+    let ratio = match s
+        .execute(Command::AabbAspectRatio { id: SolidId(0) })
+        .unwrap()
+    {
+        Outcome::AabbAspectRatio { ratio, .. } => ratio,
+        _ => panic!(),
     };
     assert!((ratio - 10.0).abs() < 1e-9);
 }
@@ -3858,13 +5524,32 @@ fn aabb_aspect_ratio_command_slender_box() {
 #[test]
 fn aabb_aspect_ratio_command_translation_invariant() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 3.0, dy: 1.0, dz: 6.0 }).unwrap();
-    let before = match s.execute(Command::AabbAspectRatio { id: SolidId(0) }).unwrap() {
-        Outcome::AabbAspectRatio { ratio, .. } => ratio, _ => panic!(),
+    s.execute(Command::CreateBox {
+        dx: 3.0,
+        dy: 1.0,
+        dz: 6.0,
+    })
+    .unwrap();
+    let before = match s
+        .execute(Command::AabbAspectRatio { id: SolidId(0) })
+        .unwrap()
+    {
+        Outcome::AabbAspectRatio { ratio, .. } => ratio,
+        _ => panic!(),
     };
-    s.execute(Command::Translate { id: SolidId(0), dx: 100.0, dy: -50.0, dz: 7.0 }).unwrap();
-    let after = match s.execute(Command::AabbAspectRatio { id: SolidId(0) }).unwrap() {
-        Outcome::AabbAspectRatio { ratio, .. } => ratio, _ => panic!(),
+    s.execute(Command::Translate {
+        id: SolidId(0),
+        dx: 100.0,
+        dy: -50.0,
+        dz: 7.0,
+    })
+    .unwrap();
+    let after = match s
+        .execute(Command::AabbAspectRatio { id: SolidId(0) })
+        .unwrap()
+    {
+        Outcome::AabbAspectRatio { ratio, .. } => ratio,
+        _ => panic!(),
     };
     assert!((before - after).abs() < 1e-9);
     assert!((before - 6.0).abs() < 1e-9);
@@ -3873,16 +5558,24 @@ fn aabb_aspect_ratio_command_translation_invariant() {
 #[test]
 fn aabb_aspect_ratio_command_unknown_solid() {
     let mut s = Session::new();
-    let err = s.execute(Command::AabbAspectRatio { id: SolidId(99) }).unwrap_err();
+    let err = s
+        .execute(Command::AabbAspectRatio { id: SolidId(99) })
+        .unwrap_err();
     assert!(matches!(err, ApiError::UnknownSolid(_)));
 }
 
 #[test]
 fn aabb_aspect_ratio_command_does_not_append_history_event() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 2.0, dz: 3.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 2.0,
+        dz: 3.0,
+    })
+    .unwrap();
     let before = s.document().history().len();
-    s.execute(Command::AabbAspectRatio { id: SolidId(0) }).unwrap();
+    s.execute(Command::AabbAspectRatio { id: SolidId(0) })
+        .unwrap();
     assert_eq!(s.document().history().len(), before);
 }
 
@@ -3890,7 +5583,10 @@ fn aabb_aspect_ratio_command_does_not_append_history_event() {
 fn aabb_aspect_ratio_command_round_trips_through_json() {
     let cmd = Command::AabbAspectRatio { id: SolidId(0) };
     let json = serde_json::to_string(&cmd).unwrap();
-    assert!(json.contains("\"op\":\"aabb_aspect_ratio\""), "json = {json}");
+    assert!(
+        json.contains("\"op\":\"aabb_aspect_ratio\""),
+        "json = {json}"
+    );
     let back: Command = serde_json::from_str(&json).unwrap();
     assert!(matches!(back, Command::AabbAspectRatio { id: SolidId(0) }));
 }
@@ -3898,20 +5594,33 @@ fn aabb_aspect_ratio_command_round_trips_through_json() {
 #[test]
 fn is_cubic_command_true_for_cube() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 4.0, dy: 4.0, dz: 4.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 4.0,
+        dy: 4.0,
+        dz: 4.0,
+    })
+    .unwrap();
     let outcome = s.execute(Command::IsCubic { id: SolidId(0) }).unwrap();
     if let Outcome::IsCubic { id, cubic } = outcome {
         assert_eq!(id, SolidId(0));
         assert!(cubic);
-    } else { panic!("expected IsCubic, got {outcome:?}"); }
+    } else {
+        panic!("expected IsCubic, got {outcome:?}");
+    }
 }
 
 #[test]
 fn is_cubic_command_false_for_non_cube() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 4.0, dy: 4.0, dz: 5.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 4.0,
+        dy: 4.0,
+        dz: 5.0,
+    })
+    .unwrap();
     let cubic = match s.execute(Command::IsCubic { id: SolidId(0) }).unwrap() {
-        Outcome::IsCubic { cubic, .. } => cubic, _ => panic!(),
+        Outcome::IsCubic { cubic, .. } => cubic,
+        _ => panic!(),
     };
     assert!(!cubic);
 }
@@ -3919,10 +5628,22 @@ fn is_cubic_command_false_for_non_cube() {
 #[test]
 fn is_cubic_command_translation_invariant() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 3.0, dy: 3.0, dz: 3.0 }).unwrap();
-    s.execute(Command::Translate { id: SolidId(0), dx: 100.0, dy: -50.0, dz: 7.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 3.0,
+        dy: 3.0,
+        dz: 3.0,
+    })
+    .unwrap();
+    s.execute(Command::Translate {
+        id: SolidId(0),
+        dx: 100.0,
+        dy: -50.0,
+        dz: 7.0,
+    })
+    .unwrap();
     let cubic = match s.execute(Command::IsCubic { id: SolidId(0) }).unwrap() {
-        Outcome::IsCubic { cubic, .. } => cubic, _ => panic!(),
+        Outcome::IsCubic { cubic, .. } => cubic,
+        _ => panic!(),
     };
     assert!(cubic);
 }
@@ -3937,7 +5658,12 @@ fn is_cubic_command_unknown_solid() {
 #[test]
 fn is_cubic_command_does_not_append_history_event() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let before = s.document().history().len();
     s.execute(Command::IsCubic { id: SolidId(0) }).unwrap();
     assert_eq!(s.document().history().len(), before);
@@ -3955,20 +5681,33 @@ fn is_cubic_command_round_trips_through_json() {
 #[test]
 fn is_square_xy_command_true_for_square_pillar() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 4.0, dy: 4.0, dz: 20.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 4.0,
+        dy: 4.0,
+        dz: 20.0,
+    })
+    .unwrap();
     let outcome = s.execute(Command::IsSquareXy { id: SolidId(0) }).unwrap();
     if let Outcome::IsSquareXy { id, square } = outcome {
         assert_eq!(id, SolidId(0));
         assert!(square);
-    } else { panic!("expected IsSquareXy, got {outcome:?}"); }
+    } else {
+        panic!("expected IsSquareXy, got {outcome:?}");
+    }
 }
 
 #[test]
 fn is_square_xy_command_true_for_cube() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 3.0, dy: 3.0, dz: 3.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 3.0,
+        dy: 3.0,
+        dz: 3.0,
+    })
+    .unwrap();
     let square = match s.execute(Command::IsSquareXy { id: SolidId(0) }).unwrap() {
-        Outcome::IsSquareXy { square, .. } => square, _ => panic!(),
+        Outcome::IsSquareXy { square, .. } => square,
+        _ => panic!(),
     };
     assert!(square);
 }
@@ -3976,9 +5715,15 @@ fn is_square_xy_command_true_for_cube() {
 #[test]
 fn is_square_xy_command_false_for_rectangular_xy() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 3.0, dy: 5.0, dz: 3.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 3.0,
+        dy: 5.0,
+        dz: 3.0,
+    })
+    .unwrap();
     let square = match s.execute(Command::IsSquareXy { id: SolidId(0) }).unwrap() {
-        Outcome::IsSquareXy { square, .. } => square, _ => panic!(),
+        Outcome::IsSquareXy { square, .. } => square,
+        _ => panic!(),
     };
     assert!(!square);
 }
@@ -3986,14 +5731,21 @@ fn is_square_xy_command_false_for_rectangular_xy() {
 #[test]
 fn is_square_xy_command_unknown_solid() {
     let mut s = Session::new();
-    let err = s.execute(Command::IsSquareXy { id: SolidId(99) }).unwrap_err();
+    let err = s
+        .execute(Command::IsSquareXy { id: SolidId(99) })
+        .unwrap_err();
     assert!(matches!(err, ApiError::UnknownSolid(_)));
 }
 
 #[test]
 fn is_square_xy_command_does_not_append_history_event() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 7.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 7.0,
+    })
+    .unwrap();
     let before = s.document().history().len();
     s.execute(Command::IsSquareXy { id: SolidId(0) }).unwrap();
     assert_eq!(s.document().history().len(), before);
@@ -4011,50 +5763,92 @@ fn is_square_xy_command_round_trips_through_json() {
 #[test]
 fn history_description_command_returns_recent_event() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 2.0, dz: 3.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 2.0,
+        dz: 3.0,
+    })
+    .unwrap();
     let len = s.document().history().len() as u32;
     assert!(len >= 1);
-    let outcome = s.execute(Command::HistoryDescription { index: len - 1 }).unwrap();
+    let outcome = s
+        .execute(Command::HistoryDescription { index: len - 1 })
+        .unwrap();
     if let Outcome::HistoryDescription { index, description } = outcome {
         assert_eq!(index, len - 1);
         assert!(!description.is_empty());
-    } else { panic!("expected HistoryDescription, got {outcome:?}"); }
+    } else {
+        panic!("expected HistoryDescription, got {outcome:?}");
+    }
 }
 
 #[test]
 fn history_description_command_matches_history_events() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
-    let events: Vec<_> = s.document().history().iter().map(|e| e.description.clone()).collect();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    s.execute(Command::CreateBox {
+        dx: 2.0,
+        dy: 2.0,
+        dz: 2.0,
+    })
+    .unwrap();
+    let events: Vec<_> = s
+        .document()
+        .history()
+        .iter()
+        .map(|e| e.description.clone())
+        .collect();
     for (i, expected) in events.iter().enumerate() {
-        let outcome = s.execute(Command::HistoryDescription { index: i as u32 }).unwrap();
+        let outcome = s
+            .execute(Command::HistoryDescription { index: i as u32 })
+            .unwrap();
         if let Outcome::HistoryDescription { description, .. } = outcome {
             assert_eq!(&description, expected);
-        } else { panic!("expected HistoryDescription"); }
+        } else {
+            panic!("expected HistoryDescription");
+        }
     }
 }
 
 #[test]
 fn history_description_command_out_of_bounds() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let len = s.document().history().len() as u32;
-    let err = s.execute(Command::HistoryDescription { index: len + 5 }).unwrap_err();
+    let err = s
+        .execute(Command::HistoryDescription { index: len + 5 })
+        .unwrap_err();
     assert!(matches!(err, ApiError::InvalidArgument(_)));
 }
 
 #[test]
 fn history_description_command_empty_history() {
     let mut s = Session::new();
-    let err = s.execute(Command::HistoryDescription { index: 0 }).unwrap_err();
+    let err = s
+        .execute(Command::HistoryDescription { index: 0 })
+        .unwrap_err();
     assert!(matches!(err, ApiError::InvalidArgument(_)));
 }
 
 #[test]
 fn history_description_command_does_not_append_history_event() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let before = s.document().history().len();
     s.execute(Command::HistoryDescription { index: 0 }).unwrap();
     assert_eq!(s.document().history().len(), before);
@@ -4064,7 +5858,10 @@ fn history_description_command_does_not_append_history_event() {
 fn history_description_command_round_trips_through_json() {
     let cmd = Command::HistoryDescription { index: 7 };
     let json = serde_json::to_string(&cmd).unwrap();
-    assert!(json.contains("\"op\":\"history_description\""), "json = {json}");
+    assert!(
+        json.contains("\"op\":\"history_description\""),
+        "json = {json}"
+    );
     let back: Command = serde_json::from_str(&json).unwrap();
     assert!(matches!(back, Command::HistoryDescription { index: 7 }));
 }
@@ -4072,20 +5869,33 @@ fn history_description_command_round_trips_through_json() {
 #[test]
 fn is_square_yz_command_true_for_x_extrusion() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 20.0, dy: 4.0, dz: 4.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 20.0,
+        dy: 4.0,
+        dz: 4.0,
+    })
+    .unwrap();
     let outcome = s.execute(Command::IsSquareYz { id: SolidId(0) }).unwrap();
     if let Outcome::IsSquareYz { id, square } = outcome {
         assert_eq!(id, SolidId(0));
         assert!(square);
-    } else { panic!("expected IsSquareYz, got {outcome:?}"); }
+    } else {
+        panic!("expected IsSquareYz, got {outcome:?}");
+    }
 }
 
 #[test]
 fn is_square_yz_command_true_for_cube() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 3.0, dy: 3.0, dz: 3.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 3.0,
+        dy: 3.0,
+        dz: 3.0,
+    })
+    .unwrap();
     let square = match s.execute(Command::IsSquareYz { id: SolidId(0) }).unwrap() {
-        Outcome::IsSquareYz { square, .. } => square, _ => panic!(),
+        Outcome::IsSquareYz { square, .. } => square,
+        _ => panic!(),
     };
     assert!(square);
 }
@@ -4093,9 +5903,15 @@ fn is_square_yz_command_true_for_cube() {
 #[test]
 fn is_square_yz_command_false_for_rectangular_yz() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 3.0, dy: 5.0, dz: 7.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 3.0,
+        dy: 5.0,
+        dz: 7.0,
+    })
+    .unwrap();
     let square = match s.execute(Command::IsSquareYz { id: SolidId(0) }).unwrap() {
-        Outcome::IsSquareYz { square, .. } => square, _ => panic!(),
+        Outcome::IsSquareYz { square, .. } => square,
+        _ => panic!(),
     };
     assert!(!square);
 }
@@ -4104,12 +5920,19 @@ fn is_square_yz_command_false_for_rectangular_yz() {
 fn is_square_yz_command_independent_from_xy() {
     let mut s = Session::new();
     // X==Y but Y!=Z: square_xy is true, square_yz is false.
-    s.execute(Command::CreateBox { dx: 4.0, dy: 4.0, dz: 9.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 4.0,
+        dy: 4.0,
+        dz: 9.0,
+    })
+    .unwrap();
     let yz = match s.execute(Command::IsSquareYz { id: SolidId(0) }).unwrap() {
-        Outcome::IsSquareYz { square, .. } => square, _ => panic!(),
+        Outcome::IsSquareYz { square, .. } => square,
+        _ => panic!(),
     };
     let xy = match s.execute(Command::IsSquareXy { id: SolidId(0) }).unwrap() {
-        Outcome::IsSquareXy { square, .. } => square, _ => panic!(),
+        Outcome::IsSquareXy { square, .. } => square,
+        _ => panic!(),
     };
     assert!(xy && !yz);
 }
@@ -4117,14 +5940,21 @@ fn is_square_yz_command_independent_from_xy() {
 #[test]
 fn is_square_yz_command_unknown_solid() {
     let mut s = Session::new();
-    let err = s.execute(Command::IsSquareYz { id: SolidId(99) }).unwrap_err();
+    let err = s
+        .execute(Command::IsSquareYz { id: SolidId(99) })
+        .unwrap_err();
     assert!(matches!(err, ApiError::UnknownSolid(_)));
 }
 
 #[test]
 fn is_square_yz_command_does_not_append_history_event() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 7.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 7.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let before = s.document().history().len();
     s.execute(Command::IsSquareYz { id: SolidId(0) }).unwrap();
     assert_eq!(s.document().history().len(), before);
@@ -4142,20 +5972,33 @@ fn is_square_yz_command_round_trips_through_json() {
 #[test]
 fn is_square_xz_command_true_for_y_extrusion() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 4.0, dy: 20.0, dz: 4.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 4.0,
+        dy: 20.0,
+        dz: 4.0,
+    })
+    .unwrap();
     let outcome = s.execute(Command::IsSquareXz { id: SolidId(0) }).unwrap();
     if let Outcome::IsSquareXz { id, square } = outcome {
         assert_eq!(id, SolidId(0));
         assert!(square);
-    } else { panic!("expected IsSquareXz, got {outcome:?}"); }
+    } else {
+        panic!("expected IsSquareXz, got {outcome:?}");
+    }
 }
 
 #[test]
 fn is_square_xz_command_true_for_cube() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 3.0, dy: 3.0, dz: 3.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 3.0,
+        dy: 3.0,
+        dz: 3.0,
+    })
+    .unwrap();
     let square = match s.execute(Command::IsSquareXz { id: SolidId(0) }).unwrap() {
-        Outcome::IsSquareXz { square, .. } => square, _ => panic!(),
+        Outcome::IsSquareXz { square, .. } => square,
+        _ => panic!(),
     };
     assert!(square);
 }
@@ -4163,9 +6006,15 @@ fn is_square_xz_command_true_for_cube() {
 #[test]
 fn is_square_xz_command_false_for_rectangular_xz() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 3.0, dy: 5.0, dz: 7.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 3.0,
+        dy: 5.0,
+        dz: 7.0,
+    })
+    .unwrap();
     let square = match s.execute(Command::IsSquareXz { id: SolidId(0) }).unwrap() {
-        Outcome::IsSquareXz { square, .. } => square, _ => panic!(),
+        Outcome::IsSquareXz { square, .. } => square,
+        _ => panic!(),
     };
     assert!(!square);
 }
@@ -4174,15 +6023,23 @@ fn is_square_xz_command_false_for_rectangular_xz() {
 fn is_square_xz_command_trio_disagreement() {
     let mut s = Session::new();
     // X==Z but Y differs: only IsSquareXz is true.
-    s.execute(Command::CreateBox { dx: 4.0, dy: 9.0, dz: 4.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 4.0,
+        dy: 9.0,
+        dz: 4.0,
+    })
+    .unwrap();
     let xz = match s.execute(Command::IsSquareXz { id: SolidId(0) }).unwrap() {
-        Outcome::IsSquareXz { square, .. } => square, _ => panic!(),
+        Outcome::IsSquareXz { square, .. } => square,
+        _ => panic!(),
     };
     let xy = match s.execute(Command::IsSquareXy { id: SolidId(0) }).unwrap() {
-        Outcome::IsSquareXy { square, .. } => square, _ => panic!(),
+        Outcome::IsSquareXy { square, .. } => square,
+        _ => panic!(),
     };
     let yz = match s.execute(Command::IsSquareYz { id: SolidId(0) }).unwrap() {
-        Outcome::IsSquareYz { square, .. } => square, _ => panic!(),
+        Outcome::IsSquareYz { square, .. } => square,
+        _ => panic!(),
     };
     assert!(xz && !xy && !yz);
 }
@@ -4190,14 +6047,21 @@ fn is_square_xz_command_trio_disagreement() {
 #[test]
 fn is_square_xz_command_unknown_solid() {
     let mut s = Session::new();
-    let err = s.execute(Command::IsSquareXz { id: SolidId(99) }).unwrap_err();
+    let err = s
+        .execute(Command::IsSquareXz { id: SolidId(99) })
+        .unwrap_err();
     assert!(matches!(err, ApiError::UnknownSolid(_)));
 }
 
 #[test]
 fn is_square_xz_command_does_not_append_history_event() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 7.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 7.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let before = s.document().history().len();
     s.execute(Command::IsSquareXz { id: SolidId(0) }).unwrap();
     assert_eq!(s.document().history().len(), before);
@@ -4216,25 +6080,37 @@ fn is_square_xz_command_round_trips_through_json() {
 fn operation_count_command_zero_when_empty() {
     let mut s = Session::new();
     let outcome = s
-        .execute(Command::OperationCount { op_name: "create_box".to_string() })
+        .execute(Command::OperationCount {
+            op_name: "create_box".to_string(),
+        })
         .unwrap();
     if let Outcome::OperationCount { op_name, count } = outcome {
         assert_eq!(op_name, "create_box");
         assert_eq!(count, 0);
-    } else { panic!("expected OperationCount, got {outcome:?}"); }
+    } else {
+        panic!("expected OperationCount, got {outcome:?}");
+    }
 }
 
 #[test]
 fn operation_count_command_counts_create_box() {
     let mut s = Session::new();
     for _ in 0..3 {
-        s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+        s.execute(Command::CreateBox {
+            dx: 1.0,
+            dy: 1.0,
+            dz: 1.0,
+        })
+        .unwrap();
     }
     let count = match s
-        .execute(Command::OperationCount { op_name: "create_box".to_string() })
+        .execute(Command::OperationCount {
+            op_name: "create_box".to_string(),
+        })
         .unwrap()
     {
-        Outcome::OperationCount { count, .. } => count, _ => panic!(),
+        Outcome::OperationCount { count, .. } => count,
+        _ => panic!(),
     };
     assert_eq!(count, 3);
 }
@@ -4242,20 +6118,42 @@ fn operation_count_command_counts_create_box() {
 #[test]
 fn operation_count_command_distinguishes_ops() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
-    s.execute(Command::Translate { id: SolidId(0), dx: 1.0, dy: 0.0, dz: 0.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    s.execute(Command::CreateBox {
+        dx: 2.0,
+        dy: 2.0,
+        dz: 2.0,
+    })
+    .unwrap();
+    s.execute(Command::Translate {
+        id: SolidId(0),
+        dx: 1.0,
+        dy: 0.0,
+        dz: 0.0,
+    })
+    .unwrap();
     let boxes = match s
-        .execute(Command::OperationCount { op_name: "create_box".to_string() })
+        .execute(Command::OperationCount {
+            op_name: "create_box".to_string(),
+        })
         .unwrap()
     {
-        Outcome::OperationCount { count, .. } => count, _ => panic!(),
+        Outcome::OperationCount { count, .. } => count,
+        _ => panic!(),
     };
     let translates = match s
-        .execute(Command::OperationCount { op_name: "translate".to_string() })
+        .execute(Command::OperationCount {
+            op_name: "translate".to_string(),
+        })
         .unwrap()
     {
-        Outcome::OperationCount { count, .. } => count, _ => panic!(),
+        Outcome::OperationCount { count, .. } => count,
+        _ => panic!(),
     };
     assert_eq!(boxes, 2);
     assert_eq!(translates, 1);
@@ -4264,12 +6162,20 @@ fn operation_count_command_distinguishes_ops() {
 #[test]
 fn operation_count_command_unknown_op_is_zero() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let count = match s
-        .execute(Command::OperationCount { op_name: "definitely_not_an_op".to_string() })
+        .execute(Command::OperationCount {
+            op_name: "definitely_not_an_op".to_string(),
+        })
         .unwrap()
     {
-        Outcome::OperationCount { count, .. } => count, _ => panic!(),
+        Outcome::OperationCount { count, .. } => count,
+        _ => panic!(),
     };
     assert_eq!(count, 0);
 }
@@ -4277,18 +6183,29 @@ fn operation_count_command_unknown_op_is_zero() {
 #[test]
 fn operation_count_command_is_case_sensitive() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let lower = match s
-        .execute(Command::OperationCount { op_name: "create_box".to_string() })
+        .execute(Command::OperationCount {
+            op_name: "create_box".to_string(),
+        })
         .unwrap()
     {
-        Outcome::OperationCount { count, .. } => count, _ => panic!(),
+        Outcome::OperationCount { count, .. } => count,
+        _ => panic!(),
     };
     let upper = match s
-        .execute(Command::OperationCount { op_name: "CREATE_BOX".to_string() })
+        .execute(Command::OperationCount {
+            op_name: "CREATE_BOX".to_string(),
+        })
         .unwrap()
     {
-        Outcome::OperationCount { count, .. } => count, _ => panic!(),
+        Outcome::OperationCount { count, .. } => count,
+        _ => panic!(),
     };
     assert_eq!(lower, 1);
     assert_eq!(upper, 0);
@@ -4297,15 +6214,25 @@ fn operation_count_command_is_case_sensitive() {
 #[test]
 fn operation_count_command_does_not_append_history_event() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let before = s.document().history().len();
-    s.execute(Command::OperationCount { op_name: "create_box".to_string() }).unwrap();
+    s.execute(Command::OperationCount {
+        op_name: "create_box".to_string(),
+    })
+    .unwrap();
     assert_eq!(s.document().history().len(), before);
 }
 
 #[test]
 fn operation_count_command_round_trips_through_json() {
-    let cmd = Command::OperationCount { op_name: "create_box".to_string() };
+    let cmd = Command::OperationCount {
+        op_name: "create_box".to_string(),
+    };
     let json = serde_json::to_string(&cmd).unwrap();
     assert!(json.contains("\"op\":\"operation_count\""), "json = {json}");
     assert!(json.contains("\"create_box\""), "json = {json}");
@@ -4323,48 +6250,99 @@ fn last_operation_command_empty_history_errors() {
 #[test]
 fn last_operation_command_returns_latest_after_create_box() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let outcome = s.execute(Command::LastOperation).unwrap();
-    if let Outcome::LastOperation { index, op_name, description } = outcome {
+    if let Outcome::LastOperation {
+        index,
+        op_name,
+        description,
+    } = outcome
+    {
         assert_eq!(index, 0);
         assert_eq!(op_name, "create_box");
         assert!(!description.is_empty());
-    } else { panic!("expected LastOperation, got {outcome:?}"); }
+    } else {
+        panic!("expected LastOperation, got {outcome:?}");
+    }
 }
 
 #[test]
 fn last_operation_command_tracks_most_recent_event() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
-    s.execute(Command::Translate { id: SolidId(1), dx: 5.0, dy: 0.0, dz: 0.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    s.execute(Command::CreateBox {
+        dx: 2.0,
+        dy: 2.0,
+        dz: 2.0,
+    })
+    .unwrap();
+    s.execute(Command::Translate {
+        id: SolidId(1),
+        dx: 5.0,
+        dy: 0.0,
+        dz: 0.0,
+    })
+    .unwrap();
     let outcome = s.execute(Command::LastOperation).unwrap();
     if let Outcome::LastOperation { index, op_name, .. } = outcome {
         assert_eq!(index, 2);
         assert_eq!(op_name, "translate");
-    } else { panic!("expected LastOperation, got {outcome:?}"); }
+    } else {
+        panic!("expected LastOperation, got {outcome:?}");
+    }
 }
 
 #[test]
 fn last_operation_command_matches_history_description_at_last_index() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    s.execute(Command::CreateBox {
+        dx: 2.0,
+        dy: 2.0,
+        dz: 2.0,
+    })
+    .unwrap();
     let last_outcome = s.execute(Command::LastOperation).unwrap();
     let (last_index, last_desc) = match last_outcome {
-        Outcome::LastOperation { index, description, .. } => (index, description),
+        Outcome::LastOperation {
+            index, description, ..
+        } => (index, description),
         _ => panic!(),
     };
-    let desc_outcome = s.execute(Command::HistoryDescription { index: last_index }).unwrap();
+    let desc_outcome = s
+        .execute(Command::HistoryDescription { index: last_index })
+        .unwrap();
     if let Outcome::HistoryDescription { description, .. } = desc_outcome {
         assert_eq!(description, last_desc);
-    } else { panic!(); }
+    } else {
+        panic!();
+    }
 }
 
 #[test]
 fn last_operation_command_does_not_append_history_event() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let before = s.document().history().len();
     s.execute(Command::LastOperation).unwrap();
     assert_eq!(s.document().history().len(), before);
@@ -4382,19 +6360,36 @@ fn last_operation_command_round_trips_through_json() {
 #[test]
 fn has_operation_command_false_when_empty() {
     let mut s = Session::new();
-    let outcome = s.execute(Command::HasOperation { op_name: "create_box".to_string() }).unwrap();
+    let outcome = s
+        .execute(Command::HasOperation {
+            op_name: "create_box".to_string(),
+        })
+        .unwrap();
     if let Outcome::HasOperation { op_name, present } = outcome {
         assert_eq!(op_name, "create_box");
         assert!(!present);
-    } else { panic!("expected HasOperation, got {outcome:?}"); }
+    } else {
+        panic!("expected HasOperation, got {outcome:?}");
+    }
 }
 
 #[test]
 fn has_operation_command_true_after_create_box() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    let present = match s.execute(Command::HasOperation { op_name: "create_box".to_string() }).unwrap() {
-        Outcome::HasOperation { present, .. } => present, _ => panic!(),
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    let present = match s
+        .execute(Command::HasOperation {
+            op_name: "create_box".to_string(),
+        })
+        .unwrap()
+    {
+        Outcome::HasOperation { present, .. } => present,
+        _ => panic!(),
     };
     assert!(present);
 }
@@ -4402,9 +6397,20 @@ fn has_operation_command_true_after_create_box() {
 #[test]
 fn has_operation_command_false_for_unknown_op() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    let present = match s.execute(Command::HasOperation { op_name: "definitely_not_an_op".to_string() }).unwrap() {
-        Outcome::HasOperation { present, .. } => present, _ => panic!(),
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    let present = match s
+        .execute(Command::HasOperation {
+            op_name: "definitely_not_an_op".to_string(),
+        })
+        .unwrap()
+    {
+        Outcome::HasOperation { present, .. } => present,
+        _ => panic!(),
     };
     assert!(!present);
 }
@@ -4412,12 +6418,29 @@ fn has_operation_command_false_for_unknown_op() {
 #[test]
 fn has_operation_command_is_case_sensitive() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    let lower = match s.execute(Command::HasOperation { op_name: "create_box".to_string() }).unwrap() {
-        Outcome::HasOperation { present, .. } => present, _ => panic!(),
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    let lower = match s
+        .execute(Command::HasOperation {
+            op_name: "create_box".to_string(),
+        })
+        .unwrap()
+    {
+        Outcome::HasOperation { present, .. } => present,
+        _ => panic!(),
     };
-    let upper = match s.execute(Command::HasOperation { op_name: "CREATE_BOX".to_string() }).unwrap() {
-        Outcome::HasOperation { present, .. } => present, _ => panic!(),
+    let upper = match s
+        .execute(Command::HasOperation {
+            op_name: "CREATE_BOX".to_string(),
+        })
+        .unwrap()
+    {
+        Outcome::HasOperation { present, .. } => present,
+        _ => panic!(),
     };
     assert!(lower);
     assert!(!upper);
@@ -4426,13 +6449,35 @@ fn has_operation_command_is_case_sensitive() {
 #[test]
 fn has_operation_command_agrees_with_operation_count() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
-    let present = match s.execute(Command::HasOperation { op_name: "create_box".to_string() }).unwrap() {
-        Outcome::HasOperation { present, .. } => present, _ => panic!(),
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    s.execute(Command::CreateBox {
+        dx: 2.0,
+        dy: 2.0,
+        dz: 2.0,
+    })
+    .unwrap();
+    let present = match s
+        .execute(Command::HasOperation {
+            op_name: "create_box".to_string(),
+        })
+        .unwrap()
+    {
+        Outcome::HasOperation { present, .. } => present,
+        _ => panic!(),
     };
-    let count = match s.execute(Command::OperationCount { op_name: "create_box".to_string() }).unwrap() {
-        Outcome::OperationCount { count, .. } => count, _ => panic!(),
+    let count = match s
+        .execute(Command::OperationCount {
+            op_name: "create_box".to_string(),
+        })
+        .unwrap()
+    {
+        Outcome::OperationCount { count, .. } => count,
+        _ => panic!(),
     };
     assert_eq!(present, count > 0);
 }
@@ -4440,15 +6485,25 @@ fn has_operation_command_agrees_with_operation_count() {
 #[test]
 fn has_operation_command_does_not_append_history_event() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let before = s.document().history().len();
-    s.execute(Command::HasOperation { op_name: "create_box".to_string() }).unwrap();
+    s.execute(Command::HasOperation {
+        op_name: "create_box".to_string(),
+    })
+    .unwrap();
     assert_eq!(s.document().history().len(), before);
 }
 
 #[test]
 fn has_operation_command_round_trips_through_json() {
-    let cmd = Command::HasOperation { op_name: "create_box".to_string() };
+    let cmd = Command::HasOperation {
+        op_name: "create_box".to_string(),
+    };
     let json = serde_json::to_string(&cmd).unwrap();
     assert!(json.contains("\"op\":\"has_operation\""), "json = {json}");
     assert!(json.contains("\"create_box\""), "json = {json}");
@@ -4466,25 +6521,54 @@ fn first_operation_command_empty_history_errors() {
 #[test]
 fn first_operation_command_returns_oldest_after_create_box() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let outcome = s.execute(Command::FirstOperation).unwrap();
-    if let Outcome::FirstOperation { op_name, description } = outcome {
+    if let Outcome::FirstOperation {
+        op_name,
+        description,
+    } = outcome
+    {
         assert_eq!(op_name, "create_box");
         assert!(!description.is_empty());
-    } else { panic!("expected FirstOperation, got {outcome:?}"); }
+    } else {
+        panic!("expected FirstOperation, got {outcome:?}");
+    }
 }
 
 #[test]
 fn first_operation_command_does_not_change_with_subsequent_events() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let first_after_one = match s.execute(Command::FirstOperation).unwrap() {
-        Outcome::FirstOperation { op_name, .. } => op_name, _ => panic!(),
+        Outcome::FirstOperation { op_name, .. } => op_name,
+        _ => panic!(),
     };
-    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
-    s.execute(Command::Translate { id: SolidId(0), dx: 1.0, dy: 0.0, dz: 0.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 2.0,
+        dy: 2.0,
+        dz: 2.0,
+    })
+    .unwrap();
+    s.execute(Command::Translate {
+        id: SolidId(0),
+        dx: 1.0,
+        dy: 0.0,
+        dz: 0.0,
+    })
+    .unwrap();
     let first_after_three = match s.execute(Command::FirstOperation).unwrap() {
-        Outcome::FirstOperation { op_name, .. } => op_name, _ => panic!(),
+        Outcome::FirstOperation { op_name, .. } => op_name,
+        _ => panic!(),
     };
     assert_eq!(first_after_one, "create_box");
     assert_eq!(first_after_three, "create_box");
@@ -4493,13 +6577,25 @@ fn first_operation_command_does_not_change_with_subsequent_events() {
 #[test]
 fn first_operation_command_matches_history_description_at_index_zero() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
-    s.execute(Command::CreateBox { dx: 2.0, dy: 2.0, dz: 2.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
+    s.execute(Command::CreateBox {
+        dx: 2.0,
+        dy: 2.0,
+        dz: 2.0,
+    })
+    .unwrap();
     let first_desc = match s.execute(Command::FirstOperation).unwrap() {
-        Outcome::FirstOperation { description, .. } => description, _ => panic!(),
+        Outcome::FirstOperation { description, .. } => description,
+        _ => panic!(),
     };
     let desc_at_zero = match s.execute(Command::HistoryDescription { index: 0 }).unwrap() {
-        Outcome::HistoryDescription { description, .. } => description, _ => panic!(),
+        Outcome::HistoryDescription { description, .. } => description,
+        _ => panic!(),
     };
     assert_eq!(first_desc, desc_at_zero);
 }
@@ -4507,7 +6603,12 @@ fn first_operation_command_matches_history_description_at_index_zero() {
 #[test]
 fn first_operation_command_does_not_append_history_event() {
     let mut s = Session::new();
-    s.execute(Command::CreateBox { dx: 1.0, dy: 1.0, dz: 1.0 }).unwrap();
+    s.execute(Command::CreateBox {
+        dx: 1.0,
+        dy: 1.0,
+        dz: 1.0,
+    })
+    .unwrap();
     let before = s.document().history().len();
     s.execute(Command::FirstOperation).unwrap();
     assert_eq!(s.document().history().len(), before);

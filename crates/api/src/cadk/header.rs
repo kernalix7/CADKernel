@@ -45,10 +45,8 @@ impl CadkFlags {
     pub const DOCUMENT_COMPRESSED: u32 = 0b0000_1000;
 
     /// Bitwise OR of every flag this build understands.
-    pub const KNOWN: u32 = Self::MANIFEST_COMPRESSED
-        | Self::SIGNED
-        | Self::HAS_THUMBNAIL
-        | Self::DOCUMENT_COMPRESSED;
+    pub const KNOWN: u32 =
+        Self::MANIFEST_COMPRESSED | Self::SIGNED | Self::HAS_THUMBNAIL | Self::DOCUMENT_COMPRESSED;
 
     /// Bits in the top half of the flag word are "must understand": an
     /// unknown bit there forces a load-side reject.

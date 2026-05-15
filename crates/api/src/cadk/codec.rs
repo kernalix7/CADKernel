@@ -281,10 +281,7 @@ pub fn encode(commands: &[Command]) -> ApiResult<Vec<u8>> {
 /// bytes — typically a PNG payload). When `thumbnail` is `Some`, a
 /// second `BlobKind::Thumbnail` record is appended to the manifest and
 /// the `CadkFlags::HAS_THUMBNAIL` bit is set in the header.
-pub fn encode_with_thumbnail(
-    commands: &[Command],
-    thumbnail: Option<&[u8]>,
-) -> ApiResult<Vec<u8>> {
+pub fn encode_with_thumbnail(commands: &[Command], thumbnail: Option<&[u8]>) -> ApiResult<Vec<u8>> {
     let opts = SaveOptions {
         thumbnail: thumbnail.map(<[u8]>::to_vec),
         ..SaveOptions::default()
@@ -610,8 +607,8 @@ pub fn inspect(bytes: &[u8]) -> ApiResult<CadkSummary> {
 ///
 /// Added in A3.0.4 (2026-05-13).
 pub fn inspect_path(path: impl AsRef<std::path::Path>) -> ApiResult<CadkSummary> {
-    let bytes = std::fs::read(path.as_ref())
-        .map_err(|err| ApiError::Codec(format!("file io: {err}")))?;
+    let bytes =
+        std::fs::read(path.as_ref()).map_err(|err| ApiError::Codec(format!("file io: {err}")))?;
     inspect(&bytes)
 }
 
@@ -745,11 +742,8 @@ mod tests {
     #[test]
     fn corrupted_thumbnail_blob_is_rejected_via_crc() {
         let thumb = b"some-thumbnail-bytes".to_vec();
-        let mut bytes = encode_with_thumbnail(
-            &[Command::CreateSphere { radius: 1.0 }],
-            Some(&thumb),
-        )
-        .unwrap();
+        let mut bytes =
+            encode_with_thumbnail(&[Command::CreateSphere { radius: 1.0 }], Some(&thumb)).unwrap();
         // Flip a byte at the very end (inside the thumbnail blob).
         let last = bytes.len() - 1;
         bytes[last] ^= 0xFF;
@@ -781,10 +775,7 @@ mod tests {
         let cap: u64 = 512;
         let decoder = zstd::Decoder::new(compressed.as_slice()).expect("init");
         let mut out = Vec::new();
-        decoder
-            .take(cap + 1)
-            .read_to_end(&mut out)
-            .expect("read");
+        decoder.take(cap + 1).read_to_end(&mut out).expect("read");
         assert!(
             (out.len() as u64) > cap,
             "cap-trip condition must hold (got {} bytes, cap {})",
@@ -801,10 +792,7 @@ mod tests {
         let cap: u64 = 1024;
         let decoder = zstd::Decoder::new(compressed.as_slice()).expect("init");
         let mut out = Vec::new();
-        decoder
-            .take(cap + 1)
-            .read_to_end(&mut out)
-            .expect("read");
+        decoder.take(cap + 1).read_to_end(&mut out).expect("read");
         assert_eq!(out.len(), 256);
         assert!((out.len() as u64) <= cap);
     }

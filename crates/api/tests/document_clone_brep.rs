@@ -51,14 +51,9 @@ fn cloning_then_dropping_clone_does_not_mutate_document() {
     let vertex_count_before = session.document().solid_brep(id).unwrap().0.vertices.len();
 
     {
-        let (mut cloned_model, _cloned_handle) =
-            session.document().clone_solid_brep(id).unwrap();
+        let (mut cloned_model, _cloned_handle) = session.document().clone_solid_brep(id).unwrap();
         // Mutate the clone — drop every vertex. The source must remain intact.
-        let handles: Vec<_> = cloned_model
-            .vertices
-            .iter()
-            .map(|(h, _)| h)
-            .collect();
+        let handles: Vec<_> = cloned_model.vertices.iter().map(|(h, _)| h).collect();
         for h in handles {
             cloned_model.vertices.remove(h);
         }
@@ -86,7 +81,9 @@ fn session_execute_then_clone_solid_brep_round_trips() {
             dz: 5.0,
         })
         .unwrap();
-    let id = outcome.primary_id().expect("CreateBox must yield a SolidId");
+    let id = outcome
+        .primary_id()
+        .expect("CreateBox must yield a SolidId");
 
     let (model, handle) = session
         .document()

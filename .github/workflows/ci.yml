@@ -54,6 +54,9 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
+      - name: Clippy panic-free (public API)
+        run: cargo clippy -p cadkernel-api -- -D clippy::unwrap_used -D clippy::panic
+
       - name: Test
         run: cargo test --workspace
 
@@ -89,6 +92,22 @@ jobs:
 
       - name: Enforce R1 open < 250 ms
         run: bash scripts/bench_threshold.sh r1_open 250000000
+
+      - name: Run R2 recompute bench (placeholder)
+        run: |
+          cargo bench -p cadkernel-api --bench r2_recompute -- \
+            --warm-up-time 1 --measurement-time 5 --sample-size 30
+
+      - name: Enforce R2 recompute < 1000 ms (placeholder — tighten in Wave 3)
+        run: bash scripts/bench_threshold.sh r2_recompute 1000000000
+
+      - name: Run R3 open bench (placeholder)
+        run: |
+          cargo bench -p cadkernel-api --bench r3_open -- \
+            --warm-up-time 1 --measurement-time 5 --sample-size 30
+
+      - name: Enforce R3 open < 3000 ms (placeholder — tighten in Wave 3)
+        run: bash scripts/bench_threshold.sh r3_open 3000000000
 
       - name: Run viewer first-paint bench
         run: |

@@ -2,7 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::document::{DocumentIssue, HistoryEvent, SolidId};
+use crate::command::{BodyId, SketchId};
+use crate::document::{DocumentIssue, FeatureId, HistoryEvent, SolidId};
 
 /// Successful result of [`Session::execute`](crate::Session::execute).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -34,6 +35,24 @@ pub enum Outcome {
         total_features: u32,
         ids: Vec<SolidId>,
     },
+    /// New feature added to the active body. `body` is a placeholder until
+    /// Track 2 ships full body routing.
+    FeatureAdded {
+        feature_id: FeatureId,
+        body: BodyId,
+        solid: SolidId,
+    },
+    /// Existing feature recomputed. Track 6 wires downstream invalidation;
+    /// Track 1 dispatchers report an empty list.
+    FeatureRecomputed {
+        feature_id: FeatureId,
+        solid: SolidId,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        downstream_invalidated: Vec<FeatureId>,
+    },
+    /// Empty sketch creation notification. Track 6 persists sketches; Track 1
+    /// admits the outcome shape for downstream callers.
+    SketchCreated { sketch_id: SketchId, plane: Plane },
     /// The document was reset (`Command::NewDocument`).
     DocumentReset,
     /// Read-only measurement of a solid (`Command::Measure`). Carries the
@@ -51,26 +70,20 @@ pub enum Outcome {
     /// Read-only document health report (`Command::Validate`). `issues`
     /// is empty when the document is clean. AI / test consumers branch
     /// on `issues.is_empty()` to decide whether to surface a warning.
-    Validated {
-        issues: Vec<DocumentIssue>,
-    },
+    Validated { issues: Vec<DocumentIssue> },
     /// Read-only enumeration of every solid in the document
     /// (`Command::ListSolids`). Pairs each `SolidId` with its label so
     /// AI / test consumers can render a tree view or pick targets for
     /// follow-up commands without juggling `Document::solid_ids()` and
     /// `Document::solid_label()` separately.
-    SolidsListed {
-        entries: Vec<SolidEntry>,
-    },
+    SolidsListed { entries: Vec<SolidEntry> },
     /// Read-only history dump (`Command::HistoryEvents`). Returns the
     /// list of events recorded by every previously-executed mutating
     /// command in execution order. Equivalent to
     /// `session.document().history().to_vec()` but available through
     /// the command surface so AI / scripts can introspect history
     /// without touching the `Document` API directly.
-    HistoryListed {
-        events: Vec<HistoryEvent>,
-    },
+    HistoryListed { events: Vec<HistoryEvent> },
     /// Read-only document statistics (`Command::Stats`). Reports the
     /// number of populated solid slots and the total recorded history
     /// event count. Cheap to compute (no mesh / volume traversal).
@@ -131,7 +144,11 @@ pub enum Outcome {
     /// Returns `length(bbox.max - bbox.min)` together with the raw
     /// per-axis extents `[dx, dy, dz]`. Cheap heuristic used by
     /// camera-fit, level-of-detail thresholds, and tolerance scaling.
-    Diagonal { id: SolidId, length: f64, extents: [f64; 3] },
+    Diagonal {
+        id: SolidId,
+        length: f64,
+        extents: [f64; 3],
+    },
     /// Read-only AABB center of a solid (`Command::AabbCenter`).
     /// Returns `(bbox.min + bbox.max) * 0.5`. Distinct from `Centroid`
     /// (which is the mass centroid). Useful for placement, grid
@@ -280,7 +297,10 @@ pub enum Outcome {
     /// history event (always at index 0). Mirror of
     /// `LastOperation`. Errors with `InvalidArgument` when the
     /// history is empty.
-    FirstOperation { op_name: String, description: String },
+    FirstOperation {
+        op_name: String,
+        description: String,
+    },
     /// Nothing happened (`Command::Noop`).
     Empty,
 }
@@ -293,6 +313,13 @@ pub struct SolidEntry {
     pub label: String,
 }
 
+/// Lightweight plane descriptor used by [`Outcome::SketchCreated`].
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct Plane {
+    pub origin: [f64; 3],
+    pub normal: [f64; 3],
+}
+
 /// Coarse-grained tag, useful for AI/test branching without pattern matching.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -302,6 +329,9 @@ pub enum OutcomeKind {
     Booleaned,
     SolidModified,
     PatternCreated,
+    FeatureAdded,
+    FeatureRecomputed,
+    SketchCreated,
     DocumentReset,
     Measured,
     Validated,
@@ -352,6 +382,9 @@ impl Outcome {
             Self::Booleaned { .. } => OutcomeKind::Booleaned,
             Self::SolidModified { .. } => OutcomeKind::SolidModified,
             Self::PatternCreated { .. } => OutcomeKind::PatternCreated,
+            Self::FeatureAdded { .. } => OutcomeKind::FeatureAdded,
+            Self::FeatureRecomputed { .. } => OutcomeKind::FeatureRecomputed,
+            Self::SketchCreated { .. } => OutcomeKind::SketchCreated,
             Self::DocumentReset => OutcomeKind::DocumentReset,
             Self::Measured { .. } => OutcomeKind::Measured,
             Self::Validated { .. } => OutcomeKind::Validated,
@@ -402,6 +435,8 @@ impl Outcome {
             Self::Booleaned { result, .. } => Some(*result),
             Self::SolidModified { id } => Some(*id),
             Self::PatternCreated { ids, .. } => ids.first().copied(),
+            Self::FeatureAdded { solid, .. } => Some(*solid),
+            Self::FeatureRecomputed { solid, .. } => Some(*solid),
             Self::Measured { id, .. } => Some(*id),
             _ => None,
         }

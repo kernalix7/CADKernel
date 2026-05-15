@@ -48,7 +48,10 @@ fn autosave_e2e_createbox_roundtrip() {
     let entry = recover_latest(&dir)
         .expect("recover_latest")
         .expect("at least one snapshot");
-    assert_eq!(entry.path, path, "recover_latest must return the written snapshot");
+    assert_eq!(
+        entry.path, path,
+        "recover_latest must return the written snapshot"
+    );
 
     let recovered = Session::load_cadk_from_path(&entry.path).expect("load_cadk_from_path");
     assert_eq!(
@@ -96,7 +99,11 @@ fn autosave_e2e_retain_enforced() {
     }
 
     let entries = cadkernel_api::cadk::list_snapshots(&dir).expect("list");
-    assert_eq!(entries.len(), 3, "retain=3 must cap the directory at 3 files");
+    assert_eq!(
+        entries.len(),
+        3,
+        "retain=3 must cap the directory at 3 files"
+    );
 }
 
 #[test]

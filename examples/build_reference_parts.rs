@@ -112,10 +112,7 @@ fn stub(_dest: &Path) -> Result<(), Box<dyn std::error::Error>> {
 
 /// Write `bytes` to `dest` and write a sibling `<dest>.expected_hash`
 /// file with the FNV-1a-64 hex digest.
-fn write_cadk_with_hash_bytes(
-    bytes: &[u8],
-    dest: &Path,
-) -> Result<(), Box<dyn std::error::Error>> {
+fn write_cadk_with_hash_bytes(bytes: &[u8], dest: &Path) -> Result<(), Box<dyn std::error::Error>> {
     fs::write(dest, bytes)?;
     let digest = fnv1a_64(bytes);
     let hash_path = dest.with_extension(format!(

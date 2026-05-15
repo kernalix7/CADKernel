@@ -82,7 +82,8 @@ fn old_history_event_json_deserialises_with_sentinel_feature_id() {
     // `#[serde(default)]` — populated with FeatureId(0). Subsequent
     // replay reassigns fresh ids, so the sentinel never escapes.
     use cadkernel_api::HistoryEvent;
-    let pre_a2_1 = r#"{"op":"create_box","primary":0,"description":"create_box(1x2x3) -> Solid#0"}"#;
+    let pre_a2_1 =
+        r#"{"op":"create_box","primary":0,"description":"create_box(1x2x3) -> Solid#0"}"#;
     let ev: HistoryEvent = serde_json::from_str(pre_a2_1).expect("deserialise legacy event");
     assert_eq!(ev.feature_id, FeatureId(0));
     assert_eq!(ev.op, "create_box");

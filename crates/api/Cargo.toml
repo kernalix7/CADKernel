@@ -27,3 +27,15 @@ criterion.workspace = true
 [[bench]]
 name = "reference_parts_open"
 harness = false
+
+[[bench]]
+name = "r1_open"
+harness = false
+
+[[bench]]
+name = "r2_recompute"
+harness = false
+
+[[bench]]
+name = "r3_open"
+harness = false

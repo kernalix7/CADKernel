@@ -16,16 +16,19 @@
 
 use cadkernel_math::{Point3, Quaternion, Vec3};
 use cadkernel_modeling::measure::solid_mass_properties;
-use cadkernel_modeling::primitives::make_cone;
+use cadkernel_modeling::primitives::{make_cone, make_helix};
 use cadkernel_modeling::quick::{
     quick_box, quick_cone, quick_cylinder, quick_intersect, quick_sphere, quick_subtract,
     quick_torus, quick_union,
 };
 use cadkernel_modeling::{extrude, mirror_solid};
-use cadkernel_topology::{BRepModel, Handle, SolidData};
+use cadkernel_topology::{BRepModel, FaceData, Handle, SolidData, VertexData};
 use serde::{Deserialize, Serialize};
 
-use crate::command::{Command, ExtrudeKind, InstanceOverride};
+use crate::command::{
+    AxisRef, BodyId, ChamferMode, Command, DraftDirection, EdgeRef, ExtrudeKind, FaceRef, HoleKind,
+    InstanceOverride, LoftMode, PadDirection, PadType, PocketType, ShellMode, SketchRef, SweepMode,
+};
 use crate::document::{Document, FeatureId, HistoryEvent, SolidId, SolidSlot};
 use crate::outcome::Outcome;
 use crate::{ApiError, ApiResult};
@@ -675,6 +678,79 @@ impl Session {
                     self.mirror_features(features, *point, *normal, *merge)
                 }
             }
+            Command::Pad {
+                sketch,
+                distance,
+                direction,
+                symmetric,
+                type_,
+            } => self.dispatch_pad(sketch, *distance, *direction, *symmetric, *type_),
+            Command::Pocket {
+                sketch,
+                distance,
+                through_all,
+                type_,
+            } => self.dispatch_pocket(sketch, *distance, *through_all, *type_),
+            Command::Revolve {
+                sketch,
+                axis,
+                angle_rad,
+                symmetric,
+            } => self.dispatch_revolve(sketch, axis, *angle_rad, *symmetric),
+            Command::Groove {
+                sketch,
+                axis,
+                angle_rad,
+            } => self.dispatch_groove(sketch, axis, *angle_rad),
+            Command::Hole {
+                face,
+                position,
+                radius,
+                depth,
+                through_all,
+                kind,
+            } => self.dispatch_hole(face, *position, *radius, *depth, *through_all, *kind),
+            Command::Sweep {
+                profile_sketch,
+                path_sketch,
+                mode,
+            } => self.dispatch_sweep(profile_sketch, path_sketch, *mode),
+            Command::Loft {
+                profiles,
+                mode,
+                ruled,
+                closed,
+            } => self.dispatch_loft(profiles, *mode, *ruled, *closed),
+            Command::Helix {
+                axis,
+                radius,
+                pitch,
+                height,
+                turns,
+                cone_angle,
+            } => self.dispatch_helix(axis, *radius, *pitch, *height, *turns, *cone_angle),
+            Command::Fillet {
+                edges,
+                radius,
+                variable,
+            } => self.dispatch_fillet(edges, *radius, variable.as_ref()),
+            Command::Chamfer {
+                edges,
+                distance,
+                mode,
+            } => self.dispatch_chamfer(edges, *distance, *mode),
+            Command::Shell {
+                solid,
+                removed_faces,
+                thickness,
+                mode,
+            } => self.dispatch_shell(*solid, removed_faces, *thickness, *mode),
+            Command::Draft {
+                faces,
+                neutral_plane,
+                angle_rad,
+                direction,
+            } => self.dispatch_draft(faces, neutral_plane, *angle_rad, *direction),
             Command::Measure { id } => self.measure(*id),
             Command::Validate => Ok(Outcome::Validated {
                 issues: self.document.validate(),
@@ -1857,6 +1933,428 @@ impl Session {
             ids,
         })
     }
+
+    fn dispatch_pad(
+        &mut self,
+        sketch: &SketchRef,
+        distance: f64,
+        direction: PadDirection,
+        symmetric: bool,
+        _type_: PadType,
+    ) -> ApiResult<Outcome> {
+        let body_id = self.active_solid_for_feature("Pad")?;
+        let profile = self.resolve_sketch_profile(sketch)?;
+        let dir_vec = match direction {
+            PadDirection::Normal => Vec3::Z,
+            PadDirection::Reversed => -Vec3::Z,
+            PadDirection::TwoSided => Vec3::Z,
+        };
+        let dist = if symmetric || matches!(direction, PadDirection::TwoSided) {
+            distance * 0.5
+        } else {
+            distance
+        };
+        let (base_model, base_handle) = self.base_model_and_handle(body_id)?;
+        let result =
+            cadkernel_modeling::features::pad(&base_model, base_handle, &profile, dir_vec, dist)?;
+        self.replace_feature_body(body_id, result.model, result.solid, "Pad")
+    }
+
+    fn dispatch_pocket(
+        &mut self,
+        sketch: &SketchRef,
+        distance: f64,
+        _through_all: bool,
+        _type_: PocketType,
+    ) -> ApiResult<Outcome> {
+        let body_id = self.active_solid_for_feature("Pocket")?;
+        let profile = self.resolve_sketch_profile(sketch)?;
+        let (base_model, base_handle) = self.base_model_and_handle(body_id)?;
+        let result = cadkernel_modeling::features::pocket(
+            &base_model,
+            base_handle,
+            &profile,
+            Vec3::Z,
+            distance,
+        )?;
+        self.replace_feature_body(body_id, result.model, result.solid, "Pocket")
+    }
+
+    fn dispatch_revolve(
+        &mut self,
+        sketch: &SketchRef,
+        axis: &AxisRef,
+        angle_rad: f64,
+        _symmetric: bool,
+    ) -> ApiResult<Outcome> {
+        let _body_id = self.active_solid_for_feature("Revolve")?;
+        let profile = self.resolve_sketch_profile(sketch)?;
+        let (axis_origin, axis_dir) = self.resolve_axis(axis)?;
+        let mut model = BRepModel::new();
+        let result = cadkernel_modeling::features::revolve(
+            &mut model,
+            &profile,
+            axis_origin,
+            axis_dir,
+            angle_rad,
+            64,
+        )?;
+        let solid = self.document.insert(model, result.solid, "Revolve");
+        Ok(Outcome::FeatureAdded {
+            feature_id: self.predicted_feature_id(),
+            body: BodyId(0),
+            solid,
+        })
+    }
+
+    fn dispatch_groove(
+        &mut self,
+        sketch: &SketchRef,
+        axis: &AxisRef,
+        angle_rad: f64,
+    ) -> ApiResult<Outcome> {
+        let body_id = self.active_solid_for_feature("Groove")?;
+        let profile = self.resolve_sketch_profile(sketch)?;
+        let (axis_origin, axis_dir) = self.resolve_axis(axis)?;
+        let (base_model, base_handle) = self.base_model_and_handle(body_id)?;
+        let result = cadkernel_modeling::features::groove(
+            &base_model,
+            base_handle,
+            &profile,
+            axis_origin,
+            axis_dir,
+            angle_rad,
+            64,
+        )?;
+        self.replace_feature_body(body_id, result.model, result.solid, "Groove")
+    }
+
+    fn dispatch_hole(
+        &mut self,
+        face: &FaceRef,
+        position: [f64; 2],
+        radius: f64,
+        depth: f64,
+        _through_all: bool,
+        _kind: HoleKind,
+    ) -> ApiResult<Outcome> {
+        let body_id = self.active_solid_for_feature("Hole")?;
+        let (_face_solid, _face_handle) = self.resolve_face_handle(face)?;
+        let center = Point3::new(position[0], position[1], 0.0);
+        let (base_model, base_handle) = self.base_model_and_handle(body_id)?;
+        let result = cadkernel_modeling::features::hole(
+            &base_model,
+            base_handle,
+            center,
+            Vec3::Z,
+            radius,
+            depth,
+            32,
+        )?;
+        self.replace_feature_body(body_id, result.model, result.solid, "Hole")
+    }
+
+    fn dispatch_sweep(
+        &mut self,
+        profile_sketch: &SketchRef,
+        path_sketch: &SketchRef,
+        _mode: SweepMode,
+    ) -> ApiResult<Outcome> {
+        let body_id = self.active_solid_for_feature("Sweep")?;
+        let profile = self.resolve_sketch_profile(profile_sketch)?;
+        let path = self.resolve_sketch_profile(path_sketch)?;
+        let (mut model, _) = self.base_model_and_handle(body_id)?;
+        let result = cadkernel_modeling::features::sweep(&mut model, &profile, &path)?;
+        self.replace_feature_body(body_id, model, result.solid, "Sweep")
+    }
+
+    fn dispatch_loft(
+        &mut self,
+        profiles: &[SketchRef],
+        _mode: LoftMode,
+        _ruled: bool,
+        _closed: bool,
+    ) -> ApiResult<Outcome> {
+        let body_id = self.active_solid_for_feature("Loft")?;
+        let mut resolved = Vec::with_capacity(profiles.len());
+        for profile in profiles {
+            resolved.push(self.resolve_sketch_profile(profile)?);
+        }
+        let profile_refs: Vec<&[Point3]> = resolved.iter().map(Vec::as_slice).collect();
+        let (mut model, _) = self.base_model_and_handle(body_id)?;
+        let result = cadkernel_modeling::features::loft(&mut model, &profile_refs)?;
+        self.replace_feature_body(body_id, model, result.solid, "Loft")
+    }
+
+    fn dispatch_helix(
+        &mut self,
+        axis: &AxisRef,
+        radius: f64,
+        pitch: f64,
+        _height: f64,
+        turns: f64,
+        _cone_angle: f64,
+    ) -> ApiResult<Outcome> {
+        let (center, _axis_dir) = self.resolve_axis(axis)?;
+        let tube_radius = 0.5_f64.min(radius * 0.25);
+        if self.document.solid_count() == 0 {
+            let mut model = BRepModel::new();
+            let result = make_helix(
+                &mut model,
+                center,
+                radius,
+                pitch,
+                turns,
+                tube_radius,
+                32,
+                16,
+            )?;
+            let id = self.document.insert(model, result.solid, "Helix");
+            return Ok(Outcome::SolidCreated {
+                id,
+                label: "Helix".into(),
+            });
+        }
+
+        let body_id = self.active_solid_for_feature("Helix")?;
+        let (base_model, base_handle) = self.base_model_and_handle(body_id)?;
+        let model = cadkernel_modeling::features::additive_helix(
+            &base_model,
+            base_handle,
+            center,
+            radius,
+            pitch,
+            turns,
+            tube_radius,
+            32,
+            16,
+        )?;
+        let handle = first_solid_handle(&model)
+            .ok_or_else(|| ApiError::Kernel("additive_helix produced no solid".into()))?;
+        self.replace_feature_body(body_id, model, handle, "Helix")
+    }
+
+    fn dispatch_fillet(
+        &mut self,
+        edges: &[EdgeRef],
+        radius: f64,
+        variable: Option<&crate::command::VariableRadius>,
+    ) -> ApiResult<Outcome> {
+        if variable.is_some_and(|v| !v.samples.is_empty()) {
+            return Err(ApiError::InvalidArgument(
+                "variable radius not yet supported".into(),
+            ));
+        }
+        let body_id = self.active_solid_for_feature("Fillet")?;
+        let resolved = self.resolve_edge_refs(edges)?;
+        let slot = slot_mut(&mut self.document, body_id)?;
+        let solid = slot
+            .handle
+            .ok_or_else(|| ApiError::UnknownSolid(format!("{body_id} has no solid handle")))?;
+        let result =
+            cadkernel_modeling::features::fillet_edges(&mut slot.model, solid, &resolved, radius)?;
+        slot.handle = Some(result.solid);
+        Ok(Outcome::FeatureAdded {
+            feature_id: self.predicted_feature_id(),
+            body: BodyId(0),
+            solid: body_id,
+        })
+    }
+
+    fn dispatch_chamfer(
+        &mut self,
+        edges: &[EdgeRef],
+        distance: f64,
+        _mode: ChamferMode,
+    ) -> ApiResult<Outcome> {
+        let body_id = self.active_solid_for_feature("Chamfer")?;
+        let resolved = self.resolve_edge_refs(edges)?;
+        let slot = slot_mut(&mut self.document, body_id)?;
+        let solid = slot
+            .handle
+            .ok_or_else(|| ApiError::UnknownSolid(format!("{body_id} has no solid handle")))?;
+        let result = cadkernel_modeling::features::chamfer_edges(
+            &mut slot.model,
+            solid,
+            &resolved,
+            distance,
+        )?;
+        slot.handle = Some(result.solid);
+        Ok(Outcome::FeatureAdded {
+            feature_id: self.predicted_feature_id(),
+            body: BodyId(0),
+            solid: body_id,
+        })
+    }
+
+    fn dispatch_shell(
+        &mut self,
+        solid_id: SolidId,
+        removed_faces: &[FaceRef],
+        thickness: f64,
+        _mode: ShellMode,
+    ) -> ApiResult<Outcome> {
+        let _ = self
+            .document
+            .get_slot(solid_id)
+            .ok_or_else(|| ApiError::UnknownSolid(format!("{solid_id}")))?;
+        let faces = self.resolve_face_refs(removed_faces)?;
+        let slot = slot_mut(&mut self.document, solid_id)?;
+        let solid = slot
+            .handle
+            .ok_or_else(|| ApiError::UnknownSolid(format!("{solid_id} has no solid handle")))?;
+        let result =
+            cadkernel_modeling::features::shell_solid(&mut slot.model, solid, &faces, thickness)?;
+        slot.handle = Some(result.solid);
+        Ok(Outcome::FeatureAdded {
+            feature_id: self.predicted_feature_id(),
+            body: BodyId(0),
+            solid: solid_id,
+        })
+    }
+
+    fn dispatch_draft(
+        &mut self,
+        faces: &[FaceRef],
+        neutral_plane: &FaceRef,
+        angle_rad: f64,
+        direction: DraftDirection,
+    ) -> ApiResult<Outcome> {
+        let solid_id = neutral_plane.solid;
+        let _neutral = self.resolve_face_handle(neutral_plane)?;
+        let resolved = self.resolve_face_refs(faces)?;
+        let pull_direction = match direction {
+            DraftDirection::Pull => Vec3::Z,
+            DraftDirection::Push => -Vec3::Z,
+        };
+        let slot = slot_mut(&mut self.document, solid_id)?;
+        let solid = slot
+            .handle
+            .ok_or_else(|| ApiError::UnknownSolid(format!("{solid_id} has no solid handle")))?;
+        let result = cadkernel_modeling::features::draft_faces(
+            &mut slot.model,
+            solid,
+            &resolved,
+            pull_direction,
+            angle_rad,
+        )?;
+        slot.handle = Some(result.solid);
+        Ok(Outcome::FeatureAdded {
+            feature_id: self.predicted_feature_id(),
+            body: BodyId(0),
+            solid: solid_id,
+        })
+    }
+
+    fn active_solid_for_feature(&self, op_name: &str) -> ApiResult<SolidId> {
+        match self.document.solid_ids().as_slice() {
+            [id] => Ok(*id),
+            [] => Err(ApiError::InvalidArgument(format!(
+                "no active body - {op_name} requires a base body"
+            ))),
+            _ => Err(ApiError::InvalidArgument(
+                "multiple bodies present; explicit body selection arrives in Track 2".into(),
+            )),
+        }
+    }
+
+    fn base_model_and_handle(&self, id: SolidId) -> ApiResult<(BRepModel, Handle<SolidData>)> {
+        let slot = self
+            .document
+            .get_slot(id)
+            .ok_or_else(|| ApiError::UnknownSolid(format!("{id}")))?;
+        let handle = slot
+            .handle
+            .ok_or_else(|| ApiError::UnknownSolid(format!("{id} has no solid handle")))?;
+        Ok((slot.model.clone(), handle))
+    }
+
+    fn replace_feature_body(
+        &mut self,
+        old_id: SolidId,
+        model: BRepModel,
+        handle: Handle<SolidData>,
+        label: &str,
+    ) -> ApiResult<Outcome> {
+        let feature_id = self.predicted_feature_id();
+        self.document.remove(old_id);
+        let solid = self.document.insert(model, handle, label);
+        Ok(Outcome::FeatureAdded {
+            feature_id,
+            body: BodyId(0),
+            solid,
+        })
+    }
+
+    fn predicted_feature_id(&self) -> FeatureId {
+        // execute() appends history after dispatch(), so feature outcomes use
+        // the next history index as a stable Track 1 placeholder.
+        FeatureId(self.document.history().len() as u64 + 1)
+    }
+
+    fn resolve_sketch_profile(&self, sketch: &SketchRef) -> ApiResult<Vec<Point3>> {
+        let _ = sketch;
+        Err(ApiError::InvalidArgument(
+            "sketch resolution arrives in Track 6".into(),
+        ))
+    }
+
+    fn resolve_face_handle(&self, face: &FaceRef) -> ApiResult<(SolidId, Handle<FaceData>)> {
+        let _ = face;
+        Err(ApiError::InvalidArgument(
+            "face/edge resolution arrives in Track 4".into(),
+        ))
+    }
+
+    fn resolve_edge_vertices(
+        &self,
+        edge: &EdgeRef,
+    ) -> ApiResult<(SolidId, Handle<VertexData>, Handle<VertexData>)> {
+        let _ = edge;
+        Err(ApiError::InvalidArgument(
+            "face/edge resolution arrives in Track 4".into(),
+        ))
+    }
+
+    fn resolve_face_refs(&self, faces: &[FaceRef]) -> ApiResult<Vec<Handle<FaceData>>> {
+        let mut resolved = Vec::with_capacity(faces.len());
+        for face in faces {
+            let (_, handle) = self.resolve_face_handle(face)?;
+            resolved.push(handle);
+        }
+        Ok(resolved)
+    }
+
+    fn resolve_edge_refs(
+        &self,
+        edges: &[EdgeRef],
+    ) -> ApiResult<Vec<(Handle<VertexData>, Handle<VertexData>)>> {
+        let mut resolved = Vec::with_capacity(edges.len());
+        for edge in edges {
+            let (_, a, b) = self.resolve_edge_vertices(edge)?;
+            resolved.push((a, b));
+        }
+        Ok(resolved)
+    }
+
+    fn resolve_axis(&self, axis: &AxisRef) -> ApiResult<(Point3, Vec3)> {
+        let (origin, direction) = match axis {
+            AxisRef::Origin | AxisRef::Z => (Point3::ORIGIN, Vec3::Z),
+            AxisRef::X => (Point3::ORIGIN, Vec3::X),
+            AxisRef::Y => (Point3::ORIGIN, Vec3::Y),
+            AxisRef::Custom {
+                position,
+                direction,
+            } => (
+                Point3::new(position[0], position[1], position[2]),
+                Vec3::new(direction[0], direction[1], direction[2]),
+            ),
+        };
+        let dir = direction
+            .normalized()
+            .ok_or_else(|| ApiError::InvalidArgument("axis direction must be non-zero".into()))?;
+        Ok((origin, dir))
+    }
 }
 
 #[derive(Clone)]
@@ -2267,6 +2765,39 @@ fn history_description(cmd: &Command, outcome: &Outcome) -> String {
             normal[2],
         ),
         (Command::Mirror { id, .. }, _) => format!("Mirror {id}"),
+        (Command::Pad { distance, .. }, _) => format!("Pad {distance}"),
+        (Command::Pocket { distance, .. }, _) => format!("Pocket {distance}"),
+        (Command::Revolve { angle_rad, .. }, _) => format!("Revolve {angle_rad} rad"),
+        (Command::Groove { angle_rad, .. }, _) => format!("Groove {angle_rad} rad"),
+        (Command::Hole { radius, depth, .. }, _) => {
+            format!("Hole r={radius} depth={depth}")
+        }
+        (Command::Sweep { .. }, _) => "Sweep".to_string(),
+        (Command::Loft { profiles, .. }, _) => format!("Loft {} profiles", profiles.len()),
+        (Command::Helix { radius, turns, .. }, _) => format!("Helix r={radius} turns={turns}"),
+        (Command::Fillet { edges, radius, .. }, _) => {
+            format!("Fillet {} edges r={radius}", edges.len())
+        }
+        (
+            Command::Chamfer {
+                edges, distance, ..
+            },
+            _,
+        ) => format!("Chamfer {} edges d={distance}", edges.len()),
+        (
+            Command::Shell {
+                removed_faces,
+                thickness,
+                ..
+            },
+            _,
+        ) => format!("Shell {} faces t={thickness}", removed_faces.len()),
+        (
+            Command::Draft {
+                faces, angle_rad, ..
+            },
+            _,
+        ) => format!("Draft {} faces angle={angle_rad}", faces.len()),
         (Command::Measure { id }, _) => format!("Measure {id}"),
         (Command::Validate, _) => "Validate".into(),
         (Command::ListSolids, _) => "ListSolids".into(),

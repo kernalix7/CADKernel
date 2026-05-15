@@ -60,7 +60,9 @@ fn write_autosave_creates_file_matching_filename_pattern() {
         .expect("utf-8 filename");
     assert!(name.starts_with("autosave-"), "got {name}");
     // Body matches autosave-{digits}-{16 hex}.cadk
-    let stem = name.trim_start_matches("autosave-").trim_end_matches(".cadk");
+    let stem = name
+        .trim_start_matches("autosave-")
+        .trim_end_matches(".cadk");
     let (ts, hash16) = stem.split_once('-').expect("epoch-hash split");
     assert!(ts.chars().all(|c| c.is_ascii_digit()), "epoch={ts}");
     assert_eq!(hash16.len(), 16, "hash16 must be 16 chars, got {hash16}");
@@ -142,8 +144,7 @@ fn rotation_enforces_retain_window() {
             label: format!("part-{i}"),
         })
         .expect("rename");
-        s.write_autosave_snapshot(&policy)
-            .expect("write autosave");
+        s.write_autosave_snapshot(&policy).expect("write autosave");
         std::thread::sleep(Duration::from_millis(15));
     }
 

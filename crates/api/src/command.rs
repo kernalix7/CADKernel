@@ -15,6 +15,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::document::{FeatureId, SolidId};
+use cadkernel_topology::Tag;
 
 /// Every state-mutating operation a [`Session`](crate::Session) accepts.
 ///
@@ -167,6 +168,123 @@ pub enum Command {
         /// through to the legacy single-solid path.
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         features: Vec<FeatureId>,
+    },
+    /// Additive extrusion from a sketch profile. Track 1 admits the command
+    /// shape and dispatch plumbing; until Track 6 persists sketches, execution
+    /// returns `InvalidArgument("sketch resolution arrives in Track 6")`.
+    Pad {
+        sketch: SketchRef,
+        distance: f64,
+        #[serde(default)]
+        direction: PadDirection,
+        #[serde(default)]
+        symmetric: bool,
+        #[serde(default, rename = "type")]
+        type_: PadType,
+    },
+    /// Subtractive extrusion from a sketch profile. Track 1 admits the command
+    /// shape; execution blocks on Track 6 sketch resolution.
+    Pocket {
+        sketch: SketchRef,
+        distance: f64,
+        #[serde(default)]
+        through_all: bool,
+        #[serde(default, rename = "type")]
+        type_: PocketType,
+    },
+    /// Additive revolution around `axis`. Track 1 admits the command shape;
+    /// execution blocks on Track 6 sketch resolution.
+    Revolve {
+        sketch: SketchRef,
+        axis: AxisRef,
+        angle_rad: f64,
+        #[serde(default)]
+        symmetric: bool,
+    },
+    /// Subtractive revolution around `axis`. Track 1 admits the command shape;
+    /// execution blocks on Track 6 sketch resolution.
+    Groove {
+        sketch: SketchRef,
+        axis: AxisRef,
+        angle_rad: f64,
+    },
+    /// Hole on a planar face. Track 1 admits the command shape; execution
+    /// blocks on Track 4 face-reference resolution.
+    Hole {
+        face: FaceRef,
+        position: [f64; 2],
+        radius: f64,
+        depth: f64,
+        #[serde(default)]
+        through_all: bool,
+        #[serde(default)]
+        kind: HoleKind,
+    },
+    /// Sweep a profile sketch along a path sketch. Track 1 admits the command
+    /// shape; execution blocks on Track 6 sketch resolution.
+    Sweep {
+        profile_sketch: SketchRef,
+        path_sketch: SketchRef,
+        #[serde(default)]
+        mode: SweepMode,
+    },
+    /// Loft through profile sketches. Track 1 admits the command shape;
+    /// execution blocks on Track 6 sketch resolution.
+    Loft {
+        profiles: Vec<SketchRef>,
+        #[serde(default)]
+        mode: LoftMode,
+        #[serde(default)]
+        ruled: bool,
+        #[serde(default)]
+        closed: bool,
+    },
+    /// Helix feature. With one active body this routes through
+    /// `cadkernel_modeling::features::additive_helix`; with an empty document
+    /// it creates a standalone helix solid.
+    Helix {
+        axis: AxisRef,
+        radius: f64,
+        pitch: f64,
+        height: f64,
+        turns: f64,
+        #[serde(default)]
+        cone_angle: f64,
+    },
+    /// Fillet a set of edges. Track 1 admits the command shape; edge
+    /// references block on Track 4 resolution. Variable radii are rejected
+    /// until Track 5b.
+    Fillet {
+        edges: Vec<EdgeRef>,
+        radius: f64,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        variable: Option<VariableRadius>,
+    },
+    /// Chamfer a set of edges. Track 1 admits the command shape; execution
+    /// blocks on Track 4 edge-reference resolution.
+    Chamfer {
+        edges: Vec<EdgeRef>,
+        distance: f64,
+        #[serde(default)]
+        mode: ChamferMode,
+    },
+    /// Shell a solid by removing faces. Track 1 admits the command shape;
+    /// execution blocks on Track 4 face-reference resolution.
+    Shell {
+        solid: SolidId,
+        removed_faces: Vec<FaceRef>,
+        thickness: f64,
+        #[serde(default)]
+        mode: ShellMode,
+    },
+    /// Apply draft to faces relative to `neutral_plane`. Track 1 admits the
+    /// command shape; execution blocks on Track 4 face-reference resolution.
+    Draft {
+        faces: Vec<FaceRef>,
+        neutral_plane: FaceRef,
+        angle_rad: f64,
+        #[serde(default)]
+        direction: DraftDirection,
     },
     /// Create a freshly-named empty document. Discards every existing solid
     /// and resets the [`Session`] log. Useful as the first command of a
@@ -467,6 +585,18 @@ impl Command {
             Self::Extrude { .. } => "extrude",
             Self::LinearPattern { .. } => "linear_pattern",
             Self::Mirror { .. } => "mirror",
+            Self::Pad { .. } => "pad",
+            Self::Pocket { .. } => "pocket",
+            Self::Revolve { .. } => "revolve",
+            Self::Groove { .. } => "groove",
+            Self::Hole { .. } => "hole",
+            Self::Sweep { .. } => "sweep",
+            Self::Loft { .. } => "loft",
+            Self::Helix { .. } => "helix",
+            Self::Fillet { .. } => "fillet",
+            Self::Chamfer { .. } => "chamfer",
+            Self::Shell { .. } => "shell",
+            Self::Draft { .. } => "draft",
             Self::NewDocument => "new_document",
             Self::Measure { .. } => "measure",
             Self::Validate => "validate",
@@ -854,6 +984,318 @@ pub fn command_schemas() -> Vec<CommandSchema> {
                     ty: "integer[]",
                     required: false,
                     doc: "Optional A2.2 feature-list mode. Array of FeatureIds whose primary solids will all be mirrored in one combined PatternCreated outcome. When non-empty, `id` is ignored.",
+                },
+            ],
+        },
+        CommandSchema {
+            op: "pad",
+            description: "Additive extrusion from a sketch profile. Track 1 dispatch blocks until Track 6 sketch resolution lands.",
+            params: &[
+                ParamSchema {
+                    name: "sketch",
+                    ty: "sketch_ref",
+                    required: true,
+                    doc: "Profile sketch reference.",
+                },
+                ParamSchema {
+                    name: "distance",
+                    ty: "number",
+                    required: true,
+                    doc: "Pad distance.",
+                },
+                ParamSchema {
+                    name: "direction",
+                    ty: "pad_direction",
+                    required: false,
+                    doc: "normal | reversed | two_sided. Defaults to normal.",
+                },
+                ParamSchema {
+                    name: "symmetric",
+                    ty: "boolean",
+                    required: false,
+                    doc: "Use half-distance on both sides when true.",
+                },
+                ParamSchema {
+                    name: "type",
+                    ty: "pad_type",
+                    required: false,
+                    doc: "blind | up_to_face | through_all. Defaults to blind.",
+                },
+            ],
+        },
+        CommandSchema {
+            op: "pocket",
+            description: "Subtractive extrusion from a sketch profile. Track 1 dispatch blocks until Track 6 sketch resolution lands.",
+            params: &[
+                ParamSchema {
+                    name: "sketch",
+                    ty: "sketch_ref",
+                    required: true,
+                    doc: "Profile sketch reference.",
+                },
+                ParamSchema {
+                    name: "distance",
+                    ty: "number",
+                    required: true,
+                    doc: "Pocket depth.",
+                },
+                ParamSchema {
+                    name: "through_all",
+                    ty: "boolean",
+                    required: false,
+                    doc: "Whether to cut through the active body.",
+                },
+                ParamSchema {
+                    name: "type",
+                    ty: "pocket_type",
+                    required: false,
+                    doc: "blind | up_to_face | through_all. Defaults to blind.",
+                },
+            ],
+        },
+        CommandSchema {
+            op: "revolve",
+            description: "Additive revolution from a sketch profile. Track 1 dispatch blocks until Track 6 sketch resolution lands.",
+            params: &[
+                ParamSchema {
+                    name: "sketch",
+                    ty: "sketch_ref",
+                    required: true,
+                    doc: "Profile sketch reference.",
+                },
+                ParamSchema {
+                    name: "axis",
+                    ty: "axis_ref",
+                    required: true,
+                    doc: "origin | x | y | z | custom axis.",
+                },
+                ParamSchema {
+                    name: "angle_rad",
+                    ty: "number",
+                    required: true,
+                    doc: "Sweep angle in radians.",
+                },
+                ParamSchema {
+                    name: "symmetric",
+                    ty: "boolean",
+                    required: false,
+                    doc: "Reserved for Track 6 symmetric revolution.",
+                },
+            ],
+        },
+        CommandSchema {
+            op: "groove",
+            description: "Subtractive revolution from a sketch profile. Track 1 dispatch blocks until Track 6 sketch resolution lands.",
+            params: &[
+                ParamSchema {
+                    name: "sketch",
+                    ty: "sketch_ref",
+                    required: true,
+                    doc: "Profile sketch reference.",
+                },
+                ParamSchema {
+                    name: "axis",
+                    ty: "axis_ref",
+                    required: true,
+                    doc: "origin | x | y | z | custom axis.",
+                },
+                ParamSchema {
+                    name: "angle_rad",
+                    ty: "number",
+                    required: true,
+                    doc: "Sweep angle in radians.",
+                },
+            ],
+        },
+        CommandSchema {
+            op: "hole",
+            description: "Hole on a planar face. Track 1 dispatch blocks until Track 4 face-reference resolution lands.",
+            params: &[
+                ParamSchema {
+                    name: "face",
+                    ty: "face_ref",
+                    required: true,
+                    doc: "Planar target face reference.",
+                },
+                ParamSchema {
+                    name: "position",
+                    ty: "[f64; 2]",
+                    required: true,
+                    doc: "Face-local UV position placeholder.",
+                },
+                ParamSchema {
+                    name: "radius",
+                    ty: "number",
+                    required: true,
+                    doc: "Hole radius.",
+                },
+                ParamSchema {
+                    name: "depth",
+                    ty: "number",
+                    required: true,
+                    doc: "Hole depth.",
+                },
+            ],
+        },
+        CommandSchema {
+            op: "sweep",
+            description: "Sweep a profile sketch along a path sketch. Track 1 dispatch blocks until Track 6 sketch resolution lands.",
+            params: &[
+                ParamSchema {
+                    name: "profile_sketch",
+                    ty: "sketch_ref",
+                    required: true,
+                    doc: "Profile sketch reference.",
+                },
+                ParamSchema {
+                    name: "path_sketch",
+                    ty: "sketch_ref",
+                    required: true,
+                    doc: "Path sketch reference.",
+                },
+                ParamSchema {
+                    name: "mode",
+                    ty: "sweep_mode",
+                    required: false,
+                    doc: "standard | frenet | auxiliary. Defaults to standard.",
+                },
+            ],
+        },
+        CommandSchema {
+            op: "loft",
+            description: "Loft through profile sketches. Track 1 dispatch blocks until Track 6 sketch resolution lands.",
+            params: &[
+                ParamSchema {
+                    name: "profiles",
+                    ty: "sketch_ref[]",
+                    required: true,
+                    doc: "Profile sketch references.",
+                },
+                ParamSchema {
+                    name: "mode",
+                    ty: "loft_mode",
+                    required: false,
+                    doc: "straight | smooth. Defaults to straight.",
+                },
+            ],
+        },
+        CommandSchema {
+            op: "helix",
+            description: "Create or add a helical feature. With one active body it unions the helix into that body.",
+            params: &[
+                ParamSchema {
+                    name: "axis",
+                    ty: "axis_ref",
+                    required: true,
+                    doc: "origin | x | y | z | custom axis.",
+                },
+                ParamSchema {
+                    name: "radius",
+                    ty: "number",
+                    required: true,
+                    doc: "Helix center radius.",
+                },
+                ParamSchema {
+                    name: "pitch",
+                    ty: "number",
+                    required: true,
+                    doc: "Height per turn.",
+                },
+                ParamSchema {
+                    name: "height",
+                    ty: "number",
+                    required: true,
+                    doc: "Reserved height hint; turns and pitch drive the kernel call in Track 1.",
+                },
+                ParamSchema {
+                    name: "turns",
+                    ty: "number",
+                    required: true,
+                    doc: "Number of turns.",
+                },
+            ],
+        },
+        CommandSchema {
+            op: "fillet",
+            description: "Fillet referenced edges. Track 1 dispatch blocks until Track 4 edge-reference resolution lands.",
+            params: &[
+                ParamSchema {
+                    name: "edges",
+                    ty: "edge_ref[]",
+                    required: true,
+                    doc: "Edges to fillet.",
+                },
+                ParamSchema {
+                    name: "radius",
+                    ty: "number",
+                    required: true,
+                    doc: "Uniform radius.",
+                },
+            ],
+        },
+        CommandSchema {
+            op: "chamfer",
+            description: "Chamfer referenced edges. Track 1 dispatch blocks until Track 4 edge-reference resolution lands.",
+            params: &[
+                ParamSchema {
+                    name: "edges",
+                    ty: "edge_ref[]",
+                    required: true,
+                    doc: "Edges to chamfer.",
+                },
+                ParamSchema {
+                    name: "distance",
+                    ty: "number",
+                    required: true,
+                    doc: "Chamfer distance.",
+                },
+            ],
+        },
+        CommandSchema {
+            op: "shell",
+            description: "Shell a solid by removing referenced faces. Track 1 dispatch blocks until Track 4 face-reference resolution lands.",
+            params: &[
+                ParamSchema {
+                    name: "solid",
+                    ty: "solid_id",
+                    required: true,
+                    doc: "Solid to shell.",
+                },
+                ParamSchema {
+                    name: "removed_faces",
+                    ty: "face_ref[]",
+                    required: true,
+                    doc: "Faces to remove.",
+                },
+                ParamSchema {
+                    name: "thickness",
+                    ty: "number",
+                    required: true,
+                    doc: "Shell thickness.",
+                },
+            ],
+        },
+        CommandSchema {
+            op: "draft",
+            description: "Draft referenced faces. Track 1 dispatch blocks until Track 4 face-reference resolution lands.",
+            params: &[
+                ParamSchema {
+                    name: "faces",
+                    ty: "face_ref[]",
+                    required: true,
+                    doc: "Faces to draft.",
+                },
+                ParamSchema {
+                    name: "neutral_plane",
+                    ty: "face_ref",
+                    required: true,
+                    doc: "Neutral plane face reference.",
+                },
+                ParamSchema {
+                    name: "angle_rad",
+                    ty: "number",
+                    required: true,
+                    doc: "Draft angle in radians.",
                 },
             ],
         },
@@ -1428,4 +1870,147 @@ pub struct InstanceOverride {
 
 fn is_zero_vec3(v: &[f64; 3]) -> bool {
     v[0] == 0.0 && v[1] == 0.0 && v[2] == 0.0
+}
+
+/// Placeholder body identifier for the PartDesign command surface. Full
+/// body-aware routing lands in Track 2.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct BodyId(pub u64);
+
+/// Placeholder sketch identifier. Full persisted sketch storage lands in
+/// Track 6.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct SketchId(pub u64);
+
+/// Reference to a sketch profile or path.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SketchRef {
+    pub sketch_id: SketchId,
+}
+
+/// Reference to a face by owning solid and persistent topology tag.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FaceRef {
+    pub solid: SolidId,
+    pub tag: Tag,
+}
+
+/// Reference to an edge by owning solid and persistent topology tag.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct EdgeRef {
+    pub solid: SolidId,
+    pub tag: Tag,
+}
+
+/// Axis reference used by sketch-driven features.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "axis", rename_all = "snake_case")]
+pub enum AxisRef {
+    Origin,
+    X,
+    Y,
+    Z,
+    Custom {
+        position: [f64; 3],
+        direction: [f64; 3],
+    },
+}
+
+/// Direction mode for [`Command::Pad`].
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PadDirection {
+    #[default]
+    Normal,
+    Reversed,
+    TwoSided,
+}
+
+/// Termination type for [`Command::Pad`].
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum PadType {
+    #[default]
+    Blind,
+    UpToFace,
+    ThroughAll,
+}
+
+/// Termination type for [`Command::Pocket`].
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum PocketType {
+    #[default]
+    Blind,
+    UpToFace,
+    ThroughAll,
+}
+
+/// Sweep frame mode for [`Command::Sweep`].
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SweepMode {
+    #[default]
+    Standard,
+    Frenet,
+    Auxiliary,
+}
+
+/// Loft interpolation mode for [`Command::Loft`].
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LoftMode {
+    #[default]
+    Straight,
+    Smooth,
+}
+
+/// Hole flavor for [`Command::Hole`].
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HoleKind {
+    #[default]
+    Simple,
+    Counterbore,
+    Countersink,
+    Tapped,
+}
+
+/// Chamfer construction mode.
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ChamferMode {
+    #[default]
+    Equal,
+    TwoDistance,
+    DistanceAngle,
+}
+
+/// Shell offset mode.
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ShellMode {
+    #[default]
+    Inward,
+    Outward,
+    Symmetric,
+}
+
+/// Draft pull direction mode.
+#[derive(Debug, Clone, Copy, PartialEq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DraftDirection {
+    #[default]
+    Pull,
+    Push,
+}
+
+/// Variable-radius fillet descriptor. Non-empty samples are admitted in the
+/// wire format but rejected by Track 1 dispatch until Track 5b.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct VariableRadius {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub samples: Vec<(f64, f64)>,
 }

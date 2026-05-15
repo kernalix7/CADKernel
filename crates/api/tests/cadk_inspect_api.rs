@@ -59,7 +59,10 @@ fn inspect_compressed_container_reports_document_compressed_flag() {
     let summary = cadk::inspect(&bytes).unwrap();
 
     assert!(summary.document_compressed());
-    assert_eq!(summary.flags & CadkFlags::DOCUMENT_COMPRESSED, CadkFlags::DOCUMENT_COMPRESSED);
+    assert_eq!(
+        summary.flags & CadkFlags::DOCUMENT_COMPRESSED,
+        CadkFlags::DOCUMENT_COMPRESSED
+    );
     assert_eq!(summary.blob_count, 1);
     // The reported document_length is the compressed (on-disk) size,
     // which for this tiny log is bounded but non-zero.
