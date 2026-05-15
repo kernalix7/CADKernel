@@ -21,6 +21,8 @@ The recent V37 session work (module split, sub-enum partition, panic-safety fixe
 
 > **Status 2026-05-14 (UI-B1, FIRST MEDIUM-tier verify-first)**: 10/10 Draft workbench MEDIUM dispatcher arms (`D::Facebinder`, `D::Move`, `D::Rotate`, `D::Scale`, `D::Mirror`, `D::Offset`, `D::Trim`, `D::Stretch`, `D::Dimension`, `D::Label`) verified already wired with hardcoded sensible defaults — same verify-first outcome as all five EASY-tier phases. Cumulative counter: 64 EASY + 10 MEDIUM = **74/74**. **MEDIUM tier shows the same wired-with-defaults pattern as EASY.** Dispatcher-boundary tests added in `crates/viewer/tests/draft_medium_features.rs` (10 tests, workspace 3,356 → **3,366 / 0 / 1**). Full UX (modals, pickers, gizmos, overlay-edit) deferred to §4 MEDIUM-UX Backlog.
 
+> **Status 2026-05-14 (UI-B2, MEDIUM tier exhausted)**: 8/8 remaining MEDIUM dispatcher arms across PartDesign (4: `Pd::AdditiveLoft`, `Pd::AdditivePipe`, `Pd::SubtractiveLoft`, `Pd::SubtractivePipe`), Part (1: `P::ProjectCurvesOnSurface`), Surface (3: `S::Sections`, `S::Extend`, `S::Blend`) verified already wired with hardcoded sensible defaults. **MEDIUM tier across §3.1–§3.4 now FULLY exhausted as of 2026-05-14.** Cumulative verify-first counter: 64 EASY + 18 MEDIUM = **82/82** across 6 consecutive lanes. Default args confirmed: Loft uses 2 stacked tapered squares; Pipe uses 0.5×0.5 profile + 2-pt Z path; ProjectCurvesOnSurface uses default polyline + overlay; Sections uses 2 stacked square profiles; Extend uses distance 0.5; Blend routes through `surface_from_curves` (Gordon-like quad — true G2 blend is a kernel gap). Dispatcher-boundary tests added in `crates/viewer/tests/pd_part_surface_medium_features.rs` (8 tests, workspace 3,366 → **3,374 / 0 / 1**). Full production UX deferred to §3.8 MEDIUM-UX Backlog (Phase F).
+
 This roadmap is a structured plan to actually wire the UI to the kernel. It is the canonical reference for the multi-session UI completion effort.
 
 ## 2. The Surprise (Good News)
@@ -30,8 +32,8 @@ This roadmap is a structured plan to actually wire the UI to the kernel. It is t
 | Stub category | Kernel API status | Estimated effort |
 |---|---|---|
 | EASY — kernel API exists, wire only | ~15 stubs (was ~55; 5 PD verified DONE UI-A1; 19 Draft DONE UI-A2; 13 Part DONE UI-A3; 3 Surface/FEM DONE UI-A4 = S::Coons + FemAction::Summary + FemAction::Report) | 15-30 min each |
-| MEDIUM — kernel API exists, needs UX (modal / picker / sketch ref) | ~8 stubs remaining (was ~18; 10 Draft MEDIUM verified wired UI-B1 2026-05-14) | 1-2 hours each |
-| HARD — kernel API missing | ~9 stubs | 3-10 hours each (new kernel work) |
+| MEDIUM — kernel API exists, needs UX (modal / picker / sketch ref) | **0 remaining** (was ~18; 10 Draft MEDIUM verified wired UI-B1 2026-05-14; 8 PD+Part+Surface MEDIUM verified wired UI-B2 2026-05-14 — **MEDIUM tier FULLY exhausted**) | 1-2 hours each |
+| HARD — kernel API missing | ~9 stubs (only 1 PartDesign HARD remaining in §3.2) | 3-10 hours each (new kernel work) |
 
 The 9-sub-enum dispatcher partition we landed last session (commits `9e42ece` … `d2966b6`) actually makes this fix easier — each `process_*_action` helper is a clean isolated dispatch point.
 
@@ -79,15 +81,17 @@ Stub line numbers refer to `crates/viewer/src/app.rs` at commit `1875230` (HEAD 
 
 | Variant | Stub line | Kernel API | Tier | Notes |
 |---|---|---|---|---|
-| `Pd::AdditiveLoft` | 3850 | `features::loft` | MEDIUM | Needs profile-list selection. |
-| `Pd::AdditivePipe` | 3851 | `features::sweep`, `surface_ops::pipe_surface` | MEDIUM | Needs profile + path selection. |
-| `Pd::SubtractiveLoft` | 3852 | `features::loft` + `boolean_op_exact` | MEDIUM | Same as AdditiveLoft + boolean. |
-| `Pd::SubtractivePipe` | 3853 | `features::sweep` + `boolean_op_exact` | MEDIUM | Same as AdditivePipe + boolean. |
+| `Pd::AdditiveLoft` | 3850 | `features::loft` | DONE (verified 2026-05-14) | Default: 2 stacked tapered squares. UX gap: profile-list picker (Phase F). |
+| `Pd::AdditivePipe` | 3851 | `features::sweep`, `surface_ops::pipe_surface` | DONE (verified 2026-05-14) | Default: 0.5×0.5 profile + 2-pt Z path. UX gap: profile + path picker (Phase F). |
+| `Pd::SubtractiveLoft` | 3852 | `features::loft` + `boolean_op_exact` | DONE (verified 2026-05-14) | Loft tool + boolean Difference; selection-gated. UX gap: same as AdditiveLoft (Phase F). |
+| `Pd::SubtractivePipe` | 3853 | `features::sweep` + `boolean_op_exact` | DONE (verified 2026-05-14) | Sweep tool + boolean Difference; selection-gated. UX gap: same as AdditivePipe (Phase F). |
 | `Pd::ShapeBinder` | 3867 | `features::shape_binder` | DONE | Wired in working tree: copies selected shape faces into a new binder solid. |
 
 **Status 2026-05-14 — DONE (verified)**: `Pd::PadSketch`, `Pd::PocketSketch`, `Pd::GrooveSketch`, `Pd::HoleSketch`, `Pd::CountersunkHoleSketch` were verified wired to `cadkernel_modeling::{pad, pocket, groove, hole, countersunk_hole}` in HEAD `714136e`. These dispatcher arms call the kernel and pass produced solids into the scene via `add_to_scene`. The earlier "ALSO log_info" characterisation was stale. Dispatcher-boundary tests in `crates/viewer/tests/partdesign_sketch_features.rs` (6 tests, all green as of 2026-05-14) lock in this guarantee. The "user's 간단한 도형 늘리기 complaint" that prompted this roadmap is resolved for the PartDesign sketch-driven tier.
 
-**Subtotals:** EASY = 5 (the format-printing pad-family, all DONE 2026-05-14), MEDIUM = 4, HARD = 1.
+**Status 2026-05-14 (UI-B2) — DONE (verified)**: `Pd::AdditiveLoft`, `Pd::AdditivePipe`, `Pd::SubtractiveLoft`, `Pd::SubtractivePipe` verified wired with hardcoded defaults. Dispatcher-boundary tests in `crates/viewer/tests/pd_part_surface_medium_features.rs` (8 tests total for the lane, 4 for PD). Full production UX (profile-list picker, path picker, orientation modal) deferred to Phase F.
+
+**Subtotals:** EASY = 5 (the format-printing pad-family, all DONE 2026-05-14), MEDIUM = 0 (4 verified DONE 2026-05-14 via UI-B2), HARD = 1.
 
 ### 3.3 Part workbench (14 stubs)
 
@@ -105,21 +109,21 @@ Stub line numbers refer to `crates/viewer/src/app.rs` at commit `1875230` (HEAD 
 | `P::ConvertToSolid` | 3818 | `features::shape_convert::shape_from_mesh` | DONE (verified 2026-05-14) | scene+1 solid from mesh. |
 | `P::AutoDefeaturing` | already wired | `features::defeature::auto_defeaturing` | DONE (verified 2026-05-14) | scene+1. |
 | `P::TransformedCopy` | already wired | `multi_transform::multi_transform` | DONE (verified 2026-05-14) | scene+1. |
-| `P::ProjectCurvesOnSurface` | 3825 | `features::projection::project_curve_on_solid` | MEDIUM | Needs curve + surface selection. Excluded from UI-A3 scope; pick up in MEDIUM-tier phase. |
+| `P::ProjectCurvesOnSurface` | 3825 | `features::projection::project_curve_on_solid` | DONE (verified 2026-05-14) | Default: polyline + overlay; selection-gated. UX gap: curve picker + target surface picker + direction modal (Phase F). |
 | `P::CoonsPatch` | 3826 | `surface_ops::coons_patch` | DONE (verified 2026-05-14) | scene+1 solid, overlay polyline grew. |
 
-**Subtotals:** DONE = 13 (verified 2026-05-14 via `crates/viewer/tests/part_easy_features.rs`, 14 tests), MEDIUM = 1, HARD = 0.
+**Subtotals:** DONE = 14 (13 EASY verified 2026-05-14 + 1 MEDIUM `P::ProjectCurvesOnSurface` verified 2026-05-14 via UI-B2), MEDIUM = 0, HARD = 0.
 
 ### 3.4 Surface workbench (4 stubs — Filling/Boundary/Pipe already real)
 
 | Variant | Stub line | Kernel API | Tier | Notes |
 |---|---|---|---|---|
-| `S::Sections` | 3776 | `surface_ops::sections`, `features::cross_sections` | MEDIUM | Needs profile selection. |
-| `S::Extend` | 3777 | `surface_ops::extend_surface` | MEDIUM | Needs surface selection + distance. |
-| `S::Blend` | 3778 | `surface_ops::surface_from_curves` (closest) | MEDIUM | API is partial. |
+| `S::Sections` | 3776 | `surface_ops::sections`, `features::cross_sections` | DONE (verified 2026-05-14) | Default: skinned solid from 2 stacked square profiles. UX gap: section-curve list picker + skin-degree slider (Phase F). |
+| `S::Extend` | 3777 | `surface_ops::extend_surface` | DONE (verified 2026-05-14) | Default: distance 0.5; selection-gated. UX gap: face picker + distance modal + continuity selector G0/G1/G2 (Phase F). |
+| `S::Blend` | 3778 | `surface_ops::surface_from_curves` (Gordon-like quad) | DONE (verified 2026-05-14) | Stand-in via `surface_from_curves`. **Kernel gap**: true tangent-continuous (G1/G2) surface blend is missing; `surface_from_curves` is current approximation. UX gap: face/edge-chain picker + continuity selector (Phase F). |
 | `S::Coons` | 3802 | `surface_ops::coons_patch` | DONE (verified 2026-05-14) | Covered by `gui_action_integration.rs:2851`. |
 
-**Subtotals:** DONE = 1 (verified 2026-05-14), EASY remaining = 0, MEDIUM = 3, HARD = 0.
+**Subtotals:** DONE = 4 (1 EASY `S::Coons` verified 2026-05-14; 3 MEDIUM `S::Sections`/`S::Extend`/`S::Blend` verified 2026-05-14 via UI-B2), EASY remaining = 0, MEDIUM = 0, HARD = 0.
 
 ### 3.5 FEM workbench (7 stubs)
 
@@ -148,12 +152,12 @@ Working tree status: `NewPage`, `FromTemplate`, `Redraw`, `SectionView`, `Detail
 | Workbench | Stub count | DONE | EASY remaining | MEDIUM remaining | HARD |
 |---|---:|---:|---:|---:|---:|
 | Draft | 29 | 29 (19 EASY 2026-05-14; 10 MEDIUM 2026-05-14) | 0 | 0 | 0 |
-| PartDesign (incl. format-print Pad-family) | 10 | 5 (verified 2026-05-14) | 0 | 4 | 1 |
-| Part (incl. format-print stubs) | 14 | 13 (verified 2026-05-14) | 0 | 1 | 0 |
-| Surface | 4 | 1 (verified 2026-05-14) | 0 | 3 | 0 |
+| PartDesign (incl. format-print Pad-family) | 10 | 9 (5 EASY verified 2026-05-14; 4 MEDIUM verified 2026-05-14 via UI-B2) | 0 | 0 | 1 |
+| Part (incl. format-print stubs) | 14 | 14 (13 EASY verified 2026-05-14; 1 MEDIUM `P::ProjectCurvesOnSurface` verified 2026-05-14 via UI-B2) | 0 | 0 | 0 |
+| Surface | 4 | 4 (1 EASY `S::Coons` verified 2026-05-14; 3 MEDIUM verified 2026-05-14 via UI-B2) | 0 | 0 | 0 |
 | FEM | 7 | 7 (all verified; Summary/Report strengthened 2026-05-14) | 0 | 0 | 0 |
 | TechDraw | 24 | 24 (all verified 2026-05-14; 23 already-covered + 1 strengthened) | 0 | 0 | 0 |
-| **Total** | **88** | **74** | **0** | **8** | **1** |
+| **Total** | **88** | **82** | **0** | **0** | **1** |
 
 (88 > 79 because the Pad-family + AutoDefeaturing + TransformedCopy format-print stubs were undercounted by the initial `log_info`-only grep, and TechDraw's extracted enum now exposes the full 24-action page/view/dimension/annotation/centerline/export backlog.)
 
@@ -167,8 +171,13 @@ The verify-first passes (UI-A1 through UI-B1) confirmed that all 74 dispatcher a
 | **Phase-B-picker** | Facebinder (face pick), Mirror (plane pick / custom 3-point), Dimension (endpoint pick + drag-offset), Trim (cursor target-point), Stretch (vertex + radius select), Offset (wire pick) | Interactive selection overlays; builds on `picking.rs` + `command.rs` infrastructure. |
 | **Phase-C-gizmo** | Move (translate handles), Rotate (rotation ring), Scale (uniform/per-axis handles) | 3D manipulators; reuses camera/picking infrastructure already in viewer. |
 | **Phase-D-overlay-edit** | Dimension (value in-place edit), Label (text in-place edit) | In-place editing via existing `gui::scene_overlay` label rendering path. |
+| **Phase-F-loft-pipe** | AdditiveLoft / SubtractiveLoft: profile-list picker (≥2 sketches in order; live preview). AdditivePipe / SubtractivePipe: profile + path picker; orientation modal (Frenet/binormal/auxiliary). | New multi-select picker workflow; AdditiveLoft/SubtractiveLoft share picker logic. |
+| **Phase-F-project** | ProjectCurvesOnSurface: curve picker + target solid/surface picker; projection-direction modal (normal/view/custom vector). | Builds on existing picking.rs + overlay infrastructure. |
+| **Phase-F-sections** | Surface Sections: section-curve list picker (≥2 profiles, optional guide curves); skin-degree slider (1=ruled, 3=cubic). | Multi-curve ordered selection; shares picker with Loft profile-list. |
+| **Phase-F-extend** | Surface Extend: face picker + distance modal (currently fixed at 0.5); continuity selector (G0/G1/G2). | Single-face selection + numeric modal; reuse ActiveDialog. |
+| **Phase-F-blend** | Surface Blend: face/edge-chain picker (2 chains); continuity selector (G0/G1/G2). **Kernel gap also**: true tangent-continuous (G1/G2) surface blend not implemented — `surface_from_curves` is the current stand-in. Full production Blend requires both UX (chain picker) and kernel work (proper G1/G2 blend algorithm). | Requires kernel work in addition to UX before this bucket can be fully closed. |
 
-Until these UX buckets land, the hardcoded defaults remain the behavioral contract. Tests in `crates/viewer/tests/draft_medium_features.rs` encode those defaults and will fail if defaults change without a corresponding UX replacement.
+Until these UX buckets land, the hardcoded defaults remain the behavioral contract. Tests in `crates/viewer/tests/draft_medium_features.rs` and `crates/viewer/tests/pd_part_surface_medium_features.rs` encode those defaults and will fail if defaults change without a corresponding UX replacement.
 
 ## 4. Tiered Execution Plan
 

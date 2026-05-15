@@ -11,6 +11,14 @@
 
 ### 추가됨
 
+#### UI 완성 로드맵 — Phase B PartDesign/Part/Surface MEDIUM 8개 확인 (2026-05-14)
+- **verify-first 패턴 6연속 확인**: 8/8 MEDIUM 디스패처 arm (PartDesign 4개: `Pd::AdditiveLoft`/`AdditivePipe`/`SubtractiveLoft`/`SubtractivePipe`, Part 1개: `P::ProjectCurvesOnSurface`, Surface 3개: `S::Sections`/`Extend`/`Blend`) 모두 하드코딩 기본값으로 이미 배선 완료 확인. **§3.1–§3.4 MEDIUM 티어 완전 소진**.
+- 누적 verify-first 카운터: 64 EASY + 18 MEDIUM = **82/82** (6개 연속 레인 모두 이미 배선됨).
+- **신규 테스트 파일** `crates/viewer/tests/pd_part_surface_medium_features.rs` (181줄, 8개 테스트) — 선택 게이트 디스패처 경계 단언.
+- **MEDIUM-UX 백로그 (Phase F)**: Loft/Pipe 프로파일+경로 피커; ProjectCurves 커브+서피스 피커; Sections 단면 곡선 피커; Extend 거리 모달; Blend face/edge-chain 피커. **커널 갭**: 진정한 접선 연속 서피스 블렌드 미구현 — `surface_from_curves` 임시 대체.
+- 워크스페이스: 3,366 → **3,374 / 0 / 1 무시** (+8).
+- STOP_LIST 그린.
+
 #### UI 완성 로드맵 — Phase B Draft MEDIUM 10개 확인 (2026-05-14)
 - **verify-first 패턴 5연속 확인, MEDIUM 티어 최초**: 10/10 Draft 워크벤치 MEDIUM 디스패처 arm(`D::Facebinder`, `D::Move`, `D::Rotate`, `D::Scale`, `D::Mirror`, `D::Offset`, `D::Trim`, `D::Stretch`, `D::Dimension`, `D::Label`) 모두 이미 하드코딩 기본값으로 배선 완료 확인. 누적: 64 EASY + 10 MEDIUM = **74/74**.
 - **신규 테스트 파일** `crates/viewer/tests/draft_medium_features.rs` (231줄, 10개 테스트) — 각 MEDIUM arm 디스패처 경계 단언.

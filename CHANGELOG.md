@@ -11,6 +11,21 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### UI Completion Roadmap — Phase B PartDesign/Part/Surface MEDIUM 8 verified (2026-05-14)
+- **Verify-first 6th consecutive confirmation**: 8/8 remaining MEDIUM dispatcher arms across PartDesign (4: `Pd::AdditiveLoft`, `Pd::AdditivePipe`, `Pd::SubtractiveLoft`, `Pd::SubtractivePipe`), Part (1: `P::ProjectCurvesOnSurface`), Surface (3: `S::Sections`, `S::Extend`, `S::Blend`) verified already wired with hardcoded sensible defaults. **MEDIUM tier across §3.1–§3.4 now FULLY exhausted**.
+- **Default args confirmed**: Loft uses 2 stacked tapered squares; Pipe uses 0.5×0.5 profile + 2-pt Z path; ProjectCurvesOnSurface uses default polyline + overlay; Sections uses 2 stacked square profiles; Extend uses distance 0.5; Blend routes through `surface_from_curves` (Gordon-like quad mesh — true G2 blend identified as kernel gap).
+- **Cumulative verify-first counter**: 64 EASY (UI-A1..A4) + 18 MEDIUM (UI-B1 + UI-B2) = **82/82** supposedly-stub dispatcher arms already wired across 6 consecutive lanes.
+- **New test file** `crates/viewer/tests/pd_part_surface_medium_features.rs` (181 lines, 8 tests) — selection-gated dispatcher-boundary tests for SubtractiveLoft, SubtractivePipe, ProjectCurvesOnSurface, and Extend; scene-growth assertions for AdditiveLoft, AdditivePipe, Sections, and Blend.
+- **MEDIUM-UX backlog (Phase F)**:
+  - Loft / SubtractiveLoft: profile-list picker (≥2 sketches in order, live preview).
+  - Pipe / SubtractivePipe: profile + path picker; orientation modal (Frenet/binormal/auxiliary).
+  - ProjectCurvesOnSurface: curve picker + target solid/surface picker; projection-direction modal (normal/view/custom vector).
+  - Surface Sections: section-curve list picker (≥2 profiles, optional guides); skin-degree slider.
+  - Surface Extend: face picker + distance modal; continuity selector (G0/G1/G2).
+  - Surface Blend: face/edge-chain picker (2 chains); continuity selector (G0/G1/G2). **Kernel gap**: true tangent-continuous surface blend missing; `surface_from_curves` is current stand-in.
+- Workspace: 3,366 → **3,374 / 0 / 1 ignored** (+8).
+- STOP_LIST clean (no Command/Outcome/GuiAction variants, no kernel changes).
+
 #### UI Completion Roadmap — Phase B Draft MEDIUM 10 verified (2026-05-14)
 - **Verify-first 5th consecutive confirmation, FIRST in MEDIUM tier**: 10/10 Draft workbench MEDIUM dispatcher arms (`D::Facebinder`, `D::Move`, `D::Rotate`, `D::Scale`, `D::Mirror`, `D::Offset`, `D::Trim`, `D::Stretch`, `D::Dimension`, `D::Label`) verified already wired with hardcoded sensible defaults. Cumulative: 64 EASY + 10 MEDIUM = **74/74**.
 - **Default args confirmed**: Move=(1,0,0), Rotate=Z/30°, Scale=2.0, Mirror=reads gui.mirror_plane, Offset=0.5×Z, Trim=wire midpoint, Stretch=origin/r=5/+Z, Dimension=linear [0,0,0]→[2,0,0], Label="Label" at (0.5,0.5,0), Facebinder=solid's first face.
