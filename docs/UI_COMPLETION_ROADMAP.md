@@ -19,6 +19,8 @@ The recent V37 session work (module split, sub-enum partition, panic-safety fixe
 
 > **Status 2026-05-14 (UI-A4)**: 27/27 dispatcher arms across Surface §3.4 (1 = `S::Coons`), FEM §3.5 (2 = `FemAction::Summary`/`Report`), TechDraw §3.6 (24) verified already wired pre-A4. Cumulative verify-first counter: 5 + 19 + 13 + 27 = **64/64**. Additionally, 24 of 27 arms were already test-covered in prior test files (`S::Coons` by `gui_action_integration.rs:2851`; 23 TechDraw arms by non-trivial SVG/DXF/PDF assertions). Only 3 arms had tautological prior tests and needed strengthening: new tests in `crates/viewer/tests/fem_easy_features.rs` (4 tests) and `crates/viewer/tests/techdraw_done_features.rs` (1 test). Workspace: 3,351 → **3,356 / 0 / 1**.
 
+> **Status 2026-05-14 (UI-B1, FIRST MEDIUM-tier verify-first)**: 10/10 Draft workbench MEDIUM dispatcher arms (`D::Facebinder`, `D::Move`, `D::Rotate`, `D::Scale`, `D::Mirror`, `D::Offset`, `D::Trim`, `D::Stretch`, `D::Dimension`, `D::Label`) verified already wired with hardcoded sensible defaults — same verify-first outcome as all five EASY-tier phases. Cumulative counter: 64 EASY + 10 MEDIUM = **74/74**. **MEDIUM tier shows the same wired-with-defaults pattern as EASY.** Dispatcher-boundary tests added in `crates/viewer/tests/draft_medium_features.rs` (10 tests, workspace 3,356 → **3,366 / 0 / 1**). Full UX (modals, pickers, gizmos, overlay-edit) deferred to §4 MEDIUM-UX Backlog.
+
 This roadmap is a structured plan to actually wire the UI to the kernel. It is the canonical reference for the multi-session UI completion effort.
 
 ## 2. The Surprise (Good News)
@@ -28,7 +30,7 @@ This roadmap is a structured plan to actually wire the UI to the kernel. It is t
 | Stub category | Kernel API status | Estimated effort |
 |---|---|---|
 | EASY — kernel API exists, wire only | ~15 stubs (was ~55; 5 PD verified DONE UI-A1; 19 Draft DONE UI-A2; 13 Part DONE UI-A3; 3 Surface/FEM DONE UI-A4 = S::Coons + FemAction::Summary + FemAction::Report) | 15-30 min each |
-| MEDIUM — kernel API exists, needs UX (modal / picker / sketch ref) | ~15 stubs | 1-2 hours each |
+| MEDIUM — kernel API exists, needs UX (modal / picker / sketch ref) | ~8 stubs remaining (was ~18; 10 Draft MEDIUM verified wired UI-B1 2026-05-14) | 1-2 hours each |
 | HARD — kernel API missing | ~9 stubs | 3-10 hours each (new kernel work) |
 
 The 9-sub-enum dispatcher partition we landed last session (commits `9e42ece` … `d2966b6`) actually makes this fix easier — each `process_*_action` helper is a clean isolated dispatch point.
@@ -49,29 +51,29 @@ Stub line numbers refer to `crates/viewer/src/app.rs` at commit `1875230` (HEAD 
 | `D::BSpline` | 3956 | `draft_ops::make_bspline_wire` | DONE (verified 2026-05-14) | scene+1, overlay polyline grew. |
 | `D::Bezier` | 3957 | `draft_ops::make_bezier_wire`, `make_cubic_bezier_wire` | DONE (verified 2026-05-14) | scene+1, overlay polyline grew. |
 | `D::Point` | 3958 | `draft_ops::make_point` | DONE (verified 2026-05-14) | scene+1, overlay point grew. |
-| `D::Facebinder` | 3959 | `draft_ops::make_facebinder` | MEDIUM | Needs face selection. |
+| `D::Facebinder` | 3959 | `draft_ops::make_facebinder` | DONE (verified 2026-05-14) | Default: solid's first face. UX gap: interactive face-picker. |
 | `D::Hatch` | 3960 | `draft_ops::draft_hatch` | DONE (verified 2026-05-14) | scene+1, multiple polylines (boundary + fill). |
-| `D::Move` | 3961 | `draft_ops::move_solid` | MEDIUM | Needs gizmo / numeric input modal. |
-| `D::Rotate` | 3962 | `draft_ops::rotate_solid` | MEDIUM | Same as Move. |
-| `D::Scale` | 3963 | `draft_ops::scale_solid_draft` | MEDIUM | Same as Move. |
-| `D::Mirror` | 3964 | `draft_ops::mirror_solid_draft` | MEDIUM | Needs plane picker (or default planes). |
-| `D::Offset` | 3965 | `draft_ops::offset_wire` | MEDIUM | Needs distance modal + wire selection. |
-| `D::Trim` | 3966 | `draft_ops::trimex_draft` | MEDIUM | Needs target-point selection. |
-| `D::Stretch` | 3967 | `draft_ops::stretch_wire` | MEDIUM | Needs vertex-and-vector selection. |
+| `D::Move` | 3961 | `draft_ops::move_solid` | DONE (verified 2026-05-14) | Default: displacement (1,0,0). UX gap: gizmo / numeric modal. |
+| `D::Rotate` | 3962 | `draft_ops::rotate_solid` | DONE (verified 2026-05-14) | Default: Z axis, 30° around origin. UX gap: axis selector + angle modal. |
+| `D::Scale` | 3963 | `draft_ops::scale_solid_draft` | DONE (verified 2026-05-14) | Default: factor 2.0 from origin. UX gap: factor modal + pivot picker. |
+| `D::Mirror` | 3964 | `draft_ops::mirror_solid_draft` | DONE (verified 2026-05-14) | Default: reads gui.mirror_plane (XY/XZ/YZ). UX gap: custom plane picker. |
+| `D::Offset` | 3965 | `draft_ops::offset_wire` | DONE (verified 2026-05-14) | Default: distance 0.5, normal Z. UX gap: distance modal + wire-selection. |
+| `D::Trim` | 3966 | `draft_ops::trimex_draft` | DONE (verified 2026-05-14) | Default: wire midpoint as target. UX gap: cursor target-point pick. |
+| `D::Stretch` | 3967 | `draft_ops::stretch_wire` | DONE (verified 2026-05-14) | Default: center=origin, r=5, displacement (0,0,1). UX gap: vertex+radius select + drag-vector modal. |
 | `D::Clone` | 3968 | `draft_ops::clone_solid` | DONE (verified 2026-05-14) | Both positive (with selection) and no-op (without) covered. |
 | `D::ArrayRect` | 3969 | `draft_ops::rectangular_array` | DONE (verified 2026-05-14) | scene grew past base (Rect 3×2). |
 | `D::ArrayPolar` | 3970 | `draft_ops::polar_array`, `circular_array` | DONE (verified 2026-05-14) | scene grew past base (Polar 6-fold). |
 | `D::ArrayPath` | 3971 | `draft_ops::path_array`, `path_link_array` | DONE (verified 2026-05-14) | scene grew past base. |
 | `D::ArrayPoint` | 3972 | `draft_ops::point_array`, `point_link_array` | DONE (verified 2026-05-14) | scene grew past base. |
-| `D::Dimension` | 3973 | `draft_ops::make_draft_dimension`, `make_draft_dimension_full` | MEDIUM | Needs overlay rendering. |
-| `D::Label` | 3974 | `draft_ops::make_label`, `make_label_full` | MEDIUM | Same as Dimension. |
+| `D::Dimension` | 3973 | `draft_ops::make_draft_dimension`, `make_draft_dimension_full` | DONE (verified 2026-05-14) | Default: linear [0,0,0]→[2,0,0], offset 0.5. UX gap: endpoint pick + drag-offset; angular/radial types. |
+| `D::Label` | 3974 | `draft_ops::make_label`, `make_label_full` | DONE (verified 2026-05-14) | Default: text "Label" at (0.5,0.5,0), leader to origin. UX gap: position + leader-target picker + text editor. |
 | `D::Text` | 3975 | `draft_ops::shape_from_text` | DONE (verified 2026-05-14) | scene+1, polylines+labels grew. |
 | `D::Upgrade` | 3976 | `draft_ops::upgrade_wire`, `upgrade_wire_model` | DONE (verified 2026-05-14) | scene+1, non-empty vertices. |
 | `D::Downgrade` | 3977 | `draft_ops::downgrade_solid`, `downgrade_solid_faces` | DONE (verified 2026-05-14) | Bonus test: box → 6 face-solids. |
 | `D::WireToBSpline` | 3978 | `draft_ops::wire_to_bspline_convert` | DONE (verified 2026-05-14) | scene+1, overlay polyline grew. |
 | `D::ToSketch` | 3979 | `draft_ops::draft_to_sketch` | DONE (verified 2026-05-14) | `last_sketch_is_set()` flipped to true, scene unchanged. |
 
-**Subtotals:** DONE = 19 (verified 2026-05-14 via `crates/viewer/tests/draft_easy_features.rs`, 20 tests), MEDIUM = 10, HARD = 0.
+**Subtotals:** DONE = 29 (19 EASY verified 2026-05-14 via `draft_easy_features.rs` 20 tests; 10 MEDIUM verified 2026-05-14 via `draft_medium_features.rs` 10 tests), MEDIUM remaining = 0, HARD = 0.
 
 ### 3.2 PartDesign workbench (5 stubs — sketch-driven pad-family verified DONE 2026-05-14; 4 MEDIUM + 1 HARD remaining)
 
@@ -143,17 +145,30 @@ Working tree status: `NewPage`, `FromTemplate`, `Redraw`, `SectionView`, `Detail
 
 ### 3.7 Workbench-totals roll-up
 
-| Workbench | Stub count | DONE | EASY remaining | MEDIUM | HARD |
+| Workbench | Stub count | DONE | EASY remaining | MEDIUM remaining | HARD |
 |---|---:|---:|---:|---:|---:|
-| Draft | 29 | 19 (verified 2026-05-14) | 0 | 10 | 0 |
+| Draft | 29 | 29 (19 EASY 2026-05-14; 10 MEDIUM 2026-05-14) | 0 | 0 | 0 |
 | PartDesign (incl. format-print Pad-family) | 10 | 5 (verified 2026-05-14) | 0 | 4 | 1 |
 | Part (incl. format-print stubs) | 14 | 13 (verified 2026-05-14) | 0 | 1 | 0 |
 | Surface | 4 | 1 (verified 2026-05-14) | 0 | 3 | 0 |
 | FEM | 7 | 7 (all verified; Summary/Report strengthened 2026-05-14) | 0 | 0 | 0 |
 | TechDraw | 24 | 24 (all verified 2026-05-14; 23 already-covered + 1 strengthened) | 0 | 0 | 0 |
-| **Total** | **88** | **64** | **0** | **18** | **1** |
+| **Total** | **88** | **74** | **0** | **8** | **1** |
 
 (88 > 79 because the Pad-family + AutoDefeaturing + TransformedCopy format-print stubs were undercounted by the initial `log_info`-only grep, and TechDraw's extracted enum now exposes the full 24-action page/view/dimension/annotation/centerline/export backlog.)
+
+### 3.8 MEDIUM-UX Backlog (2026-05-14)
+
+The verify-first passes (UI-A1 through UI-B1) confirmed that all 74 dispatcher arms wired so far call the kernel correctly but use hardcoded defaults. The backlog below tracks the UX work needed to replace those defaults with interactive input. None of these are required for the dispatcher contracts verified by the test suite — they are purely UX polish.
+
+| Bucket | Features | Notes |
+|---|---|---|
+| **Phase-B-modal** | Move (dx,dy,dz), Rotate (axis, angle), Scale (factor, pivot), Offset (distance, direction) | Numeric input modals; pre-fill with current dispatcher defaults. Reuse existing `ActiveDialog` scaffolding in `crates/viewer/src/gui/`. |
+| **Phase-B-picker** | Facebinder (face pick), Mirror (plane pick / custom 3-point), Dimension (endpoint pick + drag-offset), Trim (cursor target-point), Stretch (vertex + radius select), Offset (wire pick) | Interactive selection overlays; builds on `picking.rs` + `command.rs` infrastructure. |
+| **Phase-C-gizmo** | Move (translate handles), Rotate (rotation ring), Scale (uniform/per-axis handles) | 3D manipulators; reuses camera/picking infrastructure already in viewer. |
+| **Phase-D-overlay-edit** | Dimension (value in-place edit), Label (text in-place edit) | In-place editing via existing `gui::scene_overlay` label rendering path. |
+
+Until these UX buckets land, the hardcoded defaults remain the behavioral contract. Tests in `crates/viewer/tests/draft_medium_features.rs` encode those defaults and will fail if defaults change without a corresponding UX replacement.
 
 ## 4. Tiered Execution Plan
 
@@ -302,8 +317,9 @@ Updated as phases land.
 | K-sketch-profile — Sketcher profile validation UX | Working tree verified (`analyze_profiles` / `extract_profile_checked`, Profile-ready banner, open-profile Pad guard, construction-line-aware profile extraction) | — | 2026-05-05 |
 | K-sketch-constraints — Sketcher constraint diagnostics UX | Working tree verified (duplicate constraints, conflicting dimensional values, invalid dimensional values, banner/status-bar diagnostics) | — | 2026-05-05 |
 | K-sketch-refs — Sketcher external reference and reuse UX | Working tree verified (selected-object external projection, construction reference edges/points, `Refs:` / `Reuse:` banner and status labels, carbon-copy reuse counts) | — | 2026-05-05 |
+| UI-B1 — Draft MEDIUM 10 verify-first | Verified already wired (10/10 MEDIUM arms with hardcoded defaults); dispatcher-boundary tests added (`draft_medium_features.rs`, 10 tests). MEDIUM-UX backlog deferred to §4. | c9fcdae | 2026-05-14 |
 
-**Current milestone (2026-05-05 working tree):** EASY + MEDIUM tiers complete, plus HARD-tier overlay/FEM/TechDraw export/views/dimensions/annotations/centerlines/ShapeBinder batches, the first five command-UX TechDraw slices (Page Setup + Dimension Setup + Annotation Setup + Centerline Setup + View Placement Setup), FEM result interpretation UX, FEM multi-node BC editor UX, Sketcher single-profile validation UX, Sketcher constraint diagnostics UX, and Sketcher external reference/reuse UX verified at **2,844 / 0 / 0**. TechDraw's visible log-only backlog is closed, parameter-entry UX now covers page/dimension/annotation/centerline/view-placement commands, FEM post-processing has legend/probe/table interpretation tools, all kernel-side FEM BC variants are editor-reachable, sketch-driven features now reject open chains before kernel extrusion, Sketcher reports duplicate/conflicting/invalid constraints before feature/solver workflows proceed, and external projections/reused sketches now show visible `Refs:` / `Reuse:` state while adding construction references from selected objects.
+**Current milestone (2026-05-14 working tree):** EASY tier (64) + Draft MEDIUM (10) = **74/74** wired-with-defaults confirmed. Draft workbench is fully DONE at the dispatcher level. Remaining MEDIUM (8) + HARD (1) backlog is UX polish — see §4 MEDIUM-UX Backlog. Workspace: **3,366 / 0 / 1**., plus HARD-tier overlay/FEM/TechDraw export/views/dimensions/annotations/centerlines/ShapeBinder batches, the first five command-UX TechDraw slices (Page Setup + Dimension Setup + Annotation Setup + Centerline Setup + View Placement Setup), FEM result interpretation UX, FEM multi-node BC editor UX, Sketcher single-profile validation UX, Sketcher constraint diagnostics UX, and Sketcher external reference/reuse UX verified at **2,844 / 0 / 0**. TechDraw's visible log-only backlog is closed, parameter-entry UX now covers page/dimension/annotation/centerline/view-placement commands, FEM post-processing has legend/probe/table interpretation tools, all kernel-side FEM BC variants are editor-reachable, sketch-driven features now reject open chains before kernel extrusion, Sketcher reports duplicate/conflicting/invalid constraints before feature/solver workflows proceed, and external projections/reused sketches now show visible `Refs:` / `Reuse:` state while adding construction references from selected objects.
 
 ## 8. Long-Term Sequential Completion Plan
 

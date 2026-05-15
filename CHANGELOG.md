@@ -11,6 +11,18 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### UI Completion Roadmap — Phase B Draft MEDIUM 10 verified (2026-05-14)
+- **Verify-first 5th consecutive confirmation, FIRST in MEDIUM tier**: 10/10 Draft workbench MEDIUM dispatcher arms (`D::Facebinder`, `D::Move`, `D::Rotate`, `D::Scale`, `D::Mirror`, `D::Offset`, `D::Trim`, `D::Stretch`, `D::Dimension`, `D::Label`) verified already wired with hardcoded sensible defaults. Cumulative: 64 EASY + 10 MEDIUM = **74/74**.
+- **Default args confirmed**: Move=(1,0,0), Rotate=Z/30°, Scale=2.0, Mirror=reads gui.mirror_plane, Offset=0.5×Z, Trim=wire midpoint, Stretch=origin/r=5/+Z, Dimension=linear [0,0,0]→[2,0,0], Label="Label" at (0.5,0.5,0), Facebinder=solid's first face.
+- **New test file** `crates/viewer/tests/draft_medium_features.rs` (231 lines, 10 tests) — dispatcher-boundary assertions for each MEDIUM arm.
+- **MEDIUM-UX backlog** (deferred to Phase B/C/D):
+  - **Phase-B-modal**: numeric modals for Move/Rotate/Scale/Offset
+  - **Phase-B-picker**: face picker (Facebinder), plane picker (Mirror), endpoint/vertex/wire pickers (Dimension/Trim/Stretch/Offset)
+  - **Phase-C-gizmo**: 3D manipulators for Move/Rotate/Scale
+  - **Phase-D-overlay-edit**: in-place Dimension value + Label text editing
+- Workspace: 3,356 → **3,366 / 0 / 1 ignored** (+10).
+- STOP_LIST clean (no Command/Outcome/GuiAction/DraftAction variants, no kernel changes).
+
 #### UI Completion Roadmap — Phase A Surface/FEM/TechDraw verified (2026-05-14)
 - **Verify-first 4th consecutive confirmation**: 27/27 dispatcher arms across Surface §3.4 (1), FEM §3.5 (2), TechDraw §3.6 (24) verified already wired pre-A4. Cumulative counter: 5 PD + 19 Draft + 13 Part + 27 mixed = **64/64**.
 - **Discovery**: 24 of 27 arms were ALREADY test-covered (Surface `S::Coons` by `gui_action_integration.rs:2851`; 23 TechDraw arms by various non-trivial assertions including SVG/DXF/PDF content checks). Only 3 arms needed strengthening (their prior tests were tautologies).

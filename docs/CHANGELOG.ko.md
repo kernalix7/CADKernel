@@ -11,6 +11,13 @@
 
 ### 추가됨
 
+#### UI 완성 로드맵 — Phase B Draft MEDIUM 10개 확인 (2026-05-14)
+- **verify-first 패턴 5연속 확인, MEDIUM 티어 최초**: 10/10 Draft 워크벤치 MEDIUM 디스패처 arm(`D::Facebinder`, `D::Move`, `D::Rotate`, `D::Scale`, `D::Mirror`, `D::Offset`, `D::Trim`, `D::Stretch`, `D::Dimension`, `D::Label`) 모두 이미 하드코딩 기본값으로 배선 완료 확인. 누적: 64 EASY + 10 MEDIUM = **74/74**.
+- **신규 테스트 파일** `crates/viewer/tests/draft_medium_features.rs` (231줄, 10개 테스트) — 각 MEDIUM arm 디스패처 경계 단언.
+- **MEDIUM-UX 백로그** (Phase B/C/D로 연기): Phase-B-modal(Move/Rotate/Scale/Offset 수치 입력 모달), Phase-B-picker(면/평면/끝점/버텍스/와이어 선택), Phase-C-gizmo(3D 이동/회전/스케일 핸들), Phase-D-overlay-edit(Dimension 값 + Label 텍스트 인플레이스 편집).
+- 워크스페이스: 3,356 → **3,366 / 0 / 1 무시** (+10).
+- STOP_LIST 그린 (신규 Command/Outcome/GuiAction/DraftAction variant 없음, 커널 변경 없음).
+
 #### UI 완성 로드맵 — Phase A Surface/FEM/TechDraw 확인 (2026-05-14)
 - **verify-first 패턴 4연속 확인**: Surface §3.4 (1) + FEM §3.5 (2) + TechDraw §3.6 (24) = 27/27 arm 모두 사전 배선 완료 확인. 누적 카운터: 5 PD + 19 Draft + 13 Part + 27 mixed = **64/64**.
 - **발견**: 27개 중 24개는 이미 테스트 커버 완료(`S::Coons` `gui_action_integration.rs:2851`, TechDraw 23개 SVG/DXF/PDF 내용 검증 포함). 기존 테스트가 동어반복(tautology)이던 3개만 강화 필요.
