@@ -11,6 +11,25 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### UI Completion Roadmap — PartDesign full enum coverage (UI-B3, 2026-05-14)
+- **First true wiring lane after 6 verify-only**: discovered 7 PartDesignAction variants NOT tracked in UI_COMPLETION_ROADMAP §3.2 (3 built-in mechanical generators + 4 feature management). Verify-first found 3 TRUE-STUB requiring kernel wiring, 5 already-wired needing only test coverage.
+- **3 newly-wired dispatcher arms** (`crates/viewer/src/app.rs` +177/-16):
+  - `CreateSprocket` → `cadkernel_modeling::features::additive::make_sprocket`
+  - `CreateShaftDesign` → `cadkernel_modeling::features::additive::shaft_design`
+  - `CreateInvoluteGear` → `cadkernel_modeling::gear::make_involute_gear` (hardcoded face_width=5.0)
+- **5 re-verified WIRED**: `ShapeBinder`, `SuppressFeature`, `SetTip`, `MoveFeatureUp`, `MoveFeatureDown`.
+- **Roadmap §3.7 HARD-1 entry is stale** — all 3 mechanical generators had kernel APIs already. PartDesign HARD count revised 1 → 0. The "HARD remaining" in original 79-stub inventory is now genuinely **zero**.
+- **New test file** `crates/viewer/tests/pd_untracked_features.rs` (169 lines, 8 tests).
+- Cumulative verify-first counter: **90/90** across 7 consecutive lanes (UI-A1-A4 64 EASY + UI-B1+B2 18 MEDIUM + UI-B3 8 PD-untracked).
+- **UX backlog (Phase F)**:
+  - Sprocket/Shaft/InvoluteGear parameter dialogs (currently variant defaults).
+  - Shaft Design segment-list editor.
+  - InvoluteGear face_width modal (currently hardcoded 5.0).
+  - ShapeBinder face-list multi-picker (currently binds all faces).
+  - SuppressFeature/SetTip/MoveFeature* model-tree context-menu integration.
+- Workspace: 3,374 → **3,382 / 0 / 1 ignored** (+8).
+- STOP_LIST clean (no new Command/Outcome/GuiAction/PartDesignAction variants).
+
 #### UI Completion Roadmap — Phase B PartDesign/Part/Surface MEDIUM 8 verified (2026-05-14)
 - **Verify-first 6th consecutive confirmation**: 8/8 remaining MEDIUM dispatcher arms across PartDesign (4: `Pd::AdditiveLoft`, `Pd::AdditivePipe`, `Pd::SubtractiveLoft`, `Pd::SubtractivePipe`), Part (1: `P::ProjectCurvesOnSurface`), Surface (3: `S::Sections`, `S::Extend`, `S::Blend`) verified already wired with hardcoded sensible defaults. **MEDIUM tier across §3.1–§3.4 now FULLY exhausted**.
 - **Default args confirmed**: Loft uses 2 stacked tapered squares; Pipe uses 0.5×0.5 profile + 2-pt Z path; ProjectCurvesOnSurface uses default polyline + overlay; Sections uses 2 stacked square profiles; Extend uses distance 0.5; Blend routes through `surface_from_curves` (Gordon-like quad mesh — true G2 blend identified as kernel gap).

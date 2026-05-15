@@ -33,12 +33,13 @@ use cadkernel_modeling::{
     extend_surface, extrude, face_from_wires, fillet_edge, filling, groove, hole, linear_pattern,
     loft, make_arc_wire, make_bezier_wire, make_box, make_bspline_wire, make_circle_wire,
     make_cone, make_cylinder, make_draft_dimension_full, make_ellipse_wire, make_ellipsoid,
-    make_facebinder, make_helix, make_label_full, make_line_draft, make_point, make_polygon_wire,
-    make_prism, make_rectangle_wire, make_sphere, make_torus, make_tube, make_wedge, make_wire,
-    mirror_solid, mirror_solid_draft, move_solid, multi_transform, offset_wire, pad, path_array,
-    pipe_surface, pocket, point_array, points_from_shape, polar_array, project_curve_on_solid,
-    rectangular_array, rotate_solid, scale_solid, scale_solid_draft, sections, shape_binder,
-    shape_from_mesh, shape_from_text, shell_solid, slice_to_compound, stretch_wire,
+    make_facebinder, make_helix, make_involute_gear, make_label_full, make_line_draft,
+    make_point, make_polygon_wire, make_prism, make_rectangle_wire, make_sphere, make_sprocket,
+    make_torus, make_tube, make_wedge, make_wire, mirror_solid, mirror_solid_draft, move_solid,
+    multi_transform, offset_wire, pad, path_array, pipe_surface, pocket, point_array,
+    points_from_shape, polar_array, project_curve_on_solid, rectangular_array, rotate_solid,
+    scale_solid, scale_solid_draft, sections, shaft_design, shape_binder, shape_from_mesh,
+    shape_from_text, shell_solid, slice_to_compound, stretch_wire,
     surface_from_curves, sweep, trimex_draft, upgrade_wire_model, wire_to_bspline,
     wire_to_bspline_convert,
 };
@@ -4895,24 +4896,17 @@ impl CadApp {
                 pitch,
                 bore,
             } => {
-                self.log_info(format!(
-                    "PartDesign: Sprocket {teeth}T Dp={roller_diameter:.2} P={pitch:.2} bore={bore:.2}"
-                ));
+                self.run_partdesign_create_sprocket(teeth, roller_diameter, pitch, bore);
             }
             Pd::CreateShaftDesign { segments } => {
-                self.log_info(format!(
-                    "PartDesign: Shaft design ({} segments)",
-                    segments.len()
-                ));
+                self.run_partdesign_create_shaft_design(segments);
             }
             Pd::CreateInvoluteGear {
                 teeth,
                 module_val,
                 pressure_angle,
             } => {
-                self.log_info(format!(
-                    "PartDesign: Involute gear {teeth}T m={module_val:.2} PA={pressure_angle:.1}"
-                ));
+                self.run_partdesign_create_involute_gear(teeth, module_val, pressure_angle);
             }
             Pd::ShapeBinder => self.run_partdesign_shape_binder(),
             Pd::SuppressFeature => {
@@ -6314,6 +6308,98 @@ impl CadApp {
                 }
             }
             Err(e) => self.log_error(format!("Shape Binder error: {e}")),
+        }
+    }
+
+    fn run_partdesign_create_sprocket(
+        &mut self,
+        teeth: u32,
+        roller_diameter: f64,
+        pitch: f64,
+        bore: f64,
+    ) {
+        self.snapshot_before("PartDesign Sprocket");
+        let mut model = BRepModel::new();
+        match make_sprocket(&mut model, teeth as usize, roller_diameter, pitch, bore) {
+            Ok(result_model) => {
+                let first_solid = result_model.solids.iter().next().map(|(h, _)| h);
+                if let Some(solid) = first_solid {
+                    self.add_to_scene(
+                        &format!("Sprocket ({teeth}T)"),
+                        result_model,
+                        solid,
+                        None,
+                        None,
+                    );
+                    self.log_info(format!(
+                        "PartDesign: sprocket {teeth}T Dr={roller_diameter:.2} P={pitch:.2} bore={bore:.2}"
+                    ));
+                } else {
+                    self.log_error("Sprocket: result has no solid");
+                }
+            }
+            Err(e) => self.log_error(format!("Sprocket error: {e}")),
+        }
+    }
+
+    fn run_partdesign_create_shaft_design(&mut self, segments: Vec<(f64, f64)>) {
+        if segments.is_empty() {
+            self.log_warning("Shaft Design: segments list is empty");
+            return;
+        }
+        self.snapshot_before("PartDesign Shaft Design");
+        let mut model = BRepModel::new();
+        match shaft_design(&mut model, &segments) {
+            Ok(result_model) => {
+                let first_solid = result_model.solids.iter().next().map(|(h, _)| h);
+                if let Some(solid) = first_solid {
+                    let n = segments.len();
+                    self.add_to_scene(
+                        &format!("Shaft Design ({n} segments)"),
+                        result_model,
+                        solid,
+                        None,
+                        None,
+                    );
+                    self.log_info(format!("PartDesign: shaft design ({n} segments)"));
+                } else {
+                    self.log_error("Shaft Design: result has no solid");
+                }
+            }
+            Err(e) => self.log_error(format!("Shaft Design error: {e}")),
+        }
+    }
+
+    fn run_partdesign_create_involute_gear(
+        &mut self,
+        teeth: u32,
+        module_val: f64,
+        pressure_angle: f64,
+    ) {
+        self.snapshot_before("PartDesign Involute Gear");
+        let mut model = BRepModel::new();
+        let face_width = 5.0_f64;
+        match make_involute_gear(
+            &mut model,
+            module_val,
+            teeth as usize,
+            pressure_angle,
+            face_width,
+        ) {
+            Ok(r) => {
+                let face_count = r.faces.len();
+                self.add_to_scene(
+                    &format!("Involute Gear ({teeth}T)"),
+                    model,
+                    r.solid,
+                    None,
+                    None,
+                );
+                self.log_info(format!(
+                    "PartDesign: involute gear {teeth}T m={module_val:.2} PA={pressure_angle:.3}rad ({face_count} faces)"
+                ));
+            }
+            Err(e) => self.log_error(format!("Involute Gear error: {e}")),
         }
     }
 
@@ -11812,6 +11898,12 @@ impl CadApp {
         }
     }
 
+    /// Select a specific scene object for dispatcher-boundary tests.
+    #[doc(hidden)]
+    pub fn select_for_test(&mut self, id: crate::scene::ObjectId) {
+        self.scene.select_single(id);
+    }
+
     /// Select every object in the scene for selection-dependent dispatcher
     /// tests that need multi-object selection (Connect/Embed/Cutout/Boolean
     /// Fragments). Mirrors what Ctrl+A does in the live viewer. No-op when
@@ -12586,6 +12678,75 @@ impl CadApp {
     pub fn dispatch_partdesign_subtractive_pipe(&mut self) {
         self.dispatch(GuiAction::PartDesign(
             crate::gui::PartDesignAction::SubtractivePipe,
+        ));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_partdesign_create_sprocket(
+        &mut self,
+        teeth: u32,
+        roller_diameter: f64,
+        pitch: f64,
+        bore: f64,
+    ) {
+        self.dispatch(GuiAction::PartDesign(
+            crate::gui::PartDesignAction::CreateSprocket {
+                teeth,
+                roller_diameter,
+                pitch,
+                bore,
+            },
+        ));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_partdesign_create_shaft_design(&mut self, segments: Vec<(f64, f64)>) {
+        self.dispatch(GuiAction::PartDesign(
+            crate::gui::PartDesignAction::CreateShaftDesign { segments },
+        ));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_partdesign_create_involute_gear(
+        &mut self,
+        teeth: u32,
+        module_val: f64,
+        pressure_angle: f64,
+    ) {
+        self.dispatch(GuiAction::PartDesign(
+            crate::gui::PartDesignAction::CreateInvoluteGear {
+                teeth,
+                module_val,
+                pressure_angle,
+            },
+        ));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_partdesign_suppress_feature(&mut self) {
+        self.dispatch(GuiAction::PartDesign(
+            crate::gui::PartDesignAction::SuppressFeature,
+        ));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_partdesign_set_tip(&mut self) {
+        self.dispatch(GuiAction::PartDesign(
+            crate::gui::PartDesignAction::SetTip,
+        ));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_partdesign_move_feature_up(&mut self) {
+        self.dispatch(GuiAction::PartDesign(
+            crate::gui::PartDesignAction::MoveFeatureUp,
+        ));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_partdesign_move_feature_down(&mut self) {
+        self.dispatch(GuiAction::PartDesign(
+            crate::gui::PartDesignAction::MoveFeatureDown,
         ));
     }
 

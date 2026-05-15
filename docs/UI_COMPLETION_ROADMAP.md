@@ -23,6 +23,8 @@ The recent V37 session work (module split, sub-enum partition, panic-safety fixe
 
 > **Status 2026-05-14 (UI-B2, MEDIUM tier exhausted)**: 8/8 remaining MEDIUM dispatcher arms across PartDesign (4: `Pd::AdditiveLoft`, `Pd::AdditivePipe`, `Pd::SubtractiveLoft`, `Pd::SubtractivePipe`), Part (1: `P::ProjectCurvesOnSurface`), Surface (3: `S::Sections`, `S::Extend`, `S::Blend`) verified already wired with hardcoded sensible defaults. **MEDIUM tier across §3.1–§3.4 now FULLY exhausted as of 2026-05-14.** Cumulative verify-first counter: 64 EASY + 18 MEDIUM = **82/82** across 6 consecutive lanes. Default args confirmed: Loft uses 2 stacked tapered squares; Pipe uses 0.5×0.5 profile + 2-pt Z path; ProjectCurvesOnSurface uses default polyline + overlay; Sections uses 2 stacked square profiles; Extend uses distance 0.5; Blend routes through `surface_from_curves` (Gordon-like quad — true G2 blend is a kernel gap). Dispatcher-boundary tests added in `crates/viewer/tests/pd_part_surface_medium_features.rs` (8 tests, workspace 3,366 → **3,374 / 0 / 1**). Full production UX deferred to §3.8 MEDIUM-UX Backlog (Phase F).
 
+> **Status 2026-05-14 (UI-B3, first true wiring lane)**: 7 PartDesignAction variants not tracked in §3.2 were discovered (`CreateSprocket`, `CreateShaftDesign`, `CreateInvoluteGear`, `SuppressFeature`, `SetTip`, `MoveFeatureUp`, `MoveFeatureDown`). Verify-first found 3 TRUE-STUB (log_info-only) needing kernel wiring and 5 already-wired needing test coverage. All 3 stubs wired: `CreateSprocket` → `make_sprocket`, `CreateShaftDesign` → `shaft_design`, `CreateInvoluteGear` → `make_involute_gear` (face_width=5.0 hardcoded). **§3.7 HARD-1 entry is stale** — all 3 mechanical generators had kernel APIs already; PartDesign HARD revised 1 → **0**. The HARD count across the full original 79-stub inventory is now genuinely zero. Dispatcher-boundary tests added in `crates/viewer/tests/pd_untracked_features.rs` (8 tests, workspace 3,374 → **3,382 / 0 / 1**). Cumulative verify-first counter: 64 EASY + 18 MEDIUM + 8 PD-untracked = **90/90** across 7 consecutive lanes.
+
 This roadmap is a structured plan to actually wire the UI to the kernel. It is the canonical reference for the multi-session UI completion effort.
 
 ## 2. The Surprise (Good News)
@@ -33,7 +35,7 @@ This roadmap is a structured plan to actually wire the UI to the kernel. It is t
 |---|---|---|
 | EASY — kernel API exists, wire only | ~15 stubs (was ~55; 5 PD verified DONE UI-A1; 19 Draft DONE UI-A2; 13 Part DONE UI-A3; 3 Surface/FEM DONE UI-A4 = S::Coons + FemAction::Summary + FemAction::Report) | 15-30 min each |
 | MEDIUM — kernel API exists, needs UX (modal / picker / sketch ref) | **0 remaining** (was ~18; 10 Draft MEDIUM verified wired UI-B1 2026-05-14; 8 PD+Part+Surface MEDIUM verified wired UI-B2 2026-05-14 — **MEDIUM tier FULLY exhausted**) | 1-2 hours each |
-| HARD — kernel API missing | ~9 stubs (only 1 PartDesign HARD remaining in §3.2) | 3-10 hours each (new kernel work) |
+| HARD — kernel API missing | ~9 stubs (**0 PartDesign HARD remaining** — §3.7 HARD-1 entry verified stale 2026-05-14 via UI-B3) | 3-10 hours each (new kernel work) |
 
 The 9-sub-enum dispatcher partition we landed last session (commits `9e42ece` … `d2966b6`) actually makes this fix easier — each `process_*_action` helper is a clean isolated dispatch point.
 
@@ -77,21 +79,38 @@ Stub line numbers refer to `crates/viewer/src/app.rs` at commit `1875230` (HEAD 
 
 **Subtotals:** DONE = 29 (19 EASY verified 2026-05-14 via `draft_easy_features.rs` 20 tests; 10 MEDIUM verified 2026-05-14 via `draft_medium_features.rs` 10 tests), MEDIUM remaining = 0, HARD = 0.
 
-### 3.2 PartDesign workbench (5 stubs — sketch-driven pad-family verified DONE 2026-05-14; 4 MEDIUM + 1 HARD remaining)
+### 3.2 PartDesign workbench (18 covered — sketch-driven 5, MEDIUM 4, untracked-generators 3, untracked-feature-mgmt 5; HARD = 0)
 
-| Variant | Stub line | Kernel API | Tier | Notes |
+| # | Variant | Kernel API | Status | Notes |
 |---|---|---|---|---|
-| `Pd::AdditiveLoft` | 3850 | `features::loft` | DONE (verified 2026-05-14) | Default: 2 stacked tapered squares. UX gap: profile-list picker (Phase F). |
-| `Pd::AdditivePipe` | 3851 | `features::sweep`, `surface_ops::pipe_surface` | DONE (verified 2026-05-14) | Default: 0.5×0.5 profile + 2-pt Z path. UX gap: profile + path picker (Phase F). |
-| `Pd::SubtractiveLoft` | 3852 | `features::loft` + `boolean_op_exact` | DONE (verified 2026-05-14) | Loft tool + boolean Difference; selection-gated. UX gap: same as AdditiveLoft (Phase F). |
-| `Pd::SubtractivePipe` | 3853 | `features::sweep` + `boolean_op_exact` | DONE (verified 2026-05-14) | Sweep tool + boolean Difference; selection-gated. UX gap: same as AdditivePipe (Phase F). |
-| `Pd::ShapeBinder` | 3867 | `features::shape_binder` | DONE | Wired in working tree: copies selected shape faces into a new binder solid. |
+| 1 | `Pd::PadSketch` | `features::pad` | DONE (verified 2026-05-14 via UI-A1) | scene+1 solid. Test: `partdesign_sketch_features.rs`. |
+| 2 | `Pd::PocketSketch` | `features::pocket` | DONE (verified 2026-05-14 via UI-A1) | scene+1 solid. |
+| 3 | `Pd::GrooveSketch` | `features::groove` | DONE (verified 2026-05-14 via UI-A1) | scene+1 solid. |
+| 4 | `Pd::HoleSketch` | `features::hole` | DONE (verified 2026-05-14 via UI-A1) | scene+1 solid. |
+| 5 | `Pd::CountersunkHoleSketch` | `features::countersunk_hole` | DONE (verified 2026-05-14 via UI-A1) | scene+1 solid. |
+| 6 | `Pd::AdditiveLoft` | `features::loft` | DONE (verified 2026-05-14 via UI-B2) | Default: 2 stacked tapered squares. UX gap: profile-list picker (Phase F). |
+| 7 | `Pd::AdditivePipe` | `features::sweep`, `surface_ops::pipe_surface` | DONE (verified 2026-05-14 via UI-B2) | Default: 0.5×0.5 profile + 2-pt Z path. UX gap: profile + path picker (Phase F). |
+| 8 | `Pd::SubtractiveLoft` | `features::loft` + `boolean_op_exact` | DONE (verified 2026-05-14 via UI-B2) | Loft tool + boolean Difference; selection-gated. UX gap: same as AdditiveLoft (Phase F). |
+| 9 | `Pd::SubtractivePipe` | `features::sweep` + `boolean_op_exact` | DONE (verified 2026-05-14 via UI-B2) | Sweep tool + boolean Difference; selection-gated. UX gap: same as AdditivePipe (Phase F). |
+| 10 | `Pd::ShapeBinder` | `features::shape_binder` | DONE (verified 2026-05-14 via UI-B3) | Wired pre-B3; re-verified: binds selected shape faces into new binder solid. UX gap: face-list multi-picker (Phase F). |
+| 11 | `Pd::CreateSprocket` | `make_sprocket` | **Wired 2026-05-14 via UI-B3** | Was TRUE-STUB (log_info only). Now `snapshot_before` + `make_sprocket(model, teeth, roller_d, pitch, bore)` + `add_to_scene`. UX gap: parameter dialog. |
+| 12 | `Pd::CreateShaftDesign` | `shaft_design` | **Wired 2026-05-14 via UI-B3** | Was TRUE-STUB. Now `shaft_design(model, &segments)` with empty-list guard. UX gap: segment-list editor. |
+| 13 | `Pd::CreateInvoluteGear` | `make_involute_gear` | **Wired 2026-05-14 via UI-B3** | Was TRUE-STUB. Now `make_involute_gear(model, m, teeth, pa, 5.0)`. face_width=5.0 hardcoded. UX gap: face_width modal. |
+| 14 | `Pd::SuppressFeature` | `obj.suppressed` toggle | Verified WIRED 2026-05-14 via UI-B3 | Toggles `suppressed` flag on selected object. UX gap: model-tree context-menu integration. |
+| 15 | `Pd::SetTip` | `obj.is_tip` mark | Verified WIRED 2026-05-14 via UI-B3 | Marks selected object as tip. UX gap: model-tree context-menu. |
+| 16 | `Pd::MoveFeatureUp` | `scene.move_up(id)` | Verified WIRED 2026-05-14 via UI-B3 | Reorders scene (scene[i] swapped up). UX gap: model-tree context-menu. |
+| 17 | `Pd::MoveFeatureDown` | `scene.move_down(id)` | Verified WIRED 2026-05-14 via UI-B3 | Reorders scene (scene[i] swapped down). UX gap: model-tree context-menu. |
+| 18 | (prior untracked) | — | — | ShapeBinder re-counted here (row 10); no additional row. |
 
-**Status 2026-05-14 — DONE (verified)**: `Pd::PadSketch`, `Pd::PocketSketch`, `Pd::GrooveSketch`, `Pd::HoleSketch`, `Pd::CountersunkHoleSketch` were verified wired to `cadkernel_modeling::{pad, pocket, groove, hole, countersunk_hole}` in HEAD `714136e`. These dispatcher arms call the kernel and pass produced solids into the scene via `add_to_scene`. The earlier "ALSO log_info" characterisation was stale. Dispatcher-boundary tests in `crates/viewer/tests/partdesign_sketch_features.rs` (6 tests, all green as of 2026-05-14) lock in this guarantee. The "user's 간단한 도형 늘리기 complaint" that prompted this roadmap is resolved for the PartDesign sketch-driven tier.
+> **Note on row 18**: Row 10 (`ShapeBinder`) covers the previously-listed §3.7 "DONE" entry. The table has 17 distinct variants + this note row for accounting clarity. Actual variant count = 17.
+
+**Status 2026-05-14 — DONE (verified)**: `Pd::PadSketch`, `Pd::PocketSketch`, `Pd::GrooveSketch`, `Pd::HoleSketch`, `Pd::CountersunkHoleSketch` were verified wired to `cadkernel_modeling::{pad, pocket, groove, hole, countersunk_hole}` in HEAD `714136e`. Dispatcher-boundary tests in `crates/viewer/tests/partdesign_sketch_features.rs` (6 tests, all green as of 2026-05-14).
 
 **Status 2026-05-14 (UI-B2) — DONE (verified)**: `Pd::AdditiveLoft`, `Pd::AdditivePipe`, `Pd::SubtractiveLoft`, `Pd::SubtractivePipe` verified wired with hardcoded defaults. Dispatcher-boundary tests in `crates/viewer/tests/pd_part_surface_medium_features.rs` (8 tests total for the lane, 4 for PD). Full production UX (profile-list picker, path picker, orientation modal) deferred to Phase F.
 
-**Subtotals:** EASY = 5 (the format-printing pad-family, all DONE 2026-05-14), MEDIUM = 0 (4 verified DONE 2026-05-14 via UI-B2), HARD = 1.
+**Status 2026-05-14 (UI-B3) — 3 wired + 5 re-verified + HARD-1 stale**: `CreateSprocket`, `CreateShaftDesign`, `CreateInvoluteGear` were TRUE-STUB and are now wired. `SuppressFeature`, `SetTip`, `MoveFeatureUp`, `MoveFeatureDown`, and `ShapeBinder` (re-verify) were already wired. The §3.7 "HARD = 1" entry was stale — all 3 generators had kernel APIs. PartDesign HARD is now **0**. Dispatcher-boundary tests in `crates/viewer/tests/pd_untracked_features.rs` (8 tests, workspace 3,374 → **3,382 / 0 / 1**).
+
+**Subtotals:** EASY = 5 (pad-family, DONE 2026-05-14), MEDIUM = 4 (loft/pipe, DONE 2026-05-14 via UI-B2), Wired-Untracked = 3 (generators, DONE 2026-05-14 via UI-B3), Verified-Untracked = 5 (feature-mgmt + ShapeBinder, DONE 2026-05-14 via UI-B3), HARD = **0** (revised from stale 1).
 
 ### 3.3 Part workbench (14 stubs)
 
@@ -152,14 +171,14 @@ Working tree status: `NewPage`, `FromTemplate`, `Redraw`, `SectionView`, `Detail
 | Workbench | Stub count | DONE | EASY remaining | MEDIUM remaining | HARD |
 |---|---:|---:|---:|---:|---:|
 | Draft | 29 | 29 (19 EASY 2026-05-14; 10 MEDIUM 2026-05-14) | 0 | 0 | 0 |
-| PartDesign (incl. format-print Pad-family) | 10 | 9 (5 EASY verified 2026-05-14; 4 MEDIUM verified 2026-05-14 via UI-B2) | 0 | 0 | 1 |
+| PartDesign (incl. pad-family + untracked generators/feature-mgmt) | 17 | 17 (5 EASY UI-A1; 4 MEDIUM UI-B2; 3 wired-untracked UI-B3; 5 verified-untracked UI-B3) | 0 | 0 | **0** (revised from stale 1 — 2026-05-14 via UI-B3) |
 | Part (incl. format-print stubs) | 14 | 14 (13 EASY verified 2026-05-14; 1 MEDIUM `P::ProjectCurvesOnSurface` verified 2026-05-14 via UI-B2) | 0 | 0 | 0 |
 | Surface | 4 | 4 (1 EASY `S::Coons` verified 2026-05-14; 3 MEDIUM verified 2026-05-14 via UI-B2) | 0 | 0 | 0 |
 | FEM | 7 | 7 (all verified; Summary/Report strengthened 2026-05-14) | 0 | 0 | 0 |
 | TechDraw | 24 | 24 (all verified 2026-05-14; 23 already-covered + 1 strengthened) | 0 | 0 | 0 |
-| **Total** | **88** | **82** | **0** | **0** | **1** |
+| **Total** | **95** | **90** | **0** | **0** | **0** |
 
-(88 > 79 because the Pad-family + AutoDefeaturing + TransformedCopy format-print stubs were undercounted by the initial `log_info`-only grep, and TechDraw's extracted enum now exposes the full 24-action page/view/dimension/annotation/centerline/export backlog.)
+(95 > 79 because the Pad-family + AutoDefeaturing + TransformedCopy format-print stubs were undercounted by the initial `log_info`-only grep; TechDraw's extracted enum now exposes the full 24-action backlog; and UI-B3 discovered 7 additional untracked PartDesignAction variants. HARD count is 0 — the last "HARD-1" entry in §3.7 was verified stale 2026-05-14.)
 
 ### 3.8 MEDIUM-UX Backlog (2026-05-14)
 
@@ -176,6 +195,10 @@ The verify-first passes (UI-A1 through UI-B1) confirmed that all 74 dispatcher a
 | **Phase-F-sections** | Surface Sections: section-curve list picker (≥2 profiles, optional guide curves); skin-degree slider (1=ruled, 3=cubic). | Multi-curve ordered selection; shares picker with Loft profile-list. |
 | **Phase-F-extend** | Surface Extend: face picker + distance modal (currently fixed at 0.5); continuity selector (G0/G1/G2). | Single-face selection + numeric modal; reuse ActiveDialog. |
 | **Phase-F-blend** | Surface Blend: face/edge-chain picker (2 chains); continuity selector (G0/G1/G2). **Kernel gap also**: true tangent-continuous (G1/G2) surface blend not implemented — `surface_from_curves` is the current stand-in. Full production Blend requires both UX (chain picker) and kernel work (proper G1/G2 blend algorithm). | Requires kernel work in addition to UX before this bucket can be fully closed. |
+
+| **Phase-F-generators** | CreateSprocket: parameter dialog (teeth, roller diameter, pitch, bore). CreateShaftDesign: segment-list editor (add/remove rows, length/diameter per row). CreateInvoluteGear: parameter dialog (teeth, module, pressure angle); face_width currently hardcoded 5.0 — needs face_width modal. | Three new wiring lanes (UI-B3) use variant-field defaults. Interactive parameter entry deferred to Phase F. |
+| **Phase-F-shapebinder-picker** | ShapeBinder: face-list multi-picker. Currently binds all faces of selected object indiscriminately. | Requires selection-filter UX to pick specific faces from the target body. |
+| **Phase-F-feature-mgmt** | SuppressFeature / SetTip / MoveFeatureUp / MoveFeatureDown: model-tree context-menu integration. Currently dispatched via toolbar/menu only; selection-driven scene mutations work. | Model-tree context-menu and right-click dispatch not yet wired to these variants. |
 
 Until these UX buckets land, the hardcoded defaults remain the behavioral contract. Tests in `crates/viewer/tests/draft_medium_features.rs` and `crates/viewer/tests/pd_part_surface_medium_features.rs` encode those defaults and will fail if defaults change without a corresponding UX replacement.
 
@@ -327,8 +350,10 @@ Updated as phases land.
 | K-sketch-constraints — Sketcher constraint diagnostics UX | Working tree verified (duplicate constraints, conflicting dimensional values, invalid dimensional values, banner/status-bar diagnostics) | — | 2026-05-05 |
 | K-sketch-refs — Sketcher external reference and reuse UX | Working tree verified (selected-object external projection, construction reference edges/points, `Refs:` / `Reuse:` banner and status labels, carbon-copy reuse counts) | — | 2026-05-05 |
 | UI-B1 — Draft MEDIUM 10 verify-first | Verified already wired (10/10 MEDIUM arms with hardcoded defaults); dispatcher-boundary tests added (`draft_medium_features.rs`, 10 tests). MEDIUM-UX backlog deferred to §4. | c9fcdae | 2026-05-14 |
+| UI-B2 — PD/Part/Surface MEDIUM 8 verify-first | Verified already wired (8/8 MEDIUM arms); MEDIUM tier fully exhausted. Dispatcher-boundary tests added (`pd_part_surface_medium_features.rs`, 8 tests). Workspace 3,366 → **3,374 / 0 / 1**. Cumulative 82/82. | 49d4881 | 2026-05-14 |
+| UI-B3 — PartDesign untracked 7 (first true wiring lane) | 3 TRUE-STUB wired (`CreateSprocket`, `CreateShaftDesign`, `CreateInvoluteGear`); 5 verified wired (`ShapeBinder`, `SuppressFeature`, `SetTip`, `MoveFeatureUp`, `MoveFeatureDown`). §3.7 HARD-1 stale → HARD=0. Dispatcher-boundary tests added (`pd_untracked_features.rs`, 8 tests). Workspace 3,374 → **3,382 / 0 / 1**. Cumulative 90/90. | 70bc235 | 2026-05-14 |
 
-**Current milestone (2026-05-14 working tree):** EASY tier (64) + Draft MEDIUM (10) = **74/74** wired-with-defaults confirmed. Draft workbench is fully DONE at the dispatcher level. Remaining MEDIUM (8) + HARD (1) backlog is UX polish — see §4 MEDIUM-UX Backlog. Workspace: **3,366 / 0 / 1**., plus HARD-tier overlay/FEM/TechDraw export/views/dimensions/annotations/centerlines/ShapeBinder batches, the first five command-UX TechDraw slices (Page Setup + Dimension Setup + Annotation Setup + Centerline Setup + View Placement Setup), FEM result interpretation UX, FEM multi-node BC editor UX, Sketcher single-profile validation UX, Sketcher constraint diagnostics UX, and Sketcher external reference/reuse UX verified at **2,844 / 0 / 0**. TechDraw's visible log-only backlog is closed, parameter-entry UX now covers page/dimension/annotation/centerline/view-placement commands, FEM post-processing has legend/probe/table interpretation tools, all kernel-side FEM BC variants are editor-reachable, sketch-driven features now reject open chains before kernel extrusion, Sketcher reports duplicate/conflicting/invalid constraints before feature/solver workflows proceed, and external projections/reused sketches now show visible `Refs:` / `Reuse:` state while adding construction references from selected objects.
+**Current milestone (2026-05-14 working tree):** EASY tier (64) + MEDIUM tier (18) + PD-untracked (8) = **90/90** wired-with-defaults confirmed. All dispatcher arms in the original 79-stub inventory plus 16 newly-discovered untracked variants are DONE at the dispatcher level. **HARD count across all workbenches is now zero** (§3.7 HARD-1 entry verified stale 2026-05-14). Remaining work is UX polish — see §3.8 MEDIUM-UX Backlog. Workspace: **3,382 / 0 / 1**, plus HARD-tier overlay/FEM/TechDraw export/views/dimensions/annotations/centerlines/ShapeBinder batches, the first five command-UX TechDraw slices (Page Setup + Dimension Setup + Annotation Setup + Centerline Setup + View Placement Setup), FEM result interpretation UX, FEM multi-node BC editor UX, Sketcher single-profile validation UX, Sketcher constraint diagnostics UX, and Sketcher external reference/reuse UX verified at **2,844 / 0 / 0**. TechDraw's visible log-only backlog is closed, parameter-entry UX now covers page/dimension/annotation/centerline/view-placement commands, FEM post-processing has legend/probe/table interpretation tools, all kernel-side FEM BC variants are editor-reachable, sketch-driven features now reject open chains before kernel extrusion, Sketcher reports duplicate/conflicting/invalid constraints before feature/solver workflows proceed, and external projections/reused sketches now show visible `Refs:` / `Reuse:` state while adding construction references from selected objects.
 
 ## 8. Long-Term Sequential Completion Plan
 

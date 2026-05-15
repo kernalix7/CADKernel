@@ -11,6 +11,16 @@
 
 ### 추가됨
 
+#### UI 완성 로드맵 — PartDesign 전체 enum 커버리지 (UI-B3, 2026-05-14)
+- **6연속 verify-only 레인 이후 첫 실제 wiring 레인**: UI_COMPLETION_ROADMAP §3.2에 미추적된 7개 PartDesignAction 변형 발견 (기계 생성기 3개 + 피처 관리 4개). verify-first 결과 TRUE-STUB 3개(커널 wiring 필요) + 이미 배선된 5개(테스트만 필요).
+- **신규 배선 3개** (`crates/viewer/src/app.rs` +177/-16): `CreateSprocket` → `make_sprocket`, `CreateShaftDesign` → `shaft_design`, `CreateInvoluteGear` → `make_involute_gear` (face_width=5.0 하드코딩).
+- **재확인 WIRED 5개**: `ShapeBinder`, `SuppressFeature`, `SetTip`, `MoveFeatureUp`, `MoveFeatureDown`.
+- **§3.7 HARD-1 항목 스테일** — 기계 생성기 3개 모두 커널 API 이미 존재. PartDesign HARD 1 → **0**. 원본 79-스텁 목록의 HARD 잔여량이 이제 진정한 **0**.
+- **신규 테스트 파일** `crates/viewer/tests/pd_untracked_features.rs` (169줄, 8개 테스트).
+- 누적 verify-first 카운터: **90/90** (7연속 레인: UI-A1-A4 64 EASY + UI-B1+B2 18 MEDIUM + UI-B3 8 PD-untracked).
+- **UX 백로그 (Phase F)**: Sprocket/Shaft/InvoluteGear 파라미터 다이얼로그, Shaft 세그먼트 리스트 에디터, InvoluteGear face_width 모달, ShapeBinder face-list 멀티피커, SuppressFeature/SetTip/MoveFeature* 모델 트리 컨텍스트 메뉴.
+- 워크스페이스: 3,374 → **3,382 / 0 / 1 무시** (+8). STOP_LIST 그린.
+
 #### UI 완성 로드맵 — Phase B PartDesign/Part/Surface MEDIUM 8개 확인 (2026-05-14)
 - **verify-first 패턴 6연속 확인**: 8/8 MEDIUM 디스패처 arm (PartDesign 4개: `Pd::AdditiveLoft`/`AdditivePipe`/`SubtractiveLoft`/`SubtractivePipe`, Part 1개: `P::ProjectCurvesOnSurface`, Surface 3개: `S::Sections`/`Extend`/`Blend`) 모두 하드코딩 기본값으로 이미 배선 완료 확인. **§3.1–§3.4 MEDIUM 티어 완전 소진**.
 - 누적 verify-first 카운터: 64 EASY + 18 MEDIUM = **82/82** (6개 연속 레인 모두 이미 배선됨).
