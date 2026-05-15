@@ -337,11 +337,24 @@ pub(crate) enum GuiAction {
     ShellSolid {
         thickness: f64,
     },
+    ShellSelected {
+        thickness: f64,
+    },
     FilletAllEdges {
+        radius: f64,
+    },
+    FilletSelected {
         radius: f64,
     },
     ChamferAllEdges {
         distance: f64,
+    },
+    ChamferSelected {
+        distance: f64,
+    },
+    DraftSelected {
+        neutral: cadkernel_api::FaceRef,
+        angle: f64,
     },
     LinearPattern {
         count: usize,

@@ -29,8 +29,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::command::{
     AxisRef, BodyId, ChamferMode, ChamferSpec, Command, DraftDirection, DraftSpec, EdgeRef,
-    ExtrudeKind, FaceRef, FeatureSpec, FilletSpec, GrooveSpec, HelixSpec, HoleKind, HoleSpec,
-    EntityId, InstanceOverride, LoftMode, LoftSpec, PadDirection, PadSpec, PadType, PlaneRef,
+    EntityId, ExtrudeKind, FaceRef, FeatureSpec, FilletSpec, GrooveSpec, HelixSpec, HoleKind,
+    HoleSpec, InstanceOverride, LoftMode, LoftSpec, PadDirection, PadSpec, PadType, PlaneRef,
     PocketSpec, PocketType, RevolveSpec, ShellMode, ShellSpec, SketchConstraint, SketchEdit,
     SketchEntity, SketchId, SketchRef, SweepMode, SweepSpec,
 };
@@ -2287,7 +2287,7 @@ impl Session {
                 "variable radius not yet supported".into(),
             ));
         }
-        let body_id = self.active_solid_for_feature("Fillet")?;
+        let body_id = self.solid_for_edge_feature(edges, "Fillet")?;
         let resolved = self.resolve_edge_refs(edges)?;
         let slot = slot_mut(&mut self.document, body_id)?;
         let solid = slot
@@ -2324,7 +2324,7 @@ impl Session {
         distance: f64,
         _mode: ChamferMode,
     ) -> ApiResult<Outcome> {
-        let body_id = self.active_solid_for_feature("Chamfer")?;
+        let body_id = self.solid_for_edge_feature(edges, "Chamfer")?;
         let resolved = self.resolve_edge_refs(edges)?;
         let slot = slot_mut(&mut self.document, body_id)?;
         let solid = slot
@@ -2370,6 +2370,7 @@ impl Session {
             .document
             .get_slot(solid_id)
             .ok_or_else(|| ApiError::UnknownSolid(format!("{solid_id}")))?;
+        self.ensure_faces_belong_to_solid(removed_faces, solid_id, "Shell")?;
         let faces = self.resolve_face_refs(removed_faces)?;
         let slot = slot_mut(&mut self.document, solid_id)?;
         let solid = slot
@@ -2410,6 +2411,7 @@ impl Session {
     ) -> ApiResult<Outcome> {
         let solid_id = neutral_plane.solid;
         let _neutral = self.resolve_face_handle(neutral_plane)?;
+        self.ensure_faces_belong_to_solid(faces, solid_id, "Draft")?;
         let resolved = self.resolve_face_refs(faces)?;
         let pull_direction = match direction {
             DraftDirection::Pull => Vec3::Z,
@@ -3010,6 +3012,36 @@ impl Session {
         }
     }
 
+    fn solid_for_edge_feature(&self, edges: &[EdgeRef], op_name: &str) -> ApiResult<SolidId> {
+        let Some(first) = edges.first() else {
+            return self.active_solid_for_feature(op_name);
+        };
+        let solid = first.solid;
+        self.document
+            .get_slot(solid)
+            .ok_or_else(|| ApiError::UnknownSolid(format!("{solid}")))?;
+        if edges.iter().any(|edge| edge.solid != solid) {
+            return Err(ApiError::InvalidArgument(format!(
+                "{op_name} requires all selected edges to belong to the same solid"
+            )));
+        }
+        Ok(solid)
+    }
+
+    fn ensure_faces_belong_to_solid(
+        &self,
+        faces: &[FaceRef],
+        solid: SolidId,
+        op_name: &str,
+    ) -> ApiResult<()> {
+        if faces.iter().any(|face| face.solid != solid) {
+            return Err(ApiError::InvalidArgument(format!(
+                "{op_name} requires all selected faces to belong to solid {solid}"
+            )));
+        }
+        Ok(())
+    }
+
     fn base_model_and_handle(&self, id: SolidId) -> ApiResult<(BRepModel, Handle<SolidData>)> {
         let slot = self
             .document
@@ -3094,20 +3126,26 @@ impl Session {
     }
 
     fn resolve_face_handle(&self, face: &FaceRef) -> ApiResult<(SolidId, Handle<FaceData>)> {
-        let _ = face;
-        Err(ApiError::InvalidArgument(
-            "face/edge resolution arrives in Track 4".into(),
-        ))
+        let handle = self.document.resolve_face_ref(face)?;
+        Ok((face.solid, handle))
     }
 
     fn resolve_edge_vertices(
         &self,
         edge: &EdgeRef,
     ) -> ApiResult<(SolidId, Handle<VertexData>, Handle<VertexData>)> {
-        let _ = edge;
-        Err(ApiError::InvalidArgument(
-            "face/edge resolution arrives in Track 4".into(),
-        ))
+        let handle = self.document.resolve_edge_ref(edge)?;
+        let slot = self
+            .document
+            .get_slot(edge.solid)
+            .ok_or_else(|| ApiError::UnknownSolid(format!("{}", edge.solid)))?;
+        let edge_data = slot.model.edges.get(handle).ok_or_else(|| {
+            ApiError::InvalidArgument(format!(
+                "edge tag resolved to missing edge in solid {}",
+                edge.solid
+            ))
+        })?;
+        Ok((edge.solid, edge_data.start, edge_data.end))
     }
 
     fn resolve_face_refs(&self, faces: &[FaceRef]) -> ApiResult<Vec<Handle<FaceData>>> {
@@ -3231,7 +3269,10 @@ fn spec_references_sketch(spec: &FeatureSpec, sketch_id: SketchId) -> bool {
         FeatureSpec::Sweep(s) => {
             s.profile_sketch.sketch_id == sketch_id || s.path_sketch.sketch_id == sketch_id
         }
-        FeatureSpec::Loft(s) => s.profiles.iter().any(|profile| profile.sketch_id == sketch_id),
+        FeatureSpec::Loft(s) => s
+            .profiles
+            .iter()
+            .any(|profile| profile.sketch_id == sketch_id),
         FeatureSpec::Hole(_)
         | FeatureSpec::Helix(_)
         | FeatureSpec::Fillet(_)
@@ -3354,11 +3395,7 @@ fn validate_sketch_constraint(
     }
 }
 
-fn apply_sketch_parameter(
-    sketch: &mut PersistedSketch,
-    name: &str,
-    value: f64,
-) -> ApiResult<()> {
+fn apply_sketch_parameter(sketch: &mut PersistedSketch, name: &str, value: f64) -> ApiResult<()> {
     match name {
         "origin_x" => sketch.plane.origin[0] = value,
         "origin_y" => sketch.plane.origin[1] = value,

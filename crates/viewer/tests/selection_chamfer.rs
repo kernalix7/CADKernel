@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use cadkernel_api::{EdgeRef, SolidId};
+use cadkernel_api::{ChamferMode, Command, EdgeRef, Outcome, Session, SolidId};
 use cadkernel_math::Point3;
 use cadkernel_modeling::{make_cylinder, make_torus};
 use cadkernel_topology::{BRepModel, EdgeData, EntityKind, Handle};
@@ -233,4 +233,44 @@ fn any_object_skips_untracked_cylinder_before_tracked_torus() {
     assert_eq!(refs.len(), 1);
     assert_eq!(refs[0].solid, SolidId(44));
     assert_edge_ref(&scene, torus, &refs[0], torus_edge);
+}
+
+#[test]
+fn session_execute_chamfer_resolves_selected_edge_ref() {
+    let mut session = Session::new();
+    let solid_id = match session
+        .execute(Command::CreateBox {
+            dx: 4.0,
+            dy: 4.0,
+            dz: 4.0,
+        })
+        .expect("box")
+    {
+        Outcome::SolidCreated { id, .. } => id,
+        other => panic!("unexpected outcome: {other:?}"),
+    };
+    let (model, solid) = session
+        .document()
+        .clone_solid_brep(solid_id)
+        .expect("solid");
+    let base_face_count = model.faces.iter().count();
+    let mut scene = Scene::new();
+    let object_id = scene.add_object("Box", model, solid, None, Some(solid_id));
+    let edge_h = edge(&scene, object_id, 0);
+    let refs = scene.selected_edges(object_id, &[edge_h]);
+
+    let outcome = session
+        .execute(Command::Chamfer {
+            edges: refs,
+            distance: 0.1,
+            mode: ChamferMode::Equal,
+        })
+        .expect("chamfer");
+
+    assert!(matches!(outcome, Outcome::FeatureAdded { solid, .. } if solid == solid_id));
+    let (model, _) = session
+        .document()
+        .clone_solid_brep(solid_id)
+        .expect("chamfered solid");
+    assert!(model.faces.iter().count() > base_face_count);
 }

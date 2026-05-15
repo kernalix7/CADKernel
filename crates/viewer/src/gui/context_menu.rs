@@ -583,16 +583,15 @@ fn face_context_menu(ui: &mut egui::Ui, gui: &mut GuiState, has_sel: bool) {
             ui.close_menu();
         }
         if ui.button("Shell (remove this face)").clicked() {
-            gui.active_task = Some(task_panel::ActiveTask::Shell {
-                thickness: 1.0,
-                preview_id: None,
-            });
+            gui.actions
+                .push(GuiAction::ShellSelected { thickness: 1.0 });
             ui.close_menu();
         }
         if ui.button("Draft Selected Faces").clicked() {
-            gui.actions.push(GuiAction::StatusMessage(
-                "DraftSelected queued: draft applied to selected faces (Phase 2)".into(),
-            ));
+            gui.actions.push(GuiAction::DraftSelected {
+                neutral: cadkernel_api::FaceRef::default(),
+                angle: 5.0_f64.to_radians(),
+            });
             ui.close_menu();
         }
     });
@@ -647,17 +646,12 @@ fn edge_context_menu(ui: &mut egui::Ui, gui: &mut GuiState, has_sel: bool) {
 
     ui.add_enabled_ui(has_edge, |ui| {
         if ui.button("Fillet Selected Edges").clicked() {
-            gui.active_task = Some(task_panel::ActiveTask::Fillet {
-                radius: 1.0,
-                preview_id: None,
-            });
+            gui.actions.push(GuiAction::FilletSelected { radius: 1.0 });
             ui.close_menu();
         }
         if ui.button("Chamfer Selected Edges").clicked() {
-            gui.active_task = Some(task_panel::ActiveTask::Chamfer {
-                distance: 1.0,
-                preview_id: None,
-            });
+            gui.actions
+                .push(GuiAction::ChamferSelected { distance: 1.0 });
             ui.close_menu();
         }
     });

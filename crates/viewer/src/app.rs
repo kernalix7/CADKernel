@@ -1260,6 +1260,125 @@ impl CadApp {
         self.log_info(format!("{label}: ok"));
     }
 
+    fn selected_edge_refs_for_action(&self) -> Vec<cadkernel_api::EdgeRef> {
+        let selected: Vec<_> = self
+            .gui
+            .selected_entities
+            .iter()
+            .filter_map(|entity| match entity {
+                SelectedEntity::Edge(edge) => Some(*edge),
+                _ => None,
+            })
+            .collect();
+        self.scene.selected_edges_any_object(&selected)
+    }
+
+    fn selected_face_refs_for_action(&self) -> Vec<cadkernel_api::FaceRef> {
+        let selected: Vec<_> = self
+            .gui
+            .selected_entities
+            .iter()
+            .filter_map(|entity| match entity {
+                SelectedEntity::Face(face) => Some(*face),
+                _ => None,
+            })
+            .collect();
+        self.scene.selected_faces_any_object(&selected)
+    }
+
+    fn execute_fillet_selected(&mut self, radius: f64) {
+        let edges = self.selected_edge_refs_for_action();
+        if edges.is_empty() {
+            self.log_warning("Fillet Selected: no selected edges");
+            return;
+        }
+        match self.session.execute(cadkernel_api::Command::Fillet {
+            edges,
+            radius,
+            variable: None,
+        }) {
+            Ok(outcome) => {
+                self.handle_feature_outcome(outcome, &format!("Fillet (r={radius:.2})"), None)
+            }
+            Err(e) => self.log_warning(format!("Fillet Selected pending: {e}")),
+        }
+        self.gui.selected_entities.clear();
+    }
+
+    fn execute_chamfer_selected(&mut self, distance: f64) {
+        let edges = self.selected_edge_refs_for_action();
+        if edges.is_empty() {
+            self.log_warning("Chamfer Selected: no selected edges");
+            return;
+        }
+        match self.session.execute(cadkernel_api::Command::Chamfer {
+            edges,
+            distance,
+            mode: cadkernel_api::ChamferMode::Equal,
+        }) {
+            Ok(outcome) => {
+                self.handle_feature_outcome(outcome, &format!("Chamfer (d={distance:.2})"), None)
+            }
+            Err(e) => self.log_warning(format!("Chamfer Selected pending: {e}")),
+        }
+        self.gui.selected_entities.clear();
+    }
+
+    fn execute_shell_selected(&mut self, thickness: f64) {
+        let faces = self.selected_face_refs_for_action();
+        let Some(first) = faces.first() else {
+            self.log_warning("Shell Selected: no selected faces");
+            return;
+        };
+        let solid = first.solid;
+        let removed_faces: Vec<_> = faces
+            .into_iter()
+            .filter(|face| face.solid == solid)
+            .collect();
+        match self.session.execute(cadkernel_api::Command::Shell {
+            solid,
+            removed_faces,
+            thickness,
+            mode: cadkernel_api::ShellMode::Inward,
+        }) {
+            Ok(outcome) => {
+                self.handle_feature_outcome(outcome, &format!("Shell (t={thickness:.2})"), None)
+            }
+            Err(e) => self.log_warning(format!("Shell Selected pending: {e}")),
+        }
+        self.gui.selected_entities.clear();
+    }
+
+    fn execute_draft_selected(&mut self, neutral: cadkernel_api::FaceRef, angle: f64) {
+        let faces = self.selected_face_refs_for_action();
+        let Some(first) = faces.first() else {
+            self.log_warning("Draft Selected: no selected faces");
+            return;
+        };
+        let neutral = if faces.iter().any(|face| face == &neutral) {
+            neutral
+        } else {
+            first.clone()
+        };
+        let solid = neutral.solid;
+        let selected_faces: Vec<_> = faces
+            .into_iter()
+            .filter(|face| face.solid == solid)
+            .collect();
+        match self.session.execute(cadkernel_api::Command::Draft {
+            faces: selected_faces,
+            neutral_plane: neutral,
+            angle_rad: angle,
+            direction: cadkernel_api::DraftDirection::Pull,
+        }) {
+            Ok(outcome) => {
+                self.handle_feature_outcome(outcome, &format!("Draft ({angle:.2} rad)"), None)
+            }
+            Err(e) => self.log_warning(format!("Draft Selected pending: {e}")),
+        }
+        self.gui.selected_entities.clear();
+    }
+
     // -- report helpers -----------------------------------------------------
 
     fn log_info(&mut self, msg: impl Into<String>) {
@@ -2205,6 +2324,10 @@ impl CadApp {
                     }
                 }
 
+                GuiAction::ShellSelected { thickness } => {
+                    self.execute_shell_selected(thickness);
+                }
+
                 GuiAction::ShellSolid { thickness } => {
                     if self.current_solid.is_none() {
                         self.gui.status_message = "No solid for shell".into();
@@ -2224,6 +2347,10 @@ impl CadApp {
                         ),
                         Err(e) => self.log_warning(format!("Shell pending: {e}")),
                     }
+                }
+
+                GuiAction::FilletSelected { radius } => {
+                    self.execute_fillet_selected(radius);
                 }
 
                 GuiAction::FilletAllEdges { radius } => {
@@ -2246,6 +2373,10 @@ impl CadApp {
                     self.gui.selected_entities.clear();
                 }
 
+                GuiAction::ChamferSelected { distance } => {
+                    self.execute_chamfer_selected(distance);
+                }
+
                 GuiAction::ChamferAllEdges { distance } => {
                     if self.current_solid.is_none() {
                         self.gui.status_message = "No solid for chamfer".into();
@@ -2264,6 +2395,10 @@ impl CadApp {
                         Err(e) => self.log_warning(format!("Chamfer pending: {e}")),
                     }
                     self.gui.selected_entities.clear();
+                }
+
+                GuiAction::DraftSelected { neutral, angle } => {
+                    self.execute_draft_selected(neutral, angle);
                 }
 
                 GuiAction::LinearPattern {
@@ -11626,8 +11761,16 @@ fn action_summary_for_test(action: &GuiAction) -> String {
             "partdesign:additive_pipe".to_string()
         }
         GuiAction::FilletAllEdges { radius } => format!("fillet radius={radius:.3}"),
+        GuiAction::FilletSelected { radius } => format!("fillet_selected radius={radius:.3}"),
         GuiAction::ChamferAllEdges { distance } => format!("chamfer distance={distance:.3}"),
+        GuiAction::ChamferSelected { distance } => {
+            format!("chamfer_selected distance={distance:.3}")
+        }
         GuiAction::ShellSolid { thickness } => format!("shell thickness={thickness:.3}"),
+        GuiAction::ShellSelected { thickness } => {
+            format!("shell_selected thickness={thickness:.3}")
+        }
+        GuiAction::DraftSelected { angle, .. } => format!("draft_selected angle={angle:.3}"),
         GuiAction::StatusMessage(msg) => format!("status:{msg}"),
         _ => "other".to_string(),
     }
@@ -11773,13 +11916,106 @@ impl CadApp {
     }
 
     #[doc(hidden)]
+    pub fn dispatch_shell_selected(&mut self, thickness: f64) {
+        self.dispatch(GuiAction::ShellSelected { thickness });
+    }
+
+    #[doc(hidden)]
     pub fn dispatch_fillet_all_edges(&mut self, radius: f64) {
         self.dispatch(GuiAction::FilletAllEdges { radius });
     }
 
     #[doc(hidden)]
+    pub fn dispatch_fillet_selected(&mut self, radius: f64) {
+        self.dispatch(GuiAction::FilletSelected { radius });
+    }
+
+    #[doc(hidden)]
     pub fn dispatch_chamfer_all_edges(&mut self, distance: f64) {
         self.dispatch(GuiAction::ChamferAllEdges { distance });
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_chamfer_selected(&mut self, distance: f64) {
+        self.dispatch(GuiAction::ChamferSelected { distance });
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_draft_selected(&mut self, angle: f64) {
+        self.dispatch(GuiAction::DraftSelected {
+            neutral: cadkernel_api::FaceRef::default(),
+            angle,
+        });
+    }
+
+    #[doc(hidden)]
+    pub fn select_edge_for_test(&mut self, id: crate::scene::ObjectId, edge_index: usize) -> bool {
+        let Some(edge) = self
+            .scene
+            .get(id)
+            .and_then(|obj| obj.edge_handles.get(edge_index))
+            .copied()
+        else {
+            return false;
+        };
+        self.scene.select_single(id);
+        self.gui.selected_entities = vec![SelectedEntity::Edge(edge)];
+        true
+    }
+
+    #[doc(hidden)]
+    pub fn select_face_for_test(&mut self, id: crate::scene::ObjectId, face_index: usize) -> bool {
+        let Some(face) = self.scene.get(id).and_then(|obj| {
+            obj.model
+                .faces
+                .iter()
+                .nth(face_index)
+                .map(|(handle, _)| handle)
+        }) else {
+            return false;
+        };
+        self.scene.select_single(id);
+        self.gui.selected_entities = vec![SelectedEntity::Face(face)];
+        true
+    }
+
+    #[doc(hidden)]
+    pub fn select_edge_and_face_for_test(
+        &mut self,
+        id: crate::scene::ObjectId,
+        edge_index: usize,
+        face_index: usize,
+    ) -> bool {
+        let Some((edge, face)) = self.scene.get(id).and_then(|obj| {
+            let edge = obj.edge_handles.get(edge_index).copied()?;
+            let face = obj
+                .model
+                .faces
+                .iter()
+                .nth(face_index)
+                .map(|(handle, _)| handle)?;
+            Some((edge, face))
+        }) else {
+            return false;
+        };
+        self.scene.select_single(id);
+        self.gui.selected_entities = vec![SelectedEntity::Edge(edge), SelectedEntity::Face(face)];
+        true
+    }
+
+    #[doc(hidden)]
+    pub fn selected_entity_count_for_test(&self) -> usize {
+        self.gui.selected_entities.len()
+    }
+
+    #[doc(hidden)]
+    pub fn status_message_for_test(&self) -> &str {
+        &self.gui.status_message
+    }
+
+    #[doc(hidden)]
+    pub fn session_history_len_for_test(&self) -> usize {
+        self.session.document().history().len()
     }
 
     #[doc(hidden)]

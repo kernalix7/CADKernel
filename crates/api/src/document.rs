@@ -15,12 +15,13 @@
 
 use cadkernel_modeling::body::Body;
 use cadkernel_modeling::measure::solid_mass_properties;
-use cadkernel_topology::{BRepModel, Handle, SolidData};
+use cadkernel_topology::{BRepModel, EdgeData, FaceData, Handle, SolidData};
 use serde::{Deserialize, Serialize};
 use std::hash::{DefaultHasher, Hasher};
 
-use crate::command::{BodyId, SketchConstraint, SketchEntity, SketchId};
+use crate::command::{BodyId, EdgeRef, FaceRef, SketchConstraint, SketchEntity, SketchId};
 use crate::outcome::Plane;
+use crate::{ApiError, ApiResult};
 
 /// Stable, opaque identifier for a solid inside a [`Document`].
 ///
@@ -227,7 +228,10 @@ impl Document {
 
     /// Returns the number of populated persisted sketches.
     pub fn sketch_count(&self) -> usize {
-        self.sketches.iter().filter(|sketch| sketch.is_some()).count()
+        self.sketches
+            .iter()
+            .filter(|sketch| sketch.is_some())
+            .count()
     }
 
     /// Returns populated sketch ids in ascending id order.
@@ -412,6 +416,32 @@ impl Document {
         let slot = self.get_slot(id)?;
         let handle = slot.handle?;
         Some((&slot.model, handle))
+    }
+
+    /// Resolves a persistent edge reference to the current runtime edge handle.
+    pub fn resolve_edge_ref(&self, edge_ref: &EdgeRef) -> ApiResult<Handle<EdgeData>> {
+        let slot = self
+            .get_slot(edge_ref.solid)
+            .ok_or_else(|| ApiError::UnknownSolid(format!("{}", edge_ref.solid)))?;
+        slot.model.name_map.get_edge(&edge_ref.tag).ok_or_else(|| {
+            ApiError::InvalidArgument(format!(
+                "Track 4: unknown edge tag in solid {}",
+                edge_ref.solid
+            ))
+        })
+    }
+
+    /// Resolves a persistent face reference to the current runtime face handle.
+    pub fn resolve_face_ref(&self, face_ref: &FaceRef) -> ApiResult<Handle<FaceData>> {
+        let slot = self
+            .get_slot(face_ref.solid)
+            .ok_or_else(|| ApiError::UnknownSolid(format!("{}", face_ref.solid)))?;
+        slot.model.name_map.get_face(&face_ref.tag).ok_or_else(|| {
+            ApiError::InvalidArgument(format!(
+                "Track 4: unknown face tag in solid {}",
+                face_ref.solid
+            ))
+        })
     }
 
     /// Returns an owned clone of the underlying `(BRepModel, SolidData handle)`

@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use cadkernel_api::{FaceRef, SolidId};
+use cadkernel_api::{Command, DraftDirection, FaceRef, Outcome, Session, SolidId};
 use cadkernel_math::Point3;
 use cadkernel_modeling::{make_prism, make_tube, make_wedge};
 use cadkernel_topology::{BRepModel, EntityKind, FaceData, Handle};
@@ -231,4 +231,48 @@ fn any_object_skips_untracked_tube_before_tracked_prism() {
     assert_eq!(refs.len(), 1);
     assert_eq!(refs[0].solid, SolidId(83));
     assert_face_ref(&scene, prism, &refs[0], faces[0]);
+}
+
+#[test]
+fn session_execute_draft_resolves_selected_face_refs() {
+    let mut session = Session::new();
+    let solid_id = match session
+        .execute(Command::CreateBox {
+            dx: 4.0,
+            dy: 4.0,
+            dz: 4.0,
+        })
+        .expect("box")
+    {
+        Outcome::SolidCreated { id, .. } => id,
+        other => panic!("unexpected outcome: {other:?}"),
+    };
+    let (model, solid) = session
+        .document()
+        .clone_solid_brep(solid_id)
+        .expect("solid");
+    let mut scene = Scene::new();
+    let object_id = scene.add_object("Box", model, solid, None, Some(solid_id));
+    let face_h = scene
+        .get(object_id)
+        .expect("object")
+        .model
+        .faces
+        .iter()
+        .next()
+        .map(|(handle, _)| handle)
+        .expect("face");
+    let refs = scene.selected_faces(object_id, &[face_h]);
+
+    let outcome = session
+        .execute(Command::Draft {
+            faces: refs.clone(),
+            neutral_plane: refs[0].clone(),
+            angle_rad: 0.05,
+            direction: DraftDirection::Pull,
+        })
+        .expect("draft");
+
+    assert!(matches!(outcome, Outcome::FeatureAdded { solid, .. } if solid == solid_id));
+    assert!(session.document().clone_solid_brep(solid_id).is_some());
 }

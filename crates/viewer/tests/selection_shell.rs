@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use cadkernel_api::{FaceRef, SolidId};
+use cadkernel_api::{Command, FaceRef, Outcome, Session, ShellMode, SolidId};
 use cadkernel_math::Point3;
 use cadkernel_modeling::{make_box, make_cylinder};
 use cadkernel_topology::{BRepModel, EntityKind, FaceData, Handle};
@@ -266,4 +266,53 @@ fn mixed_tagged_and_untagged_faces_return_only_tagged_refs() {
 
     assert_eq!(refs.len(), 1);
     assert_face_ref(&scene, id, &refs[0], tagged);
+}
+
+#[test]
+fn session_execute_shell_resolves_selected_face_ref() {
+    let mut session = Session::new();
+    let solid_id = match session
+        .execute(Command::CreateBox {
+            dx: 4.0,
+            dy: 4.0,
+            dz: 4.0,
+        })
+        .expect("box")
+    {
+        Outcome::SolidCreated { id, .. } => id,
+        other => panic!("unexpected outcome: {other:?}"),
+    };
+    let (model, solid) = session
+        .document()
+        .clone_solid_brep(solid_id)
+        .expect("solid");
+    let base_face_count = model.faces.iter().count();
+    let mut scene = Scene::new();
+    let object_id = scene.add_object("Box", model, solid, None, Some(solid_id));
+    let face_h = scene
+        .get(object_id)
+        .expect("object")
+        .model
+        .faces
+        .iter()
+        .next()
+        .map(|(handle, _)| handle)
+        .expect("face");
+    let refs = scene.selected_faces(object_id, &[face_h]);
+
+    let outcome = session
+        .execute(Command::Shell {
+            solid: solid_id,
+            removed_faces: refs,
+            thickness: 0.1,
+            mode: ShellMode::Inward,
+        })
+        .expect("shell");
+
+    assert!(matches!(outcome, Outcome::FeatureAdded { solid, .. } if solid == solid_id));
+    let (model, _) = session
+        .document()
+        .clone_solid_brep(solid_id)
+        .expect("shelled solid");
+    assert!(model.faces.iter().count() > base_face_count);
 }

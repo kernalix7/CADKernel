@@ -3916,9 +3916,7 @@ fn draw_part_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
         "Fillet Selected Edges",
         "",
         {
-            gui.actions.push(GuiAction::StatusMessage(format!(
-                "FilletSelected queued: {n_edges} edges"
-            )));
+            gui.actions.push(GuiAction::FilletSelected { radius: 1.0 });
         }
     );
     gated_button!(
@@ -3929,9 +3927,8 @@ fn draw_part_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
         "Chamfer Selected Edges",
         "",
         {
-            gui.actions.push(GuiAction::StatusMessage(format!(
-                "ChamferSelected queued: {n_edges} edges"
-            )));
+            gui.actions
+                .push(GuiAction::ChamferSelected { distance: 1.0 });
         }
     );
     gated_button!(
@@ -3942,9 +3939,8 @@ fn draw_part_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
         "Shell — remove Selected Faces",
         "",
         {
-            gui.actions.push(GuiAction::StatusMessage(format!(
-                "ShellSelected queued: {n_faces} faces removed"
-            )));
+            gui.actions
+                .push(GuiAction::ShellSelected { thickness: 1.0 });
         }
     );
     gated_button!(
@@ -3955,9 +3951,10 @@ fn draw_part_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
         "Draft Selected Faces",
         "",
         {
-            gui.actions.push(GuiAction::StatusMessage(format!(
-                "DraftSelected queued: {n_faces} faces"
-            )));
+            gui.actions.push(GuiAction::DraftSelected {
+                neutral: cadkernel_api::FaceRef::default(),
+                angle: 5.0_f64.to_radians(),
+            });
         }
     );
 
