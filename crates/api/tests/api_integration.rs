@@ -680,6 +680,37 @@ fn command_schemas_cover_every_op_name() {
             angle_rad: 0.1,
             direction: cadkernel_api::DraftDirection::Pull,
         },
+        Command::CreateBody {
+            name: "Body1".to_string(),
+            base_plane: cadkernel_api::PlaneRef::XY,
+        },
+        Command::SetTip {
+            body: cadkernel_api::BodyId(1),
+            feature: cadkernel_api::FeatureId(1),
+        },
+        Command::SuppressFeature {
+            feature: cadkernel_api::FeatureId(1),
+            suppressed: true,
+        },
+        Command::ReorderFeature {
+            from: cadkernel_api::FeatureId(1),
+            to_position: 0,
+        },
+        Command::RecomputeBody {
+            body: cadkernel_api::BodyId(1),
+        },
+        Command::EditFeature {
+            feature: cadkernel_api::FeatureId(1),
+            new_spec: cadkernel_api::FeatureSpec::Pad(cadkernel_api::PadSpec {
+                sketch: cadkernel_api::SketchRef {
+                    sketch_id: cadkernel_api::SketchId(0),
+                },
+                distance: 1.0,
+                direction: cadkernel_api::PadDirection::Normal,
+                symmetric: false,
+                type_: cadkernel_api::PadType::Blind,
+            }),
+        },
         Command::NewDocument,
         Command::Noop,
     ];

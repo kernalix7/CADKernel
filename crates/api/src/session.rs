@@ -15,6 +15,7 @@
 //! native format will be built.
 
 use cadkernel_math::{Point3, Quaternion, Vec3};
+use cadkernel_modeling::body::{Body, FeatureKind};
 use cadkernel_modeling::measure::solid_mass_properties;
 use cadkernel_modeling::primitives::{make_cone, make_helix};
 use cadkernel_modeling::quick::{
@@ -26,8 +27,10 @@ use cadkernel_topology::{BRepModel, FaceData, Handle, SolidData, VertexData};
 use serde::{Deserialize, Serialize};
 
 use crate::command::{
-    AxisRef, BodyId, ChamferMode, Command, DraftDirection, EdgeRef, ExtrudeKind, FaceRef, HoleKind,
-    InstanceOverride, LoftMode, PadDirection, PadType, PocketType, ShellMode, SketchRef, SweepMode,
+    AxisRef, BodyId, ChamferMode, ChamferSpec, Command, DraftDirection, DraftSpec, EdgeRef,
+    ExtrudeKind, FaceRef, FeatureSpec, FilletSpec, GrooveSpec, HelixSpec, HoleKind, HoleSpec,
+    InstanceOverride, LoftMode, LoftSpec, PadDirection, PadSpec, PadType, PlaneRef, PocketSpec,
+    PocketType, RevolveSpec, ShellMode, ShellSpec, SketchRef, SweepMode, SweepSpec,
 };
 use crate::document::{Document, FeatureId, HistoryEvent, SolidId, SolidSlot};
 use crate::outcome::Outcome;
@@ -751,6 +754,19 @@ impl Session {
                 angle_rad,
                 direction,
             } => self.dispatch_draft(faces, neutral_plane, *angle_rad, *direction),
+            Command::CreateBody { name, base_plane } => self.dispatch_create_body(name, base_plane),
+            Command::SetTip { body, feature } => self.dispatch_set_tip(*body, *feature),
+            Command::SuppressFeature {
+                feature,
+                suppressed,
+            } => self.dispatch_suppress_feature(*feature, *suppressed),
+            Command::ReorderFeature { from, to_position } => {
+                self.dispatch_reorder_feature(*from, *to_position)
+            }
+            Command::RecomputeBody { body } => self.recompute_body(*body),
+            Command::EditFeature { feature, new_spec } => {
+                self.dispatch_edit_feature(*feature, new_spec.clone())
+            }
             Command::Measure { id } => self.measure(*id),
             Command::Validate => Ok(Outcome::Validated {
                 issues: self.document.validate(),
@@ -1940,7 +1956,7 @@ impl Session {
         distance: f64,
         direction: PadDirection,
         symmetric: bool,
-        _type_: PadType,
+        type_: PadType,
     ) -> ApiResult<Outcome> {
         let body_id = self.active_solid_for_feature("Pad")?;
         let profile = self.resolve_sketch_profile(sketch)?;
@@ -1957,15 +1973,29 @@ impl Session {
         let (base_model, base_handle) = self.base_model_and_handle(body_id)?;
         let result =
             cadkernel_modeling::features::pad(&base_model, base_handle, &profile, dir_vec, dist)?;
-        self.replace_feature_body(body_id, result.model, result.solid, "Pad")
+        let spec = FeatureSpec::Pad(PadSpec {
+            sketch: sketch.clone(),
+            distance,
+            direction,
+            symmetric,
+            type_,
+        });
+        self.replace_feature_body(
+            body_id,
+            result.model,
+            result.solid,
+            "Pad",
+            spec.spec_kind(),
+            feature_spec_value(&spec),
+        )
     }
 
     fn dispatch_pocket(
         &mut self,
         sketch: &SketchRef,
         distance: f64,
-        _through_all: bool,
-        _type_: PocketType,
+        through_all: bool,
+        type_: PocketType,
     ) -> ApiResult<Outcome> {
         let body_id = self.active_solid_for_feature("Pocket")?;
         let profile = self.resolve_sketch_profile(sketch)?;
@@ -1977,7 +2007,20 @@ impl Session {
             Vec3::Z,
             distance,
         )?;
-        self.replace_feature_body(body_id, result.model, result.solid, "Pocket")
+        let spec = FeatureSpec::Pocket(PocketSpec {
+            sketch: sketch.clone(),
+            distance,
+            through_all,
+            type_,
+        });
+        self.replace_feature_body(
+            body_id,
+            result.model,
+            result.solid,
+            "Pocket",
+            spec.spec_kind(),
+            feature_spec_value(&spec),
+        )
     }
 
     fn dispatch_revolve(
@@ -2000,9 +2043,24 @@ impl Session {
             64,
         )?;
         let solid = self.document.insert(model, result.solid, "Revolve");
+        let spec = FeatureSpec::Revolve(RevolveSpec {
+            sketch: sketch.clone(),
+            axis: axis.clone(),
+            angle_rad,
+            symmetric: _symmetric,
+        });
+        let body = self.append_feature_to_active_body(AppendFeatureArgs {
+            solid,
+            label: "Revolve",
+            kind: FeatureKind::Revolve,
+            spec_kind: spec.spec_kind(),
+            spec_value: feature_spec_value(&spec),
+            handle: result.solid,
+            feature_id: self.predicted_feature_id(),
+        });
         Ok(Outcome::FeatureAdded {
             feature_id: self.predicted_feature_id(),
-            body: BodyId(0),
+            body,
             solid,
         })
     }
@@ -2026,7 +2084,19 @@ impl Session {
             angle_rad,
             64,
         )?;
-        self.replace_feature_body(body_id, result.model, result.solid, "Groove")
+        let spec = FeatureSpec::Groove(GrooveSpec {
+            sketch: sketch.clone(),
+            axis: axis.clone(),
+            angle_rad,
+        });
+        self.replace_feature_body(
+            body_id,
+            result.model,
+            result.solid,
+            "Groove",
+            spec.spec_kind(),
+            feature_spec_value(&spec),
+        )
     }
 
     fn dispatch_hole(
@@ -2051,7 +2121,22 @@ impl Session {
             depth,
             32,
         )?;
-        self.replace_feature_body(body_id, result.model, result.solid, "Hole")
+        let spec = FeatureSpec::Hole(HoleSpec {
+            face: face.clone(),
+            position,
+            radius,
+            depth,
+            through_all: _through_all,
+            kind: _kind,
+        });
+        self.replace_feature_body(
+            body_id,
+            result.model,
+            result.solid,
+            "Hole",
+            spec.spec_kind(),
+            feature_spec_value(&spec),
+        )
     }
 
     fn dispatch_sweep(
@@ -2065,7 +2150,19 @@ impl Session {
         let path = self.resolve_sketch_profile(path_sketch)?;
         let (mut model, _) = self.base_model_and_handle(body_id)?;
         let result = cadkernel_modeling::features::sweep(&mut model, &profile, &path)?;
-        self.replace_feature_body(body_id, model, result.solid, "Sweep")
+        let spec = FeatureSpec::Sweep(SweepSpec {
+            profile_sketch: profile_sketch.clone(),
+            path_sketch: path_sketch.clone(),
+            mode: _mode,
+        });
+        self.replace_feature_body(
+            body_id,
+            model,
+            result.solid,
+            "Sweep",
+            spec.spec_kind(),
+            feature_spec_value(&spec),
+        )
     }
 
     fn dispatch_loft(
@@ -2083,7 +2180,20 @@ impl Session {
         let profile_refs: Vec<&[Point3]> = resolved.iter().map(Vec::as_slice).collect();
         let (mut model, _) = self.base_model_and_handle(body_id)?;
         let result = cadkernel_modeling::features::loft(&mut model, &profile_refs)?;
-        self.replace_feature_body(body_id, model, result.solid, "Loft")
+        let spec = FeatureSpec::Loft(LoftSpec {
+            profiles: profiles.to_vec(),
+            mode: _mode,
+            ruled: _ruled,
+            closed: _closed,
+        });
+        self.replace_feature_body(
+            body_id,
+            model,
+            result.solid,
+            "Loft",
+            spec.spec_kind(),
+            feature_spec_value(&spec),
+        )
     }
 
     fn dispatch_helix(
@@ -2091,12 +2201,20 @@ impl Session {
         axis: &AxisRef,
         radius: f64,
         pitch: f64,
-        _height: f64,
+        height: f64,
         turns: f64,
-        _cone_angle: f64,
+        cone_angle: f64,
     ) -> ApiResult<Outcome> {
         let (center, _axis_dir) = self.resolve_axis(axis)?;
         let tube_radius = 0.5_f64.min(radius * 0.25);
+        let spec = FeatureSpec::Helix(HelixSpec {
+            axis: axis.clone(),
+            radius,
+            pitch,
+            height,
+            turns,
+            cone_angle,
+        });
         if self.document.solid_count() == 0 {
             let mut model = BRepModel::new();
             let result = make_helix(
@@ -2110,6 +2228,15 @@ impl Session {
                 16,
             )?;
             let id = self.document.insert(model, result.solid, "Helix");
+            self.append_feature_to_active_body(AppendFeatureArgs {
+                solid: id,
+                label: "Helix",
+                kind: FeatureKind::Helix,
+                spec_kind: spec.spec_kind(),
+                spec_value: feature_spec_value(&spec),
+                handle: result.solid,
+                feature_id: self.predicted_feature_id(),
+            });
             return Ok(Outcome::SolidCreated {
                 id,
                 label: "Helix".into(),
@@ -2131,7 +2258,14 @@ impl Session {
         )?;
         let handle = first_solid_handle(&model)
             .ok_or_else(|| ApiError::Kernel("additive_helix produced no solid".into()))?;
-        self.replace_feature_body(body_id, model, handle, "Helix")
+        self.replace_feature_body(
+            body_id,
+            model,
+            handle,
+            "Helix",
+            spec.spec_kind(),
+            feature_spec_value(&spec),
+        )
     }
 
     fn dispatch_fillet(
@@ -2154,9 +2288,24 @@ impl Session {
         let result =
             cadkernel_modeling::features::fillet_edges(&mut slot.model, solid, &resolved, radius)?;
         slot.handle = Some(result.solid);
+        let spec = FeatureSpec::Fillet(FilletSpec {
+            edges: edges.to_vec(),
+            radius,
+            variable: variable.cloned(),
+        });
+        let feature_id = self.predicted_feature_id();
+        let body = self.append_feature_to_active_body(AppendFeatureArgs {
+            solid: body_id,
+            label: "Fillet",
+            kind: FeatureKind::Fillet,
+            spec_kind: spec.spec_kind(),
+            spec_value: feature_spec_value(&spec),
+            handle: result.solid,
+            feature_id,
+        });
         Ok(Outcome::FeatureAdded {
-            feature_id: self.predicted_feature_id(),
-            body: BodyId(0),
+            feature_id,
+            body,
             solid: body_id,
         })
     }
@@ -2180,9 +2329,24 @@ impl Session {
             distance,
         )?;
         slot.handle = Some(result.solid);
+        let spec = FeatureSpec::Chamfer(ChamferSpec {
+            edges: edges.to_vec(),
+            distance,
+            mode: _mode,
+        });
+        let feature_id = self.predicted_feature_id();
+        let body = self.append_feature_to_active_body(AppendFeatureArgs {
+            solid: body_id,
+            label: "Chamfer",
+            kind: FeatureKind::Chamfer,
+            spec_kind: spec.spec_kind(),
+            spec_value: feature_spec_value(&spec),
+            handle: result.solid,
+            feature_id,
+        });
         Ok(Outcome::FeatureAdded {
-            feature_id: self.predicted_feature_id(),
-            body: BodyId(0),
+            feature_id,
+            body,
             solid: body_id,
         })
     }
@@ -2206,9 +2370,25 @@ impl Session {
         let result =
             cadkernel_modeling::features::shell_solid(&mut slot.model, solid, &faces, thickness)?;
         slot.handle = Some(result.solid);
+        let spec = FeatureSpec::Shell(ShellSpec {
+            solid: solid_id,
+            removed_faces: removed_faces.to_vec(),
+            thickness,
+            mode: _mode,
+        });
+        let feature_id = self.predicted_feature_id();
+        let body = self.append_feature_to_active_body(AppendFeatureArgs {
+            solid: solid_id,
+            label: "Shell",
+            kind: FeatureKind::Shell,
+            spec_kind: spec.spec_kind(),
+            spec_value: feature_spec_value(&spec),
+            handle: result.solid,
+            feature_id,
+        });
         Ok(Outcome::FeatureAdded {
-            feature_id: self.predicted_feature_id(),
-            body: BodyId(0),
+            feature_id,
+            body,
             solid: solid_id,
         })
     }
@@ -2239,14 +2419,423 @@ impl Session {
             angle_rad,
         )?;
         slot.handle = Some(result.solid);
+        let spec = FeatureSpec::Draft(DraftSpec {
+            faces: faces.to_vec(),
+            neutral_plane: neutral_plane.clone(),
+            angle_rad,
+            direction,
+        });
+        let feature_id = self.predicted_feature_id();
+        let body = self.append_feature_to_active_body(AppendFeatureArgs {
+            solid: solid_id,
+            label: "Draft",
+            kind: FeatureKind::Draft,
+            spec_kind: spec.spec_kind(),
+            spec_value: feature_spec_value(&spec),
+            handle: result.solid,
+            feature_id,
+        });
         Ok(Outcome::FeatureAdded {
-            feature_id: self.predicted_feature_id(),
-            body: BodyId(0),
+            feature_id,
+            body,
             solid: solid_id,
         })
     }
 
+    fn dispatch_create_body(&mut self, name: &str, base_plane: &PlaneRef) -> ApiResult<Outcome> {
+        let plane = plane_from_ref(base_plane)?;
+        let body_name = if name.is_empty() {
+            format!("Body{}", self.document.body_count() + 1)
+        } else {
+            name.to_string()
+        };
+        let body = Body::new_with_plane(0, &body_name, plane.origin, plane.normal);
+        let should_activate = self.document.active_body().is_none();
+        let id = self.document.push_body(body);
+        if should_activate {
+            self.document.set_active_body(id);
+        }
+        Ok(Outcome::BodyCreated {
+            body: id,
+            name: body_name,
+            plane,
+        })
+    }
+
+    fn dispatch_set_tip(&mut self, body_id: BodyId, feature_id: FeatureId) -> ApiResult<Outcome> {
+        let Some(body) = self.document.body_mut(body_id) else {
+            return Err(ApiError::InvalidArgument(format!(
+                "unknown body {body_id:?}"
+            )));
+        };
+        if !body.set_tip_by_feature_id(feature_id.0) {
+            return Err(ApiError::InvalidArgument(format!(
+                "feature {feature_id} not found in body {body_id:?}"
+            )));
+        }
+        self.recompute_body(body_id)
+    }
+
+    fn dispatch_suppress_feature(
+        &mut self,
+        feature_id: FeatureId,
+        suppressed: bool,
+    ) -> ApiResult<Outcome> {
+        let body_id = self
+            .document
+            .find_body_for_feature(feature_id)
+            .ok_or_else(|| ApiError::InvalidArgument(format!("unknown feature {feature_id}")))?;
+        let Some(body) = self.document.body_mut(body_id) else {
+            return Err(ApiError::InvalidArgument(format!(
+                "unknown body {body_id:?}"
+            )));
+        };
+        if !body.suppress_feature_by_id(feature_id.0, suppressed) {
+            return Err(ApiError::InvalidArgument(format!(
+                "unknown feature {feature_id}"
+            )));
+        }
+        self.recompute_body(body_id)
+    }
+
+    fn dispatch_reorder_feature(
+        &mut self,
+        feature_id: FeatureId,
+        to_position: u32,
+    ) -> ApiResult<Outcome> {
+        let body_id = self
+            .document
+            .find_body_for_feature(feature_id)
+            .ok_or_else(|| ApiError::InvalidArgument(format!("unknown feature {feature_id}")))?;
+        let Some(body) = self.document.body_mut(body_id) else {
+            return Err(ApiError::InvalidArgument(format!(
+                "unknown body {body_id:?}"
+            )));
+        };
+        if !body.move_feature_by_feature_id(feature_id.0, to_position as usize) {
+            return Err(ApiError::InvalidArgument(format!(
+                "cannot move feature {feature_id} to position {to_position}"
+            )));
+        }
+        self.recompute_body(body_id)
+    }
+
+    fn dispatch_edit_feature(
+        &mut self,
+        feature_id: FeatureId,
+        new_spec: FeatureSpec,
+    ) -> ApiResult<Outcome> {
+        let body_id = self
+            .document
+            .find_body_for_feature(feature_id)
+            .ok_or_else(|| ApiError::InvalidArgument(format!("unknown feature {feature_id}")))?;
+        let Some(body) = self.document.body_mut(body_id) else {
+            return Err(ApiError::InvalidArgument(format!(
+                "unknown body {body_id:?}"
+            )));
+        };
+        let Some(index) = body.feature_index_of(feature_id.0) else {
+            return Err(ApiError::InvalidArgument(format!(
+                "unknown feature {feature_id}"
+            )));
+        };
+        body.features[index].spec_kind = new_spec.spec_kind().to_string();
+        body.features[index].kind = spec_kind_to_feature_kind(new_spec.spec_kind());
+        body.features[index].spec = Some(feature_spec_value(&new_spec));
+        self.recompute_body(body_id)
+    }
+
+    fn recompute_body(&mut self, body_id: BodyId) -> ApiResult<Outcome> {
+        let (plan, current_solid) = {
+            let body = self
+                .document
+                .body(body_id)
+                .ok_or_else(|| ApiError::InvalidArgument(format!("unknown body {body_id:?}")))?;
+            let limit = body.tip.map(|tip| tip + 1).unwrap_or(0);
+            let mut plan = Vec::new();
+            for (index, feature) in body.features.iter().enumerate().take(limit) {
+                if feature.suppressed {
+                    continue;
+                }
+                let Some(json) = &feature.spec else {
+                    continue;
+                };
+                if json.is_null() {
+                    continue;
+                }
+                let spec: FeatureSpec = serde_json::from_value(json.clone()).map_err(|err| {
+                    ApiError::Codec(format!("feature {} bad spec: {err}", feature.feature_id))
+                })?;
+                plan.push((index, FeatureId(feature.feature_id), spec));
+            }
+            (plan, body.current_solid.map(SolidId))
+        };
+
+        let mut last_result: Option<(BRepModel, Handle<SolidData>)> = None;
+        let mut last_feature_index: Option<usize> = None;
+        let mut downstream_invalidated = Vec::new();
+
+        for (feature_index, feature_id, spec) in plan {
+            match self.replay_spec(spec, last_result.clone()) {
+                Ok((model, handle)) => {
+                    if let Some(body) = self.document.body_mut(body_id)
+                        && let Some(feature) = body.features.get_mut(feature_index)
+                    {
+                        feature.cached_solid = Some(handle);
+                        feature.solid = handle;
+                    }
+                    last_result = Some((model, handle));
+                    last_feature_index = Some(feature_index);
+                }
+                Err(_) => {
+                    if let Some(body) = self.document.body_mut(body_id)
+                        && let Some(feature) = body.features.get_mut(feature_index)
+                    {
+                        feature.cached_solid = None;
+                    }
+                    downstream_invalidated.push(feature_id);
+                }
+            }
+        }
+
+        if let Some((model, handle)) = last_result {
+            let label = self
+                .document
+                .body(body_id)
+                .and_then(|body| {
+                    last_feature_index
+                        .and_then(|index| body.features.get(index).map(|f| f.name.clone()))
+                })
+                .unwrap_or_else(|| "Body".to_string());
+            let solid = if let Some(existing) = current_solid {
+                if self
+                    .document
+                    .replace_solid(existing, model.clone(), handle, label.clone())
+                {
+                    existing
+                } else {
+                    self.document.insert(model, handle, label)
+                }
+            } else {
+                self.document.insert(model, handle, label)
+            };
+            if let Some(body) = self.document.body_mut(body_id) {
+                body.current_solid = Some(solid.0);
+            }
+            return Ok(Outcome::FeatureRecomputed {
+                feature_id: FeatureId(0),
+                solid,
+                downstream_invalidated,
+            });
+        }
+
+        if let Some(existing) = current_solid
+            && self.document.get_slot(existing).is_some()
+        {
+            return Ok(Outcome::FeatureRecomputed {
+                feature_id: FeatureId(0),
+                solid: existing,
+                downstream_invalidated,
+            });
+        }
+
+        Err(ApiError::InvalidArgument(format!(
+            "body {body_id:?} recomputed to empty result"
+        )))
+    }
+
+    fn replay_spec(
+        &self,
+        spec: FeatureSpec,
+        base: Option<(BRepModel, Handle<SolidData>)>,
+    ) -> ApiResult<(BRepModel, Handle<SolidData>)> {
+        match spec {
+            FeatureSpec::Pad(s) => {
+                let (base_model, base_handle) = replay_base("Pad", base)?;
+                let profile = self.resolve_sketch_profile(&s.sketch)?;
+                let dir_vec = match s.direction {
+                    PadDirection::Normal => Vec3::Z,
+                    PadDirection::Reversed => -Vec3::Z,
+                    PadDirection::TwoSided => Vec3::Z,
+                };
+                let dist = if s.symmetric || matches!(s.direction, PadDirection::TwoSided) {
+                    s.distance * 0.5
+                } else {
+                    s.distance
+                };
+                let result = cadkernel_modeling::features::pad(
+                    &base_model,
+                    base_handle,
+                    &profile,
+                    dir_vec,
+                    dist,
+                )?;
+                Ok((result.model, result.solid))
+            }
+            FeatureSpec::Pocket(s) => {
+                let (base_model, base_handle) = replay_base("Pocket", base)?;
+                let profile = self.resolve_sketch_profile(&s.sketch)?;
+                let result = cadkernel_modeling::features::pocket(
+                    &base_model,
+                    base_handle,
+                    &profile,
+                    Vec3::Z,
+                    s.distance,
+                )?;
+                Ok((result.model, result.solid))
+            }
+            FeatureSpec::Revolve(s) => {
+                let profile = self.resolve_sketch_profile(&s.sketch)?;
+                let (axis_origin, axis_dir) = self.resolve_axis(&s.axis)?;
+                let mut model = BRepModel::new();
+                let result = cadkernel_modeling::features::revolve(
+                    &mut model,
+                    &profile,
+                    axis_origin,
+                    axis_dir,
+                    s.angle_rad,
+                    64,
+                )?;
+                Ok((model, result.solid))
+            }
+            FeatureSpec::Groove(s) => {
+                let (base_model, base_handle) = replay_base("Groove", base)?;
+                let profile = self.resolve_sketch_profile(&s.sketch)?;
+                let (axis_origin, axis_dir) = self.resolve_axis(&s.axis)?;
+                let result = cadkernel_modeling::features::groove(
+                    &base_model,
+                    base_handle,
+                    &profile,
+                    axis_origin,
+                    axis_dir,
+                    s.angle_rad,
+                    64,
+                )?;
+                Ok((result.model, result.solid))
+            }
+            FeatureSpec::Hole(s) => {
+                let (base_model, base_handle) = replay_base("Hole", base)?;
+                let (_face_solid, _face_handle) = self.resolve_face_handle(&s.face)?;
+                let center = Point3::new(s.position[0], s.position[1], 0.0);
+                let result = cadkernel_modeling::features::hole(
+                    &base_model,
+                    base_handle,
+                    center,
+                    Vec3::Z,
+                    s.radius,
+                    s.depth,
+                    32,
+                )?;
+                Ok((result.model, result.solid))
+            }
+            FeatureSpec::Sweep(s) => {
+                let (mut model, _base_handle) = replay_base("Sweep", base)?;
+                let profile = self.resolve_sketch_profile(&s.profile_sketch)?;
+                let path = self.resolve_sketch_profile(&s.path_sketch)?;
+                let result = cadkernel_modeling::features::sweep(&mut model, &profile, &path)?;
+                Ok((model, result.solid))
+            }
+            FeatureSpec::Loft(s) => {
+                let (mut model, _base_handle) = replay_base("Loft", base)?;
+                let mut resolved = Vec::with_capacity(s.profiles.len());
+                for profile in &s.profiles {
+                    resolved.push(self.resolve_sketch_profile(profile)?);
+                }
+                let profile_refs: Vec<&[Point3]> = resolved.iter().map(Vec::as_slice).collect();
+                let result = cadkernel_modeling::features::loft(&mut model, &profile_refs)?;
+                Ok((model, result.solid))
+            }
+            FeatureSpec::Helix(s) => {
+                let (center, _axis_dir) = self.resolve_axis(&s.axis)?;
+                let tube_radius = 0.5_f64.min(s.radius * 0.25);
+                if let Some((base_model, base_handle)) = base {
+                    let model = cadkernel_modeling::features::additive_helix(
+                        &base_model,
+                        base_handle,
+                        center,
+                        s.radius,
+                        s.pitch,
+                        s.turns,
+                        tube_radius,
+                        32,
+                        16,
+                    )?;
+                    let handle = first_solid_handle(&model).ok_or_else(|| {
+                        ApiError::Kernel("additive_helix replay produced no solid".into())
+                    })?;
+                    Ok((model, handle))
+                } else {
+                    let mut model = BRepModel::new();
+                    let result = make_helix(
+                        &mut model,
+                        center,
+                        s.radius,
+                        s.pitch,
+                        s.turns,
+                        tube_radius,
+                        32,
+                        16,
+                    )?;
+                    Ok((model, result.solid))
+                }
+            }
+            FeatureSpec::Fillet(s) => {
+                let (mut model, solid) = replay_base("Fillet", base)?;
+                let resolved = self.resolve_edge_refs(&s.edges)?;
+                let result = cadkernel_modeling::features::fillet_edges(
+                    &mut model, solid, &resolved, s.radius,
+                )?;
+                Ok((model, result.solid))
+            }
+            FeatureSpec::Chamfer(s) => {
+                let (mut model, solid) = replay_base("Chamfer", base)?;
+                let resolved = self.resolve_edge_refs(&s.edges)?;
+                let result = cadkernel_modeling::features::chamfer_edges(
+                    &mut model, solid, &resolved, s.distance,
+                )?;
+                Ok((model, result.solid))
+            }
+            FeatureSpec::Shell(s) => {
+                let (mut model, solid) = replay_base("Shell", base)?;
+                let faces = self.resolve_face_refs(&s.removed_faces)?;
+                let result = cadkernel_modeling::features::shell_solid(
+                    &mut model,
+                    solid,
+                    &faces,
+                    s.thickness,
+                )?;
+                Ok((model, result.solid))
+            }
+            FeatureSpec::Draft(s) => {
+                let (mut model, solid) = replay_base("Draft", base)?;
+                let _neutral = self.resolve_face_handle(&s.neutral_plane)?;
+                let resolved = self.resolve_face_refs(&s.faces)?;
+                let pull_direction = match s.direction {
+                    DraftDirection::Pull => Vec3::Z,
+                    DraftDirection::Push => -Vec3::Z,
+                };
+                let result = cadkernel_modeling::features::draft_faces(
+                    &mut model,
+                    solid,
+                    &resolved,
+                    pull_direction,
+                    s.angle_rad,
+                )?;
+                Ok((model, result.solid))
+            }
+        }
+    }
+
     fn active_solid_for_feature(&self, op_name: &str) -> ApiResult<SolidId> {
+        if let Some(body_id) = self.document.active_body()
+            && let Some(body) = self.document.body(body_id)
+            && let Some(solid) = body.current_solid
+        {
+            let id = SolidId(solid);
+            if self.document.get_slot(id).is_some() {
+                return Ok(id);
+            }
+        }
         match self.document.solid_ids().as_slice() {
             [id] => Ok(*id),
             [] => Err(ApiError::InvalidArgument(format!(
@@ -2275,15 +2864,54 @@ impl Session {
         model: BRepModel,
         handle: Handle<SolidData>,
         label: &str,
+        spec_kind: &str,
+        spec_value: serde_json::Value,
     ) -> ApiResult<Outcome> {
         let feature_id = self.predicted_feature_id();
         self.document.remove(old_id);
         let solid = self.document.insert(model, handle, label);
+        let body = self.append_feature_to_active_body(AppendFeatureArgs {
+            solid,
+            label,
+            kind: spec_kind_to_feature_kind(spec_kind),
+            spec_kind,
+            spec_value,
+            handle,
+            feature_id,
+        });
         Ok(Outcome::FeatureAdded {
             feature_id,
-            body: BodyId(0),
+            body,
             solid,
         })
+    }
+
+    fn ensure_active_body(&mut self) -> BodyId {
+        if let Some(id) = self.document.active_body() {
+            return id;
+        }
+        let name = format!("Body{}", self.document.body_count() + 1);
+        self.document
+            .push_body(Body::new_with_plane(0, &name, [0.0; 3], [0.0, 0.0, 1.0]))
+    }
+
+    fn append_feature_to_active_body(&mut self, args: AppendFeatureArgs<'_>) -> BodyId {
+        let body_id = self.ensure_active_body();
+        if let Some(body) = self.document.body_mut(body_id) {
+            body.add_feature_with_spec(
+                args.feature_id.0,
+                args.label,
+                args.kind,
+                args.spec_kind,
+                args.spec_value,
+            );
+            if let Some(feature) = body.features.last_mut() {
+                feature.solid = args.handle;
+                feature.cached_solid = Some(args.handle);
+            }
+            body.current_solid = Some(args.solid.0);
+        }
+        body_id
     }
 
     fn predicted_feature_id(&self) -> FeatureId {
@@ -2383,6 +3011,16 @@ struct LinearPatternPlan<'a> {
     mirror_alternate: bool,
 }
 
+struct AppendFeatureArgs<'a> {
+    solid: SolidId,
+    label: &'a str,
+    kind: FeatureKind,
+    spec_kind: &'a str,
+    spec_value: serde_json::Value,
+    handle: Handle<SolidData>,
+    feature_id: FeatureId,
+}
+
 #[derive(Copy, Clone)]
 enum BooleanKind {
     Union,
@@ -2392,6 +3030,53 @@ enum BooleanKind {
 
 fn first_solid_handle(model: &BRepModel) -> Option<Handle<SolidData>> {
     model.solids.iter().next().map(|(h, _)| h)
+}
+
+fn feature_spec_value(spec: &FeatureSpec) -> serde_json::Value {
+    serde_json::to_value(spec).unwrap_or(serde_json::Value::Null)
+}
+
+fn spec_kind_to_feature_kind(kind: &str) -> FeatureKind {
+    match kind {
+        "pad" => FeatureKind::Pad,
+        "pocket" => FeatureKind::Pocket,
+        "revolve" => FeatureKind::Revolve,
+        "groove" => FeatureKind::Groove,
+        "hole" => FeatureKind::Hole,
+        "sweep" => FeatureKind::Sweep,
+        "loft" => FeatureKind::Loft,
+        "helix" => FeatureKind::Helix,
+        "fillet" => FeatureKind::Fillet,
+        "chamfer" => FeatureKind::Chamfer,
+        "shell" => FeatureKind::Shell,
+        "draft" => FeatureKind::Draft,
+        "mirror" => FeatureKind::Mirror,
+        "pattern" => FeatureKind::Pattern,
+        _ => FeatureKind::Pad,
+    }
+}
+
+fn plane_from_ref(plane: &PlaneRef) -> ApiResult<crate::outcome::Plane> {
+    let (origin, normal) = match plane {
+        PlaneRef::XY => ([0.0, 0.0, 0.0], [0.0, 0.0, 1.0]),
+        PlaneRef::XZ => ([0.0, 0.0, 0.0], [0.0, 1.0, 0.0]),
+        PlaneRef::YZ => ([0.0, 0.0, 0.0], [1.0, 0.0, 0.0]),
+        PlaneRef::Custom { origin, normal } => (*origin, *normal),
+    };
+    let n = Vec3::new(normal[0], normal[1], normal[2])
+        .normalized()
+        .ok_or_else(|| ApiError::InvalidArgument("base_plane normal must be non-zero".into()))?;
+    Ok(crate::outcome::Plane {
+        origin,
+        normal: [n.x, n.y, n.z],
+    })
+}
+
+fn replay_base(
+    op_name: &str,
+    base: Option<(BRepModel, Handle<SolidData>)>,
+) -> ApiResult<(BRepModel, Handle<SolidData>)> {
+    base.ok_or_else(|| ApiError::InvalidArgument(format!("{op_name} replay requires a base solid")))
 }
 
 fn validate_extrude_distance(distance: f64) -> ApiResult<()> {
@@ -2798,6 +3483,24 @@ fn history_description(cmd: &Command, outcome: &Outcome) -> String {
             },
             _,
         ) => format!("Draft {} faces angle={angle_rad}", faces.len()),
+        (Command::CreateBody { name, .. }, _) => format!("CreateBody {name}"),
+        (Command::SetTip { body, feature }, _) => {
+            format!("SetTip {body:?} -> {feature}")
+        }
+        (
+            Command::SuppressFeature {
+                feature,
+                suppressed,
+            },
+            _,
+        ) => format!("SuppressFeature {feature}={suppressed}"),
+        (Command::ReorderFeature { from, to_position }, _) => {
+            format!("ReorderFeature {from} -> {to_position}")
+        }
+        (Command::RecomputeBody { body }, _) => format!("RecomputeBody {body:?}"),
+        (Command::EditFeature { feature, new_spec }, _) => {
+            format!("EditFeature {feature} {}", new_spec.spec_kind())
+        }
         (Command::Measure { id }, _) => format!("Measure {id}"),
         (Command::Validate, _) => "Validate".into(),
         (Command::ListSolids, _) => "ListSolids".into(),

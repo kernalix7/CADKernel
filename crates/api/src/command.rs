@@ -286,6 +286,47 @@ pub enum Command {
         #[serde(default)]
         direction: DraftDirection,
     },
+    /// Create an empty PartDesign body and make it active when there is no
+    /// active body yet.
+    CreateBody {
+        #[serde(default)]
+        name: String,
+        #[serde(default)]
+        base_plane: PlaneRef,
+    },
+    /// Move a body's tip to the named feature and recompute the active chain.
+    SetTip {
+        #[serde(default)]
+        body: BodyId,
+        #[serde(default)]
+        feature: FeatureId,
+    },
+    /// Toggle a feature's non-destructive suppression flag and recompute.
+    SuppressFeature {
+        #[serde(default)]
+        feature: FeatureId,
+        #[serde(default)]
+        suppressed: bool,
+    },
+    /// Move a feature to a new zero-based position and recompute.
+    ReorderFeature {
+        #[serde(default)]
+        from: FeatureId,
+        #[serde(default)]
+        to_position: u32,
+    },
+    /// Explicitly recompute a PartDesign body.
+    RecomputeBody {
+        #[serde(default)]
+        body: BodyId,
+    },
+    /// Replace a feature's replay spec and recompute.
+    EditFeature {
+        #[serde(default)]
+        feature: FeatureId,
+        #[serde(default)]
+        new_spec: FeatureSpec,
+    },
     /// Create a freshly-named empty document. Discards every existing solid
     /// and resets the [`Session`] log. Useful as the first command of a
     /// replay test or AI session reset.
@@ -597,6 +638,12 @@ impl Command {
             Self::Chamfer { .. } => "chamfer",
             Self::Shell { .. } => "shell",
             Self::Draft { .. } => "draft",
+            Self::CreateBody { .. } => "create_body",
+            Self::SetTip { .. } => "set_tip",
+            Self::SuppressFeature { .. } => "suppress_feature",
+            Self::ReorderFeature { .. } => "reorder_feature",
+            Self::RecomputeBody { .. } => "recompute_body",
+            Self::EditFeature { .. } => "edit_feature",
             Self::NewDocument => "new_document",
             Self::Measure { .. } => "measure",
             Self::Validate => "validate",
@@ -1300,6 +1347,106 @@ pub fn command_schemas() -> Vec<CommandSchema> {
             ],
         },
         CommandSchema {
+            op: "create_body",
+            description: "Create an empty PartDesign body and set it active when no active body exists.",
+            params: &[
+                ParamSchema {
+                    name: "name",
+                    ty: "string",
+                    required: false,
+                    doc: "Body display name. Empty input falls back to Body<N>.",
+                },
+                ParamSchema {
+                    name: "base_plane",
+                    ty: "plane_ref",
+                    required: false,
+                    doc: "Base plane reference. Defaults to XY.",
+                },
+            ],
+        },
+        CommandSchema {
+            op: "set_tip",
+            description: "Move a body's tip to the named feature and recompute the active chain.",
+            params: &[
+                ParamSchema {
+                    name: "body",
+                    ty: "body_id",
+                    required: true,
+                    doc: "Target body id.",
+                },
+                ParamSchema {
+                    name: "feature",
+                    ty: "feature_id",
+                    required: true,
+                    doc: "Feature id that becomes the active tip.",
+                },
+            ],
+        },
+        CommandSchema {
+            op: "suppress_feature",
+            description: "Toggle a feature's non-destructive suppressed flag and recompute its body.",
+            params: &[
+                ParamSchema {
+                    name: "feature",
+                    ty: "feature_id",
+                    required: true,
+                    doc: "Feature id to toggle.",
+                },
+                ParamSchema {
+                    name: "suppressed",
+                    ty: "boolean",
+                    required: false,
+                    doc: "True suppresses the feature; false restores it.",
+                },
+            ],
+        },
+        CommandSchema {
+            op: "reorder_feature",
+            description: "Move a feature to a new zero-based position and recompute its body.",
+            params: &[
+                ParamSchema {
+                    name: "from",
+                    ty: "feature_id",
+                    required: true,
+                    doc: "Feature id to move.",
+                },
+                ParamSchema {
+                    name: "to_position",
+                    ty: "u32",
+                    required: true,
+                    doc: "Destination index in the body's feature list.",
+                },
+            ],
+        },
+        CommandSchema {
+            op: "recompute_body",
+            description: "Explicitly recompute a PartDesign body's active feature chain.",
+            params: &[ParamSchema {
+                name: "body",
+                ty: "body_id",
+                required: true,
+                doc: "Body id to recompute.",
+            }],
+        },
+        CommandSchema {
+            op: "edit_feature",
+            description: "Replace a feature's replay spec and recompute downstream features.",
+            params: &[
+                ParamSchema {
+                    name: "feature",
+                    ty: "feature_id",
+                    required: true,
+                    doc: "Feature id to edit.",
+                },
+                ParamSchema {
+                    name: "new_spec",
+                    ty: "feature_spec",
+                    required: true,
+                    doc: "Replacement replay spec.",
+                },
+            ],
+        },
+        CommandSchema {
             op: "new_document",
             description: "Reset the session to an empty document. Clears the command log.",
             params: &[],
@@ -1878,6 +2025,20 @@ fn is_zero_vec3(v: &[f64; 3]) -> bool {
 #[serde(transparent)]
 pub struct BodyId(pub u64);
 
+/// Reference to a standard or custom body base plane.
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
+#[serde(tag = "plane", rename_all = "snake_case")]
+pub enum PlaneRef {
+    #[default]
+    XY,
+    XZ,
+    YZ,
+    Custom {
+        origin: [f64; 3],
+        normal: [f64; 3],
+    },
+}
+
 /// Placeholder sketch identifier. Full persisted sketch storage lands in
 /// Track 6.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
@@ -1885,7 +2046,7 @@ pub struct BodyId(pub u64);
 pub struct SketchId(pub u64);
 
 /// Reference to a sketch profile or path.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct SketchRef {
     pub sketch_id: SketchId,
 }
@@ -2013,4 +2174,167 @@ pub enum DraftDirection {
 pub struct VariableRadius {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub samples: Vec<(f64, f64)>,
+}
+
+/// Replayable PartDesign feature specification stored by body features.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum FeatureSpec {
+    Pad(PadSpec),
+    Pocket(PocketSpec),
+    Revolve(RevolveSpec),
+    Groove(GrooveSpec),
+    Hole(HoleSpec),
+    Sweep(SweepSpec),
+    Loft(LoftSpec),
+    Helix(HelixSpec),
+    Fillet(FilletSpec),
+    Chamfer(ChamferSpec),
+    Shell(ShellSpec),
+    Draft(DraftSpec),
+}
+
+impl Default for FeatureSpec {
+    fn default() -> Self {
+        Self::Pad(PadSpec {
+            sketch: SketchRef::default(),
+            distance: 1.0,
+            direction: PadDirection::Normal,
+            symmetric: false,
+            type_: PadType::Blind,
+        })
+    }
+}
+
+impl FeatureSpec {
+    pub fn spec_kind(&self) -> &'static str {
+        match self {
+            Self::Pad(_) => "pad",
+            Self::Pocket(_) => "pocket",
+            Self::Revolve(_) => "revolve",
+            Self::Groove(_) => "groove",
+            Self::Hole(_) => "hole",
+            Self::Sweep(_) => "sweep",
+            Self::Loft(_) => "loft",
+            Self::Helix(_) => "helix",
+            Self::Fillet(_) => "fillet",
+            Self::Chamfer(_) => "chamfer",
+            Self::Shell(_) => "shell",
+            Self::Draft(_) => "draft",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PadSpec {
+    pub sketch: SketchRef,
+    pub distance: f64,
+    #[serde(default)]
+    pub direction: PadDirection,
+    #[serde(default)]
+    pub symmetric: bool,
+    #[serde(default, rename = "type")]
+    pub type_: PadType,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PocketSpec {
+    pub sketch: SketchRef,
+    pub distance: f64,
+    #[serde(default)]
+    pub through_all: bool,
+    #[serde(default, rename = "type")]
+    pub type_: PocketType,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RevolveSpec {
+    pub sketch: SketchRef,
+    pub axis: AxisRef,
+    pub angle_rad: f64,
+    #[serde(default)]
+    pub symmetric: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct GrooveSpec {
+    pub sketch: SketchRef,
+    pub axis: AxisRef,
+    pub angle_rad: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HoleSpec {
+    pub face: FaceRef,
+    pub position: [f64; 2],
+    pub radius: f64,
+    pub depth: f64,
+    #[serde(default)]
+    pub through_all: bool,
+    #[serde(default)]
+    pub kind: HoleKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SweepSpec {
+    pub profile_sketch: SketchRef,
+    pub path_sketch: SketchRef,
+    #[serde(default)]
+    pub mode: SweepMode,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LoftSpec {
+    pub profiles: Vec<SketchRef>,
+    #[serde(default)]
+    pub mode: LoftMode,
+    #[serde(default)]
+    pub ruled: bool,
+    #[serde(default)]
+    pub closed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct HelixSpec {
+    pub axis: AxisRef,
+    pub radius: f64,
+    pub pitch: f64,
+    pub height: f64,
+    pub turns: f64,
+    #[serde(default)]
+    pub cone_angle: f64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FilletSpec {
+    pub edges: Vec<EdgeRef>,
+    pub radius: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub variable: Option<VariableRadius>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ChamferSpec {
+    pub edges: Vec<EdgeRef>,
+    pub distance: f64,
+    #[serde(default)]
+    pub mode: ChamferMode,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ShellSpec {
+    pub solid: SolidId,
+    pub removed_faces: Vec<FaceRef>,
+    pub thickness: f64,
+    #[serde(default)]
+    pub mode: ShellMode,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DraftSpec {
+    pub faces: Vec<FaceRef>,
+    pub neutral_plane: FaceRef,
+    pub angle_rad: f64,
+    #[serde(default)]
+    pub direction: DraftDirection,
 }

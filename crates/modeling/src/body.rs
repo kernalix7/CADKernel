@@ -1,4 +1,9 @@
 //! PartDesign Body container for feature tree management.
+//!
+//! The index-based methods are the legacy container API: suppression removes
+//! entries from the list and the current tip is exposed through
+//! [`Body::tip_solid`]. The feature-id methods are the non-destructive body
+//! chain API used by `cadkernel-api` for replayable PartDesign features.
 
 use cadkernel_core::{KernelError, KernelResult};
 use cadkernel_topology::{Handle, SolidData};
@@ -6,23 +11,33 @@ use cadkernel_topology::{Handle, SolidData};
 /// A PartDesign body that maintains a feature tree and tip solid.
 ///
 /// Features are appended sequentially via [`add_feature`](Self::add_feature).
-/// The `tip` always points to the result of the last applied feature. This
-/// mirrors the FreeCAD PartDesign Body workflow.
-#[derive(Debug)]
+/// The `tip` points to an index in `features`; [`tip_solid`](Self::tip_solid)
+/// returns the cached solid handle for legacy callers.
+#[derive(Debug, Clone)]
 pub struct Body {
+    pub id: u64,
     pub name: String,
     pub features: Vec<BodyFeature>,
-    pub tip: Option<Handle<SolidData>>,
+    pub tip: Option<usize>,
+    pub base_plane_origin: [f64; 3],
+    pub base_plane_normal: [f64; 3],
+    pub current_solid: Option<u32>,
 }
 
 /// A single feature entry in a [`Body`]'s feature tree.
 ///
-/// Stores the feature name, the kind of operation, and the resulting solid.
-#[derive(Debug)]
+/// Stores the feature name, kind, replay spec metadata, and the last cached
+/// solid handle. `solid` is retained for the legacy index-based API.
+#[derive(Debug, Clone)]
 pub struct BodyFeature {
+    pub feature_id: u64,
     pub name: String,
     pub kind: FeatureKind,
+    pub spec: Option<serde_json::Value>,
+    pub spec_kind: String,
+    pub suppressed: bool,
     pub solid: Handle<SolidData>,
+    pub cached_solid: Option<Handle<SolidData>>,
 }
 
 /// The kind of feature operation that produced a [`BodyFeature`].
@@ -32,35 +47,105 @@ pub enum FeatureKind {
     Pocket,
     Revolve,
     Groove,
+    Hole,
+    Sweep,
+    Loft,
+    Helix,
     Fillet,
     Chamfer,
+    Shell,
+    Draft,
     Mirror,
     Pattern,
+}
+
+impl FeatureKind {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Pad => "pad",
+            Self::Pocket => "pocket",
+            Self::Revolve => "revolve",
+            Self::Groove => "groove",
+            Self::Hole => "hole",
+            Self::Sweep => "sweep",
+            Self::Loft => "loft",
+            Self::Helix => "helix",
+            Self::Fillet => "fillet",
+            Self::Chamfer => "chamfer",
+            Self::Shell => "shell",
+            Self::Draft => "draft",
+            Self::Mirror => "mirror",
+            Self::Pattern => "pattern",
+        }
+    }
 }
 
 impl Body {
     /// Creates a new empty body with the given name.
     pub fn new(name: &str) -> Self {
+        Self::new_with_plane(0, name, [0.0; 3], [0.0, 0.0, 1.0])
+    }
+
+    /// Creates a new empty body with explicit persistent id and base plane.
+    pub fn new_with_plane(
+        id: u64,
+        name: &str,
+        base_plane_origin: [f64; 3],
+        base_plane_normal: [f64; 3],
+    ) -> Self {
         Self {
+            id,
             name: name.to_string(),
             features: Vec::new(),
             tip: None,
+            base_plane_origin,
+            base_plane_normal,
+            current_solid: None,
         }
     }
 
     /// Adds a feature to the body, updating the tip to the new solid.
     pub fn add_feature(&mut self, name: &str, kind: FeatureKind, solid: Handle<SolidData>) {
         self.features.push(BodyFeature {
+            feature_id: 0,
             name: name.to_string(),
             kind,
+            spec: None,
+            spec_kind: String::new(),
+            suppressed: false,
             solid,
+            cached_solid: Some(solid),
         });
-        self.tip = Some(solid);
+        self.tip = self.features.len().checked_sub(1);
+    }
+
+    /// Adds a replayable feature entry with an opaque serialized spec.
+    pub fn add_feature_with_spec(
+        &mut self,
+        feature_id: u64,
+        name: &str,
+        kind: FeatureKind,
+        spec_kind: &str,
+        spec_json: serde_json::Value,
+    ) {
+        self.features.push(BodyFeature {
+            feature_id,
+            name: name.to_string(),
+            kind,
+            spec: Some(spec_json),
+            spec_kind: spec_kind.to_string(),
+            suppressed: false,
+            solid: Handle::from_raw_parts(0, 0),
+            cached_solid: None,
+        });
+        self.tip = self.features.len().checked_sub(1);
     }
 
     /// Returns the tip solid (last feature result), if any.
     pub fn tip_solid(&self) -> Option<Handle<SolidData>> {
         self.tip
+            .and_then(|index| self.features.get(index))
+            .map(|feature| feature.solid)
     }
 
     /// Returns the number of features in this body.
@@ -77,8 +162,12 @@ impl Body {
             return None;
         }
         let removed = self.features.remove(index);
-        if self.tip == Some(removed.solid) {
-            self.tip = self.features.last().map(|f| f.solid);
+        if self.features.is_empty() {
+            self.tip = None;
+        } else if let Some(tip) = self.tip {
+            if index <= tip {
+                self.tip = Some(tip.saturating_sub(1).min(self.features.len() - 1));
+            }
         }
         Some(removed)
     }
@@ -91,7 +180,7 @@ impl Body {
         if index >= self.features.len() {
             return false;
         }
-        self.tip = Some(self.features[index].solid);
+        self.tip = Some(index);
         true
     }
 
@@ -112,11 +201,15 @@ impl Body {
             )));
         }
         let feature = source_body.features.remove(feature_index);
-        if source_body.tip == Some(feature.solid) {
-            source_body.tip = source_body.features.last().map(|f| f.solid);
+        if source_body.features.is_empty() {
+            source_body.tip = None;
+        } else if let Some(tip) = source_body.tip {
+            if feature_index <= tip {
+                source_body.tip = Some(tip.saturating_sub(1).min(source_body.features.len() - 1));
+            }
         }
-        self.tip = Some(feature.solid);
         self.features.push(feature);
+        self.tip = self.features.len().checked_sub(1);
         Ok(())
     }
 
@@ -130,8 +223,70 @@ impl Body {
         }
         let feature = self.features.remove(from);
         self.features.insert(to, feature);
-        self.tip = self.features.last().map(|f| f.solid);
+        self.tip = self.features.len().checked_sub(1);
         true
+    }
+
+    /// Returns the index of a feature by persistent feature id.
+    pub fn feature_index_of(&self, feature_id: u64) -> Option<usize> {
+        self.features
+            .iter()
+            .position(|feature| feature.feature_id == feature_id)
+    }
+
+    /// Non-destructively toggles suppression for a feature id.
+    pub fn suppress_feature_by_id(&mut self, feature_id: u64, suppressed: bool) -> bool {
+        let Some(index) = self.feature_index_of(feature_id) else {
+            return false;
+        };
+        self.features[index].suppressed = suppressed;
+        true
+    }
+
+    /// Sets the active tip to the feature with the given id.
+    pub fn set_tip_by_feature_id(&mut self, feature_id: u64) -> bool {
+        let Some(index) = self.feature_index_of(feature_id) else {
+            return false;
+        };
+        self.tip = Some(index);
+        true
+    }
+
+    /// Moves a feature identified by persistent id to `to_position`.
+    pub fn move_feature_by_feature_id(&mut self, feature_id: u64, to_position: usize) -> bool {
+        let Some(from) = self.feature_index_of(feature_id) else {
+            return false;
+        };
+        if to_position >= self.features.len() {
+            return false;
+        }
+        let feature = self.features.remove(from);
+        self.features.insert(to_position, feature);
+        self.tip = self.features.len().checked_sub(1);
+        true
+    }
+
+    /// Transfers a feature by persistent id from another body into this one.
+    pub fn move_object_to_body_by_feature_id(
+        &mut self,
+        source_body: &mut Body,
+        feature_id: u64,
+    ) -> KernelResult<()> {
+        let Some(index) = source_body.feature_index_of(feature_id) else {
+            return Err(KernelError::InvalidArgument(format!(
+                "feature_id {feature_id} not found in source body"
+            )));
+        };
+        self.move_object_to_body(source_body, index)
+    }
+
+    /// Iterates active, non-suppressed features through the current tip.
+    pub fn active_features(&self) -> impl Iterator<Item = &BodyFeature> {
+        let limit = self.tip.map(|tip| tip + 1).unwrap_or(0);
+        self.features
+            .iter()
+            .take(limit)
+            .filter(|feature| !feature.suppressed)
     }
 }
 

@@ -50,6 +50,12 @@ pub enum Outcome {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         downstream_invalidated: Vec<FeatureId>,
     },
+    /// New empty PartDesign body.
+    BodyCreated {
+        body: BodyId,
+        name: String,
+        plane: Plane,
+    },
     /// Empty sketch creation notification. Track 6 persists sketches; Track 1
     /// admits the outcome shape for downstream callers.
     SketchCreated { sketch_id: SketchId, plane: Plane },
@@ -331,6 +337,7 @@ pub enum OutcomeKind {
     PatternCreated,
     FeatureAdded,
     FeatureRecomputed,
+    BodyCreated,
     SketchCreated,
     DocumentReset,
     Measured,
@@ -384,6 +391,7 @@ impl Outcome {
             Self::PatternCreated { .. } => OutcomeKind::PatternCreated,
             Self::FeatureAdded { .. } => OutcomeKind::FeatureAdded,
             Self::FeatureRecomputed { .. } => OutcomeKind::FeatureRecomputed,
+            Self::BodyCreated { .. } => OutcomeKind::BodyCreated,
             Self::SketchCreated { .. } => OutcomeKind::SketchCreated,
             Self::DocumentReset => OutcomeKind::DocumentReset,
             Self::Measured { .. } => OutcomeKind::Measured,

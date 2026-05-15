@@ -13,10 +13,13 @@
 //! that reference the deleted ID fail cleanly with `ApiError::UnknownSolid`
 //! instead of silently aliasing onto a different solid.
 
+use cadkernel_modeling::body::Body;
 use cadkernel_modeling::measure::solid_mass_properties;
 use cadkernel_topology::{BRepModel, Handle, SolidData};
 use serde::{Deserialize, Serialize};
 use std::hash::{DefaultHasher, Hasher};
+
+use crate::command::BodyId;
 
 /// Stable, opaque identifier for a solid inside a [`Document`].
 ///
@@ -78,6 +81,9 @@ pub struct Document {
     /// pattern in `push_history` means the first event gets `FeatureId(1)`,
     /// leaving `FeatureId(0)` as the sentinel for not-yet-assigned events.
     next_feature_id: u64,
+    bodies: Vec<Option<Body>>,
+    next_body_id: u64,
+    active_body: Option<BodyId>,
 }
 
 impl Document {
@@ -136,6 +142,77 @@ impl Document {
         self.history.iter().find(|ev| ev.feature_id == id)
     }
 
+    /// Returns a body by stable id.
+    pub fn body(&self, id: BodyId) -> Option<&Body> {
+        if id.0 == 0 {
+            return None;
+        }
+        self.bodies
+            .get(id.0 as usize)
+            .and_then(|body| body.as_ref())
+    }
+
+    pub(crate) fn body_mut(&mut self, id: BodyId) -> Option<&mut Body> {
+        if id.0 == 0 {
+            return None;
+        }
+        self.bodies
+            .get_mut(id.0 as usize)
+            .and_then(|body| body.as_mut())
+    }
+
+    /// Returns the number of populated bodies.
+    pub fn body_count(&self) -> usize {
+        self.bodies.iter().filter(|body| body.is_some()).count()
+    }
+
+    /// Returns populated body ids in ascending id order.
+    pub fn body_ids(&self) -> Vec<BodyId> {
+        self.bodies
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, body)| body.as_ref().map(|_| BodyId(idx as u64)))
+            .filter(|id| id.0 != 0)
+            .collect()
+    }
+
+    /// Returns the active body id, if one is selected.
+    pub fn active_body(&self) -> Option<BodyId> {
+        self.active_body.filter(|id| self.body(*id).is_some())
+    }
+
+    pub(crate) fn set_active_body(&mut self, id: BodyId) {
+        if self.body(id).is_some() {
+            self.active_body = Some(id);
+        }
+    }
+
+    pub(crate) fn push_body(&mut self, mut body: Body) -> BodyId {
+        let id = BodyId(self.next_body_id + 1);
+        self.next_body_id = id.0;
+        body.id = id.0;
+        let idx = id.0 as usize;
+        if self.bodies.len() <= idx {
+            self.bodies.resize_with(idx + 1, || None);
+        }
+        self.bodies[idx] = Some(body);
+        if self.active_body.is_none() {
+            self.active_body = Some(id);
+        }
+        id
+    }
+
+    pub(crate) fn find_body_for_feature(&self, feature_id: FeatureId) -> Option<BodyId> {
+        if feature_id.0 == 0 {
+            return None;
+        }
+        self.bodies.iter().enumerate().find_map(|(idx, body)| {
+            let body = body.as_ref()?;
+            body.feature_index_of(feature_id.0)
+                .map(|_| BodyId(idx as u64))
+        })
+    }
+
     pub(crate) fn push_history(&mut self, mut event: HistoryEvent) {
         self.next_feature_id += 1;
         event.feature_id = FeatureId(self.next_feature_id);
@@ -173,6 +250,27 @@ impl Document {
             && slot.is_some()
         {
             *slot = None;
+            return true;
+        }
+        false
+    }
+
+    pub(crate) fn replace_solid(
+        &mut self,
+        id: SolidId,
+        model: BRepModel,
+        handle: Handle<SolidData>,
+        label: impl Into<String>,
+    ) -> bool {
+        let idx = id.0 as usize;
+        if let Some(slot) = self.slots.get_mut(idx)
+            && slot.is_some()
+        {
+            *slot = Some(SolidSlot {
+                model,
+                handle: Some(handle),
+                label: label.into(),
+            });
             return true;
         }
         false
@@ -349,6 +447,20 @@ impl Document {
             }
             h.write_u64(event.description.len() as u64);
             h.write(event.description.as_bytes());
+        }
+        h.write_u64(self.body_count() as u64);
+        for body in self.bodies.iter().flatten() {
+            h.write_u64(body.id);
+            h.write_u64(body.name.len() as u64);
+            h.write(body.name.as_bytes());
+            h.write_u64(body.features.len() as u64);
+            for feature in &body.features {
+                h.write_u64(feature.feature_id);
+                h.write_u64(if feature.suppressed { 1 } else { 0 });
+                h.write_u64(feature.spec_kind.len() as u64);
+                h.write(feature.spec_kind.as_bytes());
+            }
+            h.write_u64(body.tip.map(|tip| tip as u64).unwrap_or(u64::MAX));
         }
         h.finish()
     }
