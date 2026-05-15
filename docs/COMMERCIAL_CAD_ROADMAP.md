@@ -130,7 +130,7 @@ Each is an exit gate for the version it's tagged to. Categories: Data (D), API (
 | 26 | U | Theming: light / dark / system-follow persisted |
 | 27 | U | Command palette (`Ctrl-K`) covers every `Command` |
 | 28 | C | Sketcher v3 solver: well-determined / under / over classification + deflation |
-| 29 | C | Part feature suite: extrude, revolve, sweep, loft, helix, coil, threaded hole, rib, draft, shell |
+| 29 | C | Part feature suite: extrude, revolve, sweep, loft, helix, coil, threaded hole, rib, draft, shell — **CLOSED 2026-05-16 (mega-push 814885a..ffbc310)** |
 | 30 | C | Pattern: linear, circular, sketch-driven, table-driven, mirror, fill |
 | 31 | C | Assembly with full mate set + DoF analysis + motion preview |
 | 32 | C | TechDraw v2 with multi-view + section + detail + GD&T-2018 frames + BOM |

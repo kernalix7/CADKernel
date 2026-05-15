@@ -2,6 +2,10 @@
 
 **Active since 2026-05-11.** Lifted only by an explicit entry in [CHANGELOG.md](CHANGELOG.md) crediting a Commercial CAD Roadmap (`docs/COMMERCIAL_CAD_ROADMAP.md`) phase exit gate.
 
+## Lift log
+
+- **2026-05-16** — Item #1 (no new `Command`/`Outcome` variants) **LIFTED** for the mega-push at commits `814885a` → `ffbc310` (5-stage chain). Gate exit: **v1.0 Gate #29** (Part feature suite). Trust row green: `cargo clippy -p cadkernel-api -- -D clippy::unwrap_used -D clippy::panic` enforced in CI (deepens v0.5 Gate #12). 22 new Command variants admitted (8 sketch-driven + 4 dress-up + 6 body/feature-tree + 4 sketch persistence) + 3 new Outcome variants (`FeatureAdded`, `FeatureRecomputed`, `SketchCreated`). Downstream consumers unblocked: 11 viewer dispatcher arms in `crates/viewer/src/app.rs` (Pad/Pocket/Groove/Hole/CountersunkHole/Loft/Pipe/Fillet/Chamfer/Shell/Helix) migrated off direct kernel calls onto `Session::execute`. Workspace 3,382 → 3,662 tests / 0 / 1 ignored. **Item #1 remains lifted for any further Tier 5+ Command additions that block a v1.0 gate; the underlying discipline (no slop additions, real downstream consumer required) still applies.**
+
 The point of this file is to keep the maintainer (and any AI agent operating on the repository) from re-creating the *V37 small-slice spiral* — every short tactical commit had near-zero marginal value vs. the actual commercial-readiness gates. Until the v0.5 / v1.0 gates close, the items below are off-limits.
 
 ## Off-limits until further notice

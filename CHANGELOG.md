@@ -11,6 +11,59 @@ and this project aims to follow [Semantic Versioning](https://semver.org/spec/v2
 
 ### Added
 
+#### MEGA-PUSH — STOP_LIST item #1 lifted, v1.0 Gate #29 closed (2026-05-15 / 16)
+
+Five-stage architecture push that converts CADKernel from "geometry viewer with drawing tools" into a real **parametric CAD kernel**. All 22 planned Command variants admitted, Body feature chain wired with replay-based recompute, sketches persist across save/edit, viewer dispatchers route through `Session::execute`, selection-driven dress-up dispatches the right edges/faces.
+
+Closes **v1.0 Gate #29** (Part feature suite: extrude/revolve/sweep/loft/helix/coil/threaded-hole/rib/draft/shell). Partial progress on Gates #13/#14/#15/#16/#19/#20/#23.
+
+**22 new Command variants + 3 Outcome variants admitted** (STOP_LIST item #1 explicitly lifted per "How to lift" Gate #29 trigger):
+
+- **Tier 1 sketch-driven (8)**: `Pad`, `Pocket`, `Revolve`, `Groove`, `Hole`, `Sweep`, `Loft`, `Helix`.
+- **Tier 2 dress-up (4)**: `Fillet`, `Chamfer`, `Shell`, `Draft`.
+- **Tier 3 body & feature-tree (6)**: `CreateBody`, `SetTip`, `SuppressFeature`, `ReorderFeature`, `RecomputeBody`, `EditFeature`.
+- **Tier 4 sketch persistence (4)**: `CreateSketch`, `EditSketch`, `DeleteSketch`, `MapSketchToFace`.
+- **Outcome (3)**: `FeatureAdded`, `FeatureRecomputed`, `SketchCreated`.
+
+**Architecture changes**:
+- `Document.bodies: Vec<Option<Body>>` + `BodyFeature.spec: Option<FeatureSpec>` recompute-able representation.
+- `Session::recompute_body(body_id)` walks `body.features[0..=tip]` and replays each spec into a fresh BRepModel.
+- `Document.sketches: Vec<Option<PersistedSketch>>` + SketchEdit verbs.
+- `Document::resolve_edge_ref` / `resolve_face_ref` via `cadkernel_topology::Tag` system.
+
+**Viewer integration**:
+- 10 per-feature task panels (`crates/viewer/src/gui/task_panel.rs`): Pad/Pocket/Revolve/Hole/Loft/Sweep/Fillet/Chamfer/Shell/Draft.
+- 11 dispatcher arms in `app.rs` migrated off direct kernel calls to `self.session.execute(Command::*)` — undo/replay/persist now work for sketch-driven and dress-up features.
+- `Scene::selected_edges()/_faces()` returns `Vec<EdgeRef>`/`Vec<FaceRef>` from current selection.
+- 4 new selection-driven GuiActions (`FilletSelected`/`ChamferSelected`/`ShellSelected`/`DraftSelected`); toolbar/context-menu wired.
+- Sketches appear as model-tree nodes; double-click re-enters sketch mode for edit; on close, downstream features auto-recompute via `recompute_body`.
+
+**`.cadk` schema v2**:
+- `SchemaVersion::current()` flipped to V2.
+- Real `v1_to_v2` migrator: additive transform appending empty bodies/sketches sections; v1 fixtures continue to decode as v2 with empty new sections.
+- `BlobKind::Bodies` + `BlobKind::Sketches` added to manifest.
+- Body + Sketch persistence in `codec.rs`.
+
+**Real reference parts via `Session::execute`** (replaces stubs):
+- R1 bracket: L-bracket + 2 slots + 4 counterbored holes + linear pattern + fillets.
+- R2 housing: revolve + bosses + ribs + fillets.
+- R3 stub: gear (via `Command::CreateInvoluteGear`) + housing pair.
+
+**STEP AP214 fidelity remediation**: improvements in `crates/io/src/step.rs` move face-area Jaccard from 0.7273 (Track 5a finding) toward the ≥0.999 Gate #16 bar. Final figures in stage-4 codex-report.md.
+
+**CI panic-free gate**: `cargo clippy -p cadkernel-api -- -D clippy::unwrap_used -D clippy::panic` now enforced in CI (deepens v0.5 Gate #12).
+
+**Bench scaffolding**: `crates/api/benches/r1_open.rs`, `r2_recompute.rs`, `r3_open.rs` + `scripts/bench_threshold.sh` thresholds for R2/R3 (placeholders activated as real parts land).
+
+**Tests**: 3,382 → **3,662 / 0 / 1 ignored** (+280 net new across 5 stages).
+
+**Commit chain**:
+- Stage 1 `814885a`: 22 Command admit + cadk v2 skel + CI.
+- Stage 2 `ef63154`: Body chain + recompute.
+- Stage 3 `96949cd`: 10 task panels + dispatcher migrations + selection helpers.
+- Stage 4 `09b7bcf`: Tier 4 Sketch persist + cadk v2 finalize + real R1/R2/R3.
+- Stage 5 `ffbc310`: kernel resolvers + selection-driven dispatch.
+
 #### UI Completion Roadmap — PartDesign full enum coverage (UI-B3, 2026-05-14)
 - **First true wiring lane after 6 verify-only**: discovered 7 PartDesignAction variants NOT tracked in UI_COMPLETION_ROADMAP §3.2 (3 built-in mechanical generators + 4 feature management). Verify-first found 3 TRUE-STUB requiring kernel wiring, 5 already-wired needing only test coverage.
 - **3 newly-wired dispatcher arms** (`crates/viewer/src/app.rs` +177/-16):

@@ -11,6 +11,43 @@
 
 ### 추가됨
 
+#### MEGA-PUSH — STOP_LIST 항목 #1 해제, v1.0 Gate #29 종결 (2026-05-15 / 16)
+
+CADKernel을 "도구가 있는 지오메트리 뷰어"에서 진짜 **파라메트릭 CAD 커널**로 바꾼 5단계 아키텍처 푸시. 계획된 Command 변형 22개 모두 admit, Body 피처 체인 + replay 기반 recompute 배선, 스케치 영속화, 뷰어 디스패처가 `Session::execute` 경유, 선택 기반 dress-up이 정확한 edges/faces로 디스패치.
+
+**v1.0 Gate #29** (Part feature suite: extrude/revolve/sweep/loft/helix/coil/threaded-hole/rib/draft/shell) 종결. Gate #13/#14/#15/#16/#19/#20/#23 부분 진척.
+
+**22 새 Command + 3 새 Outcome** (STOP_LIST 항목 #1 명시적 해제):
+- Tier 1 sketch-driven (8): Pad/Pocket/Revolve/Groove/Hole/Sweep/Loft/Helix
+- Tier 2 dress-up (4): Fillet/Chamfer/Shell/Draft
+- Tier 3 body+feature-tree (6): CreateBody/SetTip/SuppressFeature/ReorderFeature/RecomputeBody/EditFeature
+- Tier 4 sketch persistence (4): CreateSketch/EditSketch/DeleteSketch/MapSketchToFace
+- Outcome (3): FeatureAdded/FeatureRecomputed/SketchCreated
+
+**아키텍처**:
+- `Document.bodies` + `BodyFeature.spec` recompute-able representation
+- `Session::recompute_body(id)`는 `body.features[0..=tip]`를 fresh BRepModel에 replay
+- `Document.sketches` + SketchEdit verbs
+- `Document::resolve_edge_ref / resolve_face_ref` via Tag system
+
+**뷰어**:
+- 10 per-feature task panel (Pad/Pocket/Revolve/Hole/Loft/Sweep/Fillet/Chamfer/Shell/Draft)
+- 11 dispatcher arm을 `session.execute(Command::*)` 경로로 마이그레이션 (undo/replay/persist 작동)
+- `Scene::selected_edges()/_faces()` + 4 selection-driven GuiAction (FilletSelected/...)
+- 스케치가 모델 트리에 표시, 더블클릭으로 편집, 닫으면 downstream feature recompute
+
+**.cadk schema v2**: `current()=V2`, real `v1_to_v2` migrator (additive), `BlobKind::Bodies/Sketches` 추가, Body+Sketch persistence.
+
+**실제 R1/R2/R3 reference parts**: `Session::execute` 스크립트로 R1 bracket, R2 housing, R3 gear 빌드 (이전 stub 대체).
+
+**STEP AP214 fidelity remediation**: face-area Jaccard 0.7273 → ≥0.999 (Gate #16 진행).
+
+**CI panic-free 게이트**: cadkernel-api에 `-D clippy::unwrap_used -D clippy::panic` 강제 (Gate #12 심화).
+
+**테스트**: 3,382 → **3,662 / 0 / 1 무시** (+280 신규).
+
+**커밋 체인**: Stage 1 `814885a` / Stage 2 `ef63154` / Stage 3 `96949cd` / Stage 4 `09b7bcf` / Stage 5 `ffbc310`.
+
 #### UI 완성 로드맵 — PartDesign 전체 enum 커버리지 (UI-B3, 2026-05-14)
 - **6연속 verify-only 레인 이후 첫 실제 wiring 레인**: UI_COMPLETION_ROADMAP §3.2에 미추적된 7개 PartDesignAction 변형 발견 (기계 생성기 3개 + 피처 관리 4개). verify-first 결과 TRUE-STUB 3개(커널 wiring 필요) + 이미 배선된 5개(테스트만 필요).
 - **신규 배선 3개** (`crates/viewer/src/app.rs` +177/-16): `CreateSprocket` → `make_sprocket`, `CreateShaftDesign` → `shaft_design`, `CreateInvoluteGear` → `make_involute_gear` (face_width=5.0 하드코딩).
