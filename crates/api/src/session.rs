@@ -23,17 +23,19 @@ use cadkernel_modeling::quick::{
     quick_torus, quick_union,
 };
 use cadkernel_modeling::{extrude, mirror_solid};
+use cadkernel_topology::naming::SegmentKind;
 use cadkernel_topology::{BRepModel, FaceData, Handle, SolidData, VertexData};
 use serde::{Deserialize, Serialize};
 
 use crate::command::{
     AxisRef, BodyId, ChamferMode, ChamferSpec, Command, DraftDirection, DraftSpec, EdgeRef,
     ExtrudeKind, FaceRef, FeatureSpec, FilletSpec, GrooveSpec, HelixSpec, HoleKind, HoleSpec,
-    InstanceOverride, LoftMode, LoftSpec, PadDirection, PadSpec, PadType, PlaneRef, PocketSpec,
-    PocketType, RevolveSpec, ShellMode, ShellSpec, SketchRef, SweepMode, SweepSpec,
+    EntityId, InstanceOverride, LoftMode, LoftSpec, PadDirection, PadSpec, PadType, PlaneRef,
+    PocketSpec, PocketType, RevolveSpec, ShellMode, ShellSpec, SketchConstraint, SketchEdit,
+    SketchEntity, SketchId, SketchRef, SweepMode, SweepSpec,
 };
-use crate::document::{Document, FeatureId, HistoryEvent, SolidId, SolidSlot};
-use crate::outcome::Outcome;
+use crate::document::{Document, FeatureId, HistoryEvent, PersistedSketch, SolidId, SolidSlot};
+use crate::outcome::{Outcome, Plane};
 use crate::{ApiError, ApiResult};
 
 /// The execute/replay engine.
@@ -754,6 +756,12 @@ impl Session {
                 angle_rad,
                 direction,
             } => self.dispatch_draft(faces, neutral_plane, *angle_rad, *direction),
+            Command::CreateSketch { plane, name } => self.dispatch_create_sketch(plane, name),
+            Command::EditSketch { sketch, edits } => self.dispatch_edit_sketch(*sketch, edits),
+            Command::DeleteSketch { sketch } => self.dispatch_delete_sketch(*sketch),
+            Command::MapSketchToFace { sketch, face } => {
+                self.dispatch_map_sketch_to_face(*sketch, face)
+            }
             Command::CreateBody { name, base_plane } => self.dispatch_create_body(name, base_plane),
             Command::SetTip { body, feature } => self.dispatch_set_tip(*body, *feature),
             Command::SuppressFeature {
@@ -2442,6 +2450,86 @@ impl Session {
         })
     }
 
+    fn dispatch_create_sketch(&mut self, plane_ref: &PlaneRef, name: &str) -> ApiResult<Outcome> {
+        let plane = plane_from_ref(plane_ref)?;
+        let sketch_name = if name.is_empty() {
+            format!("Sketch{}", self.document.sketch_count() + 1)
+        } else {
+            name.to_string()
+        };
+        let id = self
+            .document
+            .push_sketch(PersistedSketch::new(sketch_name, plane));
+        Ok(Outcome::SketchCreated {
+            sketch_id: id,
+            plane,
+        })
+    }
+
+    fn dispatch_edit_sketch(
+        &mut self,
+        sketch_id: SketchId,
+        edits: &[SketchEdit],
+    ) -> ApiResult<Outcome> {
+        {
+            let sketch = self.document.sketch_mut(sketch_id).ok_or_else(|| {
+                ApiError::InvalidArgument(format!("Track 6 sketch {sketch_id:?} not found"))
+            })?;
+            for edit in edits {
+                apply_sketch_edit(sketch, edit)?;
+            }
+        }
+        self.document.set_active_sketch(sketch_id);
+        self.recompute_sketch_dependents(sketch_id)
+    }
+
+    fn dispatch_delete_sketch(&mut self, sketch_id: SketchId) -> ApiResult<Outcome> {
+        if self.document.sketch(sketch_id).is_none() {
+            return Err(ApiError::InvalidArgument(format!(
+                "Track 6 sketch {sketch_id:?} not found"
+            )));
+        }
+        let dependents = self.features_depending_on_sketch(sketch_id);
+        if !dependents.is_empty() {
+            return Err(ApiError::InvalidArgument(format!(
+                "sketch {sketch_id:?} has dependent features: {dependents:?}"
+            )));
+        }
+        if self.document.remove_sketch(sketch_id) {
+            Ok(Outcome::SolidDeleted {
+                id: SolidId(sketch_id.0 as u32),
+            })
+        } else {
+            Err(ApiError::InvalidArgument(format!(
+                "Track 6 sketch {sketch_id:?} not found"
+            )))
+        }
+    }
+
+    fn dispatch_map_sketch_to_face(
+        &mut self,
+        sketch_id: SketchId,
+        face: &FaceRef,
+    ) -> ApiResult<Outcome> {
+        let index = face_index_from_tag(&face.tag).ok_or_else(|| {
+            ApiError::InvalidArgument("face tag does not contain a generated face index".into())
+        })?;
+        let (model, _) = self.document.solid_brep(face.solid).ok_or_else(|| {
+            ApiError::InvalidArgument(format!("face solid {} not found", face.solid))
+        })?;
+        let (origin, normal) = face_plane(model, index)?;
+        let plane = Plane {
+            origin: [origin.x, origin.y, origin.z],
+            normal: [normal.x, normal.y, normal.z],
+        };
+        let sketch = self.document.sketch_mut(sketch_id).ok_or_else(|| {
+            ApiError::InvalidArgument(format!("Track 6 sketch {sketch_id:?} not found"))
+        })?;
+        sketch.plane = plane;
+        self.document.set_active_sketch(sketch_id);
+        self.recompute_sketch_dependents(sketch_id)
+    }
+
     fn dispatch_create_body(&mut self, name: &str, base_plane: &PlaneRef) -> ApiResult<Outcome> {
         let plane = plane_from_ref(base_plane)?;
         let body_name = if name.is_empty() {
@@ -2826,6 +2914,81 @@ impl Session {
         }
     }
 
+    fn features_depending_on_sketch(&self, sketch_id: SketchId) -> Vec<FeatureId> {
+        let mut out = Vec::new();
+        for body_id in self.document.body_ids() {
+            let Some(body) = self.document.body(body_id) else {
+                continue;
+            };
+            let limit = body.tip.map(|tip| tip + 1).unwrap_or(0);
+            for feature in body.features.iter().take(limit) {
+                let Some(json) = &feature.spec else {
+                    continue;
+                };
+                let Ok(spec) = serde_json::from_value::<FeatureSpec>(json.clone()) else {
+                    continue;
+                };
+                if spec_references_sketch(&spec, sketch_id) {
+                    out.push(FeatureId(feature.feature_id));
+                }
+            }
+        }
+        out.sort();
+        out.dedup();
+        out
+    }
+
+    fn bodies_depending_on_sketch(&self, sketch_id: SketchId) -> Vec<BodyId> {
+        let mut out = Vec::new();
+        for body_id in self.document.body_ids() {
+            let Some(body) = self.document.body(body_id) else {
+                continue;
+            };
+            let limit = body.tip.map(|tip| tip + 1).unwrap_or(0);
+            let depends = body.features.iter().take(limit).any(|feature| {
+                let Some(json) = &feature.spec else {
+                    return false;
+                };
+                serde_json::from_value::<FeatureSpec>(json.clone())
+                    .map(|spec| spec_references_sketch(&spec, sketch_id))
+                    .unwrap_or(false)
+            });
+            if depends {
+                out.push(body_id);
+            }
+        }
+        out
+    }
+
+    fn recompute_sketch_dependents(&mut self, sketch_id: SketchId) -> ApiResult<Outcome> {
+        let mut downstream_invalidated = self.features_depending_on_sketch(sketch_id);
+        let bodies = self.bodies_depending_on_sketch(sketch_id);
+        let mut solid = self
+            .document
+            .solid_ids()
+            .into_iter()
+            .next()
+            .unwrap_or(SolidId(0));
+        for body_id in bodies {
+            if let Outcome::FeatureRecomputed {
+                solid: recomputed,
+                downstream_invalidated: mut invalidated,
+                ..
+            } = self.recompute_body(body_id)?
+            {
+                solid = recomputed;
+                downstream_invalidated.append(&mut invalidated);
+            }
+        }
+        downstream_invalidated.sort();
+        downstream_invalidated.dedup();
+        Ok(Outcome::FeatureRecomputed {
+            feature_id: FeatureId(0),
+            solid,
+            downstream_invalidated,
+        })
+    }
+
     fn active_solid_for_feature(&self, op_name: &str) -> ApiResult<SolidId> {
         if let Some(body_id) = self.document.active_body()
             && let Some(body) = self.document.body(body_id)
@@ -2921,10 +3084,13 @@ impl Session {
     }
 
     fn resolve_sketch_profile(&self, sketch: &SketchRef) -> ApiResult<Vec<Point3>> {
-        let _ = sketch;
-        Err(ApiError::InvalidArgument(
-            "sketch resolution arrives in Track 6".into(),
-        ))
+        let persisted = self.document.sketch(sketch.sketch_id).ok_or_else(|| {
+            ApiError::InvalidArgument(format!(
+                "sketch resolution arrives in Track 6: sketch {:?} not found",
+                sketch.sketch_id
+            ))
+        })?;
+        profile_from_persisted_sketch(persisted)
     }
 
     fn resolve_face_handle(&self, face: &FaceRef) -> ApiResult<(SolidId, Handle<FaceData>)> {
@@ -3054,6 +3220,357 @@ fn spec_kind_to_feature_kind(kind: &str) -> FeatureKind {
         "pattern" => FeatureKind::Pattern,
         _ => FeatureKind::Pad,
     }
+}
+
+fn spec_references_sketch(spec: &FeatureSpec, sketch_id: SketchId) -> bool {
+    match spec {
+        FeatureSpec::Pad(s) => s.sketch.sketch_id == sketch_id,
+        FeatureSpec::Pocket(s) => s.sketch.sketch_id == sketch_id,
+        FeatureSpec::Revolve(s) => s.sketch.sketch_id == sketch_id,
+        FeatureSpec::Groove(s) => s.sketch.sketch_id == sketch_id,
+        FeatureSpec::Sweep(s) => {
+            s.profile_sketch.sketch_id == sketch_id || s.path_sketch.sketch_id == sketch_id
+        }
+        FeatureSpec::Loft(s) => s.profiles.iter().any(|profile| profile.sketch_id == sketch_id),
+        FeatureSpec::Hole(_)
+        | FeatureSpec::Helix(_)
+        | FeatureSpec::Fillet(_)
+        | FeatureSpec::Chamfer(_)
+        | FeatureSpec::Shell(_)
+        | FeatureSpec::Draft(_) => false,
+    }
+}
+
+fn apply_sketch_edit(sketch: &mut PersistedSketch, edit: &SketchEdit) -> ApiResult<()> {
+    match edit {
+        SketchEdit::AddPoint { x, y } => {
+            sketch.entities.push(SketchEntity::Point { x: *x, y: *y });
+        }
+        SketchEdit::AddLine { start, end } => {
+            validate_point_ref(sketch, *start)?;
+            validate_point_ref(sketch, *end)?;
+            if start == end {
+                return Err(ApiError::InvalidArgument(
+                    "sketch line endpoints must differ".into(),
+                ));
+            }
+            sketch.entities.push(SketchEntity::Line {
+                start: *start,
+                end: *end,
+            });
+        }
+        SketchEdit::AddSegment { entity } => {
+            validate_sketch_entity(sketch, entity)?;
+            sketch.entities.push(entity.clone());
+        }
+        SketchEdit::RemoveSegment { entity } => {
+            if !remove_sketch_entity(sketch, *entity) {
+                return Err(ApiError::InvalidArgument(format!(
+                    "sketch entity {entity:?} not found"
+                )));
+            }
+        }
+        SketchEdit::UpdateConstraint { index, constraint } => {
+            validate_sketch_constraint(sketch, constraint)?;
+            let idx = *index as usize;
+            if idx < sketch.constraints.len() {
+                sketch.constraints[idx] = constraint.clone();
+            } else if idx == sketch.constraints.len() {
+                sketch.constraints.push(constraint.clone());
+            } else {
+                return Err(ApiError::InvalidArgument(format!(
+                    "constraint index {index} out of range"
+                )));
+            }
+        }
+        SketchEdit::UpdateParameter { name, value } => {
+            apply_sketch_parameter(sketch, name, *value)?;
+        }
+    }
+    Ok(())
+}
+
+fn validate_sketch_entity(sketch: &PersistedSketch, entity: &SketchEntity) -> ApiResult<()> {
+    match entity {
+        SketchEntity::Point { .. } => Ok(()),
+        SketchEntity::Line { start, end } => {
+            validate_point_ref(sketch, *start)?;
+            validate_point_ref(sketch, *end)?;
+            if start == end {
+                return Err(ApiError::InvalidArgument(
+                    "sketch line endpoints must differ".into(),
+                ));
+            }
+            Ok(())
+        }
+        SketchEntity::Circle { center, radius } => {
+            validate_point_ref(sketch, *center)?;
+            if *radius <= 0.0 {
+                return Err(ApiError::InvalidArgument(format!(
+                    "circle radius must be > 0, got {radius}"
+                )));
+            }
+            Ok(())
+        }
+        SketchEntity::Arc {
+            center,
+            start_point,
+            end_point,
+            radius,
+            ..
+        } => {
+            validate_point_ref(sketch, *center)?;
+            validate_point_ref(sketch, *start_point)?;
+            validate_point_ref(sketch, *end_point)?;
+            if *radius <= 0.0 {
+                return Err(ApiError::InvalidArgument(format!(
+                    "arc radius must be > 0, got {radius}"
+                )));
+            }
+            Ok(())
+        }
+    }
+}
+
+fn validate_sketch_constraint(
+    sketch: &PersistedSketch,
+    constraint: &SketchConstraint,
+) -> ApiResult<()> {
+    match constraint {
+        SketchConstraint::Horizontal { line }
+        | SketchConstraint::Vertical { line }
+        | SketchConstraint::Length { line, .. } => validate_line_ref(sketch, *line),
+        SketchConstraint::Fixed { point, .. } => validate_point_ref(sketch, *point),
+        SketchConstraint::Distance { a, b, distance } => {
+            validate_point_ref(sketch, *a)?;
+            validate_point_ref(sketch, *b)?;
+            if *distance <= 0.0 {
+                return Err(ApiError::InvalidArgument(format!(
+                    "distance constraint must be > 0, got {distance}"
+                )));
+            }
+            Ok(())
+        }
+    }
+}
+
+fn apply_sketch_parameter(
+    sketch: &mut PersistedSketch,
+    name: &str,
+    value: f64,
+) -> ApiResult<()> {
+    match name {
+        "origin_x" => sketch.plane.origin[0] = value,
+        "origin_y" => sketch.plane.origin[1] = value,
+        "origin_z" => sketch.plane.origin[2] = value,
+        "normal_x" => sketch.plane.normal[0] = value,
+        "normal_y" => sketch.plane.normal[1] = value,
+        "normal_z" => sketch.plane.normal[2] = value,
+        "" => {}
+        other => {
+            return Err(ApiError::InvalidArgument(format!(
+                "unknown sketch parameter {other:?}"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn remove_sketch_entity(sketch: &mut PersistedSketch, entity: EntityId) -> bool {
+    let mut seen = 0_u64;
+    let pos = sketch.entities.iter().position(|candidate| {
+        let matches_kind = matches!(
+            (entity, candidate),
+            (EntityId::Point { .. }, SketchEntity::Point { .. })
+                | (EntityId::Line { .. }, SketchEntity::Line { .. })
+                | (EntityId::Circle { .. }, SketchEntity::Circle { .. })
+                | (EntityId::Arc { .. }, SketchEntity::Arc { .. })
+        );
+        if !matches_kind {
+            return false;
+        }
+        let target = match entity {
+            EntityId::Point { index }
+            | EntityId::Line { index }
+            | EntityId::Circle { index }
+            | EntityId::Arc { index } => index,
+        };
+        let found = seen == target;
+        seen += 1;
+        found
+    });
+    if let Some(pos) = pos {
+        sketch.entities.remove(pos);
+        true
+    } else {
+        false
+    }
+}
+
+fn validate_point_ref(sketch: &PersistedSketch, index: u64) -> ApiResult<()> {
+    let points = sketch_point_count(sketch);
+    if index >= points {
+        return Err(ApiError::InvalidArgument(format!(
+            "point index {index} out of range (points={points})"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_line_ref(sketch: &PersistedSketch, index: u64) -> ApiResult<()> {
+    let lines = sketch_line_count(sketch);
+    if index >= lines {
+        return Err(ApiError::InvalidArgument(format!(
+            "line index {index} out of range (lines={lines})"
+        )));
+    }
+    Ok(())
+}
+
+fn sketch_point_count(sketch: &PersistedSketch) -> u64 {
+    sketch
+        .entities
+        .iter()
+        .filter(|entity| matches!(entity, SketchEntity::Point { .. }))
+        .count() as u64
+}
+
+fn sketch_line_count(sketch: &PersistedSketch) -> u64 {
+    sketch
+        .entities
+        .iter()
+        .filter(|entity| matches!(entity, SketchEntity::Line { .. }))
+        .count() as u64
+}
+
+fn profile_from_persisted_sketch(sketch: &PersistedSketch) -> ApiResult<Vec<Point3>> {
+    let mut points = Vec::new();
+    let mut lines = Vec::new();
+    for entity in &sketch.entities {
+        match *entity {
+            SketchEntity::Point { x, y } => points.push([x, y]),
+            SketchEntity::Line { start, end } => lines.push((start as usize, end as usize)),
+            SketchEntity::Circle { .. } | SketchEntity::Arc { .. } => {}
+        }
+    }
+    if points.len() < 3 {
+        return Err(ApiError::InvalidArgument(format!(
+            "sketch {:?} has fewer than 3 profile points",
+            sketch.id
+        )));
+    }
+    let ordered = if lines.is_empty() {
+        (0..points.len()).collect()
+    } else {
+        ordered_closed_profile(&points, &lines)?
+    };
+    Ok(ordered
+        .into_iter()
+        .map(|idx| plane_to_world(&sketch.plane, points[idx][0], points[idx][1]))
+        .collect())
+}
+
+fn ordered_closed_profile(points: &[[f64; 2]], lines: &[(usize, usize)]) -> ApiResult<Vec<usize>> {
+    if lines.len() < 3 {
+        return Err(ApiError::InvalidArgument(
+            "sketch profile needs at least 3 line segments".into(),
+        ));
+    }
+    let mut adjacency: Vec<Vec<(usize, usize)>> = vec![Vec::new(); points.len()];
+    for (line_idx, (a, b)) in lines.iter().copied().enumerate() {
+        if a >= points.len() || b >= points.len() {
+            return Err(ApiError::InvalidArgument(format!(
+                "sketch line {line_idx} references missing point"
+            )));
+        }
+        if a == b {
+            return Err(ApiError::InvalidArgument(format!(
+                "sketch line {line_idx} has identical endpoints"
+            )));
+        }
+        adjacency[a].push((line_idx, b));
+        adjacency[b].push((line_idx, a));
+    }
+    let used_points: Vec<usize> = adjacency
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, edges)| (!edges.is_empty()).then_some(idx))
+        .collect();
+    if used_points.len() < 3 {
+        return Err(ApiError::InvalidArgument(
+            "sketch profile has fewer than 3 connected points".into(),
+        ));
+    }
+    if let Some(point) = used_points
+        .iter()
+        .find(|idx| adjacency[**idx].len() != 2)
+        .copied()
+    {
+        return Err(ApiError::InvalidArgument(format!(
+            "sketch profile is open or branched at point {point}"
+        )));
+    }
+
+    let start = used_points[0];
+    let mut ordered = vec![start];
+    let mut current = adjacency[start][0].1;
+    let mut previous_line = adjacency[start][0].0;
+    let mut used_lines = std::collections::HashSet::from([previous_line]);
+
+    while current != start {
+        if ordered.len() > lines.len() {
+            return Err(ApiError::InvalidArgument(
+                "sketch profile does not form a single closed loop".into(),
+            ));
+        }
+        ordered.push(current);
+        let Some((next_line, next_point)) = adjacency[current]
+            .iter()
+            .copied()
+            .find(|(line_idx, _)| *line_idx != previous_line)
+        else {
+            return Err(ApiError::InvalidArgument(
+                "sketch profile chain terminated early".into(),
+            ));
+        };
+        if !used_lines.insert(next_line) && next_point != start {
+            return Err(ApiError::InvalidArgument(
+                "sketch profile revisits a line before closing".into(),
+            ));
+        }
+        previous_line = next_line;
+        current = next_point;
+    }
+    if used_lines.len() != lines.len() {
+        return Err(ApiError::InvalidArgument(
+            "sketch profile has multiple disconnected loops".into(),
+        ));
+    }
+    Ok(ordered)
+}
+
+fn plane_to_world(plane: &Plane, x: f64, y: f64) -> Point3 {
+    let origin = Point3::new(plane.origin[0], plane.origin[1], plane.origin[2]);
+    let normal = Vec3::new(plane.normal[0], plane.normal[1], plane.normal[2])
+        .normalized()
+        .unwrap_or(Vec3::Z);
+    let hint = if normal.dot(Vec3::X).abs() < 0.9 {
+        Vec3::X
+    } else {
+        Vec3::Y
+    };
+    let x_axis = (hint - normal * normal.dot(hint))
+        .normalized()
+        .unwrap_or(Vec3::X);
+    let y_axis = normal.cross(x_axis);
+    origin + x_axis * x + y_axis * y
+}
+
+fn face_index_from_tag(tag: &cadkernel_topology::Tag) -> Option<u32> {
+    tag.segments.last().and_then(|segment| match segment.kind {
+        SegmentKind::Generated(index) | SegmentKind::Split(index) => Some(index),
+        SegmentKind::Modified | SegmentKind::Merged => None,
+    })
 }
 
 fn plane_from_ref(plane: &PlaneRef) -> ApiResult<crate::outcome::Plane> {
@@ -3483,6 +4000,14 @@ fn history_description(cmd: &Command, outcome: &Outcome) -> String {
             },
             _,
         ) => format!("Draft {} faces angle={angle_rad}", faces.len()),
+        (Command::CreateSketch { name, .. }, _) => format!("CreateSketch {name}"),
+        (Command::EditSketch { sketch, edits }, _) => {
+            format!("EditSketch {sketch:?} ({} edits)", edits.len())
+        }
+        (Command::DeleteSketch { sketch }, _) => format!("DeleteSketch {sketch:?}"),
+        (Command::MapSketchToFace { sketch, face }, _) => {
+            format!("MapSketchToFace {sketch:?} -> {}", face.solid)
+        }
         (Command::CreateBody { name, .. }, _) => format!("CreateBody {name}"),
         (Command::SetTip { body, feature }, _) => {
             format!("SetTip {body:?} -> {feature}")

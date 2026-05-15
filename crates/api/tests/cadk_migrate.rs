@@ -61,19 +61,26 @@ fn migrate_preserves_compression_and_thumbnail_flags() {
 }
 
 #[test]
-fn migrate_is_no_op_on_committed_v0_golden_fixture() {
-    // The fixture directory is named "cadk-v0" (roadmap milestone
-    // label) but the on-disk schema_version is 1, so SchemaVersion::V1
-    // is the right match. This test pins that the committed fixture
-    // continues to satisfy the "V1 → V1 no-op" contract.
+fn migrate_v1_fixture_to_v2_round_trips_via_decoder() {
+    // After Wave 3 (T5b), `current()` returns V2 and `migrate_to_current`
+    // applies the V1 → V2 transform, which IS an additive bytes-change
+    // (new empty bodies/sketches sections). The pre-Wave-3 "no-op" pin
+    // no longer applies. New contract: the migrated bytes must still
+    // decode as the same Vec<Command>, which is what users actually
+    // care about.
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests")
         .join("fixtures")
         .join("cadk-v0")
         .join("r1_canonical.cadk");
     let bytes = std::fs::read(&fixture).expect("read v0 fixture");
-    let migrated = cadk::migrate_to_current(&bytes).expect("migrate v0 fixture");
-    assert_eq!(migrated, bytes, "v0 fixture must round-trip unchanged");
+    let original_log = cadk::decode(&bytes).expect("decode original v1 fixture");
+    let migrated = cadk::migrate_to_current(&bytes).expect("migrate v1 fixture");
+    let migrated_log = cadk::decode(&migrated).expect("decode migrated bytes");
+    assert_eq!(
+        original_log, migrated_log,
+        "V1 → V2 migration must preserve the command log"
+    );
 }
 
 #[test]

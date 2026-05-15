@@ -830,13 +830,18 @@ pub fn import_step(content: &str) -> KernelResult<BRepModel> {
                                     file.entities.get(bound)
                                 {
                                     for &oe_id in edges {
-                                        if let Some(StepEntity::OrientedEdge { edge, .. }) =
-                                            file.entities.get(&oe_id)
+                                        if let Some(StepEntity::OrientedEdge {
+                                            edge,
+                                            orientation,
+                                        }) = file.entities.get(&oe_id)
                                         {
-                                            if let Some(StepEntity::EdgeCurve { start, .. }) =
-                                                file.entities.get(edge)
+                                            if let Some(StepEntity::EdgeCurve {
+                                                start, end, ..
+                                            }) = file.entities.get(edge)
                                             {
-                                                if let Some(&vh) = vertex_map.get(start) {
+                                                let vertex_ref =
+                                                    if *orientation { start } else { end };
+                                                if let Some(&vh) = vertex_map.get(vertex_ref) {
                                                     if !face_verts.contains(&vh) {
                                                         face_verts.push(vh);
                                                     }
@@ -1032,9 +1037,22 @@ pub fn export_step(model: &BRepModel) -> KernelResult<String> {
             if let Some(he) = model.half_edges.get(he_h) {
                 if let Some(edge_h) = he.edge {
                     if let Some(&ec_id) = edge_step_ids.get(&edge_h.index()) {
+                        let orientation = model
+                            .edges
+                            .get(edge_h)
+                            .and_then(|edge| {
+                                if edge.half_edge_a == Some(he_h) {
+                                    Some(true)
+                                } else if edge.half_edge_b == Some(he_h) {
+                                    Some(false)
+                                } else {
+                                    None
+                                }
+                            })
+                            .unwrap_or(true);
                         let oe_id = w.add_entity(StepEntity::OrientedEdge {
                             edge: ec_id,
-                            orientation: true,
+                            orientation,
                         });
                         oriented_edges.push(oe_id);
                     }

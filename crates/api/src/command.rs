@@ -15,7 +15,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::document::{FeatureId, SolidId};
-use cadkernel_topology::Tag;
+use cadkernel_topology::{EntityKind, OperationId, Tag};
 
 /// Every state-mutating operation a [`Session`](crate::Session) accepts.
 ///
@@ -285,6 +285,32 @@ pub enum Command {
         angle_rad: f64,
         #[serde(default)]
         direction: DraftDirection,
+    },
+    /// Create an empty persisted sketch on a document plane.
+    CreateSketch {
+        #[serde(default)]
+        plane: PlaneRef,
+        #[serde(default)]
+        name: String,
+    },
+    /// Apply persistent sketch edits and recompute dependent body features.
+    EditSketch {
+        #[serde(default)]
+        sketch: SketchId,
+        #[serde(default)]
+        edits: Vec<SketchEdit>,
+    },
+    /// Delete a persisted sketch if no active feature depends on it.
+    DeleteSketch {
+        #[serde(default)]
+        sketch: SketchId,
+    },
+    /// Reattach a persisted sketch to a referenced planar face.
+    MapSketchToFace {
+        #[serde(default)]
+        sketch: SketchId,
+        #[serde(default)]
+        face: FaceRef,
     },
     /// Create an empty PartDesign body and make it active when there is no
     /// active body yet.
@@ -638,6 +664,10 @@ impl Command {
             Self::Chamfer { .. } => "chamfer",
             Self::Shell { .. } => "shell",
             Self::Draft { .. } => "draft",
+            Self::CreateSketch { .. } => "create_sketch",
+            Self::EditSketch { .. } => "edit_sketch",
+            Self::DeleteSketch { .. } => "delete_sketch",
+            Self::MapSketchToFace { .. } => "map_sketch_to_face",
             Self::CreateBody { .. } => "create_body",
             Self::SetTip { .. } => "set_tip",
             Self::SuppressFeature { .. } => "suppress_feature",
@@ -2048,7 +2078,166 @@ pub struct SketchId(pub u64);
 /// Reference to a sketch profile or path.
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
 pub struct SketchRef {
+    #[serde(default)]
     pub sketch_id: SketchId,
+}
+
+/// Serializable sketch geometry used by persisted sketches and edit commands.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "entity", rename_all = "snake_case")]
+pub enum SketchEntity {
+    Point {
+        #[serde(default)]
+        x: f64,
+        #[serde(default)]
+        y: f64,
+    },
+    Line {
+        #[serde(default)]
+        start: u64,
+        #[serde(default)]
+        end: u64,
+    },
+    Circle {
+        #[serde(default)]
+        center: u64,
+        #[serde(default)]
+        radius: f64,
+    },
+    Arc {
+        #[serde(default)]
+        center: u64,
+        #[serde(default)]
+        start_point: u64,
+        #[serde(default)]
+        end_point: u64,
+        #[serde(default)]
+        radius: f64,
+        #[serde(default)]
+        start_angle: f64,
+        #[serde(default)]
+        end_angle: f64,
+    },
+}
+
+impl Default for SketchEntity {
+    fn default() -> Self {
+        Self::Point { x: 0.0, y: 0.0 }
+    }
+}
+
+/// Typed reference to an entity inside a persisted sketch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "entity", rename_all = "snake_case")]
+pub enum EntityId {
+    Point {
+        #[serde(default)]
+        index: u64,
+    },
+    Line {
+        #[serde(default)]
+        index: u64,
+    },
+    Circle {
+        #[serde(default)]
+        index: u64,
+    },
+    Arc {
+        #[serde(default)]
+        index: u64,
+    },
+}
+
+impl Default for EntityId {
+    fn default() -> Self {
+        Self::Point { index: 0 }
+    }
+}
+
+/// Serializable subset of existing sketch constraints.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "constraint", rename_all = "snake_case")]
+pub enum SketchConstraint {
+    Horizontal {
+        #[serde(default)]
+        line: u64,
+    },
+    Vertical {
+        #[serde(default)]
+        line: u64,
+    },
+    Fixed {
+        #[serde(default)]
+        point: u64,
+        #[serde(default)]
+        x: f64,
+        #[serde(default)]
+        y: f64,
+    },
+    Distance {
+        #[serde(default)]
+        a: u64,
+        #[serde(default)]
+        b: u64,
+        #[serde(default)]
+        distance: f64,
+    },
+    Length {
+        #[serde(default)]
+        line: u64,
+        #[serde(default)]
+        length: f64,
+    },
+}
+
+impl Default for SketchConstraint {
+    fn default() -> Self {
+        Self::Horizontal { line: 0 }
+    }
+}
+
+/// Mutation applied to a persisted sketch.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "edit", rename_all = "snake_case")]
+pub enum SketchEdit {
+    AddPoint {
+        #[serde(default)]
+        x: f64,
+        #[serde(default)]
+        y: f64,
+    },
+    AddLine {
+        #[serde(default)]
+        start: u64,
+        #[serde(default)]
+        end: u64,
+    },
+    AddSegment {
+        #[serde(default)]
+        entity: SketchEntity,
+    },
+    RemoveSegment {
+        #[serde(default)]
+        entity: EntityId,
+    },
+    UpdateConstraint {
+        #[serde(default)]
+        index: u64,
+        #[serde(default)]
+        constraint: SketchConstraint,
+    },
+    UpdateParameter {
+        #[serde(default)]
+        name: String,
+        #[serde(default)]
+        value: f64,
+    },
+}
+
+impl Default for SketchEdit {
+    fn default() -> Self {
+        Self::AddPoint { x: 0.0, y: 0.0 }
+    }
 }
 
 /// Reference to a face by owning solid and persistent topology tag.
@@ -2056,6 +2245,15 @@ pub struct SketchRef {
 pub struct FaceRef {
     pub solid: SolidId,
     pub tag: Tag,
+}
+
+impl Default for FaceRef {
+    fn default() -> Self {
+        Self {
+            solid: SolidId(0),
+            tag: Tag::generated(EntityKind::Face, OperationId(1), 0),
+        }
+    }
 }
 
 /// Reference to an edge by owning solid and persistent topology tag.

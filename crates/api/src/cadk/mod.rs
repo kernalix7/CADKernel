@@ -21,11 +21,12 @@ pub mod header;
 pub mod manifest;
 pub mod migrate;
 
-pub use autosave::{AutosaveEntry, AutosavePolicy, list_snapshots, prune, recover_latest};
+pub use autosave::{list_snapshots, prune, recover_latest, AutosaveEntry, AutosavePolicy};
 pub use codec::{
-    BlobInfo, CadkSummary, SaveOptions, decode, decode_thumbnail, encode, encode_with_options,
-    encode_with_thumbnail, inspect, inspect_path,
+    decode, decode_document_data, decode_thumbnail, encode, encode_with_options,
+    encode_with_thumbnail, inspect, inspect_path, BlobInfo, CadkBodyFeatureSnapshot,
+    CadkBodySnapshot, CadkDocumentData, CadkHandleSnapshot, CadkSummary, SaveOptions,
 };
 pub use header::{CadkFlags, CadkHeader, MAGIC};
 pub use manifest::{BlobKind, BlobRecord, Manifest};
-pub use migrate::{SchemaVersion, migrate_to_current};
+pub use migrate::{migrate_to_current, SchemaVersion};

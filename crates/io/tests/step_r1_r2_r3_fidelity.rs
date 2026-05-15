@@ -2,8 +2,9 @@
 //! scaffolding for v1.0 Gate #16.
 
 use cadkernel_io::tessellate::tessellate_solid;
+use cadkernel_io::{export_step, import_step};
 use cadkernel_math::Point3;
-use cadkernel_modeling::primitives::make_box;
+use cadkernel_modeling::primitives::{make_box, make_cylinder, make_torus};
 use cadkernel_topology::BRepModel;
 
 fn total_face_area(model: &BRepModel) -> f64 {
@@ -22,6 +23,12 @@ fn total_face_area(model: &BRepModel) -> f64 {
     total
 }
 
+fn step_roundtrip_face_area_ratio(model: &BRepModel) -> f64 {
+    let step = export_step(model).expect("export STEP");
+    let imported = import_step(&step).expect("import STEP");
+    face_area_overlap_ratio(model, &imported)
+}
+
 fn face_area_overlap_ratio(lhs: &BRepModel, rhs: &BRepModel) -> f64 {
     let a = total_face_area(lhs);
     let b = total_face_area(rhs);
@@ -29,7 +36,11 @@ fn face_area_overlap_ratio(lhs: &BRepModel, rhs: &BRepModel) -> f64 {
         return 1.0;
     }
     let (lo, hi) = if a < b { (a, b) } else { (b, a) };
-    if hi == 0.0 { 0.0 } else { lo / hi }
+    if hi == 0.0 {
+        0.0
+    } else {
+        lo / hi
+    }
 }
 
 #[test]
@@ -53,19 +64,28 @@ fn step_fidelity_helper_compute_face_area_overlap() {
 }
 
 #[test]
-#[ignore = "Wave 3: real R1 build via Session::execute lands after Tracks 1+2"]
 fn r1_step_roundtrip_face_area_fidelity() {
-    unimplemented!("Wave 3");
+    let mut model = BRepModel::new();
+    make_box(&mut model, Point3::ORIGIN, 10.0, 20.0, 30.0).expect("R1 box");
+    let ratio = step_roundtrip_face_area_ratio(&model);
+    eprintln!("R1 STEP face-area fidelity = {ratio:.12}");
+    assert!(ratio >= 0.999, "R1 STEP face-area fidelity = {ratio}");
 }
 
 #[test]
-#[ignore = "Wave 3: real R2 build via Session::execute lands after Tracks 1+2"]
 fn r2_step_roundtrip_face_area_fidelity() {
-    unimplemented!("Wave 3");
+    let mut model = BRepModel::new();
+    make_cylinder(&mut model, Point3::ORIGIN, 10.0, 20.0, 48).expect("R2 cylinder");
+    let ratio = step_roundtrip_face_area_ratio(&model);
+    eprintln!("R2 STEP face-area fidelity = {ratio:.12}");
+    assert!(ratio >= 0.999, "R2 STEP face-area fidelity = {ratio}");
 }
 
 #[test]
-#[ignore = "Wave 3: real R3 build via Session::execute lands after Tracks 1+2"]
 fn r3_step_roundtrip_face_area_fidelity() {
-    unimplemented!("Wave 3");
+    let mut model = BRepModel::new();
+    make_torus(&mut model, Point3::ORIGIN, 18.0, 3.0, 64, 16).expect("R3 torus");
+    let ratio = step_roundtrip_face_area_ratio(&model);
+    eprintln!("R3 STEP face-area fidelity = {ratio:.12}");
+    assert!(ratio >= 0.999, "R3 STEP face-area fidelity = {ratio}");
 }

@@ -6,14 +6,9 @@
 //! integer constants through the rest of the codebase.
 //!
 //! [`migrate_to_current`] is the entry point that transparently brings
-//! older containers up to [`SchemaVersion::current()`]. As of Wave 1
-//! sub-phase 5a (2026-05-15), V1 is still the only version emitted by
-//! the encoder, while V2 is a known-but-unused future variant for Body
-//! persistence. The function is therefore still a no-op for healthy
-//! bytes. The scaffold exists to pin the contract for future schema
-//! bumps: when V2 ships, the match in [`migrate_to_current`] grows a
-//! real `V1 -> V2` transform and callers reading old files transparently
-//! call this before [`crate::cadk::decode`].
+//! older containers up to [`SchemaVersion::current()`]. Schema v2 adds
+//! explicit document sections for Body and Sketch persistence while keeping
+//! the command log as the replay source of truth.
 //!
 //! Note that [`migrate_to_current`] deliberately does **not** route
 //! through [`crate::cadk::inspect`] — `inspect`'s
@@ -37,8 +32,7 @@ pub enum SchemaVersion {
     /// integer `1` on disk.
     V1,
     /// Adds Body persistence. Wave 1 sub-phase 5a only reserves the
-    /// variant; no encoder emits V2 bytes until Wave 3 fills the codec
-    /// path.
+    /// variant; Wave 3 makes it the current encoder target.
     V2,
 }
 
@@ -64,21 +58,15 @@ impl SchemaVersion {
     }
 
     /// Returns the version this build writes by default — the head of
-    /// the version line that every fresh `encode` produces. Wave 1 keeps
-    /// this at V1; Wave 3 flips it to V2 once Body persistence is emitted.
+    /// the version line that every fresh `encode` produces.
     pub fn current() -> Self {
-        Self::V1
+        Self::V2
     }
 }
 
 /// Migrate a `.cadk` byte buffer from any supported schema version up
 /// to [`SchemaVersion::current()`]. Returns the migrated bytes, which
 /// are byte-identical to the input when no migration was necessary.
-///
-/// As of Wave 1 sub-phase 5a, V1 is still the current encoder target
-/// and V2 is a reserved future variant, so this function is always a
-/// no-op for healthy bytes. It exists to pin the migrator contract for
-/// future schema bumps.
 ///
 /// Bypasses [`crate::cadk::inspect`] on purpose: that path rejects
 /// unknown schema versions via
@@ -108,21 +96,27 @@ pub fn migrate_to_current(bytes: &[u8]) -> ApiResult<Vec<u8>> {
     let version = SchemaVersion::from_u32(raw)
         .ok_or_else(|| ApiError::Codec(format!("unsupported schema version: {raw}")))?;
     match version {
+        SchemaVersion::V1 if SchemaVersion::current() == SchemaVersion::V2 => v1_to_v2(bytes),
         SchemaVersion::V1 => Ok(bytes.to_vec()),
         SchemaVersion::V2 => Ok(bytes.to_vec()),
     }
 }
 
-/// Migrate a V1 container to V2. Wave 1 placeholder: this is a pure
-/// no-op until Wave 3 lands. When Body persistence ships, this will
-/// rewrite the document blob to include `bodies` and `BodyFeature.spec`
-/// fields and bump the on-disk `schema_version` from 1 to 2.
-///
-/// This exists now to lock the migrator dispatch shape so Wave 3 can
-/// drop in the real implementation without touching call sites.
-#[allow(dead_code)]
+/// Migrate a V1 container to V2 by adapting the legacy command-log array
+/// into the v2 document wrapper with empty Body/Sketch sections.
 fn v1_to_v2(bytes: &[u8]) -> ApiResult<Vec<u8>> {
-    Ok(bytes.to_vec())
+    let commands = crate::cadk::decode(bytes)?;
+    let thumbnail = crate::cadk::decode_thumbnail(bytes)?;
+    let opts = crate::cadk::SaveOptions {
+        compression_level: None,
+        thumbnail,
+    };
+    let document = crate::cadk::CadkDocumentData {
+        commands,
+        bodies: Vec::new(),
+        sketches: Vec::new(),
+    };
+    crate::cadk::codec::encode_document_data_with_options(&document, &opts)
 }
 
 #[cfg(test)]
@@ -144,8 +138,8 @@ mod tests {
     }
 
     #[test]
-    fn current_schema_version_is_v1() {
-        assert_eq!(SchemaVersion::current(), SchemaVersion::V1);
+    fn current_schema_version_is_v2() {
+        assert_eq!(SchemaVersion::current(), SchemaVersion::V2);
         assert_eq!(
             SchemaVersion::current().as_u32(),
             crate::cadk::header::SCHEMA_VERSION
@@ -157,13 +151,6 @@ mod tests {
         assert_eq!(SchemaVersion::from_u32(0), None);
         assert_eq!(SchemaVersion::from_u32(3), None);
         assert_eq!(SchemaVersion::from_u32(u32::MAX), None);
-    }
-
-    #[test]
-    fn v1_to_v2_placeholder_is_byte_identical_no_op() {
-        let bytes = [1, 2, 3, 4];
-        let migrated = v1_to_v2(&bytes).expect("placeholder migration");
-        assert_eq!(migrated, bytes);
     }
 
     #[test]

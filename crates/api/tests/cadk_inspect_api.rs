@@ -39,7 +39,7 @@ fn inspect_uncompressed_container_reports_v0_layout() {
     let bytes = cadk::encode(&sample_log()).unwrap();
     let summary = cadk::inspect(&bytes).unwrap();
 
-    assert_eq!(summary.schema_version, 1);
+    assert_eq!(summary.schema_version, 2);
     assert_eq!(summary.flags, 0);
     assert_eq!(summary.total_size as usize, bytes.len());
     assert_eq!(summary.blob_count, 1);

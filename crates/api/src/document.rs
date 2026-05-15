@@ -19,13 +19,14 @@ use cadkernel_topology::{BRepModel, Handle, SolidData};
 use serde::{Deserialize, Serialize};
 use std::hash::{DefaultHasher, Hasher};
 
-use crate::command::BodyId;
+use crate::command::{BodyId, SketchConstraint, SketchEntity, SketchId};
+use crate::outcome::Plane;
 
 /// Stable, opaque identifier for a solid inside a [`Document`].
 ///
 /// IDs are monotonically increasing and never reused. Persistent across
 /// save/open via the JSON representation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct SolidId(pub u32);
 
@@ -84,6 +85,9 @@ pub struct Document {
     bodies: Vec<Option<Body>>,
     next_body_id: u64,
     active_body: Option<BodyId>,
+    sketches: Vec<Option<PersistedSketch>>,
+    next_sketch_id: u64,
+    active_sketch: Option<SketchId>,
 }
 
 impl Document {
@@ -200,6 +204,83 @@ impl Document {
             self.active_body = Some(id);
         }
         id
+    }
+
+    /// Returns a persisted sketch by stable id.
+    pub fn sketch(&self, id: SketchId) -> Option<&PersistedSketch> {
+        if id.0 == 0 {
+            return None;
+        }
+        self.sketches
+            .get(id.0 as usize)
+            .and_then(|sketch| sketch.as_ref())
+    }
+
+    pub(crate) fn sketch_mut(&mut self, id: SketchId) -> Option<&mut PersistedSketch> {
+        if id.0 == 0 {
+            return None;
+        }
+        self.sketches
+            .get_mut(id.0 as usize)
+            .and_then(|sketch| sketch.as_mut())
+    }
+
+    /// Returns the number of populated persisted sketches.
+    pub fn sketch_count(&self) -> usize {
+        self.sketches.iter().filter(|sketch| sketch.is_some()).count()
+    }
+
+    /// Returns populated sketch ids in ascending id order.
+    pub fn sketch_ids(&self) -> Vec<SketchId> {
+        self.sketches
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, sketch)| sketch.as_ref().map(|_| SketchId(idx as u64)))
+            .filter(|id| id.0 != 0)
+            .collect()
+    }
+
+    /// Returns the active sketch id, if the active slot is still populated.
+    pub fn active_sketch(&self) -> Option<SketchId> {
+        self.active_sketch.filter(|id| self.sketch(*id).is_some())
+    }
+
+    pub(crate) fn set_active_sketch(&mut self, id: SketchId) {
+        if self.sketch(id).is_some() {
+            self.active_sketch = Some(id);
+        }
+    }
+
+    pub(crate) fn push_sketch(&mut self, mut sketch: PersistedSketch) -> SketchId {
+        let id = SketchId(self.next_sketch_id + 1);
+        self.next_sketch_id = id.0;
+        sketch.id = id;
+        let idx = id.0 as usize;
+        if self.sketches.len() <= idx {
+            self.sketches.resize_with(idx + 1, || None);
+        }
+        self.sketches[idx] = Some(sketch);
+        if self.active_sketch.is_none() {
+            self.active_sketch = Some(id);
+        }
+        id
+    }
+
+    pub(crate) fn remove_sketch(&mut self, id: SketchId) -> bool {
+        if id.0 == 0 {
+            return false;
+        }
+        let idx = id.0 as usize;
+        if let Some(slot) = self.sketches.get_mut(idx)
+            && slot.is_some()
+        {
+            *slot = None;
+            if self.active_sketch == Some(id) {
+                self.active_sketch = self.sketch_ids().into_iter().next();
+            }
+            return true;
+        }
+        false
     }
 
     pub(crate) fn find_body_for_feature(&self, feature_id: FeatureId) -> Option<BodyId> {
@@ -462,7 +543,43 @@ impl Document {
             }
             h.write_u64(body.tip.map(|tip| tip as u64).unwrap_or(u64::MAX));
         }
+        h.write_u64(self.sketch_count() as u64);
+        for sketch in self.sketches.iter().flatten() {
+            h.write_u64(sketch.id.0);
+            h.write_u64(sketch.name.len() as u64);
+            h.write(sketch.name.as_bytes());
+            for value in sketch.plane.origin {
+                h.write_u64(quantize_f64(value) as u64);
+            }
+            for value in sketch.plane.normal {
+                h.write_u64(quantize_f64(value) as u64);
+            }
+            h.write_u64(sketch.entities.len() as u64);
+            h.write_u64(sketch.constraints.len() as u64);
+        }
         h.finish()
+    }
+}
+
+/// Persisted 2D sketch stored in the API document.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PersistedSketch {
+    pub id: SketchId,
+    pub name: String,
+    pub plane: Plane,
+    pub entities: Vec<SketchEntity>,
+    pub constraints: Vec<SketchConstraint>,
+}
+
+impl PersistedSketch {
+    pub fn new(name: impl Into<String>, plane: Plane) -> Self {
+        Self {
+            id: SketchId(0),
+            name: name.into(),
+            plane,
+            entities: Vec::new(),
+            constraints: Vec::new(),
+        }
     }
 }
 

@@ -13,6 +13,10 @@ pub enum BlobKind {
     Thumbnail,
     /// Command history log.
     History,
+    /// PartDesign Body snapshot payload introduced by schema v2.
+    Bodies,
+    /// Persisted sketch snapshot payload introduced by schema v2.
+    Sketches,
     /// User-attached file (DXF, image, PDF reference).
     Attachment,
     /// Ed25519 signature over the manifest hash.

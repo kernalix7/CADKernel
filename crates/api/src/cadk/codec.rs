@@ -26,6 +26,7 @@ use crate::cadk::header::{CadkFlags, CadkHeader, HEADER_SIZE, MAGIC, SCHEMA_VERS
 use crate::cadk::manifest::{BlobKind, BlobRecord, Manifest};
 use crate::command::Command;
 use crate::{ApiError, ApiResult};
+use serde::{Deserialize, Serialize};
 
 /// Hard upper bound for the decompressed `BlobKind::Document` payload, used to
 /// refuse zstd decompression-bomb payloads where a tiny on-disk blob expands
@@ -49,6 +50,78 @@ pub struct SaveOptions {
     /// Optional thumbnail payload to embed (typically PNG). When
     /// `Some`, behaves like [`encode_with_thumbnail`].
     pub thumbnail: Option<Vec<u8>>,
+}
+
+/// Logical document payload stored in `BlobKind::Document` for schema v2.
+///
+/// Schema v1 used the document blob as a bare `Vec<Command>`. The v2 wrapper
+/// keeps that command log as the replay source of truth and adds snapshot
+/// sections for state that is expensive or impossible to infer in future
+/// schema lines.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CadkDocumentData {
+    /// Applied command prefix. This remains the canonical replay log.
+    #[serde(default)]
+    pub commands: Vec<Command>,
+    /// Persisted PartDesign body snapshots.
+    #[serde(default)]
+    pub bodies: Vec<CadkBodySnapshot>,
+    /// Persisted sketch snapshots. Empty until the sketch persistence lane
+    /// adds a concrete public sketch schema.
+    #[serde(default)]
+    pub sketches: Vec<serde_json::Value>,
+}
+
+/// Serializable v2 snapshot of a PartDesign body.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CadkBodySnapshot {
+    pub id: u64,
+    pub name: String,
+    pub features: Vec<CadkBodyFeatureSnapshot>,
+    pub tip: Option<usize>,
+    pub base_plane_origin: [f64; 3],
+    pub base_plane_normal: [f64; 3],
+    pub current_solid: Option<u32>,
+}
+
+/// Serializable v2 snapshot of one Body feature.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CadkBodyFeatureSnapshot {
+    pub feature_id: u64,
+    pub name: String,
+    pub kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub spec: Option<serde_json::Value>,
+    pub spec_kind: String,
+    pub suppressed: bool,
+    pub solid: CadkHandleSnapshot,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cached_solid: Option<CadkHandleSnapshot>,
+}
+
+/// Raw generational handle representation for snapshots.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CadkHandleSnapshot {
+    pub index: u32,
+    pub generation: u64,
+}
+
+impl CadkDocumentData {
+    fn from_commands(commands: &[Command]) -> Self {
+        Self {
+            commands: commands.to_vec(),
+            bodies: body_snapshots_from_commands(commands),
+            sketches: Vec::new(),
+        }
+    }
+
+    fn from_legacy_commands(commands: Vec<Command>) -> Self {
+        Self {
+            commands,
+            bodies: Vec::new(),
+            sketches: Vec::new(),
+        }
+    }
 }
 
 impl SaveOptions {
@@ -267,6 +340,81 @@ fn read_le_u64(slice: &[u8]) -> u64 {
     u64::from_le_bytes(arr)
 }
 
+fn handle_snapshot<T>(handle: cadkernel_topology::Handle<T>) -> CadkHandleSnapshot {
+    CadkHandleSnapshot {
+        index: handle.index(),
+        generation: handle.generation(),
+    }
+}
+
+fn body_snapshots_from_commands(commands: &[Command]) -> Vec<CadkBodySnapshot> {
+    let Ok(session) = crate::Session::replay(commands) else {
+        return Vec::new();
+    };
+    session
+        .document()
+        .body_ids()
+        .into_iter()
+        .filter_map(|id| {
+            let body = session.document().body(id)?;
+            let features = body
+                .features
+                .iter()
+                .map(|feature| CadkBodyFeatureSnapshot {
+                    feature_id: feature.feature_id,
+                    name: feature.name.clone(),
+                    kind: feature.kind.as_str().to_string(),
+                    spec: feature.spec.clone(),
+                    spec_kind: feature.spec_kind.clone(),
+                    suppressed: feature.suppressed,
+                    solid: handle_snapshot(feature.solid),
+                    cached_solid: feature.cached_solid.map(handle_snapshot),
+                })
+                .collect();
+            Some(CadkBodySnapshot {
+                id: body.id,
+                name: body.name.clone(),
+                features,
+                tip: body.tip,
+                base_plane_origin: body.base_plane_origin,
+                base_plane_normal: body.base_plane_normal,
+                current_solid: body.current_solid,
+            })
+        })
+        .collect()
+}
+
+fn parse_document_data(raw_doc: &[u8]) -> ApiResult<CadkDocumentData> {
+    let value: serde_json::Value = serde_json::from_slice(raw_doc)?;
+    if value.is_array() {
+        let commands: Vec<Command> = serde_json::from_value(value)?;
+        return Ok(CadkDocumentData::from_legacy_commands(commands));
+    }
+    let data: CadkDocumentData = serde_json::from_value(value)?;
+    Ok(data)
+}
+
+fn decode_document_bytes(header: &CadkHeader, doc_body: &[u8]) -> ApiResult<Vec<u8>> {
+    if header.flags & CadkFlags::DOCUMENT_COMPRESSED == 0 {
+        return Ok(doc_body.to_vec());
+    }
+    use std::io::Read;
+    let decoder =
+        zstd::Decoder::new(doc_body).map_err(|e| ApiError::Codec(format!("zstd decode: {e}")))?;
+    let mut decoded = Vec::new();
+    decoder
+        .take(MAX_DECOMPRESSED_DOCUMENT_BYTES + 1)
+        .read_to_end(&mut decoded)
+        .map_err(|e| ApiError::Codec(format!("zstd decode: {e}")))?;
+    if decoded.len() as u64 > MAX_DECOMPRESSED_DOCUMENT_BYTES {
+        return Err(ApiError::Codec(format!(
+            "decompressed document blob exceeds {} MB cap",
+            MAX_DECOMPRESSED_DOCUMENT_BYTES / 1024 / 1024
+        )));
+    }
+    Ok(decoded)
+}
+
 /// Encode a session command log to the `.cadk` v0 container format.
 ///
 /// Currently writes a single `BlobKind::Document` blob whose body is the
@@ -295,8 +443,16 @@ pub fn encode_with_thumbnail(commands: &[Command], thumbnail: Option<&[u8]>) -> 
 /// document blob and sets [`CadkFlags::DOCUMENT_COMPRESSED`]) and
 /// [`SaveOptions::thumbnail`] (appends a `BlobKind::Thumbnail` record).
 pub fn encode_with_options(commands: &[Command], opts: &SaveOptions) -> ApiResult<Vec<u8>> {
+    let document = CadkDocumentData::from_commands(commands);
+    encode_document_data_with_options(&document, opts)
+}
+
+pub(crate) fn encode_document_data_with_options(
+    document: &CadkDocumentData,
+    opts: &SaveOptions,
+) -> ApiResult<Vec<u8>> {
     // 1. Encode the document blob body.
-    let raw_doc = serde_json::to_vec(commands)?;
+    let raw_doc = serde_json::to_vec(document)?;
     let (doc_body, doc_compressed) = match opts.compression_level {
         Some(level) => {
             let compressed = zstd::encode_all(raw_doc.as_slice(), level)
@@ -375,8 +531,16 @@ pub fn encode_with_options(commands: &[Command], opts: &SaveOptions) -> ApiResul
     Ok(out)
 }
 
-/// Decode a `.cadk` v0 container back to its command log.
+/// Decode a `.cadk` container back to its command log.
 pub fn decode(bytes: &[u8]) -> ApiResult<Vec<Command>> {
+    Ok(decode_document_data(bytes)?.commands)
+}
+
+/// Decode a `.cadk` container into the logical v2 document payload.
+///
+/// Schema v1 containers are accepted by adapting the legacy bare command-log
+/// JSON array to a payload with empty `bodies` and `sketches` sections.
+pub fn decode_document_data(bytes: &[u8]) -> ApiResult<CadkDocumentData> {
     if bytes.len() < MAGIC.len() + HEADER_SIZE {
         return Err(ApiError::Codec(format!(
             "container too small: {} bytes",
@@ -435,26 +599,8 @@ pub fn decode(bytes: &[u8]) -> ApiResult<Vec<Command>> {
     // decompression happens after the integrity check, bounded by
     // [`MAX_DECOMPRESSED_DOCUMENT_BYTES`] to refuse zstd "decompression bomb"
     // payloads where a small on-disk blob expands to gigabytes.
-    let commands: Vec<Command> = if header.flags & CadkFlags::DOCUMENT_COMPRESSED != 0 {
-        use std::io::Read;
-        let decoder = zstd::Decoder::new(doc_body)
-            .map_err(|e| ApiError::Codec(format!("zstd decode: {e}")))?;
-        let mut decoded = Vec::new();
-        decoder
-            .take(MAX_DECOMPRESSED_DOCUMENT_BYTES + 1)
-            .read_to_end(&mut decoded)
-            .map_err(|e| ApiError::Codec(format!("zstd decode: {e}")))?;
-        if decoded.len() as u64 > MAX_DECOMPRESSED_DOCUMENT_BYTES {
-            return Err(ApiError::Codec(format!(
-                "decompressed document blob exceeds {} MB cap",
-                MAX_DECOMPRESSED_DOCUMENT_BYTES / 1024 / 1024
-            )));
-        }
-        serde_json::from_slice(&decoded)?
-    } else {
-        serde_json::from_slice(doc_body)?
-    };
-    Ok(commands)
+    let raw_doc = decode_document_bytes(&header, doc_body)?;
+    parse_document_data(&raw_doc)
 }
 
 /// Extract the embedded thumbnail blob, if any, from a `.cadk` container.

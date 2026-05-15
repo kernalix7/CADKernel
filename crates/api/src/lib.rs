@@ -67,13 +67,14 @@ pub mod reference_parts;
 pub use cadkernel_topology::Tag;
 pub use command::{
     AxisRef, BodyId, ChamferMode, ChamferSpec, Command, DraftDirection, DraftSpec, EdgeRef,
-    ExtrudeKind, FaceRef, FeatureSpec, FilletSpec, GrooveSpec, HelixSpec, HoleKind, HoleSpec,
-    InstanceOverride, LoftMode, LoftSpec, PadDirection, PadSpec, PadType, PlaneRef, PocketSpec,
-    PocketType, RevolveSpec, ShellMode, ShellSpec, SketchId, SketchRef, SweepMode, SweepSpec,
-    VariableRadius, command_schemas,
+    EntityId, ExtrudeKind, FaceRef, FeatureSpec, FilletSpec, GrooveSpec, HelixSpec, HoleKind,
+    HoleSpec, InstanceOverride, LoftMode, LoftSpec, PadDirection, PadSpec, PadType, PlaneRef,
+    PocketSpec, PocketType, RevolveSpec, ShellMode, ShellSpec, SketchConstraint, SketchEdit,
+    SketchEntity, SketchId, SketchRef, SweepMode, SweepSpec, VariableRadius, command_schemas,
 };
 pub use document::{
-    AabbSummary, Document, DocumentIssue, FeatureId, HistoryEvent, MeasureSummary, SolidId,
+    AabbSummary, Document, DocumentIssue, FeatureId, HistoryEvent, MeasureSummary,
+    PersistedSketch, SolidId,
 };
 pub use outcome::{Outcome, OutcomeKind, Plane, SolidEntry};
 pub use session::{Session, SessionSnapshot};

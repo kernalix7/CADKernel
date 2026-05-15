@@ -43,6 +43,9 @@ fn schema_version_v2_is_known() {
 }
 
 #[test]
-fn current_schema_version_stays_v1_in_wave1() {
-    assert_eq!(SchemaVersion::current(), SchemaVersion::V1);
+fn current_schema_version_is_v2_after_wave3() {
+    // Wave 1 (Track 5a) admitted V2 variant with placeholder migrator;
+    // current() returned V1. Wave 3 (Track 5b) flipped current() to V2
+    // when the v1_to_v2 migrator + Body/Sketch blob layout landed.
+    assert_eq!(SchemaVersion::current(), SchemaVersion::V2);
 }

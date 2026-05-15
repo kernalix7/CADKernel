@@ -19,7 +19,7 @@ pub const MAGIC: [u8; 4] = *b"CADK";
 
 /// Current header schema version. Bumped whenever the on-disk layout
 /// changes in a way migrators must handle.
-pub const SCHEMA_VERSION: u32 = 1;
+pub const SCHEMA_VERSION: u32 = 2;
 
 /// Fixed on-disk header size in bytes (excluding the 4-byte magic).
 pub const HEADER_SIZE: usize = 64;
@@ -56,7 +56,7 @@ impl CadkFlags {
 /// 64-byte header that follows the 4-byte magic preamble.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CadkHeader {
-    /// Header schema version. Must equal [`SCHEMA_VERSION`] for v0.5.
+    /// Header schema version. Readers accept v1 and the current v2.
     pub schema_version: u32,
     /// Feature flags. See [`CadkFlags`].
     pub flags: u32,
@@ -92,7 +92,7 @@ impl CadkHeader {
     /// Returns `true` if this header is compatible with the current
     /// reader schema (i.e. no unknown must-understand flags are set).
     pub fn is_supported(&self) -> bool {
-        if self.schema_version != SCHEMA_VERSION {
+        if !(1..=SCHEMA_VERSION).contains(&self.schema_version) {
             return false;
         }
         let unknown_must_understand =
@@ -159,5 +159,14 @@ mod tests {
             ..CadkHeader::default()
         };
         assert!(!h.is_supported());
+    }
+
+    #[test]
+    fn v1_header_remains_supported() {
+        let h = CadkHeader {
+            schema_version: 1,
+            ..CadkHeader::default()
+        };
+        assert!(h.is_supported());
     }
 }

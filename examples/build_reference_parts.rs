@@ -6,9 +6,9 @@
 //! ```
 //!
 //! Implemented today (Commercial CAD Roadmap v0.5 Gates #9 / #10):
-//!   - R1: axis-aligned box (CreateBox)
-//!   - R2: extruded rectangle with one circular through-hole
-//!     (CreateBox + CreateCylinder + BooleanSubtract)
+//!   - R1: small L-bracket public-API script
+//!   - R2: compact bored housing public-API script
+//!   - R3: gearbox stub public-API script
 //!
 //! R3-R12 follow the same pattern and are stubbed to compile but skipped
 //! in execution. They land as later phases close the corresponding
@@ -28,6 +28,7 @@ use std::process::ExitCode;
 
 fn main() -> ExitCode {
     let mut output_dir = PathBuf::from("tests/corpus/reference_parts");
+    let mut requested: Vec<String> = Vec::new();
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -37,12 +38,11 @@ fn main() -> ExitCode {
                 }
             }
             "--help" | "-h" => {
-                eprintln!("usage: build_reference_parts [--output DIR]");
+                eprintln!("usage: build_reference_parts [--output DIR] [r1 r2 r3 ...]");
                 return ExitCode::SUCCESS;
             }
             other => {
-                eprintln!("unknown arg: {other}");
-                return ExitCode::FAILURE;
+                requested.push(other.to_ascii_uppercase());
             }
         }
     }
@@ -54,10 +54,10 @@ fn main() -> ExitCode {
 
     type PartBuilder = fn(&Path) -> Result<(), Box<dyn std::error::Error>>;
     let parts: Vec<(&str, PartBuilder)> = vec![
-        ("R1", build_r1_box),
-        ("R2", build_r2_extrude),
-        // R3-R12 stubbed:
-        ("R3", stub),
+        ("R1", build_r1),
+        ("R2", build_r2),
+        ("R3", build_r3),
+        // R4-R12 stubbed:
         ("R4", stub),
         ("R5", stub),
         ("R6", stub),
@@ -71,13 +71,16 @@ fn main() -> ExitCode {
 
     let mut had_error = false;
     for (id, builder) in parts {
+        if !requested.is_empty() && !requested.iter().any(|wanted| wanted == id) {
+            continue;
+        }
         let dest = output_dir.join(format!("{id}.cadk"));
         match builder(&dest) {
             Ok(()) => println!("{id}: built  -> {}", dest.display()),
             Err(e) => {
                 eprintln!("{id}: SKIPPED ({e})");
                 // Stubs are expected to fail until implemented; not a hard error.
-                if id == "R1" || id == "R2" {
+                if id == "R1" || id == "R2" || id == "R3" {
                     had_error = true;
                 }
             }
@@ -91,18 +94,18 @@ fn main() -> ExitCode {
     }
 }
 
-fn build_r1_box(dest: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    // R1 — axis-aligned box, 100 × 50 × 25.
-    // Delegates to `cadkernel_api::reference_parts::r1_bytes` so the
-    // on-disk corpus and the in-memory bench fixtures stay byte-identical.
+fn build_r1(dest: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let bytes = reference_parts::r1_bytes()?;
     write_cadk_with_hash_bytes(&bytes, dest)
 }
 
-fn build_r2_extrude(dest: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    // R2 — 60 × 40 × 10 plate − Ø10 through-hole. Delegates to
-    // `cadkernel_api::reference_parts::r2_bytes`.
+fn build_r2(dest: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let bytes = reference_parts::r2_bytes()?;
+    write_cadk_with_hash_bytes(&bytes, dest)
+}
+
+fn build_r3(dest: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    let bytes = reference_parts::r3_bytes()?;
     write_cadk_with_hash_bytes(&bytes, dest)
 }
 

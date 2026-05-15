@@ -42,6 +42,7 @@ pub mod bspline_tools;
 pub mod constraint;
 pub mod display;
 pub mod entity;
+pub mod persist;
 pub mod profile;
 pub mod solver;
 pub mod tools;
@@ -66,6 +67,7 @@ pub use entity::{
     ParabolicArcId, PointId, SketchArc, SketchBSpline, SketchCircle, SketchEllipse,
     SketchEllipticalArc, SketchHyperbolicArc, SketchLine, SketchParabolicArc, SketchPoint,
 };
+pub use persist::PersistedSketch;
 pub use profile::{
     SketchProfileAnalysis, WorkPlane, analyze_profiles, extract_profile, extract_profile_checked,
 };
