@@ -1,6 +1,6 @@
-use super::{GuiState, SketchEntityRef, SketchTool};
+use super::{DimensionKind, GuiState, SketchEntityRef, SketchTool};
 use crate::render::{Camera, GridConfig, dot3, normalize3, sub3};
-use cadkernel_sketch::Constraint;
+use cadkernel_sketch::{Constraint, ExternalReferenceGeometry, SketchDimensionKind};
 
 // ---------------------------------------------------------------------------
 // Auto-constraint detection thresholds
@@ -9,6 +9,8 @@ const ANGLE_SNAP_DEG: f64 = 5.0;
 const POINT_SNAP_DIST: f64 = 0.5;
 const MIDPOINT_SNAP_DIST: f64 = 0.5;
 const GRID_SNAP_DIST: f64 = 0.15;
+const DIMENSION_HIT_RADIUS: f32 = 18.0;
+const POINT_HANDLE_RADIUS: f32 = 7.0;
 
 // ---------------------------------------------------------------------------
 // Auto-constraint indicator kinds
@@ -114,6 +116,158 @@ fn screen_to_sketch(
         plane.y_axis.z as f32,
     ];
     Some((dot3(rel, xa) as f64, dot3(rel, ya) as f64))
+}
+
+#[derive(Clone, Copy)]
+struct DimensionHit {
+    constraint_index: usize,
+    kind: DimensionKind,
+    value: f64,
+    pos: egui::Pos2,
+}
+
+fn ui_dimension_kind(kind: SketchDimensionKind) -> DimensionKind {
+    match kind {
+        SketchDimensionKind::Distance => DimensionKind::Distance,
+        SketchDimensionKind::Angle => DimensionKind::Angle,
+        SketchDimensionKind::Radius => DimensionKind::Radius,
+        SketchDimensionKind::Length => DimensionKind::Length,
+        SketchDimensionKind::Diameter => DimensionKind::Diameter,
+        SketchDimensionKind::HorizontalDistance => DimensionKind::HDistance,
+        SketchDimensionKind::VerticalDistance => DimensionKind::VDistance,
+    }
+}
+
+fn format_dimension_edit_value(value: f64) -> String {
+    let mut s = format!("{value:.4}");
+    while s.contains('.') && s.ends_with('0') {
+        s.pop();
+    }
+    if s.ends_with('.') {
+        s.pop();
+    }
+    s
+}
+
+fn dim_line_label_pos(a: egui::Pos2, b: egui::Pos2, offset: f32) -> Option<egui::Pos2> {
+    let dx = b.x - a.x;
+    let dy = b.y - a.y;
+    let len = (dx * dx + dy * dy).sqrt();
+    if len < 2.0 {
+        return None;
+    }
+    let nx = -dy / len;
+    let ny = dx / len;
+    let off = egui::vec2(nx * offset, ny * offset);
+    let sa = a + off;
+    let sb = b + off;
+    Some(egui::pos2((sa.x + sb.x) * 0.5, (sa.y + sb.y) * 0.5) + egui::vec2(0.0, -9.0))
+}
+
+fn collect_dimension_hits(
+    sm: &super::SketchMode,
+    project: &dyn Fn(f64, f64) -> Option<egui::Pos2>,
+) -> Vec<DimensionHit> {
+    let pt_pos = |pid: cadkernel_sketch::PointId| -> Option<(f64, f64)> {
+        sm.sketch
+            .points
+            .get(pid.0)
+            .map(|p| (p.position.x, p.position.y))
+    };
+    let line_ends = |lid: cadkernel_sketch::LineId| -> Option<((f64, f64), (f64, f64))> {
+        let line = sm.sketch.lines.get(lid.0)?;
+        let s = sm.sketch.points.get(line.start.0)?;
+        let e = sm.sketch.points.get(line.end.0)?;
+        Some(((s.position.x, s.position.y), (e.position.x, e.position.y)))
+    };
+
+    let mut hits = Vec::new();
+    for (constraint_index, constraint) in sm.sketch.constraints.iter().enumerate() {
+        let Ok(dim) = sm.sketch.dimension_constraint_value(constraint_index) else {
+            continue;
+        };
+        let kind = ui_dimension_kind(dim.kind);
+        let pos = match constraint {
+            Constraint::Distance(p0, p1, _) => {
+                let (Some(a), Some(b)) = (pt_pos(*p0), pt_pos(*p1)) else {
+                    continue;
+                };
+                let (Some(sa), Some(sb)) = (project(a.0, a.1), project(b.0, b.1)) else {
+                    continue;
+                };
+                dim_line_label_pos(sa, sb, 14.0)
+            }
+            Constraint::Length(lid, _) => {
+                let Some((s, e)) = line_ends(*lid) else {
+                    continue;
+                };
+                let (Some(sa), Some(sb)) = (project(s.0, s.1), project(e.0, e.1)) else {
+                    continue;
+                };
+                dim_line_label_pos(sa, sb, 14.0)
+            }
+            Constraint::Radius(center, edge, _) => {
+                let (Some(cp), Some(ep)) = (pt_pos(*center), pt_pos(*edge)) else {
+                    continue;
+                };
+                let (Some(sc), Some(se)) = (project(cp.0, cp.1), project(ep.0, ep.1)) else {
+                    continue;
+                };
+                Some(egui::pos2((sc.x + se.x) * 0.5, (sc.y + se.y) * 0.5) + egui::vec2(0.0, -9.0))
+            }
+            Constraint::Diameter(center, edge, _) => {
+                let (Some(cp), Some(ep)) = (pt_pos(*center), pt_pos(*edge)) else {
+                    continue;
+                };
+                let dx = ep.0 - cp.0;
+                let dy = ep.1 - cp.1;
+                let opp = (cp.0 - dx, cp.1 - dy);
+                let (Some(se), Some(so)) = (project(ep.0, ep.1), project(opp.0, opp.1)) else {
+                    continue;
+                };
+                Some(egui::pos2((so.x + se.x) * 0.5, (so.y + se.y) * 0.5) + egui::vec2(0.0, -9.0))
+            }
+            Constraint::Angle(l0, _l1, angle) => {
+                let Some((s0, e0)) = line_ends(*l0) else {
+                    continue;
+                };
+                let start = (e0.1 - s0.1).atan2(e0.0 - s0.0);
+                let mid_t = start + *angle * 0.5;
+                let label_r = 20.0_f64 * 1.4;
+                project(s0.0 + label_r * mid_t.cos(), s0.1 + label_r * mid_t.sin())
+            }
+            Constraint::HorizontalDistance(p0, p1, _) => {
+                let (Some(a), Some(b)) = (pt_pos(*p0), pt_pos(*p1)) else {
+                    continue;
+                };
+                let y = (a.1 + b.1) * 0.5;
+                let (Some(sa), Some(sb)) = (project(a.0, y), project(b.0, y)) else {
+                    continue;
+                };
+                Some(egui::pos2((sa.x + sb.x) * 0.5, (sa.y + sb.y) * 0.5) + egui::vec2(0.0, -9.0))
+            }
+            Constraint::VerticalDistance(p0, p1, _) => {
+                let (Some(a), Some(b)) = (pt_pos(*p0), pt_pos(*p1)) else {
+                    continue;
+                };
+                let x = (a.0 + b.0) * 0.5;
+                let (Some(sa), Some(sb)) = (project(x, a.1), project(x, b.1)) else {
+                    continue;
+                };
+                Some(egui::pos2((sa.x + sb.x) * 0.5, (sa.y + sb.y) * 0.5) + egui::vec2(8.0, 0.0))
+            }
+            _ => None,
+        };
+        if let Some(pos) = pos {
+            hits.push(DimensionHit {
+                constraint_index,
+                kind,
+                value: dim.value,
+                pos,
+            });
+        }
+    }
+    hits
 }
 
 // ---------------------------------------------------------------------------
@@ -271,6 +425,7 @@ pub(crate) fn draw_sketch_overlay(ctx: &egui::Context, gui: &mut GuiState, camer
     let selected_color = egui::Color32::from_rgb(50, 220, 50); // green selected
     let hovered_color = egui::Color32::from_rgb(120, 255, 100); // bright green hover
     let construction_color = egui::Color32::from_rgb(60, 120, 220); // blue construction
+    let external_ref_color = egui::Color32::from_rgb(120, 210, 255); // light-blue references
     let pending_color = egui::Color32::from_rgb(255, 200, 50); // golden pending
     let constraint_color = egui::Color32::from_rgb(220, 60, 60); // red constraints
     let grid_color = egui::Color32::from_rgba_premultiplied(50, 55, 70, 35);
@@ -377,6 +532,33 @@ pub(crate) fn draw_sketch_overlay(ctx: &egui::Context, gui: &mut GuiState, camer
             }
             // Origin dot
             painter.circle_filled(o, 3.0, egui::Color32::WHITE);
+        }
+    }
+
+    // Draw explicit external references as ghost geometry.
+    for reference in &sm.sketch.external_references {
+        match reference.geometry {
+            ExternalReferenceGeometry::Point(pid) if pid.0 < sm.sketch.points.len() => {
+                let pt = &sm.sketch.points[pid.0];
+                if let Some(sp) = project(pt.position.x, pt.position.y) {
+                    painter.circle_stroke(sp, 6.0, egui::Stroke::new(1.5, external_ref_color));
+                    painter.circle_filled(sp, 2.0, external_ref_color);
+                }
+            }
+            ExternalReferenceGeometry::Line(lid) if lid.0 < sm.sketch.lines.len() => {
+                let line = &sm.sketch.lines[lid.0];
+                if line.start.0 < sm.sketch.points.len() && line.end.0 < sm.sketch.points.len() {
+                    let s = &sm.sketch.points[line.start.0];
+                    let e = &sm.sketch.points[line.end.0];
+                    if let (Some(sp), Some(ep)) = (
+                        project(s.position.x, s.position.y),
+                        project(e.position.x, e.position.y),
+                    ) {
+                        draw_dashed_line(&painter, sp, ep, external_ref_color, 2.0, 5.0, 3.0);
+                    }
+                }
+            }
+            _ => {}
         }
     }
 
@@ -529,6 +711,35 @@ pub(crate) fn draw_sketch_overlay(ctx: &egui::Context, gui: &mut GuiState, camer
                 painter.circle_filled(sp, point_radius, color);
             }
         }
+    }
+
+    // Draw drag handles for selected points.
+    for entity in sel {
+        let SketchEntityRef::Point(i) = *entity else {
+            continue;
+        };
+        let Some(pt) = sm.sketch.points.get(i) else {
+            continue;
+        };
+        let Some(sp) = project(pt.position.x, pt.position.y) else {
+            continue;
+        };
+        let active = sm.drag_points.contains(&i);
+        let hovered_handle = mouse_screen.is_some_and(|pointer| {
+            super::overlays::sketch_drag_handle_hit(pointer, sp, POINT_HANDLE_RADIUS)
+        });
+        let handle_color = super::overlays::sketch_drag_handle_color(sm.solver_converged, active);
+        painter.circle_filled(sp, POINT_HANDLE_RADIUS, handle_color.gamma_multiply(0.55));
+        painter.circle_stroke(
+            sp,
+            if hovered_handle {
+                POINT_HANDLE_RADIUS + 2.0
+            } else {
+                POINT_HANDLE_RADIUS
+            },
+            egui::Stroke::new(if hovered_handle { 2.4 } else { 2.0 }, handle_color),
+        );
+        painter.circle_filled(sp, 2.0, egui::Color32::WHITE);
     }
 
     // Draw lines
@@ -1418,6 +1629,8 @@ pub(crate) fn draw_sketch_overlay(ctx: &egui::Context, gui: &mut GuiState, camer
     }
 
     // -- Dimension input popup --
+    handle_dimension_label_double_click(ctx, gui, camera, viewport);
+    draw_in_place_dimension_editor(ctx, gui);
     draw_dimension_popup(ctx, gui);
 
     // -- Right-click context menu --
@@ -1425,10 +1638,246 @@ pub(crate) fn draw_sketch_overlay(ctx: &egui::Context, gui: &mut GuiState, camer
 }
 
 // ---------------------------------------------------------------------------
+// Dimension editing
+// ---------------------------------------------------------------------------
+fn inline_dim_pos_id(dim_id: usize) -> egui::Id {
+    egui::Id::new(("sketch_dimension_inline_pos", dim_id))
+}
+
+fn inline_dim_buffer_id(dim_id: usize) -> egui::Id {
+    egui::Id::new(("sketch_dimension_inline_buffer", dim_id))
+}
+
+fn inline_dim_invalid_id(dim_id: usize) -> egui::Id {
+    egui::Id::new(("sketch_dimension_inline_invalid", dim_id))
+}
+
+fn clear_inline_dimension_editor(ctx: &egui::Context, dim_id: usize) {
+    ctx.data_mut(|data| {
+        data.remove::<[f32; 2]>(inline_dim_pos_id(dim_id));
+        data.remove::<String>(inline_dim_buffer_id(dim_id));
+        data.remove::<String>(inline_dim_invalid_id(dim_id));
+    });
+}
+
+fn inline_dimension_editor_active(ctx: &egui::Context, gui: &GuiState) -> bool {
+    let Some(dim_id) = gui
+        .dimension_popup
+        .as_ref()
+        .and_then(|popup| popup.edit_constraint_index)
+    else {
+        return false;
+    };
+    ctx.data_mut(|data| data.get_persisted::<[f32; 2]>(inline_dim_pos_id(dim_id)))
+        .is_some()
+}
+
+fn handle_dimension_label_double_click(
+    ctx: &egui::Context,
+    gui: &mut GuiState,
+    camera: &Camera,
+    viewport: egui::Rect,
+) {
+    let double_clicked = ctx.input(|i| {
+        i.pointer
+            .button_double_clicked(egui::PointerButton::Primary)
+    });
+    if !double_clicked {
+        return;
+    }
+    let Some(pointer_pos) = ctx.input(|i| i.pointer.interact_pos().or(i.pointer.hover_pos()))
+    else {
+        return;
+    };
+
+    let hit = {
+        let Some(sm) = gui.sketch_mode.as_ref() else {
+            return;
+        };
+        let project = |x: f64, y: f64| -> Option<egui::Pos2> {
+            let wp = sm.plane.to_world(x, y);
+            world_to_screen(camera, viewport, [wp.x as f32, wp.y as f32, wp.z as f32])
+        };
+        collect_dimension_hits(sm, &project)
+            .into_iter()
+            .filter_map(|hit| {
+                let dist = hit.pos.distance(pointer_pos);
+                (dist <= DIMENSION_HIT_RADIUS).then_some((hit, dist))
+            })
+            .min_by(|a, b| a.1.total_cmp(&b.1))
+            .map(|(hit, _)| hit)
+    };
+
+    if let Some(hit) = hit {
+        gui.dimension_popup = Some(super::DimensionPopup {
+            kind: hit.kind,
+            value: hit.value,
+            just_opened: true,
+            edit_constraint_index: Some(hit.constraint_index),
+        });
+        ctx.data_mut(|data| {
+            data.insert_persisted(
+                inline_dim_pos_id(hit.constraint_index),
+                [hit.pos.x, hit.pos.y],
+            );
+            data.insert_persisted(
+                inline_dim_buffer_id(hit.constraint_index),
+                format_dimension_edit_value(hit.value),
+            );
+            data.insert_persisted(inline_dim_invalid_id(hit.constraint_index), String::new());
+        });
+        let label = match hit.kind {
+            DimensionKind::Distance => "Distance",
+            DimensionKind::Radius => "Radius",
+            DimensionKind::Angle => "Angle",
+            DimensionKind::Length => "Length",
+            DimensionKind::HDistance => "H-Distance",
+            DimensionKind::VDistance => "V-Distance",
+            DimensionKind::Diameter => "Diameter",
+        };
+        gui.status_message = format!("Editing {label} {:.2}", hit.value);
+    }
+}
+
+fn draw_in_place_dimension_editor(ctx: &egui::Context, gui: &mut GuiState) {
+    let Some((dim_id, popup_value)) = gui.dimension_popup.as_ref().and_then(|popup| {
+        popup
+            .edit_constraint_index
+            .map(|dim_id| (dim_id, popup.value))
+    }) else {
+        return;
+    };
+    let Some(pos) = ctx.data_mut(|data| data.get_persisted::<[f32; 2]>(inline_dim_pos_id(dim_id)))
+    else {
+        return;
+    };
+    let popup_pos = egui::pos2(pos[0], pos[1]);
+    let mut buffer = ctx
+        .data_mut(|data| data.get_persisted::<String>(inline_dim_buffer_id(dim_id)))
+        .unwrap_or_else(|| format_dimension_edit_value(popup_value));
+    let invalid_message = ctx
+        .data_mut(|data| data.get_persisted::<String>(inline_dim_invalid_id(dim_id)))
+        .filter(|message| !message.is_empty());
+
+    let mut commit = false;
+    let mut cancel = false;
+    let mut changed_buffer = false;
+
+    egui::Area::new(egui::Id::new(("sketch_dimension_inline_editor", dim_id)))
+        .order(egui::Order::Foreground)
+        .fixed_pos(popup_pos + egui::vec2(-46.0, -20.0))
+        .show(ctx, |ui| {
+            egui::Frame::new()
+                .fill(egui::Color32::from_rgba_unmultiplied(22, 26, 34, 245))
+                .stroke(egui::Stroke::new(
+                    1.0,
+                    egui::Color32::from_rgb(80, 150, 220),
+                ))
+                .corner_radius(4.0)
+                .inner_margin(egui::Margin::symmetric(6, 4))
+                .show(ui, |ui| {
+                    let response = ui.add(
+                        egui::TextEdit::singleline(&mut buffer)
+                            .desired_width(78.0)
+                            .font(egui::TextStyle::Monospace),
+                    );
+                    response.request_focus();
+                    changed_buffer = response.changed();
+                    if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                        commit = true;
+                    }
+                    if let Some(message) = invalid_message.as_deref() {
+                        ui.label(
+                            egui::RichText::new(message)
+                                .size(10.0)
+                                .color(egui::Color32::from_rgb(255, 150, 120)),
+                        );
+                    }
+                });
+        });
+
+    if ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
+        commit = true;
+    }
+    if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+        cancel = true;
+    }
+
+    if cancel {
+        clear_inline_dimension_editor(ctx, dim_id);
+        gui.dimension_popup = None;
+        gui.status_message = "Dimension edit cancelled".into();
+        return;
+    }
+
+    if changed_buffer {
+        ctx.data_mut(|data| {
+            data.insert_persisted(inline_dim_buffer_id(dim_id), buffer.clone());
+            data.insert_persisted(inline_dim_invalid_id(dim_id), String::new());
+        });
+    }
+
+    if commit {
+        let parsed = buffer.trim().parse::<f64>();
+        match parsed {
+            Ok(value) => {
+                if let Some(sm) = &mut gui.sketch_mode {
+                    if !value.is_finite() || value <= 0.0 {
+                        ctx.data_mut(|data| {
+                            data.insert_persisted(
+                                inline_dim_invalid_id(dim_id),
+                                "Enter a number > 0".to_string(),
+                            );
+                        });
+                        return;
+                    }
+                    if let Err(err) = sm.sketch.dimension_constraint_value(dim_id) {
+                        ctx.data_mut(|data| {
+                            data.insert_persisted(inline_dim_invalid_id(dim_id), err.to_string());
+                        });
+                        return;
+                    }
+                    sm.save_snapshot();
+                    match sm.sketch.update_dimension_constraint(dim_id, value) {
+                        Ok(updated) => {
+                            sm.update_constraint_status();
+                            clear_inline_dimension_editor(ctx, dim_id);
+                            gui.dimension_popup = None;
+                            gui.status_message =
+                                format!("Dimension updated to {:.2}", updated.value);
+                        }
+                        Err(err) => {
+                            ctx.data_mut(|data| {
+                                data.insert_persisted(
+                                    inline_dim_invalid_id(dim_id),
+                                    err.to_string(),
+                                );
+                            });
+                        }
+                    }
+                }
+            }
+            Err(_) => {
+                ctx.data_mut(|data| {
+                    data.insert_persisted(
+                        inline_dim_invalid_id(dim_id),
+                        "Enter a number > 0".to_string(),
+                    );
+                });
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Dimension input popup
 // ---------------------------------------------------------------------------
 fn draw_dimension_popup(ctx: &egui::Context, gui: &mut GuiState) {
-    use super::{DimensionKind, GuiAction};
+    use super::GuiAction;
+
+    if inline_dimension_editor_active(ctx, gui) {
+        return;
+    }
 
     let Some(popup) = &mut gui.dimension_popup else {
         return;
@@ -1521,18 +1970,22 @@ fn draw_dimension_popup(ctx: &egui::Context, gui: &mut GuiState) {
             // Edit existing constraint in-place
             if let Some(sm) = &mut gui.sketch_mode {
                 if ci < sm.sketch.constraints.len() {
-                    sm.save_snapshot();
-                    match &mut sm.sketch.constraints[ci] {
-                        Constraint::Distance(_, _, d) => *d = v,
-                        Constraint::Length(_, val) => *val = v,
-                        Constraint::Radius(_, _, r) => *r = v,
-                        Constraint::Diameter(_, _, d) => *d = v,
-                        Constraint::Angle(_, _, a) => *a = v.to_radians(),
-                        Constraint::HorizontalDistance(_, _, d) => *d = v,
-                        Constraint::VerticalDistance(_, _, d) => *d = v,
-                        _ => {}
+                    if v <= 0.0 || !v.is_finite() {
+                        gui.status_message = "Dimension value must be > 0".into();
+                        return;
                     }
-                    gui.status_message = format!("Constraint updated to {v:.2}");
+                    sm.save_snapshot();
+                    match sm.sketch.update_dimension_constraint(ci, v) {
+                        Ok(updated) => {
+                            sm.update_constraint_status();
+                            gui.status_message =
+                                format!("Constraint updated to {:.2}", updated.value);
+                        }
+                        Err(err) => {
+                            let _ = sm.undo_stack.pop();
+                            gui.status_message = format!("Dimension edit failed: {err}");
+                        }
+                    }
                 }
             }
         } else {

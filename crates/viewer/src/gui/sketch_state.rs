@@ -251,8 +251,12 @@ impl SketchMode {
         self.constraint_warning_count = validation.diagnostic_issue_count();
         self.constraint_status = validation.status_label();
         self.validation_issues = validation.issues;
-        self.external_reference_count =
+        let construction_reference_count =
             self.sketch.construction_points.len() + self.sketch.construction_lines.len();
+        self.external_reference_count = self
+            .sketch
+            .external_reference_count()
+            .max(construction_reference_count);
         self.reference_status = match (self.external_reference_count, self.reused_geometry_count) {
             (0, 0) => "Refs: none".into(),
             (external, 0) => format!("Refs: {external} external"),

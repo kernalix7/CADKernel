@@ -5,6 +5,24 @@ use super::{
 use crate::render::{Camera, cross3, dot3, normalize3};
 use crate::scene::Scene;
 
+pub(crate) fn sketch_drag_handle_color(solver_converged: bool, active: bool) -> egui::Color32 {
+    if !solver_converged {
+        egui::Color32::from_rgb(255, 100, 40)
+    } else if active {
+        egui::Color32::from_rgb(255, 210, 80)
+    } else {
+        egui::Color32::from_rgb(50, 220, 50)
+    }
+}
+
+pub(crate) fn sketch_drag_handle_hit(
+    pointer: egui::Pos2,
+    handle_center: egui::Pos2,
+    radius: f32,
+) -> bool {
+    pointer.distance(handle_center) <= radius
+}
+
 pub(crate) fn draw_axes_overlay(ctx: &egui::Context, camera: &Camera, gui: &mut GuiState) {
     use crate::render::StandardView;
 

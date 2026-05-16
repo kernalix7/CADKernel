@@ -24,7 +24,7 @@ use cadkernel_modeling::quick::{
 };
 use cadkernel_modeling::{extrude, mirror_solid};
 use cadkernel_topology::naming::SegmentKind;
-use cadkernel_topology::{BRepModel, FaceData, Handle, SolidData, VertexData};
+use cadkernel_topology::{BRepModel, FaceData, Handle, PersistentFeatureId, SolidData, VertexData};
 use serde::{Deserialize, Serialize};
 
 use crate::command::{
@@ -1242,7 +1242,10 @@ impl Session {
         let handle = first_solid_handle(&model).ok_or_else(|| {
             ApiError::Kernel("primitive constructor returned a model with no solid".into())
         })?;
+        let feature_id = self.predicted_feature_id();
         let id = self.document.insert(model, handle, label);
+        self.document
+            .register_persistent_names_for_solid(feature_id, id);
         Ok(Outcome::SolidCreated {
             id,
             label: label.to_string(),
@@ -1270,6 +1273,8 @@ impl Session {
             BooleanKind::Intersect => "Intersect",
         };
         let result = self.document.insert(result_model, handle, label);
+        self.document
+            .register_persistent_names_for_solid(self.predicted_feature_id(), result);
         Ok(Outcome::Booleaned {
             result,
             consumed: vec![lhs, rhs],
@@ -1497,6 +1502,8 @@ impl Session {
             (slot.model.clone(), handle, format!("{} (copy)", slot.label))
         };
         let new_id = self.document.insert(model, handle, label.clone());
+        self.document
+            .register_persistent_names_for_solid(self.predicted_feature_id(), new_id);
         Ok(Outcome::SolidCreated { id: new_id, label })
     }
 
@@ -1603,6 +1610,8 @@ impl Session {
         // handling is preserved; total_distance is the post-kind span.
         let result = extrude(&mut model, &pts, dir, total_distance)?;
         let id = self.document.insert(model, result.solid, "Extrude");
+        self.document
+            .register_persistent_names_for_solid(self.predicted_feature_id(), id);
         Ok(Outcome::SolidCreated {
             id,
             label: "Extrude".into(),
@@ -2660,6 +2669,8 @@ impl Session {
             }
             (plan, body.current_solid.map(SolidId))
         };
+        let old_model = current_solid
+            .and_then(|solid| self.document.get_slot(solid).map(|slot| slot.model.clone()));
 
         let mut last_result: Option<(BRepModel, Handle<SolidData>)> = None;
         let mut last_feature_index: Option<usize> = None;
@@ -2668,6 +2679,9 @@ impl Session {
         for (feature_index, feature_id, spec) in plan {
             match self.replay_spec(spec, last_result.clone()) {
                 Ok((model, handle)) => {
+                    self.document
+                        .persistent_names_mut()
+                        .register_model_feature(PersistentFeatureId(feature_id.0), &model);
                     if let Some(body) = self.document.body_mut(body_id)
                         && let Some(feature) = body.features.get_mut(feature_index)
                     {
@@ -2688,7 +2702,12 @@ impl Session {
             }
         }
 
-        if let Some((model, handle)) = last_result {
+        if let Some((mut model, handle)) = last_result {
+            if let Some(old_model) = old_model.as_ref() {
+                self.document
+                    .persistent_names_mut()
+                    .rebind_model_after_recompute(old_model, &mut model);
+            }
             let label = self
                 .document
                 .body(body_id)
@@ -3091,6 +3110,8 @@ impl Session {
     }
 
     fn append_feature_to_active_body(&mut self, args: AppendFeatureArgs<'_>) -> BodyId {
+        let feature_id = args.feature_id;
+        let solid = args.solid;
         let body_id = self.ensure_active_body();
         if let Some(body) = self.document.body_mut(body_id) {
             body.add_feature_with_spec(
@@ -3106,6 +3127,8 @@ impl Session {
             }
             body.current_solid = Some(args.solid.0);
         }
+        self.document
+            .register_persistent_names_for_solid(feature_id, solid);
         body_id
     }
 

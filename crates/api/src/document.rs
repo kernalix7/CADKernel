@@ -15,7 +15,9 @@
 
 use cadkernel_modeling::body::Body;
 use cadkernel_modeling::measure::solid_mass_properties;
-use cadkernel_topology::{BRepModel, EdgeData, FaceData, Handle, SolidData};
+use cadkernel_topology::{
+    BRepModel, EdgeData, FaceData, Handle, PersistentFeatureId, PersistentNameTable, SolidData,
+};
 use serde::{Deserialize, Serialize};
 use std::hash::{DefaultHasher, Hasher};
 
@@ -89,6 +91,7 @@ pub struct Document {
     sketches: Vec<Option<PersistedSketch>>,
     next_sketch_id: u64,
     active_sketch: Option<SketchId>,
+    persistent_names: PersistentNameTable,
 }
 
 impl Document {
@@ -132,6 +135,15 @@ impl Document {
     /// pick the name that reads better at the call site.
     pub fn features(&self) -> &[HistoryEvent] {
         &self.history
+    }
+
+    /// Returns the document-level persistent-name table.
+    pub fn persistent_names(&self) -> &PersistentNameTable {
+        &self.persistent_names
+    }
+
+    pub(crate) fn persistent_names_mut(&mut self) -> &mut PersistentNameTable {
+        &mut self.persistent_names
     }
 
     /// Looks up a recorded event by its [`FeatureId`]. Linear scan over
@@ -302,6 +314,25 @@ impl Document {
         self.next_feature_id += 1;
         event.feature_id = FeatureId(self.next_feature_id);
         self.history.push(event);
+    }
+
+    pub(crate) fn register_persistent_names_for_solid(
+        &mut self,
+        feature_id: FeatureId,
+        solid: SolidId,
+    ) {
+        if feature_id.0 == 0 {
+            return;
+        }
+        let Some(slot) = self
+            .slots
+            .get(solid.0 as usize)
+            .and_then(|slot| slot.as_ref())
+        else {
+            return;
+        };
+        self.persistent_names
+            .register_model_feature(PersistentFeatureId(feature_id.0), &slot.model);
     }
 
     #[allow(dead_code)]

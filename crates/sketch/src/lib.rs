@@ -78,6 +78,52 @@ pub use tools::{
 };
 pub use validate::{SketchValidation, SketchValidationIssue, validate_sketch};
 
+use cadkernel_core::{KernelError, KernelResult};
+
+/// Dimensional constraint classes whose numeric value can be edited in-place.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SketchDimensionKind {
+    Distance,
+    Angle,
+    Radius,
+    Length,
+    Diameter,
+    HorizontalDistance,
+    VerticalDistance,
+}
+
+/// Editable dimensional constraint value.
+///
+/// `value` is the UI-facing value: angles are degrees, all other dimensions
+/// are sketch units.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SketchDimensionValue {
+    pub index: usize,
+    pub kind: SketchDimensionKind,
+    pub value: f64,
+}
+
+/// Source object for read-only sketch reference geometry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExternalReferenceSource {
+    FaceRef(u64),
+    EdgeRef(u64),
+}
+
+/// Geometry created from an external reference.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExternalReferenceGeometry {
+    Point(PointId),
+    Line(LineId),
+}
+
+/// Read-only sketch geometry projected from a model face or edge.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ExternalReference {
+    pub source: ExternalReferenceSource,
+    pub geometry: ExternalReferenceGeometry,
+}
+
 /// A 2D parametric sketch containing points, lines, arcs, circles, ellipses,
 /// B-splines, and geometric/dimensional constraints.
 ///
@@ -110,6 +156,8 @@ pub struct Sketch {
     pub construction_points: Vec<PointId>,
     /// Indices of lines that are construction geometry.
     pub construction_lines: Vec<LineId>,
+    /// Read-only reference geometry projected from model faces or edges.
+    pub external_references: Vec<ExternalReference>,
 }
 
 impl Sketch {
@@ -129,6 +177,7 @@ impl Sketch {
             construction_mode: false,
             construction_points: Vec::new(),
             construction_lines: Vec::new(),
+            external_references: Vec::new(),
         }
     }
 
@@ -331,6 +380,131 @@ impl Sketch {
         if !self.construction_lines.contains(&id) {
             self.construction_lines.push(id);
         }
+    }
+
+    /// Returns the UI-facing value for an editable dimensional constraint.
+    pub fn dimension_constraint_value(&self, index: usize) -> KernelResult<SketchDimensionValue> {
+        let Some(constraint) = self.constraints.get(index) else {
+            return Err(KernelError::InvalidArgument(format!(
+                "constraint index {index} is out of range"
+            )));
+        };
+        let (kind, value) = match constraint {
+            Constraint::Distance(_, _, value) => (SketchDimensionKind::Distance, *value),
+            Constraint::Angle(_, _, value) => (SketchDimensionKind::Angle, value.to_degrees()),
+            Constraint::Radius(_, _, value) => (SketchDimensionKind::Radius, *value),
+            Constraint::Length(_, value) => (SketchDimensionKind::Length, *value),
+            Constraint::Diameter(_, _, value) => (SketchDimensionKind::Diameter, *value),
+            Constraint::HorizontalDistance(_, _, value) => {
+                (SketchDimensionKind::HorizontalDistance, *value)
+            }
+            Constraint::VerticalDistance(_, _, value) => {
+                (SketchDimensionKind::VerticalDistance, *value)
+            }
+            _ => {
+                return Err(KernelError::InvalidArgument(format!(
+                    "constraint index {index} is not dimensional"
+                )));
+            }
+        };
+        Ok(SketchDimensionValue { index, kind, value })
+    }
+
+    /// Updates an editable dimensional constraint from a UI-facing value.
+    ///
+    /// Angles are accepted in degrees and stored internally in radians.
+    pub fn update_dimension_constraint(
+        &mut self,
+        index: usize,
+        value: f64,
+    ) -> KernelResult<SketchDimensionValue> {
+        if !value.is_finite() || value <= 0.0 {
+            return Err(KernelError::InvalidArgument(
+                "dimension value must be finite and > 0".into(),
+            ));
+        }
+        let Some(constraint) = self.constraints.get_mut(index) else {
+            return Err(KernelError::InvalidArgument(format!(
+                "constraint index {index} is out of range"
+            )));
+        };
+        let kind = match constraint {
+            Constraint::Distance(_, _, current) => {
+                *current = value;
+                SketchDimensionKind::Distance
+            }
+            Constraint::Angle(_, _, current) => {
+                *current = value.to_radians();
+                SketchDimensionKind::Angle
+            }
+            Constraint::Radius(_, _, current) => {
+                *current = value;
+                SketchDimensionKind::Radius
+            }
+            Constraint::Length(_, current) => {
+                *current = value;
+                SketchDimensionKind::Length
+            }
+            Constraint::Diameter(_, _, current) => {
+                *current = value;
+                SketchDimensionKind::Diameter
+            }
+            Constraint::HorizontalDistance(_, _, current) => {
+                *current = value;
+                SketchDimensionKind::HorizontalDistance
+            }
+            Constraint::VerticalDistance(_, _, current) => {
+                *current = value;
+                SketchDimensionKind::VerticalDistance
+            }
+            _ => {
+                return Err(KernelError::InvalidArgument(format!(
+                    "constraint index {index} is not dimensional"
+                )));
+            }
+        };
+        Ok(SketchDimensionValue { index, kind, value })
+    }
+
+    /// Adds a read-only external point reference and marks it as construction geometry.
+    pub fn add_external_point_reference(
+        &mut self,
+        source: ExternalReferenceSource,
+        x: f64,
+        y: f64,
+    ) -> PointId {
+        let point = self.add_point(x, y);
+        self.mark_construction_point(point);
+        self.external_references.push(ExternalReference {
+            source,
+            geometry: ExternalReferenceGeometry::Point(point),
+        });
+        point
+    }
+
+    /// Adds a read-only external line reference and marks its geometry as construction.
+    pub fn add_external_line_reference(
+        &mut self,
+        source: ExternalReferenceSource,
+        start: (f64, f64),
+        end: (f64, f64),
+    ) -> LineId {
+        let p0 = self.add_point(start.0, start.1);
+        let p1 = self.add_point(end.0, end.1);
+        self.mark_construction_point(p0);
+        self.mark_construction_point(p1);
+        let line = self.add_line(p0, p1);
+        self.mark_construction_line(line);
+        self.external_references.push(ExternalReference {
+            source,
+            geometry: ExternalReferenceGeometry::Line(line),
+        });
+        line
+    }
+
+    /// Number of explicit external references in the sketch.
+    pub fn external_reference_count(&self) -> usize {
+        self.external_references.len()
     }
 
     /// Creates a circle from 3 points.

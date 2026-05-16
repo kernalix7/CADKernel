@@ -68,7 +68,13 @@ fn create_sketch_persists_empty_sketch() {
         })
         .expect("CreateSketch");
 
-    assert!(matches!(out, Outcome::SketchCreated { sketch_id: SketchId(1), .. }));
+    assert!(matches!(
+        out,
+        Outcome::SketchCreated {
+            sketch_id: SketchId(1),
+            ..
+        }
+    ));
     let sketch = session.document().sketch(SketchId(1)).expect("sketch");
     assert_eq!(sketch.name, "Profile");
     assert!(sketch.entities.is_empty());
@@ -244,7 +250,10 @@ fn map_sketch_to_face_updates_plane_when_face_index_resolves() {
 
     let sketch = session.document().sketch(sketch_id).expect("sketch");
     let n = sketch.plane.normal;
-    assert!(n.iter().any(|v| v.abs() > 0.5), "normal should be non-zero: {n:?}");
+    assert!(
+        n.iter().any(|v| v.abs() > 0.5),
+        "normal should be non-zero: {n:?}"
+    );
 }
 
 #[test]

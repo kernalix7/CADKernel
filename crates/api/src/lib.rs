@@ -73,8 +73,8 @@ pub use command::{
     SketchEntity, SketchId, SketchRef, SweepMode, SweepSpec, VariableRadius, command_schemas,
 };
 pub use document::{
-    AabbSummary, Document, DocumentIssue, FeatureId, HistoryEvent, MeasureSummary,
-    PersistedSketch, SolidId,
+    AabbSummary, Document, DocumentIssue, FeatureId, HistoryEvent, MeasureSummary, PersistedSketch,
+    SolidId,
 };
 pub use outcome::{Outcome, OutcomeKind, Plane, SolidEntry};
 pub use session::{Session, SessionSnapshot};

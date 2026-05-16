@@ -1,4 +1,4 @@
-use cadkernel_api::cadk::{self, migrate_to_current, BlobKind, SchemaVersion};
+use cadkernel_api::cadk::{self, BlobKind, SchemaVersion, migrate_to_current};
 use cadkernel_api::{
     AxisRef, BodyId, Command, FeatureId, FeatureSpec, HelixSpec, PlaneRef, Session, SolidId,
 };

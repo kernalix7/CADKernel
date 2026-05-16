@@ -67,7 +67,10 @@ pub use halfedge::HalfEdgeData;
 pub use handle::Handle;
 pub use history::ModelHistory;
 pub use loop_wire::LoopData;
-pub use naming::{EntityKind, EntityRef, NameMap, OperationId, ShapeHistory, Tag};
+pub use naming::{
+    EntityKind, EntityRef, FeatureId as PersistentFeatureId, NameMap, OperationId,
+    PersistentNameKey, PersistentNameTable, ShapeHistory, Tag,
+};
 pub use shell::ShellData;
 pub use solid::SolidData;
 pub use store::EntityStore;

@@ -842,9 +842,7 @@ pub fn import_step(content: &str) -> KernelResult<BRepModel> {
                                                 let vertex_ref =
                                                     if *orientation { start } else { end };
                                                 if let Some(&vh) = vertex_map.get(vertex_ref) {
-                                                    if !face_verts.contains(&vh) {
-                                                        face_verts.push(vh);
-                                                    }
+                                                    face_verts.push(vh);
                                                 }
                                             }
                                         }
@@ -1821,33 +1819,47 @@ fn emit_surface_class(class: &SurfaceClass, w: &mut StepWriter) -> u64 {
 // Entity serialization
 // ---------------------------------------------------------------------------
 
+fn step_real(value: f64) -> String {
+    format!("{value:.16e}")
+}
+
 fn entity_to_step(entity: &StepEntity) -> String {
     match entity {
         StepEntity::CartesianPoint(p) => {
-            format!("CARTESIAN_POINT('',({},{},{}))", p.x, p.y, p.z)
+            let x = step_real(p.x);
+            let y = step_real(p.y);
+            let z = step_real(p.z);
+            format!("CARTESIAN_POINT('',({x},{y},{z}))")
         }
         StepEntity::Direction(d) => {
-            format!("DIRECTION('',({},{},{}))", d[0], d[1], d[2])
+            let x = step_real(d[0]);
+            let y = step_real(d[1]);
+            let z = step_real(d[2]);
+            format!("DIRECTION('',({x},{y},{z}))")
         }
         StepEntity::Vector {
             direction,
             magnitude,
         } => {
-            format!("VECTOR('',#{},{magnitude})", direction)
+            let magnitude = step_real(*magnitude);
+            format!("VECTOR('',#{direction},{magnitude})")
         }
         StepEntity::Line { point, direction } => {
             format!("LINE('',#{point},#{direction})")
         }
         StepEntity::Circle { placement, radius } => {
+            let radius = step_real(*radius);
             format!("CIRCLE('',#{placement},{radius})")
         }
         StepEntity::Plane { placement } => {
             format!("PLANE('',#{placement})")
         }
         StepEntity::CylindricalSurface { placement, radius } => {
+            let radius = step_real(*radius);
             format!("CYLINDRICAL_SURFACE('',#{placement},{radius})")
         }
         StepEntity::SphericalSurface { placement, radius } => {
+            let radius = step_real(*radius);
             format!("SPHERICAL_SURFACE('',#{placement},{radius})")
         }
         StepEntity::ConicalSurface {
@@ -1855,6 +1867,8 @@ fn entity_to_step(entity: &StepEntity) -> String {
             radius,
             semi_angle,
         } => {
+            let radius = step_real(*radius);
+            let semi_angle = step_real(*semi_angle);
             format!("CONICAL_SURFACE('',#{placement},{radius},{semi_angle})")
         }
         StepEntity::ToroidalSurface {
@@ -1862,6 +1876,8 @@ fn entity_to_step(entity: &StepEntity) -> String {
             major_radius,
             minor_radius,
         } => {
+            let major_radius = step_real(*major_radius);
+            let minor_radius = step_real(*minor_radius);
             format!("TOROIDAL_SURFACE('',#{placement},{major_radius},{minor_radius})")
         }
         StepEntity::Axis2Placement3d {
@@ -1880,7 +1896,7 @@ fn entity_to_step(entity: &StepEntity) -> String {
             multiplicities,
         } => {
             let cps: Vec<String> = control_points.iter().map(|id| format!("#{id}")).collect();
-            let ks: Vec<String> = knots.iter().map(|v| format!("{v}")).collect();
+            let ks: Vec<String> = knots.iter().map(|v| step_real(*v)).collect();
             let ms: Vec<String> = multiplicities.iter().map(|v| format!("{v}")).collect();
             format!(
                 "B_SPLINE_CURVE_WITH_KNOTS('',{degree},({}),{},.UNSPECIFIED.,.F.,.F.,({}),({}),.UNSPECIFIED.)",
@@ -1906,8 +1922,8 @@ fn entity_to_step(entity: &StepEntity) -> String {
                     format!("({})", pts.join(","))
                 })
                 .collect();
-            let ku: Vec<String> = knots_u.iter().map(|v| format!("{v}")).collect();
-            let kv: Vec<String> = knots_v.iter().map(|v| format!("{v}")).collect();
+            let ku: Vec<String> = knots_u.iter().map(|v| step_real(*v)).collect();
+            let kv: Vec<String> = knots_v.iter().map(|v| step_real(*v)).collect();
             let mu: Vec<String> = multiplicities_u.iter().map(|v| format!("{v}")).collect();
             let mv: Vec<String> = multiplicities_v.iter().map(|v| format!("{v}")).collect();
             format!(

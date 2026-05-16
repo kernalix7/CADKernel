@@ -1,6 +1,6 @@
 use super::theme;
 use super::{
-    AssemblyJointType, BcKind, GuiAction, GuiState, MaterialPreset, MirrorPlane,
+    AssemblyJointType, BcKind, GuiAction, GuiState, MaterialPreset, MirrorPlane, SelectedEntity,
     TechDrawAnnotationKind, TechDrawCenterlineKind, TechDrawDimensionKind, TechDrawTemplatePreset,
     TechDrawViewKind,
 };
@@ -144,11 +144,80 @@ fn button_bar(ui: &mut egui::Ui, ok_label: &str) -> (bool, bool, bool) {
     (ok, cancel, reset)
 }
 
+fn draw_use_as_sketch_reference_dialog(ctx: &egui::Context, gui: &mut GuiState) {
+    if gui.sketch_mode.is_none() {
+        return;
+    }
+    let face_count = gui
+        .selected_entities
+        .iter()
+        .filter(|entity| matches!(entity, SelectedEntity::Face(_)))
+        .count();
+    let edge_count = gui
+        .selected_entities
+        .iter()
+        .filter(|entity| matches!(entity, SelectedEntity::Edge(_)))
+        .count();
+    if face_count + edge_count == 0 {
+        return;
+    }
+
+    let mut confirm = false;
+    let mut cancel = false;
+    egui::Window::new("Use as Sketch Reference")
+        .collapsible(false)
+        .resizable(false)
+        .fixed_size([260.0, 0.0])
+        .show(ctx, |ui| {
+            dialog_section(ui, "External Reference");
+            ui.label(
+                egui::RichText::new(format!("Selected: {face_count} face, {edge_count} edge"))
+                    .size(11.0)
+                    .color(egui::Color32::WHITE),
+            );
+            ui.label(
+                egui::RichText::new("Projected geometry is read-only construction geometry.")
+                    .size(10.0)
+                    .color(theme::COLOR_DIM),
+            );
+            ui.add_space(4.0);
+            ui.horizontal(|ui| {
+                confirm = ui
+                    .add(
+                        egui::Button::new(
+                            egui::RichText::new("Use Reference")
+                                .strong()
+                                .color(egui::Color32::WHITE),
+                        )
+                        .fill(egui::Color32::from_rgb(0, 100, 180))
+                        .min_size(egui::vec2(105.0, 24.0)),
+                    )
+                    .clicked();
+                cancel = ui
+                    .add(egui::Button::new("Cancel").min_size(egui::vec2(70.0, 24.0)))
+                    .clicked();
+            });
+        });
+
+    if confirm {
+        gui.actions.push(GuiAction::Sketcher(
+            super::SketcherAction::ExternalProjection,
+        ));
+        gui.selected_entities.clear();
+        gui.status_message = "Sketch reference projection queued".into();
+    } else if cancel {
+        gui.selected_entities.clear();
+        gui.status_message = "Sketch reference selection cleared".into();
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Create primitive dialogs
 // ---------------------------------------------------------------------------
 
 pub(crate) fn draw_create_dialogs(ctx: &egui::Context, gui: &mut GuiState) {
+    draw_use_as_sketch_reference_dialog(ctx, gui);
+
     // --- Box ---
     let mut show_box = gui.show_create_box;
     if show_box {

@@ -248,6 +248,16 @@ pub fn drag_solve(
 ) -> SolverResult {
     use crate::constraint::Constraint;
 
+    if point.0 >= sketch.points.len() || !target_x.is_finite() || !target_y.is_finite() {
+        return SolverResult {
+            converged: false,
+            iterations: 0,
+            residual: f64::INFINITY,
+            remaining_dof: None,
+            over_constrained: false,
+        };
+    }
+
     // Add temporary fixed constraint with the drag target
     sketch.add_constraint(Constraint::Fixed(point, target_x, target_y));
     let result = solve(sketch, max_iter, tol);
