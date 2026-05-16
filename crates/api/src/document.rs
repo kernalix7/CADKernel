@@ -19,6 +19,7 @@ use cadkernel_topology::{
     BRepModel, EdgeData, FaceData, Handle, PersistentFeatureId, PersistentNameTable, SolidData,
 };
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, VecDeque};
 use std::hash::{DefaultHasher, Hasher};
 
 use crate::command::{BodyId, EdgeRef, FaceRef, SketchConstraint, SketchEntity, SketchId};
@@ -47,6 +48,126 @@ pub(crate) struct SolidSlot {
     pub(crate) model: BRepModel,
     pub(crate) handle: Option<Handle<SolidData>>,
     pub(crate) label: String,
+}
+
+/// LRU cache for replayed body-feature outputs.
+#[derive(Debug, Clone)]
+pub struct RecomputeCache {
+    entries: HashMap<(u32, u64), Vec<u8>>,
+    lru: VecDeque<(u32, u64)>,
+    max_entries: usize,
+    hits: u64,
+    misses: u64,
+}
+
+impl Default for RecomputeCache {
+    fn default() -> Self {
+        Self::new(256)
+    }
+}
+
+impl RecomputeCache {
+    /// Creates an empty cache with a maximum number of entries.
+    pub fn new(max_entries: usize) -> Self {
+        Self {
+            entries: HashMap::new(),
+            lru: VecDeque::new(),
+            max_entries,
+            hits: 0,
+            misses: 0,
+        }
+    }
+
+    /// Returns the number of cached feature snapshots.
+    pub fn len(&self) -> usize {
+        self.entries.len()
+    }
+
+    /// Returns true when no feature snapshots are cached.
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+
+    /// Returns the configured LRU entry limit.
+    pub fn max_entries(&self) -> usize {
+        self.max_entries
+    }
+
+    /// Returns cumulative `(hits, misses)` since cache creation.
+    pub fn stats(&self) -> (u64, u64) {
+        (self.hits, self.misses)
+    }
+
+    /// Resets hit/miss counters without clearing cached entries.
+    pub fn reset_stats(&mut self) {
+        self.hits = 0;
+        self.misses = 0;
+    }
+
+    /// Deterministic FNV-1a input hash over spec bytes and parent hashes.
+    pub fn input_hash(spec_bytes: &[u8], parent_hashes: &[(u32, u64)]) -> u64 {
+        let mut parents = parent_hashes.to_vec();
+        parents.sort_unstable_by_key(|(feature_index, _)| *feature_index);
+
+        let mut hash = FNV_OFFSET_BASIS;
+        hash = fnv_write_u64(hash, spec_bytes.len() as u64);
+        hash = fnv_write_bytes(hash, spec_bytes);
+        hash = fnv_write_u64(hash, parents.len() as u64);
+        for (feature_index, parent_hash) in parents {
+            hash = fnv_write_u64(hash, u64::from(feature_index));
+            hash = fnv_write_u64(hash, parent_hash);
+        }
+        hash
+    }
+
+    /// Returns cached bytes and refreshes the entry's LRU position.
+    pub fn get(&mut self, feature_index: u32, input_hash: u64) -> Option<&[u8]> {
+        let key = (feature_index, input_hash);
+        if !self.entries.contains_key(&key) {
+            self.misses += 1;
+            return None;
+        }
+        self.hits += 1;
+        self.touch(key);
+        self.entries.get(&key).map(Vec::as_slice)
+    }
+
+    /// Inserts or replaces a cached snapshot.
+    pub fn insert(&mut self, feature_index: u32, input_hash: u64, brep_bytes: Vec<u8>) {
+        if self.max_entries == 0 {
+            return;
+        }
+
+        let key = (feature_index, input_hash);
+        if let Some(entry) = self.entries.get_mut(&key) {
+            *entry = brep_bytes;
+            self.touch(key);
+            return;
+        }
+
+        while self.entries.len() >= self.max_entries {
+            let Some(oldest) = self.lru.pop_front() else {
+                break;
+            };
+            self.entries.remove(&oldest);
+        }
+
+        self.entries.insert(key, brep_bytes);
+        self.touch(key);
+    }
+
+    /// Removes every cached snapshot for `feature_index`.
+    pub fn invalidate_feature(&mut self, feature_index: u32) {
+        self.entries
+            .retain(|(cached_feature, _), _| *cached_feature != feature_index);
+        self.lru
+            .retain(|(cached_feature, _)| *cached_feature != feature_index);
+    }
+
+    fn touch(&mut self, key: (u32, u64)) {
+        self.lru.retain(|existing| *existing != key);
+        self.lru.push_back(key);
+    }
 }
 
 /// Stable identifier for a [`HistoryEvent`] inside a [`Document`].
@@ -92,6 +213,7 @@ pub struct Document {
     next_sketch_id: u64,
     active_sketch: Option<SketchId>,
     persistent_names: PersistentNameTable,
+    recompute_cache: RecomputeCache,
 }
 
 impl Document {
@@ -176,6 +298,20 @@ impl Document {
         self.bodies
             .get_mut(id.0 as usize)
             .and_then(|body| body.as_mut())
+    }
+
+    pub(crate) fn recompute_cache_mut(&mut self) -> &mut RecomputeCache {
+        &mut self.recompute_cache
+    }
+
+    /// Returns the number of cached body-feature recompute snapshots.
+    pub fn recompute_cache_len(&self) -> usize {
+        self.recompute_cache.len()
+    }
+
+    /// Returns cumulative recompute-cache `(hits, misses)`.
+    pub fn recompute_cache_stats(&self) -> (u64, u64) {
+        self.recompute_cache.stats()
     }
 
     /// Returns the number of populated bodies.
@@ -620,6 +756,21 @@ impl Document {
         }
         h.finish()
     }
+}
+
+const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
+const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
+
+fn fnv_write_bytes(mut hash: u64, bytes: &[u8]) -> u64 {
+    for byte in bytes {
+        hash ^= u64::from(*byte);
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+    hash
+}
+
+fn fnv_write_u64(hash: u64, value: u64) -> u64 {
+    fnv_write_bytes(hash, &value.to_le_bytes())
 }
 
 /// Persisted 2D sketch stored in the API document.

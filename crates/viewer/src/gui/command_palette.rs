@@ -1,6 +1,7 @@
 //! Command palette — VS Code-style fuzzy command finder.
 //!
-//! Opens with **Ctrl + Shift + P** (Cmd + Shift + P on macOS). Type to
+//! Opens with **Ctrl + K** (Cmd + K on macOS) or the legacy
+//! **Ctrl + Shift + P** binding. Type to
 //! filter by command label; arrow keys navigate; Enter dispatches; Esc
 //! closes. Results are scored by a simple fuzzy match (subsequence with
 //! contiguous-bonus + start-of-word-bonus).
@@ -13,6 +14,8 @@
 use super::theme;
 use super::{GuiAction, GuiState};
 use crate::render::{DisplayMode, StandardView};
+use cadkernel_api::Command;
+use serde_json::Value;
 
 /// Internal state for the command palette popup.
 #[derive(Default)]
@@ -25,6 +28,9 @@ pub(crate) struct CommandPaletteState {
     pub selected: usize,
     /// Set to `true` for one frame after opening so the input grabs focus.
     pub request_focus: bool,
+    pub api_param_op: Option<&'static str>,
+    pub api_param_json: String,
+    pub api_param_error: Option<String>,
 }
 
 impl CommandPaletteState {
@@ -49,6 +55,9 @@ impl CommandPaletteState {
         self.query.clear();
         self.selected = 0;
         self.request_focus = false;
+        self.api_param_op = None;
+        self.api_param_json.clear();
+        self.api_param_error = None;
     }
 }
 
@@ -60,6 +69,12 @@ struct Entry {
     category: &'static str,
     shortcut: Option<&'static str>,
     run: fn(&mut GuiState),
+}
+
+struct ApiCommandDef {
+    op: &'static str,
+    aliases: &'static [&'static str],
+    default_json: &'static str,
 }
 
 /// Static catalogue of palette-reachable commands.
@@ -390,6 +405,601 @@ fn catalogue() -> Vec<Entry> {
     ]
 }
 
+const API_COMMANDS: &[ApiCommandDef] = &[
+    ApiCommandDef {
+        op: "create_box",
+        aliases: &["box", "cube", "primitive"],
+        default_json: r#"{"dx":10.0,"dy":10.0,"dz":10.0}"#,
+    },
+    ApiCommandDef {
+        op: "create_cylinder",
+        aliases: &["cylinder", "primitive"],
+        default_json: r#"{"radius":5.0,"height":10.0}"#,
+    },
+    ApiCommandDef {
+        op: "create_sphere",
+        aliases: &["sphere", "primitive"],
+        default_json: r#"{"radius":5.0}"#,
+    },
+    ApiCommandDef {
+        op: "create_cone",
+        aliases: &["cone", "frustum", "primitive"],
+        default_json: r#"{"radius":5.0,"height":10.0,"top_radius":0.0}"#,
+    },
+    ApiCommandDef {
+        op: "create_torus",
+        aliases: &["torus", "donut", "primitive"],
+        default_json: r#"{"major_radius":10.0,"minor_radius":2.0}"#,
+    },
+    ApiCommandDef {
+        op: "boolean_union",
+        aliases: &["union", "fuse", "boolean"],
+        default_json: r#"{"lhs":0,"rhs":1}"#,
+    },
+    ApiCommandDef {
+        op: "boolean_subtract",
+        aliases: &["subtract", "cut", "difference", "boolean"],
+        default_json: r#"{"lhs":0,"rhs":1}"#,
+    },
+    ApiCommandDef {
+        op: "boolean_intersect",
+        aliases: &["intersect", "common", "boolean"],
+        default_json: r#"{"lhs":0,"rhs":1}"#,
+    },
+    ApiCommandDef {
+        op: "translate",
+        aliases: &["move", "transform"],
+        default_json: r#"{"id":0,"dx":1.0,"dy":0.0,"dz":0.0}"#,
+    },
+    ApiCommandDef {
+        op: "scale",
+        aliases: &["uniform scale", "transform"],
+        default_json: r#"{"id":0,"factor":2.0}"#,
+    },
+    ApiCommandDef {
+        op: "scale_non_uniform",
+        aliases: &["nonuniform scale", "transform"],
+        default_json: r#"{"id":0,"factors":[1.0,1.0,1.0],"point":[0.0,0.0,0.0]}"#,
+    },
+    ApiCommandDef {
+        op: "center_on_origin",
+        aliases: &["center", "origin", "transform"],
+        default_json: r#"{"id":0}"#,
+    },
+    ApiCommandDef {
+        op: "align_to",
+        aliases: &["align", "snap", "transform"],
+        default_json: r#"{"id":0,"target_id":1}"#,
+    },
+    ApiCommandDef {
+        op: "scale_to_fit",
+        aliases: &["fit size", "normalize", "transform"],
+        default_json: r#"{"id":0,"target_size":10.0}"#,
+    },
+    ApiCommandDef {
+        op: "translate_to",
+        aliases: &["move to", "transform"],
+        default_json: r#"{"id":0,"point":[0.0,0.0,0.0]}"#,
+    },
+    ApiCommandDef {
+        op: "rename",
+        aliases: &["label", "name"],
+        default_json: r#"{"id":0,"label":"Solid"}"#,
+    },
+    ApiCommandDef {
+        op: "delete_solid",
+        aliases: &["delete", "remove"],
+        default_json: r#"{"id":0}"#,
+    },
+    ApiCommandDef {
+        op: "extrude",
+        aliases: &["extrusion", "profile"],
+        default_json: r#"{"profile":[[0.0,0.0,0.0],[1.0,0.0,0.0],[1.0,1.0,0.0],[0.0,1.0,0.0]],"direction":[0.0,0.0,1.0],"distance":1.0}"#,
+    },
+    ApiCommandDef {
+        op: "linear_pattern",
+        aliases: &["pattern", "array"],
+        default_json: r#"{"id":0,"direction":[1.0,0.0,0.0],"spacing":10.0,"count":3}"#,
+    },
+    ApiCommandDef {
+        op: "mirror",
+        aliases: &["reflect", "symmetry"],
+        default_json: r#"{"id":0,"point":[0.0,0.0,0.0],"normal":[1.0,0.0,0.0]}"#,
+    },
+    ApiCommandDef {
+        op: "pad",
+        aliases: &["partdesign", "additive extrude"],
+        default_json: r#"{"sketch":{"sketch_id":0},"distance":10.0}"#,
+    },
+    ApiCommandDef {
+        op: "pocket",
+        aliases: &["partdesign", "cut pocket"],
+        default_json: r#"{"sketch":{"sketch_id":0},"distance":5.0}"#,
+    },
+    ApiCommandDef {
+        op: "revolve",
+        aliases: &["partdesign", "additive revolution"],
+        default_json: r#"{"sketch":{"sketch_id":0},"axis":{"axis":"z"},"angle_rad":6.283185307179586}"#,
+    },
+    ApiCommandDef {
+        op: "groove",
+        aliases: &["partdesign", "subtractive revolution"],
+        default_json: r#"{"sketch":{"sketch_id":0},"axis":{"axis":"z"},"angle_rad":6.283185307179586}"#,
+    },
+    ApiCommandDef {
+        op: "hole",
+        aliases: &["partdesign", "drill"],
+        default_json: r#"{"face":{"solid":0,"tag":{"kind":"Face","segments":[{"operation":1,"kind":{"Generated":0}}]}},"position":[0.0,0.0],"radius":2.0,"depth":10.0}"#,
+    },
+    ApiCommandDef {
+        op: "sweep",
+        aliases: &["pipe", "path feature"],
+        default_json: r#"{"profile_sketch":{"sketch_id":0},"path_sketch":{"sketch_id":0}}"#,
+    },
+    ApiCommandDef {
+        op: "loft",
+        aliases: &["blend profiles"],
+        default_json: r#"{"profiles":[]}"#,
+    },
+    ApiCommandDef {
+        op: "helix",
+        aliases: &["coil", "thread"],
+        default_json: r#"{"axis":{"axis":"z"},"radius":2.0,"pitch":1.0,"height":5.0,"turns":3.0}"#,
+    },
+    ApiCommandDef {
+        op: "fillet",
+        aliases: &["round", "edge"],
+        default_json: r#"{"edges":[],"radius":1.0}"#,
+    },
+    ApiCommandDef {
+        op: "chamfer",
+        aliases: &["bevel", "edge"],
+        default_json: r#"{"edges":[],"distance":1.0}"#,
+    },
+    ApiCommandDef {
+        op: "shell",
+        aliases: &["hollow", "thin wall"],
+        default_json: r#"{"solid":0,"removed_faces":[],"thickness":1.0}"#,
+    },
+    ApiCommandDef {
+        op: "draft",
+        aliases: &["taper", "face"],
+        default_json: r#"{"faces":[],"neutral_plane":{"solid":0,"tag":{"kind":"Face","segments":[{"operation":1,"kind":{"Generated":0}}]}},"angle_rad":0.08726646259971647}"#,
+    },
+    ApiCommandDef {
+        op: "create_sketch",
+        aliases: &["sketch", "new sketch"],
+        default_json: r#"{"name":"Sketch"}"#,
+    },
+    ApiCommandDef {
+        op: "edit_sketch",
+        aliases: &["sketch edits"],
+        default_json: r#"{"sketch":0,"edits":[]}"#,
+    },
+    ApiCommandDef {
+        op: "delete_sketch",
+        aliases: &["remove sketch"],
+        default_json: r#"{"sketch":0}"#,
+    },
+    ApiCommandDef {
+        op: "map_sketch_to_face",
+        aliases: &["attach sketch", "map sketch"],
+        default_json: r#"{"sketch":0,"face":{"solid":0,"tag":{"kind":"Face","segments":[{"operation":1,"kind":{"Generated":0}}]}}}"#,
+    },
+    ApiCommandDef {
+        op: "create_body",
+        aliases: &["body", "partdesign body"],
+        default_json: r#"{"name":"Body"}"#,
+    },
+    ApiCommandDef {
+        op: "set_tip",
+        aliases: &["tip", "active feature"],
+        default_json: r#"{"body":1,"feature":1}"#,
+    },
+    ApiCommandDef {
+        op: "suppress_feature",
+        aliases: &["suppress", "feature toggle"],
+        default_json: r#"{"feature":1,"suppressed":true}"#,
+    },
+    ApiCommandDef {
+        op: "reorder_feature",
+        aliases: &["reorder", "move feature"],
+        default_json: r#"{"from":1,"to_position":0}"#,
+    },
+    ApiCommandDef {
+        op: "recompute_body",
+        aliases: &["recompute", "body"],
+        default_json: r#"{"body":1}"#,
+    },
+    ApiCommandDef {
+        op: "edit_feature",
+        aliases: &["edit spec", "feature spec"],
+        default_json: r#"{"feature":1,"new_spec":{"kind":"helix","axis":{"axis":"z"},"radius":2.0,"pitch":1.0,"height":5.0,"turns":3.0}}"#,
+    },
+    ApiCommandDef {
+        op: "new_document",
+        aliases: &["reset document", "new"],
+        default_json: r#"{}"#,
+    },
+    ApiCommandDef {
+        op: "measure",
+        aliases: &["mass properties", "measure"],
+        default_json: r#"{"id":0}"#,
+    },
+    ApiCommandDef {
+        op: "validate",
+        aliases: &["health", "check"],
+        default_json: r#"{}"#,
+    },
+    ApiCommandDef {
+        op: "list_solids",
+        aliases: &["solids", "list"],
+        default_json: r#"{}"#,
+    },
+    ApiCommandDef {
+        op: "find_by_label",
+        aliases: &["find", "search label"],
+        default_json: r#"{"query":""}"#,
+    },
+    ApiCommandDef {
+        op: "history_events",
+        aliases: &["history", "events"],
+        default_json: r#"{}"#,
+    },
+    ApiCommandDef {
+        op: "stats",
+        aliases: &["statistics", "counts"],
+        default_json: r#"{}"#,
+    },
+    ApiCommandDef {
+        op: "bounds",
+        aliases: &["bbox", "bounding box"],
+        default_json: r#"{"id":0}"#,
+    },
+    ApiCommandDef {
+        op: "distance",
+        aliases: &["measure distance"],
+        default_json: r#"{"id_a":0,"id_b":1}"#,
+    },
+    ApiCommandDef {
+        op: "volume",
+        aliases: &["measure volume"],
+        default_json: r#"{"id":0}"#,
+    },
+    ApiCommandDef {
+        op: "surface_area",
+        aliases: &["area", "measure area"],
+        default_json: r#"{"id":0}"#,
+    },
+    ApiCommandDef {
+        op: "centroid",
+        aliases: &["center of mass"],
+        default_json: r#"{"id":0}"#,
+    },
+    ApiCommandDef {
+        op: "intersects_aabb",
+        aliases: &["overlap", "collision"],
+        default_json: r#"{"id_a":0,"id_b":1}"#,
+    },
+    ApiCommandDef {
+        op: "exists",
+        aliases: &["solid exists"],
+        default_json: r#"{"id":0}"#,
+    },
+    ApiCommandDef {
+        op: "diagonal",
+        aliases: &["bbox diagonal"],
+        default_json: r#"{"id":0}"#,
+    },
+    ApiCommandDef {
+        op: "aabb_center",
+        aliases: &["bbox center"],
+        default_json: r#"{"id":0}"#,
+    },
+    ApiCommandDef {
+        op: "aabb_volume",
+        aliases: &["bbox volume"],
+        default_json: r#"{"id":0}"#,
+    },
+    ApiCommandDef {
+        op: "contains_aabb",
+        aliases: &["bbox contains"],
+        default_json: r#"{"id_outer":0,"id_inner":1}"#,
+    },
+    ApiCommandDef {
+        op: "aabb_corners",
+        aliases: &["bbox corners"],
+        default_json: r#"{"id":0}"#,
+    },
+    ApiCommandDef {
+        op: "solid_label",
+        aliases: &["label"],
+        default_json: r#"{"id":0}"#,
+    },
+    ApiCommandDef {
+        op: "is_empty",
+        aliases: &["empty document"],
+        default_json: r#"{}"#,
+    },
+    ApiCommandDef {
+        op: "aabb_surface_area",
+        aliases: &["bbox surface area"],
+        default_json: r#"{"id":0}"#,
+    },
+    ApiCommandDef {
+        op: "solid_count",
+        aliases: &["count solids"],
+        default_json: r#"{}"#,
+    },
+    ApiCommandDef {
+        op: "history_count",
+        aliases: &["count history"],
+        default_json: r#"{}"#,
+    },
+    ApiCommandDef {
+        op: "has_label",
+        aliases: &["label exists"],
+        default_json: r#"{"query":""}"#,
+    },
+    ApiCommandDef {
+        op: "solid_ids",
+        aliases: &["ids"],
+        default_json: r#"{}"#,
+    },
+    ApiCommandDef {
+        op: "aabb_extents",
+        aliases: &["bbox extents"],
+        default_json: r#"{"id":0}"#,
+    },
+    ApiCommandDef {
+        op: "aabb_longest_axis",
+        aliases: &["longest axis"],
+        default_json: r#"{"id":0}"#,
+    },
+    ApiCommandDef {
+        op: "aabb_shortest_axis",
+        aliases: &["shortest axis"],
+        default_json: r#"{"id":0}"#,
+    },
+    ApiCommandDef {
+        op: "aabb_aspect_ratio",
+        aliases: &["aspect ratio", "slenderness"],
+        default_json: r#"{"id":0}"#,
+    },
+    ApiCommandDef {
+        op: "is_cubic",
+        aliases: &["cube test"],
+        default_json: r#"{"id":0}"#,
+    },
+    ApiCommandDef {
+        op: "is_square_xy",
+        aliases: &["square xy"],
+        default_json: r#"{"id":0}"#,
+    },
+    ApiCommandDef {
+        op: "history_description",
+        aliases: &["history item"],
+        default_json: r#"{"index":0}"#,
+    },
+    ApiCommandDef {
+        op: "is_square_yz",
+        aliases: &["square yz"],
+        default_json: r#"{"id":0}"#,
+    },
+    ApiCommandDef {
+        op: "is_square_xz",
+        aliases: &["square xz"],
+        default_json: r#"{"id":0}"#,
+    },
+    ApiCommandDef {
+        op: "operation_count",
+        aliases: &["op count"],
+        default_json: r#"{"op_name":"create_box"}"#,
+    },
+    ApiCommandDef {
+        op: "last_operation",
+        aliases: &["last history"],
+        default_json: r#"{}"#,
+    },
+    ApiCommandDef {
+        op: "has_operation",
+        aliases: &["op exists"],
+        default_json: r#"{"op_name":"create_box"}"#,
+    },
+    ApiCommandDef {
+        op: "first_operation",
+        aliases: &["first history"],
+        default_json: r#"{}"#,
+    },
+    ApiCommandDef {
+        op: "duplicate",
+        aliases: &["clone", "copy"],
+        default_json: r#"{"id":0}"#,
+    },
+    ApiCommandDef {
+        op: "rotate",
+        aliases: &["rotate", "transform"],
+        default_json: r#"{"id":0,"axis":[0.0,0.0,1.0],"angle_rad":1.5707963267948966,"point":[0.0,0.0,0.0]}"#,
+    },
+    ApiCommandDef {
+        op: "noop",
+        aliases: &["ping"],
+        default_json: r#"{}"#,
+    },
+];
+
+fn api_command_defs() -> &'static [ApiCommandDef] {
+    API_COMMANDS
+}
+
+fn api_label(op: &str) -> String {
+    let mut label = String::from("API: ");
+    for (idx, part) in op.split('_').enumerate() {
+        if idx > 0 {
+            label.push(' ');
+        }
+        let mut chars = part.chars();
+        if let Some(first) = chars.next() {
+            label.extend(first.to_uppercase());
+            label.push_str(chars.as_str());
+        }
+    }
+    label
+}
+
+fn api_category(op: &str) -> &'static str {
+    if op.contains("aabb")
+        || matches!(
+            op,
+            "measure"
+                | "validate"
+                | "list_solids"
+                | "find_by_label"
+                | "history_events"
+                | "stats"
+                | "bounds"
+                | "distance"
+                | "volume"
+                | "surface_area"
+                | "centroid"
+                | "exists"
+                | "diagonal"
+                | "solid_label"
+                | "is_empty"
+                | "solid_count"
+                | "history_count"
+                | "has_label"
+                | "solid_ids"
+                | "is_cubic"
+                | "is_square_xy"
+                | "history_description"
+                | "is_square_yz"
+                | "is_square_xz"
+                | "operation_count"
+                | "last_operation"
+                | "has_operation"
+                | "first_operation"
+        )
+    {
+        "API / Query"
+    } else if matches!(
+        op,
+        "pad"
+            | "pocket"
+            | "revolve"
+            | "groove"
+            | "hole"
+            | "sweep"
+            | "loft"
+            | "helix"
+            | "fillet"
+            | "chamfer"
+            | "shell"
+            | "draft"
+            | "create_body"
+            | "set_tip"
+            | "suppress_feature"
+            | "reorder_feature"
+            | "recompute_body"
+            | "edit_feature"
+    ) {
+        "API / PartDesign"
+    } else if op.contains("sketch") {
+        "API / Sketch"
+    } else {
+        "API"
+    }
+}
+
+fn build_api_command(op: &str, json: &str) -> Result<Command, String> {
+    let parsed: Value =
+        serde_json::from_str(json).map_err(|err| format!("Invalid parameter JSON: {err}"))?;
+    let mut object = match parsed {
+        Value::Object(map) => map,
+        _ => return Err("Parameter JSON must be an object".into()),
+    };
+    object.insert("op".to_string(), Value::String(op.to_string()));
+    serde_json::from_value(Value::Object(object))
+        .map_err(|err| format!("Command parameters do not match {op}: {err}"))
+}
+
+#[derive(Clone, Copy)]
+enum ScoredEntry {
+    Gui(usize),
+    Api(usize),
+}
+
+enum PendingDispatch {
+    Gui(fn(&mut GuiState)),
+    Api(Command),
+}
+
+fn entry_score(query: &str, entry: &Entry) -> Option<i32> {
+    fuzzy_score(query, entry.label)
+}
+
+fn api_score(query: &str, def: &ApiCommandDef) -> Option<i32> {
+    let label = api_label(def.op);
+    let mut best = fuzzy_score(query, &label).or_else(|| fuzzy_score(query, def.op));
+    for alias in def.aliases {
+        if let Some(score) = fuzzy_score(query, alias) {
+            best = Some(best.map_or(score, |current| current.max(score + 4)));
+        }
+    }
+    best
+}
+
+fn scored_entries(query: &str, gui_entries: &[Entry]) -> Vec<(i32, ScoredEntry)> {
+    let mut scored: Vec<(i32, ScoredEntry)> = gui_entries
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, entry)| {
+            entry_score(query, entry).map(|score| (score, ScoredEntry::Gui(idx)))
+        })
+        .collect();
+    scored.extend(
+        api_command_defs()
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, def)| {
+                api_score(query, def).map(|score| (score, ScoredEntry::Api(idx)))
+            }),
+    );
+    scored.sort_by_key(|s| std::cmp::Reverse(s.0));
+    scored
+}
+
+fn dispatch_for_entry(
+    entry: ScoredEntry,
+    gui_entries: &[Entry],
+    state: &mut CommandPaletteState,
+) -> Option<PendingDispatch> {
+    match entry {
+        ScoredEntry::Gui(idx) => Some(PendingDispatch::Gui(gui_entries[idx].run)),
+        ScoredEntry::Api(idx) => {
+            let def = &api_command_defs()[idx];
+            match build_api_command(def.op, &state.api_param_json) {
+                Ok(command) => {
+                    state.api_param_error = None;
+                    Some(PendingDispatch::Api(command))
+                }
+                Err(err) => {
+                    state.api_param_error = Some(err);
+                    None
+                }
+            }
+        }
+    }
+}
+
+fn ensure_api_param_state(def: &ApiCommandDef, state: &mut CommandPaletteState) {
+    if state.api_param_op != Some(def.op) {
+        state.api_param_op = Some(def.op);
+        state.api_param_json = def.default_json.to_string();
+        state.api_param_error = None;
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Fuzzy match — subsequence scoring with start-of-word and contiguous bonus
 // ---------------------------------------------------------------------------
@@ -448,14 +1058,19 @@ fn fuzzy_score(query: &str, target: &str) -> Option<i32> {
 // Render
 // ---------------------------------------------------------------------------
 
-/// Detect the global Ctrl+Shift+P shortcut and toggle the palette. Call
+/// Detect the global Ctrl+K / Ctrl+Shift+P shortcuts and toggle the palette. Call
 /// once per frame before `draw_command_palette`.
 pub(crate) fn handle_global_shortcut(ctx: &egui::Context, state: &mut CommandPaletteState) {
     let triggered = ctx.input_mut(|i| {
-        i.consume_shortcut(&egui::KeyboardShortcut::new(
+        let ctrl_k = i.consume_shortcut(&egui::KeyboardShortcut::new(
+            egui::Modifiers::COMMAND,
+            egui::Key::K,
+        ));
+        let legacy = i.consume_shortcut(&egui::KeyboardShortcut::new(
             egui::Modifiers::COMMAND | egui::Modifiers::SHIFT,
             egui::Key::P,
-        ))
+        ));
+        ctrl_k || legacy
     });
     if triggered {
         state.toggle();
@@ -478,12 +1093,7 @@ pub(crate) fn draw_command_palette(ctx: &egui::Context, gui: &mut GuiState) {
     // Score and sort the catalogue once per frame.
     let entries = catalogue();
     let query = gui.command_palette.query.clone();
-    let mut scored: Vec<(i32, usize)> = entries
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, e)| fuzzy_score(&query, e.label).map(|s| (s, idx)))
-        .collect();
-    scored.sort_by_key(|s| std::cmp::Reverse(s.0));
+    let mut scored = scored_entries(&query, &entries);
     let max_results = 12usize;
     scored.truncate(max_results);
 
@@ -515,13 +1125,24 @@ pub(crate) fn draw_command_palette(ctx: &egui::Context, gui: &mut GuiState) {
         }
     }
 
+    let selected_api =
+        scored
+            .get(gui.command_palette.selected)
+            .and_then(|(_, entry)| match entry {
+                ScoredEntry::Api(idx) => Some(&api_command_defs()[*idx]),
+                ScoredEntry::Gui(_) => None,
+            });
+    if let Some(def) = selected_api {
+        ensure_api_param_state(def, &mut gui.command_palette);
+    }
+
     // Decide whether to dispatch _after_ rendering (so the closed state
     // isn't inconsistent during the same frame).
-    let mut to_dispatch: Option<fn(&mut GuiState)> = None;
+    let mut to_dispatch: Option<PendingDispatch> = None;
 
     let screen = ctx.screen_rect();
     let palette_width = 600.0_f32.min(screen.width() - 32.0);
-    let palette_height = 460.0_f32.min(screen.height() - 64.0);
+    let palette_height = 520.0_f32.min(screen.height() - 64.0);
 
     egui::Area::new(egui::Id::new("__command_palette"))
         .order(egui::Order::Foreground)
@@ -643,8 +1264,22 @@ pub(crate) fn draw_command_palette(ctx: &egui::Context, gui: &mut GuiState) {
                         .max_height(palette_height - header_h - 32.0)
                         .show(ui, |ui| {
                             ui.add_space(4.0);
-                            for (visible_row, (_score, entry_idx)) in scored.iter().enumerate() {
-                                let entry = &entries[*entry_idx];
+                            for (visible_row, (_score, scored_entry)) in scored.iter().enumerate() {
+                                let (label, category, shortcut, is_api) = match scored_entry {
+                                    ScoredEntry::Gui(entry_idx) => {
+                                        let entry = &entries[*entry_idx];
+                                        (
+                                            entry.label.to_string(),
+                                            entry.category,
+                                            entry.shortcut,
+                                            false,
+                                        )
+                                    }
+                                    ScoredEntry::Api(api_idx) => {
+                                        let def = &api_command_defs()[*api_idx];
+                                        (api_label(def.op), api_category(def.op), None, true)
+                                    }
+                                };
                                 let selected = visible_row == gui.command_palette.selected;
                                 let row_h = 34.0;
                                 let (row_rect, row_resp) = ui.allocate_exact_size(
@@ -688,14 +1323,14 @@ pub(crate) fn draw_command_palette(ctx: &egui::Context, gui: &mut GuiState) {
                                 painter.text(
                                     egui::pos2(inset.left() + 14.0, inset.center().y),
                                     egui::Align2::LEFT_CENTER,
-                                    entry.label,
+                                    label,
                                     egui::FontId::proportional(13.0),
                                     label_color,
                                 );
 
                                 // Category chip on the right side, before the shortcut.
                                 let mut right_x = inset.right() - 8.0;
-                                if let Some(sc) = entry.shortcut {
+                                if let Some(sc) = shortcut {
                                     let font = egui::FontId::monospace(10.5);
                                     let g = painter.layout_no_wrap(
                                         sc.to_string(),
@@ -736,17 +1371,75 @@ pub(crate) fn draw_command_palette(ctx: &egui::Context, gui: &mut GuiState) {
                                 painter.text(
                                     egui::pos2(right_x, inset.center().y),
                                     egui::Align2::RIGHT_CENTER,
-                                    entry.category,
+                                    category,
                                     egui::FontId::proportional(10.5),
                                     theme::COLOR_DIM,
                                 );
 
                                 if row_resp.clicked() {
-                                    to_dispatch = Some(entry.run);
+                                    gui.command_palette.selected = visible_row;
+                                    match scored_entry {
+                                        ScoredEntry::Gui(_) => {
+                                            to_dispatch = dispatch_for_entry(
+                                                *scored_entry,
+                                                &entries,
+                                                &mut gui.command_palette,
+                                            );
+                                        }
+                                        ScoredEntry::Api(api_idx) => {
+                                            ensure_api_param_state(
+                                                &api_command_defs()[*api_idx],
+                                                &mut gui.command_palette,
+                                            );
+                                        }
+                                    }
+                                }
+                                if is_api && row_resp.double_clicked() {
+                                    if let ScoredEntry::Api(api_idx) = scored_entry {
+                                        ensure_api_param_state(
+                                            &api_command_defs()[*api_idx],
+                                            &mut gui.command_palette,
+                                        );
+                                    }
+                                    to_dispatch = dispatch_for_entry(
+                                        *scored_entry,
+                                        &entries,
+                                        &mut gui.command_palette,
+                                    );
                                 }
                             }
                             ui.add_space(4.0);
                         });
+                    if let Some(def) = selected_api {
+                        ui.add_space(4.0);
+                        ui.separator();
+                        ui.horizontal(|ui| {
+                            ui.label(
+                                egui::RichText::new("Parameters")
+                                    .color(theme::COLOR_DIM)
+                                    .size(10.5),
+                            );
+                            ui.label(
+                                egui::RichText::new(def.op)
+                                    .monospace()
+                                    .color(theme::COLOR_ACCENT)
+                                    .size(10.5),
+                            );
+                        });
+                        ui.add(
+                            egui::TextEdit::multiline(&mut gui.command_palette.api_param_json)
+                                .font(egui::TextStyle::Monospace)
+                                .desired_width(palette_width - 18.0)
+                                .desired_rows(5),
+                        );
+                        if let Some(err) = &gui.command_palette.api_param_error {
+                            ui.label(
+                                egui::RichText::new(err)
+                                    .color(egui::Color32::from_rgb(220, 100, 95))
+                                    .size(10.5),
+                            );
+                        }
+                    }
                 }
 
                 // -- Footer hints --
@@ -780,7 +1473,7 @@ pub(crate) fn draw_command_palette(ctx: &egui::Context, gui: &mut GuiState) {
                 painter.text(
                     egui::pos2(footer_rect.right() - 14.0, footer_rect.center().y),
                     egui::Align2::RIGHT_CENTER,
-                    "Ctrl+P",
+                    "Ctrl+K",
                     egui::FontId::monospace(10.0),
                     egui::Color32::from_rgb(120, 130, 145),
                 );
@@ -789,14 +1482,50 @@ pub(crate) fn draw_command_palette(ctx: &egui::Context, gui: &mut GuiState) {
 
     // Enter dispatches the highlighted entry.
     if enter_pressed && !scored.is_empty() {
-        let (_, entry_idx) = scored[gui.command_palette.selected];
-        to_dispatch = Some(entries[entry_idx].run);
+        let (_, entry) = scored[gui.command_palette.selected];
+        to_dispatch = dispatch_for_entry(entry, &entries, &mut gui.command_palette);
     }
 
-    if let Some(run) = to_dispatch {
-        run(gui);
-        gui.command_palette.close();
+    if let Some(dispatch) = to_dispatch {
+        match dispatch {
+            PendingDispatch::Gui(run) => run(gui),
+            PendingDispatch::Api(command) => {
+                gui.actions.push(GuiAction::ExecuteApiCommand(command))
+            }
+        }
+        if gui.command_palette.api_param_error.is_none() {
+            gui.command_palette.close();
+        }
     }
+}
+
+#[doc(hidden)]
+pub(crate) fn api_catalog_ops_for_test() -> Vec<&'static str> {
+    api_command_defs().iter().map(|def| def.op).collect()
+}
+
+#[doc(hidden)]
+pub(crate) fn palette_match_labels_for_test(query: &str) -> Vec<String> {
+    let entries = catalogue();
+    let mut scored = scored_entries(query, &entries);
+    scored.truncate(12);
+    scored
+        .into_iter()
+        .map(|(_, entry)| match entry {
+            ScoredEntry::Gui(idx) => entries[idx].label.to_string(),
+            ScoredEntry::Api(idx) => api_label(api_command_defs()[idx].op),
+        })
+        .collect()
+}
+
+#[doc(hidden)]
+pub(crate) fn build_api_command_for_test(op: &str, json: &str) -> Result<Command, String> {
+    build_api_command(op, json)
+}
+
+#[doc(hidden)]
+pub(crate) fn shortcut_labels_for_test() -> [&'static str; 2] {
+    ["Ctrl+K", "Ctrl+Shift+P"]
 }
 
 #[cfg(test)]

@@ -1,6 +1,7 @@
 use super::theme;
-use super::{GuiAction, GuiState};
+use super::{ApiBodyTree, ApiFeatureTree, FeatureEditState, GuiAction, GuiState};
 use crate::scene::{CreationParams, ObjectId, Scene, SceneObject};
+use cadkernel_api::{BodyId, Command, FeatureId, FeatureSpec};
 
 // ---------------------------------------------------------------------------
 // Entity icon types
@@ -552,7 +553,7 @@ pub(crate) fn draw_model_tree_inline(ui: &mut egui::Ui, gui: &mut GuiState, scen
 
     handle_keyboard_shortcuts(ui, gui);
 
-    if scene.is_empty() {
+    if scene.is_empty() && gui.api_bodies.is_empty() {
         ui.add_space(12.0);
         ui.vertical_centered(|ui| {
             ui.label(
@@ -779,6 +780,10 @@ pub(crate) fn draw_model_tree_inline(ui: &mut egui::Ui, gui: &mut GuiState, scen
         theme::draw_separator(ui);
     }
 
+    let api_bodies = gui.api_bodies.clone();
+    draw_api_bodies_section(ui, gui, &api_bodies);
+    draw_feature_edit_modal(ui, gui);
+
     // -- Assembly section (collapsible) --
     draw_assembly_section(ui, gui, Some(scene));
 
@@ -836,6 +841,322 @@ pub(crate) fn draw_model_tree_inline(ui: &mut egui::Ui, gui: &mut GuiState, scen
             egui::Stroke::new(2.0, theme::COLOR_ACCENT),
         );
         painter.circle_filled(egui::pos2(x_start, drop_y), 3.0, theme::COLOR_ACCENT);
+    }
+}
+
+fn draw_api_bodies_section(ui: &mut egui::Ui, gui: &mut GuiState, bodies: &[ApiBodyTree]) {
+    if bodies.is_empty() {
+        return;
+    }
+    let expanded = theme::draw_section_header(
+        ui,
+        "tree_api_bodies",
+        &format!("Bodies ({})", bodies.len()),
+        true,
+    );
+    if !expanded {
+        theme::draw_separator(ui);
+        return;
+    }
+
+    for body in bodies {
+        draw_api_body_row(ui, body);
+        for (index, feature) in body.features.iter().enumerate() {
+            draw_api_feature_row(ui, gui, body.id, feature, index, body.features.len());
+        }
+        draw_branch_indicator(ui, body);
+    }
+    theme::draw_separator(ui);
+}
+
+fn draw_api_body_row(ui: &mut egui::Ui, body: &ApiBodyTree) {
+    let row_h = ROW_HEIGHT;
+    let avail_w = ui.available_width();
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(avail_w, row_h), egui::Sense::hover());
+    let painter = ui.painter();
+    if body.active {
+        painter.rect_filled(rect, 0.0, ACTIVE_BODY_BG);
+    } else if resp.hovered() {
+        painter.rect_filled(rect, 0.0, egui::Color32::from_rgb(0x24, 0x29, 0x33));
+    }
+    let cy = rect.center().y;
+    let icon_rect = egui::Rect::from_center_size(
+        egui::pos2(rect.left() + 18.0, cy),
+        egui::vec2(ICON_SIZE, ICON_SIZE),
+    );
+    draw_entity_icon(painter, icon_rect, EntityIcon::Body, theme::COLOR_ACCENT);
+    painter.text(
+        egui::pos2(rect.left() + 32.0, cy),
+        egui::Align2::LEFT_CENTER,
+        &body.name,
+        egui::FontId::proportional(11.5),
+        egui::Color32::from_rgb(190, 200, 214),
+    );
+    let suffix = if body.active {
+        format!("Body #{}  active", body.id.0)
+    } else {
+        format!("Body #{}", body.id.0)
+    };
+    painter.text(
+        egui::pos2(rect.right() - 6.0, cy),
+        egui::Align2::RIGHT_CENTER,
+        suffix,
+        egui::FontId::proportional(9.5),
+        theme::COLOR_DIM,
+    );
+}
+
+fn draw_api_feature_row(
+    ui: &mut egui::Ui,
+    gui: &mut GuiState,
+    body: BodyId,
+    feature: &ApiFeatureTree,
+    index: usize,
+    total: usize,
+) {
+    let avail_w = ui.available_width();
+    let (rect, row_resp) =
+        ui.allocate_exact_size(egui::vec2(avail_w, ROW_HEIGHT), egui::Sense::click());
+    if row_resp.hovered() {
+        ui.painter()
+            .rect_filled(rect, 0.0, egui::Color32::from_rgb(0x24, 0x29, 0x33));
+    }
+    if feature.is_tip {
+        ui.painter().rect_filled(
+            egui::Rect::from_min_size(rect.left_top(), egui::vec2(2.0, ROW_HEIGHT)),
+            0.0,
+            TIP_COLOR,
+        );
+    }
+
+    let cy = rect.center().y;
+    let base_x = rect.left() + 20.0 + INDENT_PX;
+    let mut visible = !feature.suppressed;
+    let checkbox_rect =
+        egui::Rect::from_center_size(egui::pos2(base_x + 6.0, cy), egui::vec2(14.0, 14.0));
+    let checkbox = ui.put(checkbox_rect, egui::Checkbox::without_text(&mut visible));
+    if checkbox.changed() {
+        gui.actions
+            .push(GuiAction::ExecuteApiCommand(Command::SuppressFeature {
+                feature: feature.id,
+                suppressed: !visible,
+            }));
+    }
+    checkbox.on_hover_text("Suppress feature");
+
+    let handle_rect =
+        egui::Rect::from_center_size(egui::pos2(base_x + 24.0, cy), egui::vec2(16.0, ROW_HEIGHT));
+    let drag_resp = ui.interact(
+        handle_rect,
+        ui.id().with(("api_feature_drag", feature.id.0)),
+        egui::Sense::drag(),
+    );
+    ui.painter().text(
+        handle_rect.center(),
+        egui::Align2::CENTER_CENTER,
+        "\u{22EE}",
+        egui::FontId::proportional(12.0),
+        theme::COLOR_DIM,
+    );
+    let drag_sent_key = ui.id().with(("api_feature_drag_sent", feature.id.0));
+    if drag_resp.dragged() {
+        let already_sent = ui.data(|d| d.get_temp::<bool>(drag_sent_key).unwrap_or(false));
+        let delta_y = drag_resp.drag_delta().y;
+        if !already_sent && delta_y.abs() > ROW_HEIGHT * 0.75 {
+            let target = if delta_y < 0.0 {
+                index.saturating_sub(1)
+            } else {
+                (index + 1).min(total.saturating_sub(1))
+            };
+            if target != index {
+                gui.actions
+                    .push(reorder_feature_command(feature.id, target as u32));
+                ui.data_mut(|d| d.insert_temp(drag_sent_key, true));
+            }
+        }
+    } else {
+        ui.data_mut(|d| d.remove::<bool>(drag_sent_key));
+    }
+    drag_resp.on_hover_text("Drag to reorder");
+
+    let icon_rect = egui::Rect::from_center_size(
+        egui::pos2(base_x + 44.0, cy),
+        egui::vec2(ICON_SIZE, ICON_SIZE),
+    );
+    draw_entity_icon(
+        ui.painter(),
+        icon_rect,
+        feature_kind_icon(&feature.kind),
+        if feature.suppressed {
+            egui::Color32::from_rgb(95, 100, 112)
+        } else {
+            theme::COLOR_ACCENT
+        },
+    );
+
+    let text_color = if feature.suppressed {
+        egui::Color32::from_rgb(110, 116, 128)
+    } else {
+        egui::Color32::from_rgb(175, 185, 200)
+    };
+    ui.painter().text(
+        egui::pos2(base_x + 56.0, cy),
+        egui::Align2::LEFT_CENTER,
+        format!("{}. {}", index + 1, feature.name),
+        egui::FontId::proportional(11.0),
+        text_color,
+    );
+
+    let up_rect = egui::Rect::from_center_size(
+        egui::pos2(rect.right() - 42.0, cy),
+        egui::vec2(16.0, ROW_HEIGHT),
+    );
+    let down_rect = egui::Rect::from_center_size(
+        egui::pos2(rect.right() - 24.0, cy),
+        egui::vec2(16.0, ROW_HEIGHT),
+    );
+    let up_resp = ui.interact(
+        up_rect,
+        ui.id().with(("api_feature_up", feature.id.0)),
+        egui::Sense::click(),
+    );
+    let down_resp = ui.interact(
+        down_rect,
+        ui.id().with(("api_feature_down", feature.id.0)),
+        egui::Sense::click(),
+    );
+    if index > 0 {
+        ui.painter().text(
+            up_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            "\u{25B4}",
+            egui::FontId::proportional(10.0),
+            theme::COLOR_DIM,
+        );
+        if up_resp.clicked() {
+            gui.actions
+                .push(reorder_feature_command(feature.id, (index - 1) as u32));
+        }
+    }
+    if index + 1 < total {
+        ui.painter().text(
+            down_rect.center(),
+            egui::Align2::CENTER_CENTER,
+            "\u{25BE}",
+            egui::FontId::proportional(10.0),
+            theme::COLOR_DIM,
+        );
+        if down_resp.clicked() {
+            gui.actions
+                .push(reorder_feature_command(feature.id, (index + 1) as u32));
+        }
+    }
+    up_resp.on_hover_text("Move up");
+    down_resp.on_hover_text("Move down");
+
+    if row_resp.double_clicked() {
+        gui.feature_edit = Some(FeatureEditState {
+            body,
+            feature: feature.id,
+            title: feature.name.clone(),
+            spec_json: feature.spec_json.clone(),
+            error: None,
+        });
+    }
+    row_resp.context_menu(|ui| {
+        if ui.button("Set as tip").clicked() {
+            gui.actions
+                .push(GuiAction::ExecuteApiCommand(Command::SetTip {
+                    body,
+                    feature: feature.id,
+                }));
+            ui.close_menu();
+        }
+    });
+}
+
+fn draw_branch_indicator(ui: &mut egui::Ui, body: &ApiBodyTree) {
+    let avail_w = ui.available_width();
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(avail_w, 16.0), egui::Sense::hover());
+    ui.painter().text(
+        egui::pos2(rect.left() + 20.0 + INDENT_PX, rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        format!("Linear history · tip {:?}", body.tip.map(|id| id.0)),
+        egui::FontId::proportional(9.5),
+        theme::COLOR_DIM,
+    );
+}
+
+fn draw_feature_edit_modal(ui: &egui::Ui, gui: &mut GuiState) {
+    let Some(mut state) = gui.feature_edit.take() else {
+        return;
+    };
+    let mut keep_open = true;
+    egui::Window::new("Edit Feature")
+        .collapsible(false)
+        .resizable(true)
+        .default_width(420.0)
+        .show(ui.ctx(), |ui| {
+            ui.label(
+                egui::RichText::new(format!("Body #{} · {}", state.body.0, state.title))
+                    .color(theme::COLOR_DIM)
+                    .size(11.0),
+            );
+            ui.add(
+                egui::TextEdit::multiline(&mut state.spec_json)
+                    .font(egui::TextStyle::Monospace)
+                    .desired_rows(10)
+                    .desired_width(f32::INFINITY),
+            );
+            if let Some(err) = &state.error {
+                ui.label(
+                    egui::RichText::new(err)
+                        .color(egui::Color32::from_rgb(220, 100, 95))
+                        .size(10.5),
+                );
+            }
+            ui.horizontal(|ui| {
+                if ui.button("Save").clicked() {
+                    match serde_json::from_str::<FeatureSpec>(&state.spec_json) {
+                        Ok(new_spec) => {
+                            gui.actions
+                                .push(GuiAction::ExecuteApiCommand(Command::EditFeature {
+                                    feature: state.feature,
+                                    new_spec,
+                                }));
+                            keep_open = false;
+                        }
+                        Err(err) => {
+                            state.error = Some(format!("Invalid feature spec: {err}"));
+                        }
+                    }
+                }
+                if ui.button("Cancel").clicked() {
+                    keep_open = false;
+                }
+            });
+        });
+    if keep_open {
+        gui.feature_edit = Some(state);
+    }
+}
+
+fn reorder_feature_command(feature: FeatureId, to_position: u32) -> GuiAction {
+    GuiAction::ExecuteApiCommand(Command::ReorderFeature {
+        from: feature,
+        to_position,
+    })
+}
+
+fn feature_kind_icon(kind: &str) -> EntityIcon {
+    match kind {
+        "pad" | "pocket" | "extrude" => EntityIcon::Extrude,
+        "revolve" | "groove" => EntityIcon::Revolve,
+        "fillet" => EntityIcon::Fillet,
+        "chamfer" => EntityIcon::Chamfer,
+        "mirror" | "pattern" => EntityIcon::Pattern,
+        "sketch" => EntityIcon::Sketch,
+        _ => EntityIcon::Solid,
     }
 }
 

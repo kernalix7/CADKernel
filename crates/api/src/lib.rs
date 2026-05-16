@@ -64,6 +64,7 @@ mod session;
 pub mod cadk;
 pub mod reference_parts;
 
+pub use cadkernel_modeling::body::FeatureGraph;
 pub use cadkernel_topology::Tag;
 pub use command::{
     AxisRef, BodyId, ChamferMode, ChamferSpec, Command, DraftDirection, DraftSpec, EdgeRef,
@@ -74,7 +75,7 @@ pub use command::{
 };
 pub use document::{
     AabbSummary, Document, DocumentIssue, FeatureId, HistoryEvent, MeasureSummary, PersistedSketch,
-    SolidId,
+    RecomputeCache, SolidId,
 };
 pub use outcome::{Outcome, OutcomeKind, Plane, SolidEntry};
 pub use session::{Session, SessionSnapshot};

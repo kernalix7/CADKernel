@@ -73,6 +73,10 @@ const FEM_COLORMAP_BANDS: usize = 7;
 
 #[doc(hidden)]
 pub type FemProbeSummary = (usize, Option<usize>, Option<f64>, Option<f64>, Option<f64>);
+#[doc(hidden)]
+pub type ApiFeatureTreeSummary = (u64, String, String, bool, bool);
+#[doc(hidden)]
+pub type ApiBodyTreeSummary = (u64, String, Option<u64>, Vec<ApiFeatureTreeSummary>);
 
 #[derive(Debug, Clone)]
 struct SketchProjectionSource {
@@ -1260,6 +1264,94 @@ impl CadApp {
         self.log_info(format!("{label}: ok"));
     }
 
+    fn sync_api_body_tree(&mut self) {
+        let doc = self.session.document();
+        let active_body = doc.active_body();
+        self.gui.api_bodies = doc
+            .body_ids()
+            .into_iter()
+            .filter_map(|body_id| {
+                let body = doc.body(body_id)?;
+                let tip = body
+                    .tip
+                    .and_then(|idx| body.features.get(idx))
+                    .map(|feature| cadkernel_api::FeatureId(feature.feature_id));
+                let features = body
+                    .features
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, feature)| {
+                        let spec_json = feature
+                            .spec
+                            .as_ref()
+                            .and_then(|value| serde_json::to_string_pretty(value).ok())
+                            .unwrap_or_else(|| default_feature_spec_json(feature.kind.as_str()));
+                        crate::gui::ApiFeatureTree {
+                            id: cadkernel_api::FeatureId(feature.feature_id),
+                            name: feature.name.clone(),
+                            kind: feature.kind.as_str().to_string(),
+                            spec_json,
+                            suppressed: feature.suppressed,
+                            is_tip: body.tip == Some(idx),
+                        }
+                    })
+                    .collect();
+                Some(crate::gui::ApiBodyTree {
+                    id: body_id,
+                    name: body.name.clone(),
+                    active: active_body == Some(body_id),
+                    tip,
+                    features,
+                })
+            })
+            .collect();
+    }
+
+    fn sync_scene_from_session_solids(&mut self) {
+        let doc = self.session.document();
+        let solid_ids = doc.solid_ids();
+        self.scene.objects.retain(|obj| obj.solid_id.is_none());
+        let solids: Vec<_> = solid_ids
+            .into_iter()
+            .filter_map(|id| {
+                let label = self.session.document().solid_label(id)?.to_string();
+                let (model, handle) = self.session.document().clone_solid_brep(id)?;
+                Some((id, label, model, handle))
+            })
+            .collect();
+        for (id, label, model, handle) in solids {
+            self.scene.add_object(label, model, handle, None, Some(id));
+        }
+        self.rebuild_scene_gpu();
+    }
+
+    fn execute_api_command_from_gui(&mut self, command: cadkernel_api::Command) {
+        let op = command.op_name().to_string();
+        if api_command_mutates(&command) {
+            self.snapshot_before(&format!("API {op}"));
+        }
+        match self.session.execute(command) {
+            Ok(outcome) => {
+                if matches!(outcome, cadkernel_api::Outcome::DocumentReset) {
+                    self.scene = crate::scene::Scene::new();
+                    self.model = BRepModel::new();
+                    self.current_mesh = None;
+                    self.current_solid = None;
+                    self.object_ranges.clear();
+                    self.vertices.clear();
+                } else {
+                    self.sync_scene_from_session_solids();
+                }
+                self.sync_api_body_tree();
+                self.log_info(format!("API {op}: {:?}", outcome.kind()));
+            }
+            Err(err) => {
+                self.sync_api_body_tree();
+                self.log_warning(format!("API {op} failed: {err}"));
+            }
+        }
+    }
+
     fn selected_edge_refs_for_action(&self) -> Vec<cadkernel_api::EdgeRef> {
         let selected: Vec<_> = self
             .gui
@@ -1488,6 +1580,8 @@ impl CadApp {
                     self.gui.selected_entities.clear();
                     self.gui.scene_overlay.clear();
                     self.gui.current_file = None;
+                    self.session = cadkernel_api::Session::new();
+                    self.sync_api_body_tree();
                     self.log_info("New model created");
                 }
 
@@ -1513,6 +1607,10 @@ impl CadApp {
 
                 GuiAction::ClearRecentFiles => {
                     self.gui.recent_files.clear();
+                }
+
+                GuiAction::ExecuteApiCommand(command) => {
+                    self.execute_api_command_from_gui(command);
                 }
 
                 GuiAction::SaveFile(path) => {
@@ -9572,6 +9670,7 @@ impl CadApp {
     // -- combined 3D + egui render -----------------------------------------
 
     fn render_frame(&mut self) {
+        self.sync_api_body_tree();
         // Rebuild grid when zoom level changes
         if self.grid_config.update_for_camera(self.camera.distance) {
             if let Some(rt) = &mut self.runtime {
@@ -11718,6 +11817,94 @@ fn fem_bc_kind_label(bc: &cadkernel_modeling::BoundaryCondition) -> &'static str
     }
 }
 
+fn default_feature_spec_json(kind: &str) -> String {
+    let value = match kind {
+        "pocket" => serde_json::json!({
+            "kind": "pocket",
+            "sketch": { "sketch_id": 0 },
+            "distance": 1.0
+        }),
+        "revolve" => serde_json::json!({
+            "kind": "revolve",
+            "sketch": { "sketch_id": 0 },
+            "axis": { "axis": "z" },
+            "angle_rad": std::f64::consts::TAU
+        }),
+        "groove" => serde_json::json!({
+            "kind": "groove",
+            "sketch": { "sketch_id": 0 },
+            "axis": { "axis": "z" },
+            "angle_rad": std::f64::consts::TAU
+        }),
+        "hole" => serde_json::json!({
+            "kind": "hole",
+            "face": cadkernel_api::FaceRef::default(),
+            "position": [0.0, 0.0],
+            "radius": 1.0,
+            "depth": 1.0
+        }),
+        "helix" => serde_json::json!({
+            "kind": "helix",
+            "axis": { "axis": "z" },
+            "radius": 1.0,
+            "pitch": 1.0,
+            "height": 1.0,
+            "turns": 1.0
+        }),
+        _ => serde_json::json!({
+            "kind": "pad",
+            "sketch": { "sketch_id": 0 },
+            "distance": 1.0
+        }),
+    };
+    serde_json::to_string_pretty(&value).unwrap_or_else(|_| "{}".to_string())
+}
+
+fn api_command_mutates(command: &cadkernel_api::Command) -> bool {
+    !matches!(
+        command,
+        cadkernel_api::Command::Measure { .. }
+            | cadkernel_api::Command::Validate
+            | cadkernel_api::Command::ListSolids
+            | cadkernel_api::Command::FindByLabel { .. }
+            | cadkernel_api::Command::HistoryEvents
+            | cadkernel_api::Command::Stats
+            | cadkernel_api::Command::Bounds { .. }
+            | cadkernel_api::Command::Distance { .. }
+            | cadkernel_api::Command::Volume { .. }
+            | cadkernel_api::Command::SurfaceArea { .. }
+            | cadkernel_api::Command::Centroid { .. }
+            | cadkernel_api::Command::IntersectsAabb { .. }
+            | cadkernel_api::Command::Exists { .. }
+            | cadkernel_api::Command::Diagonal { .. }
+            | cadkernel_api::Command::AabbCenter { .. }
+            | cadkernel_api::Command::AabbVolume { .. }
+            | cadkernel_api::Command::ContainsAabb { .. }
+            | cadkernel_api::Command::AabbCorners { .. }
+            | cadkernel_api::Command::SolidLabel { .. }
+            | cadkernel_api::Command::IsEmpty
+            | cadkernel_api::Command::AabbSurfaceArea { .. }
+            | cadkernel_api::Command::SolidCount
+            | cadkernel_api::Command::HistoryCount
+            | cadkernel_api::Command::HasLabel { .. }
+            | cadkernel_api::Command::SolidIds
+            | cadkernel_api::Command::AabbExtents { .. }
+            | cadkernel_api::Command::AabbLongestAxis { .. }
+            | cadkernel_api::Command::AabbShortestAxis { .. }
+            | cadkernel_api::Command::AabbAspectRatio { .. }
+            | cadkernel_api::Command::IsCubic { .. }
+            | cadkernel_api::Command::IsSquareXy { .. }
+            | cadkernel_api::Command::HistoryDescription { .. }
+            | cadkernel_api::Command::IsSquareYz { .. }
+            | cadkernel_api::Command::IsSquareXz { .. }
+            | cadkernel_api::Command::OperationCount { .. }
+            | cadkernel_api::Command::LastOperation
+            | cadkernel_api::Command::HasOperation { .. }
+            | cadkernel_api::Command::FirstOperation
+            | cadkernel_api::Command::Noop
+    )
+}
+
 // ---------------------------------------------------------------------------
 // Headless test surface
 // ---------------------------------------------------------------------------
@@ -12016,6 +12203,154 @@ impl CadApp {
     #[doc(hidden)]
     pub fn session_history_len_for_test(&self) -> usize {
         self.session.document().history().len()
+    }
+
+    #[doc(hidden)]
+    pub fn session_solid_count_for_test(&self) -> usize {
+        self.session.document().solid_count()
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_api_command_for_test(&mut self, command: cadkernel_api::Command) {
+        self.dispatch(GuiAction::ExecuteApiCommand(command));
+    }
+
+    #[doc(hidden)]
+    pub fn command_palette_api_ops_for_test() -> Vec<&'static str> {
+        crate::gui::command_palette::api_catalog_ops_for_test()
+    }
+
+    #[doc(hidden)]
+    pub fn command_palette_match_labels_for_test(query: &str) -> Vec<String> {
+        crate::gui::command_palette::palette_match_labels_for_test(query)
+    }
+
+    #[doc(hidden)]
+    pub fn command_palette_shortcuts_for_test() -> [&'static str; 2] {
+        crate::gui::command_palette::shortcut_labels_for_test()
+    }
+
+    #[doc(hidden)]
+    pub fn build_palette_command_for_test(
+        op: &str,
+        json: &str,
+    ) -> Result<cadkernel_api::Command, String> {
+        crate::gui::command_palette::build_api_command_for_test(op, json)
+    }
+
+    #[doc(hidden)]
+    pub fn seed_api_feature_body_for_test(&mut self) {
+        self.dispatch_api_command_for_test(cadkernel_api::Command::CreateBox {
+            dx: 2.0,
+            dy: 2.0,
+            dz: 2.0,
+        });
+        self.dispatch_api_command_for_test(cadkernel_api::Command::Helix {
+            axis: cadkernel_api::AxisRef::Z,
+            radius: 0.25,
+            pitch: 0.5,
+            height: 1.0,
+            turns: 2.0,
+            cone_angle: 0.0,
+        });
+        self.dispatch_api_command_for_test(cadkernel_api::Command::Helix {
+            axis: cadkernel_api::AxisRef::Z,
+            radius: 0.35,
+            pitch: 0.75,
+            height: 1.5,
+            turns: 2.0,
+            cone_angle: 0.0,
+        });
+        self.sync_api_body_tree();
+    }
+
+    #[doc(hidden)]
+    pub fn api_body_tree_for_test(&mut self) -> Vec<ApiBodyTreeSummary> {
+        self.sync_api_body_tree();
+        self.gui
+            .api_bodies
+            .iter()
+            .map(|body| {
+                (
+                    body.id.0,
+                    body.name.clone(),
+                    body.tip.map(|id| id.0),
+                    body.features
+                        .iter()
+                        .map(|feature| {
+                            (
+                                feature.id.0,
+                                feature.name.clone(),
+                                feature.kind.clone(),
+                                feature.suppressed,
+                                feature.is_tip,
+                            )
+                        })
+                        .collect(),
+                )
+            })
+            .collect()
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_feature_suppression_for_test(&mut self, feature: u64, suppressed: bool) {
+        self.dispatch_api_command_for_test(cadkernel_api::Command::SuppressFeature {
+            feature: cadkernel_api::FeatureId(feature),
+            suppressed,
+        });
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_feature_reorder_for_test(&mut self, feature: u64, to_position: u32) {
+        self.dispatch_api_command_for_test(cadkernel_api::Command::ReorderFeature {
+            from: cadkernel_api::FeatureId(feature),
+            to_position,
+        });
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_feature_set_tip_for_test(&mut self, body: u64, feature: u64) {
+        self.dispatch_api_command_for_test(cadkernel_api::Command::SetTip {
+            body: cadkernel_api::BodyId(body),
+            feature: cadkernel_api::FeatureId(feature),
+        });
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_feature_edit_helix_for_test(&mut self, feature: u64, height: f64) {
+        self.dispatch_api_command_for_test(cadkernel_api::Command::EditFeature {
+            feature: cadkernel_api::FeatureId(feature),
+            new_spec: cadkernel_api::FeatureSpec::Helix(cadkernel_api::HelixSpec {
+                axis: cadkernel_api::AxisRef::Z,
+                radius: 0.4,
+                pitch: 0.8,
+                height,
+                turns: 2.0,
+                cone_angle: 0.0,
+            }),
+        });
+    }
+
+    #[doc(hidden)]
+    pub fn api_feature_spec_json_for_test(&mut self, feature: u64) -> Option<String> {
+        self.sync_api_body_tree();
+        self.gui
+            .api_bodies
+            .iter()
+            .flat_map(|body| body.features.iter())
+            .find(|entry| entry.id.0 == feature)
+            .map(|entry| entry.spec_json.clone())
+    }
+
+    #[doc(hidden)]
+    pub fn feature_tree_branch_label_for_test(&mut self) -> Option<String> {
+        self.sync_api_body_tree();
+        self.gui.api_bodies.first().map(|body| {
+            format!(
+                "Linear history · tip {:?}",
+                body.tip.map(|feature| feature.0)
+            )
+        })
     }
 
     #[doc(hidden)]

@@ -15,7 +15,7 @@
 //! native format will be built.
 
 use cadkernel_math::{Point3, Quaternion, Vec3};
-use cadkernel_modeling::body::{Body, FeatureKind};
+use cadkernel_modeling::body::{Body, FeatureGraph, FeatureKind};
 use cadkernel_modeling::measure::solid_mass_properties;
 use cadkernel_modeling::primitives::{make_cone, make_helix};
 use cadkernel_modeling::quick::{
@@ -34,9 +34,12 @@ use crate::command::{
     PocketSpec, PocketType, RevolveSpec, ShellMode, ShellSpec, SketchConstraint, SketchEdit,
     SketchEntity, SketchId, SketchRef, SweepMode, SweepSpec,
 };
-use crate::document::{Document, FeatureId, HistoryEvent, PersistedSketch, SolidId, SolidSlot};
+use crate::document::{
+    Document, FeatureId, HistoryEvent, PersistedSketch, RecomputeCache, SolidId, SolidSlot,
+};
 use crate::outcome::{Outcome, Plane};
 use crate::{ApiError, ApiResult};
+use std::collections::{BTreeSet, HashMap};
 
 /// The execute/replay engine.
 ///
@@ -95,6 +98,12 @@ pub struct SessionSnapshot {
     /// Optional human label (e.g. "before boolean", "release-v0.5-tag").
     #[serde(default)]
     pub label: Option<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+struct CachedRecomputeEntry {
+    model: BRepModel,
+    handle: Handle<SolidData>,
 }
 
 impl SessionSnapshot {
@@ -2567,12 +2576,17 @@ impl Session {
                 "unknown body {body_id:?}"
             )));
         };
+        let Some(index) = body.feature_index_of(feature_id.0) else {
+            return Err(ApiError::InvalidArgument(format!(
+                "feature {feature_id} not found in body {body_id:?}"
+            )));
+        };
         if !body.set_tip_by_feature_id(feature_id.0) {
             return Err(ApiError::InvalidArgument(format!(
                 "feature {feature_id} not found in body {body_id:?}"
             )));
         }
-        self.recompute_body(body_id)
+        self.recompute_body_with_dirty(body_id, &[index as u32])
     }
 
     fn dispatch_suppress_feature(
@@ -2589,12 +2603,17 @@ impl Session {
                 "unknown body {body_id:?}"
             )));
         };
+        let Some(index) = body.feature_index_of(feature_id.0) else {
+            return Err(ApiError::InvalidArgument(format!(
+                "unknown feature {feature_id}"
+            )));
+        };
         if !body.suppress_feature_by_id(feature_id.0, suppressed) {
             return Err(ApiError::InvalidArgument(format!(
                 "unknown feature {feature_id}"
             )));
         }
-        self.recompute_body(body_id)
+        self.recompute_body_with_dirty(body_id, &[index as u32])
     }
 
     fn dispatch_reorder_feature(
@@ -2616,7 +2635,8 @@ impl Session {
                 "cannot move feature {feature_id} to position {to_position}"
             )));
         }
-        self.recompute_body(body_id)
+        let roots: Vec<u32> = (0..body.features.len() as u32).collect();
+        self.recompute_body_with_dirty(body_id, &roots)
     }
 
     fn dispatch_edit_feature(
@@ -2641,66 +2661,134 @@ impl Session {
         body.features[index].spec_kind = new_spec.spec_kind().to_string();
         body.features[index].kind = spec_kind_to_feature_kind(new_spec.spec_kind());
         body.features[index].spec = Some(feature_spec_value(&new_spec));
-        self.recompute_body(body_id)
+        self.recompute_body_with_dirty(body_id, &[index as u32])
     }
 
     fn recompute_body(&mut self, body_id: BodyId) -> ApiResult<Outcome> {
-        let (plan, current_solid) = {
-            let body = self
-                .document
-                .body(body_id)
-                .ok_or_else(|| ApiError::InvalidArgument(format!("unknown body {body_id:?}")))?;
-            let limit = body.tip.map(|tip| tip + 1).unwrap_or(0);
-            let mut plan = Vec::new();
-            for (index, feature) in body.features.iter().enumerate().take(limit) {
-                if feature.suppressed {
-                    continue;
-                }
-                let Some(json) = &feature.spec else {
-                    continue;
-                };
-                if json.is_null() {
-                    continue;
-                }
-                let spec: FeatureSpec = serde_json::from_value(json.clone()).map_err(|err| {
-                    ApiError::Codec(format!("feature {} bad spec: {err}", feature.feature_id))
-                })?;
-                plan.push((index, FeatureId(feature.feature_id), spec));
-            }
-            (plan, body.current_solid.map(SolidId))
-        };
+        self.recompute_body_with_dirty(body_id, &[])
+    }
+
+    fn recompute_body_with_dirty(
+        &mut self,
+        body_id: BodyId,
+        dirty_roots: &[u32],
+    ) -> ApiResult<Outcome> {
+        let (plan, graph, current_solid) = self.recompute_plan(body_id)?;
+        if let Some(cycle) = graph.detect_cycles() {
+            return Err(ApiError::InvalidArgument(format!(
+                "cyclic feature graph: {cycle:?}"
+            )));
+        }
+
+        let active_indices: BTreeSet<u32> = plan.iter().map(|node| node.index).collect();
+        let mut dirty_indices = expand_dirty_indices(&graph, dirty_roots, &active_indices);
+        for index in &dirty_indices {
+            self.document
+                .recompute_cache_mut()
+                .invalidate_feature(*index);
+        }
+
+        let plan_by_index: HashMap<u32, FeatureReplayNode> =
+            plan.into_iter().map(|node| (node.index, node)).collect();
+        let order = ordered_recompute_indices(&graph, &active_indices)?;
         let old_model = current_solid
             .and_then(|solid| self.document.get_slot(solid).map(|slot| slot.model.clone()));
 
+        let mut results: HashMap<u32, (BRepModel, Handle<SolidData>)> = HashMap::new();
+        let mut input_hashes: HashMap<u32, u64> = HashMap::new();
         let mut last_result: Option<(BRepModel, Handle<SolidData>)> = None;
-        let mut last_feature_index: Option<usize> = None;
-        let mut downstream_invalidated = Vec::new();
+        let mut last_feature_index: Option<u32> = None;
+        let mut downstream_invalidated =
+            feature_ids_for_indices(&plan_by_index, dirty_indices.iter().copied());
 
-        for (feature_index, feature_id, spec) in plan {
-            match self.replay_spec(spec, last_result.clone()) {
-                Ok((model, handle)) => {
-                    self.document
-                        .persistent_names_mut()
-                        .register_model_feature(PersistentFeatureId(feature_id.0), &model);
-                    if let Some(body) = self.document.body_mut(body_id)
-                        && let Some(feature) = body.features.get_mut(feature_index)
-                    {
-                        feature.cached_solid = Some(handle);
-                        feature.solid = handle;
+        for feature_index in order {
+            let Some(node) = plan_by_index.get(&feature_index) else {
+                continue;
+            };
+
+            let parent_hashes: Vec<(u32, u64)> = graph
+                .parents_of(feature_index)
+                .into_iter()
+                .filter_map(|parent| {
+                    input_hashes
+                        .get(&parent)
+                        .copied()
+                        .map(|hash| (parent, hash))
+                })
+                .collect();
+            let input_hash = self.recompute_input_hash(&node.spec, &parent_hashes)?;
+
+            let cached = self
+                .document
+                .recompute_cache_mut()
+                .get(feature_index, input_hash)
+                .map(|bytes| bytes.to_vec());
+            if let Some(bytes) = cached {
+                match deserialize_cached_recompute(&bytes) {
+                    Ok((model, handle)) => {
+                        self.record_recompute_result(
+                            body_id,
+                            feature_index,
+                            node.feature_id,
+                            handle,
+                            &model,
+                        );
+                        results.insert(feature_index, (model.clone(), handle));
+                        input_hashes.insert(feature_index, input_hash);
+                        last_result = Some((model, handle));
+                        last_feature_index = Some(feature_index);
+                        continue;
                     }
+                    Err(_) => {
+                        self.document
+                            .recompute_cache_mut()
+                            .invalidate_feature(feature_index);
+                    }
+                }
+            }
+
+            let base =
+                replay_base_for_feature(&graph, feature_index, &results, last_result.clone());
+            match self.replay_spec(node.spec.clone(), base) {
+                Ok((model, handle)) => {
+                    self.record_recompute_result(
+                        body_id,
+                        feature_index,
+                        node.feature_id,
+                        handle,
+                        &model,
+                    );
+                    let bytes = serialize_cached_recompute(&model, handle)?;
+                    self.document
+                        .recompute_cache_mut()
+                        .insert(feature_index, input_hash, bytes);
+                    results.insert(feature_index, (model.clone(), handle));
+                    input_hashes.insert(feature_index, input_hash);
                     last_result = Some((model, handle));
                     last_feature_index = Some(feature_index);
                 }
                 Err(_) => {
+                    let failed_dirty =
+                        expand_dirty_indices(&graph, &[feature_index], &active_indices);
+                    for index in &failed_dirty {
+                        self.document
+                            .recompute_cache_mut()
+                            .invalidate_feature(*index);
+                    }
+                    dirty_indices.extend(failed_dirty);
+                    downstream_invalidated =
+                        feature_ids_for_indices(&plan_by_index, dirty_indices.iter().copied());
                     if let Some(body) = self.document.body_mut(body_id)
-                        && let Some(feature) = body.features.get_mut(feature_index)
+                        && let Some(feature) = body.features.get_mut(feature_index as usize)
                     {
                         feature.cached_solid = None;
                     }
-                    downstream_invalidated.push(feature_id);
                 }
             }
         }
+
+        downstream_invalidated.sort();
+        downstream_invalidated.dedup();
 
         if let Some((mut model, handle)) = last_result {
             if let Some(old_model) = old_model.as_ref() {
@@ -2713,7 +2801,7 @@ impl Session {
                 .body(body_id)
                 .and_then(|body| {
                     last_feature_index
-                        .and_then(|index| body.features.get(index).map(|f| f.name.clone()))
+                        .and_then(|index| body.features.get(index as usize).map(|f| f.name.clone()))
                 })
                 .unwrap_or_else(|| "Body".to_string());
             let solid = if let Some(existing) = current_solid {
@@ -2751,6 +2839,70 @@ impl Session {
         Err(ApiError::InvalidArgument(format!(
             "body {body_id:?} recomputed to empty result"
         )))
+    }
+
+    fn recompute_plan(
+        &self,
+        body_id: BodyId,
+    ) -> ApiResult<(Vec<FeatureReplayNode>, FeatureGraph, Option<SolidId>)> {
+        let body = self
+            .document
+            .body(body_id)
+            .ok_or_else(|| ApiError::InvalidArgument(format!("unknown body {body_id:?}")))?;
+        let limit = body.tip.map(|tip| tip + 1).unwrap_or(0);
+        let mut plan = Vec::new();
+        for (index, feature) in body.features.iter().enumerate().take(limit) {
+            if feature.suppressed {
+                continue;
+            }
+            let Some(json) = &feature.spec else {
+                continue;
+            };
+            if json.is_null() {
+                continue;
+            }
+            let spec: FeatureSpec = serde_json::from_value(json.clone()).map_err(|err| {
+                ApiError::Codec(format!("feature {} bad spec: {err}", feature.feature_id))
+            })?;
+            plan.push(FeatureReplayNode {
+                index: index as u32,
+                feature_id: FeatureId(feature.feature_id),
+                spec,
+            });
+        }
+        Ok((
+            plan,
+            body.dependency_graph(),
+            body.current_solid.map(SolidId),
+        ))
+    }
+
+    fn recompute_input_hash(
+        &self,
+        spec: &FeatureSpec,
+        parent_hashes: &[(u32, u64)],
+    ) -> ApiResult<u64> {
+        let spec_bytes = serde_json::to_vec(spec)?;
+        Ok(RecomputeCache::input_hash(&spec_bytes, parent_hashes))
+    }
+
+    fn record_recompute_result(
+        &mut self,
+        body_id: BodyId,
+        feature_index: u32,
+        feature_id: FeatureId,
+        handle: Handle<SolidData>,
+        model: &BRepModel,
+    ) {
+        self.document
+            .persistent_names_mut()
+            .register_model_feature(PersistentFeatureId(feature_id.0), model);
+        if let Some(body) = self.document.body_mut(body_id)
+            && let Some(feature) = body.features.get_mut(feature_index as usize)
+        {
+            feature.cached_solid = Some(handle);
+            feature.solid = handle;
+        }
     }
 
     fn replay_spec(
@@ -2981,6 +3133,27 @@ impl Session {
         out
     }
 
+    fn feature_indices_depending_on_sketch(
+        &self,
+        body_id: BodyId,
+        sketch_id: SketchId,
+    ) -> Vec<u32> {
+        let Some(body) = self.document.body(body_id) else {
+            return Vec::new();
+        };
+        let limit = body.tip.map(|tip| tip + 1).unwrap_or(0);
+        body.features
+            .iter()
+            .enumerate()
+            .take(limit)
+            .filter_map(|(index, feature)| {
+                let json = feature.spec.as_ref()?;
+                let spec = serde_json::from_value::<FeatureSpec>(json.clone()).ok()?;
+                spec_references_sketch(&spec, sketch_id).then_some(index as u32)
+            })
+            .collect()
+    }
+
     fn recompute_sketch_dependents(&mut self, sketch_id: SketchId) -> ApiResult<Outcome> {
         let mut downstream_invalidated = self.features_depending_on_sketch(sketch_id);
         let bodies = self.bodies_depending_on_sketch(sketch_id);
@@ -2991,11 +3164,12 @@ impl Session {
             .next()
             .unwrap_or(SolidId(0));
         for body_id in bodies {
+            let dirty_indices = self.feature_indices_depending_on_sketch(body_id, sketch_id);
             if let Outcome::FeatureRecomputed {
                 solid: recomputed,
                 downstream_invalidated: mut invalidated,
                 ..
-            } = self.recompute_body(body_id)?
+            } = self.recompute_body_with_dirty(body_id, &dirty_indices)?
             {
                 solid = recomputed;
                 downstream_invalidated.append(&mut invalidated);
@@ -3248,11 +3422,96 @@ struct AppendFeatureArgs<'a> {
     feature_id: FeatureId,
 }
 
+struct FeatureReplayNode {
+    index: u32,
+    feature_id: FeatureId,
+    spec: FeatureSpec,
+}
+
 #[derive(Copy, Clone)]
 enum BooleanKind {
     Union,
     Subtract,
     Intersect,
+}
+
+fn ordered_recompute_indices(
+    graph: &FeatureGraph,
+    active_indices: &BTreeSet<u32>,
+) -> ApiResult<Vec<u32>> {
+    let topo = graph.topological_sort().map_err(ApiError::from)?;
+    let mut seen = BTreeSet::new();
+    let mut ordered = Vec::with_capacity(active_indices.len());
+    for index in topo {
+        if active_indices.contains(&index) && seen.insert(index) {
+            ordered.push(index);
+        }
+    }
+    for &index in active_indices {
+        if seen.insert(index) {
+            ordered.push(index);
+        }
+    }
+    Ok(ordered)
+}
+
+fn expand_dirty_indices(
+    graph: &FeatureGraph,
+    roots: &[u32],
+    active_indices: &BTreeSet<u32>,
+) -> BTreeSet<u32> {
+    let mut dirty = BTreeSet::new();
+    for &root in roots {
+        for index in graph.dirty_propagate(root) {
+            if active_indices.contains(&index) {
+                dirty.insert(index);
+            }
+        }
+        if active_indices.contains(&root) {
+            dirty.insert(root);
+        }
+    }
+    dirty
+}
+
+fn feature_ids_for_indices(
+    plan_by_index: &HashMap<u32, FeatureReplayNode>,
+    indices: impl Iterator<Item = u32>,
+) -> Vec<FeatureId> {
+    let mut ids: Vec<FeatureId> = indices
+        .filter_map(|index| plan_by_index.get(&index).map(|node| node.feature_id))
+        .collect();
+    ids.sort();
+    ids.dedup();
+    ids
+}
+
+fn replay_base_for_feature(
+    graph: &FeatureGraph,
+    feature_index: u32,
+    results: &HashMap<u32, (BRepModel, Handle<SolidData>)>,
+    fallback: Option<(BRepModel, Handle<SolidData>)>,
+) -> Option<(BRepModel, Handle<SolidData>)> {
+    let mut parents = graph.parents_of(feature_index);
+    parents.sort_unstable();
+    parents
+        .into_iter()
+        .rev()
+        .find_map(|parent| results.get(&parent).cloned())
+        .or(fallback)
+}
+
+fn serialize_cached_recompute(model: &BRepModel, handle: Handle<SolidData>) -> ApiResult<Vec<u8>> {
+    let entry = CachedRecomputeEntry {
+        model: model.clone(),
+        handle,
+    };
+    Ok(serde_json::to_vec(&entry)?)
+}
+
+fn deserialize_cached_recompute(bytes: &[u8]) -> ApiResult<(BRepModel, Handle<SolidData>)> {
+    let entry: CachedRecomputeEntry = serde_json::from_slice(bytes)?;
+    Ok((entry.model, entry.handle))
 }
 
 fn first_solid_handle(model: &BRepModel) -> Option<Handle<SolidData>> {

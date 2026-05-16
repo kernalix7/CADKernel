@@ -1,0 +1,26 @@
+[package]
+name = "cadkernel-topology-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+rust-version = "1.85"
+license = "Apache-2.0"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+cadkernel-math = { path = "../../math" }
+cadkernel-modeling = { path = "../../modeling" }
+cadkernel-topology = { path = ".." }
+libfuzzer-sys = "0.4"
+rand = "0.9"
+
+[[bin]]
+name = "boolean_pair"
+path = "fuzz_targets/boolean_pair.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]

@@ -1,7 +1,7 @@
 //! egui-based UI panels for the CAD application.
 
 pub(crate) mod assembly;
-mod command_palette;
+pub(crate) mod command_palette;
 mod context_menu;
 mod dialogs;
 pub(crate) mod draft;
@@ -478,6 +478,7 @@ pub(crate) enum GuiAction {
     StartMcpServer,
     StopMcpServer,
     InitPlugins,
+    ExecuteApiCommand(cadkernel_api::Command),
 }
 
 // -- FEM constraint types --
@@ -549,6 +550,34 @@ pub(crate) struct CadkInspectorReport {
     pub thumbnail_size: Option<usize>,
     /// First N commands, formatted with `Debug`.
     pub commands_preview: Vec<String>,
+    pub error: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct ApiFeatureTree {
+    pub id: cadkernel_api::FeatureId,
+    pub name: String,
+    pub kind: String,
+    pub spec_json: String,
+    pub suppressed: bool,
+    pub is_tip: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct ApiBodyTree {
+    pub id: cadkernel_api::BodyId,
+    pub name: String,
+    pub active: bool,
+    pub tip: Option<cadkernel_api::FeatureId>,
+    pub features: Vec<ApiFeatureTree>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct FeatureEditState {
+    pub body: cadkernel_api::BodyId,
+    pub feature: cadkernel_api::FeatureId,
+    pub title: String,
+    pub spec_json: String,
     pub error: Option<String>,
 }
 
@@ -886,6 +915,8 @@ pub(crate) struct GuiState {
 
     // Command palette (Ctrl+Shift+P)
     pub command_palette: command_palette::CommandPaletteState,
+    pub api_bodies: Vec<ApiBodyTree>,
+    pub feature_edit: Option<FeatureEditState>,
 
     // Toolbar context (set each frame before drawing)
     pub tb_can_undo: bool,
@@ -1090,6 +1121,8 @@ impl GuiState {
             future_entries: Vec::new(),
             toasts: Vec::new(),
             command_palette: command_palette::CommandPaletteState::new(),
+            api_bodies: Vec::new(),
+            feature_edit: None,
             tb_can_undo: false,
             tb_can_redo: false,
             tb_has_selection: false,

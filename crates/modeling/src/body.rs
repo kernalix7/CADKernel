@@ -7,6 +7,252 @@
 
 use cadkernel_core::{KernelError, KernelResult};
 use cadkernel_topology::{Handle, SolidData};
+use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
+
+/// Directed dependency graph between body feature indices.
+///
+/// Edges point from an upstream feature to a dependent downstream feature.
+/// `reverse_edges` is kept in sync to make parent lookup and dirty
+/// propagation cheap for recompute scheduling.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct FeatureGraph {
+    edges: HashMap<u32, Vec<u32>>,
+    reverse_edges: HashMap<u32, Vec<u32>>,
+}
+
+impl FeatureGraph {
+    /// Creates an empty feature dependency graph.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Returns true when no dependency edges are stored.
+    pub fn is_empty(&self) -> bool {
+        self.edges.is_empty() && self.reverse_edges.is_empty()
+    }
+
+    /// Number of unique dependency edges.
+    pub fn edge_count(&self) -> usize {
+        self.edges.values().map(Vec::len).sum()
+    }
+
+    /// Adds a dependency edge `from -> to`.
+    pub fn add_edge(&mut self, from: u32, to: u32) -> KernelResult<()> {
+        let dependents = self.edges.entry(from).or_default();
+        if !dependents.contains(&to) {
+            dependents.push(to);
+            dependents.sort_unstable();
+        }
+
+        let parents = self.reverse_edges.entry(to).or_default();
+        if !parents.contains(&from) {
+            parents.push(from);
+            parents.sort_unstable();
+        }
+
+        self.edges.entry(to).or_default();
+        self.reverse_edges.entry(from).or_default();
+        Ok(())
+    }
+
+    /// Returns direct downstream dependents of `feature_index`.
+    pub fn dependents_of(&self, feature_index: u32) -> Vec<u32> {
+        self.edges.get(&feature_index).cloned().unwrap_or_default()
+    }
+
+    /// Returns direct upstream parents of `feature_index`.
+    pub fn parents_of(&self, feature_index: u32) -> Vec<u32> {
+        self.reverse_edges
+            .get(&feature_index)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    /// Returns all nodes currently present in the graph.
+    pub fn nodes(&self) -> Vec<u32> {
+        let mut nodes = BTreeSet::new();
+        for (&from, tos) in &self.edges {
+            nodes.insert(from);
+            for &to in tos {
+                nodes.insert(to);
+            }
+        }
+        for (&to, froms) in &self.reverse_edges {
+            nodes.insert(to);
+            for &from in froms {
+                nodes.insert(from);
+            }
+        }
+        nodes.into_iter().collect()
+    }
+
+    /// Returns a Kahn topological order, or an invalid-argument error on cycles.
+    pub fn topological_sort(&self) -> KernelResult<Vec<u32>> {
+        if let Some(cycle) = self.detect_cycles() {
+            return Err(KernelError::InvalidArgument(format!(
+                "cyclic feature graph: {cycle:?}"
+            )));
+        }
+
+        let nodes = self.nodes();
+        let mut indegree: HashMap<u32, usize> =
+            nodes.iter().copied().map(|node| (node, 0)).collect();
+        for tos in self.edges.values() {
+            for &to in tos {
+                let entry = indegree.entry(to).or_insert(0);
+                *entry += 1;
+            }
+        }
+
+        let mut ready: BTreeSet<u32> = indegree
+            .iter()
+            .filter_map(|(&node, &degree)| (degree == 0).then_some(node))
+            .collect();
+        let mut ordered = Vec::with_capacity(indegree.len());
+
+        while let Some(node) = ready.pop_first() {
+            ordered.push(node);
+            if let Some(dependents) = self.edges.get(&node) {
+                for &dependent in dependents {
+                    if let Some(degree) = indegree.get_mut(&dependent) {
+                        *degree = degree.saturating_sub(1);
+                        if *degree == 0 {
+                            ready.insert(dependent);
+                        }
+                    }
+                }
+            }
+        }
+
+        if ordered.len() != indegree.len() {
+            return Err(KernelError::InvalidArgument(
+                "cyclic feature graph".to_string(),
+            ));
+        }
+
+        Ok(ordered)
+    }
+
+    /// Detects a directed cycle using Tarjan strongly connected components.
+    pub fn detect_cycles(&self) -> Option<Vec<u32>> {
+        let mut tarjan = Tarjan::new(self);
+        for node in self.nodes() {
+            if !tarjan.indices.contains_key(&node) {
+                tarjan.strong_connect(node);
+                if tarjan.cycle.is_some() {
+                    return tarjan.cycle;
+                }
+            }
+        }
+        None
+    }
+
+    /// Returns `from` and every downstream dependent reached by BFS.
+    pub fn dirty_propagate(&self, from: u32) -> Vec<u32> {
+        let mut visited = HashSet::new();
+        let mut queue = VecDeque::new();
+        let mut dirty = Vec::new();
+
+        visited.insert(from);
+        queue.push_back(from);
+
+        while let Some(node) = queue.pop_front() {
+            dirty.push(node);
+            let mut dependents = self.dependents_of(node);
+            dependents.sort_unstable();
+            for dependent in dependents {
+                if visited.insert(dependent) {
+                    queue.push_back(dependent);
+                }
+            }
+        }
+
+        dirty
+    }
+
+    fn linear(feature_count: usize) -> Self {
+        let mut graph = Self::new();
+        for index in 1..feature_count {
+            let _ = graph.add_edge((index - 1) as u32, index as u32);
+        }
+        graph
+    }
+}
+
+struct Tarjan<'a> {
+    graph: &'a FeatureGraph,
+    next_index: usize,
+    indices: HashMap<u32, usize>,
+    lowlinks: HashMap<u32, usize>,
+    stack: Vec<u32>,
+    on_stack: HashSet<u32>,
+    cycle: Option<Vec<u32>>,
+}
+
+impl<'a> Tarjan<'a> {
+    fn new(graph: &'a FeatureGraph) -> Self {
+        Self {
+            graph,
+            next_index: 0,
+            indices: HashMap::new(),
+            lowlinks: HashMap::new(),
+            stack: Vec::new(),
+            on_stack: HashSet::new(),
+            cycle: None,
+        }
+    }
+
+    fn strong_connect(&mut self, node: u32) {
+        self.indices.insert(node, self.next_index);
+        self.lowlinks.insert(node, self.next_index);
+        self.next_index += 1;
+        self.stack.push(node);
+        self.on_stack.insert(node);
+
+        let mut dependents = self.graph.dependents_of(node);
+        dependents.sort_unstable();
+        for dependent in dependents {
+            if self.cycle.is_some() {
+                return;
+            }
+            if !self.indices.contains_key(&dependent) {
+                self.strong_connect(dependent);
+                let Some(child_low) = self.lowlinks.get(&dependent).copied() else {
+                    continue;
+                };
+                if let Some(node_low) = self.lowlinks.get_mut(&node) {
+                    *node_low = (*node_low).min(child_low);
+                }
+            } else if self.on_stack.contains(&dependent) {
+                let Some(dep_index) = self.indices.get(&dependent).copied() else {
+                    continue;
+                };
+                if let Some(node_low) = self.lowlinks.get_mut(&node) {
+                    *node_low = (*node_low).min(dep_index);
+                }
+            }
+        }
+
+        if self.indices.get(&node) == self.lowlinks.get(&node) {
+            let mut component = Vec::new();
+            while let Some(member) = self.stack.pop() {
+                self.on_stack.remove(&member);
+                component.push(member);
+                if member == node {
+                    break;
+                }
+            }
+            component.sort_unstable();
+            let self_loop = component.len() == 1
+                && component
+                    .first()
+                    .is_some_and(|member| self.graph.dependents_of(*member).contains(member));
+            if component.len() > 1 || self_loop {
+                self.cycle = Some(component);
+            }
+        }
+    }
+}
 
 /// A PartDesign body that maintains a feature tree and tip solid.
 ///
@@ -18,6 +264,7 @@ pub struct Body {
     pub id: u64,
     pub name: String,
     pub features: Vec<BodyFeature>,
+    pub graph: FeatureGraph,
     pub tip: Option<usize>,
     pub base_plane_origin: [f64; 3],
     pub base_plane_normal: [f64; 3],
@@ -97,6 +344,7 @@ impl Body {
             id,
             name: name.to_string(),
             features: Vec::new(),
+            graph: FeatureGraph::new(),
             tip: None,
             base_plane_origin,
             base_plane_normal,
@@ -106,6 +354,7 @@ impl Body {
 
     /// Adds a feature to the body, updating the tip to the new solid.
     pub fn add_feature(&mut self, name: &str, kind: FeatureKind, solid: Handle<SolidData>) {
+        let index = self.features.len();
         self.features.push(BodyFeature {
             feature_id: 0,
             name: name.to_string(),
@@ -116,6 +365,7 @@ impl Body {
             solid,
             cached_solid: Some(solid),
         });
+        self.add_default_dependency(index);
         self.tip = self.features.len().checked_sub(1);
     }
 
@@ -128,6 +378,7 @@ impl Body {
         spec_kind: &str,
         spec_json: serde_json::Value,
     ) {
+        let index = self.features.len();
         self.features.push(BodyFeature {
             feature_id,
             name: name.to_string(),
@@ -138,6 +389,7 @@ impl Body {
             solid: Handle::from_raw_parts(0, 0),
             cached_solid: None,
         });
+        self.add_default_dependency(index);
         self.tip = self.features.len().checked_sub(1);
     }
 
@@ -169,6 +421,7 @@ impl Body {
                 self.tip = Some(tip.saturating_sub(1).min(self.features.len() - 1));
             }
         }
+        self.rebuild_linear_graph();
         Some(removed)
     }
 
@@ -208,8 +461,10 @@ impl Body {
                 source_body.tip = Some(tip.saturating_sub(1).min(source_body.features.len() - 1));
             }
         }
+        source_body.rebuild_linear_graph();
         self.features.push(feature);
         self.tip = self.features.len().checked_sub(1);
+        self.rebuild_linear_graph();
         Ok(())
     }
 
@@ -224,6 +479,7 @@ impl Body {
         let feature = self.features.remove(from);
         self.features.insert(to, feature);
         self.tip = self.features.len().checked_sub(1);
+        self.rebuild_linear_graph();
         true
     }
 
@@ -287,6 +543,25 @@ impl Body {
             .iter()
             .take(limit)
             .filter(|feature| !feature.suppressed)
+    }
+
+    /// Returns the stored graph, or a linear fallback for legacy bodies.
+    pub fn dependency_graph(&self) -> FeatureGraph {
+        if self.graph.is_empty() && self.features.len() > 1 {
+            FeatureGraph::linear(self.features.len())
+        } else {
+            self.graph.clone()
+        }
+    }
+
+    fn add_default_dependency(&mut self, index: usize) {
+        if index > 0 {
+            let _ = self.graph.add_edge((index - 1) as u32, index as u32);
+        }
+    }
+
+    fn rebuild_linear_graph(&mut self) {
+        self.graph = FeatureGraph::linear(self.features.len());
     }
 }
 
