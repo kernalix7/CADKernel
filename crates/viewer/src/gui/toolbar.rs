@@ -5174,6 +5174,9 @@ fn draw_techdraw_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
             Ak::SurfaceFinish,
         )));
     }
+    if icon_button(ui, ToolIcon::TextAnnot, "GD&T", "Add GD&T frame", "") {
+        gui.actions.push(GuiAction::OpenGdtFrameDialog);
+    }
 
     toolbar_separator(ui);
 
@@ -5284,6 +5287,15 @@ fn draw_assembly_toolbar(ui: &mut egui::Ui, gui: &mut GuiState) {
     }
     if icon_button(ui, ToolIcon::Dof, "DOF", "Degrees of freedom analysis", "") {
         gui.actions.push(GuiAction::Assembly(A::DofAnalysis));
+    }
+    if icon_button(
+        ui,
+        ToolIcon::JointFixed,
+        "Add Mate",
+        "Add assembly mate",
+        "",
+    ) {
+        gui.actions.push(GuiAction::OpenAddMateDialog);
     }
 
     toolbar_separator(ui);

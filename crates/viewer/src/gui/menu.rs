@@ -43,7 +43,7 @@ pub(crate) fn draw_menu_bar(
                                 gui.language,
                                 "menu.file.new_tab",
                             ))
-                            .shortcut_text("Ctrl+Shift+N"),
+                            .shortcut_text("Ctrl+T"),
                         )
                         .clicked()
                     {
@@ -392,6 +392,20 @@ pub(crate) fn draw_menu_bar(
                     menu_action_sc(ui, gui, "Undo", "Ctrl+Z", GuiAction::Undo);
                     menu_action_sc(ui, gui, "Redo", "Ctrl+Y", GuiAction::Redo);
                     ui.separator();
+                    menu_action(
+                        ui,
+                        gui,
+                        "Save Checkpoint...",
+                        GuiAction::OpenSaveCheckpointDialog,
+                    );
+                    menu_action(
+                        ui,
+                        gui,
+                        "Restore Checkpoint...",
+                        GuiAction::OpenRestoreCheckpointDialog,
+                    );
+                    menu_action(ui, gui, "Branches...", GuiAction::OpenBranchListDialog);
+                    ui.separator();
                     menu_action_sc(
                         ui,
                         gui,
@@ -695,6 +709,13 @@ pub(crate) fn draw_menu_bar(
                         "Section Plane",
                         "Shift+S",
                         GuiAction::ToggleSectionPlane,
+                    );
+                    menu_action_sc(
+                        ui,
+                        gui,
+                        "Section Box",
+                        "Shift+B",
+                        GuiAction::ToggleSectionBox,
                     );
 
                     ui.separator();
@@ -1879,6 +1900,7 @@ fn draw_techdraw_menu(ui: &mut egui::Ui, gui: &mut GuiState) {
                 "Surface Finish",
                 GuiAction::TechDraw(T::OpenAnnotationSetup(Ak::SurfaceFinish)),
             );
+            menu_action(ui, gui, "Add GD&T Frame", GuiAction::OpenGdtFrameDialog);
         });
         ui.menu_button("Centerlines", |ui| {
             menu_action(
@@ -1961,6 +1983,7 @@ fn draw_assembly_menu(ui: &mut egui::Ui, gui: &mut GuiState) {
             "Ground Component",
             GuiAction::Assembly(A::AddJoint(AssemblyJointType::Grounded)),
         );
+        menu_action(ui, gui, "Add Mate...", GuiAction::OpenAddMateDialog);
         ui.menu_button("Joints", |ui| {
             for jt in [
                 AssemblyJointType::Fixed,

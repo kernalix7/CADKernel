@@ -47,9 +47,10 @@ pub(crate) use self::sketch_state::{
 };
 pub(crate) use self::surface::SurfaceAction;
 pub(crate) use self::techdraw::{
-    TechDrawAction, TechDrawAnnotationKind, TechDrawAnnotationSetupState, TechDrawCenterlineKind,
-    TechDrawCenterlineSetupState, TechDrawDimensionKind, TechDrawDimensionSetupState,
-    TechDrawPageSetupState, TechDrawTemplatePreset, TechDrawViewKind, TechDrawViewSetupState,
+    DatumLabel, GdtFrame, GdtSymbol, TechDrawAction, TechDrawAnnotationKind,
+    TechDrawAnnotationSetupState, TechDrawCenterlineKind, TechDrawCenterlineSetupState,
+    TechDrawDimensionKind, TechDrawDimensionSetupState, TechDrawPageSetupState,
+    TechDrawTemplatePreset, TechDrawViewKind, TechDrawViewSetupState,
 };
 
 use crate::nav::NavConfig;
@@ -236,6 +237,12 @@ pub(crate) enum GuiAction {
     SwitchTab(usize),
     CloseTab(usize),
     ConfirmCloseTab(usize),
+    OpenSaveCheckpointDialog,
+    OpenRestoreCheckpointDialog,
+    OpenBranchListDialog,
+    SaveCheckpoint(String),
+    RestoreCheckpoint(cadkernel_api::CheckpointId),
+    PromoteBranch(cadkernel_api::BranchId),
     OpenFile(PathBuf),
     OpenFileInNewTab(PathBuf),
     SaveFile(PathBuf),
@@ -487,6 +494,10 @@ pub(crate) enum GuiAction {
     // -- Theme / density --
     ThemeToggle,
     DensityChange(theme::UiDensity),
+    OpenGdtFrameDialog,
+    CommitGdtFrame(GdtFrameDialogState),
+    OpenAddMateDialog,
+    CommitAddMate(AddMateDialogState),
 
     // -- Report --
     ClearReport,
@@ -533,6 +544,11 @@ pub(crate) enum ActiveDialog {
     BcEditor(BcEditorState),
     JointEditor(JointEditorState),
     Bom(Vec<cadkernel_modeling::BomEntry>),
+    CheckpointSave(CheckpointSaveState),
+    CheckpointList(Vec<CheckpointListItem>),
+    BranchList(Vec<BranchListItem>),
+    GdtFrame(GdtFrameDialogState),
+    AddMate(AddMateDialogState),
     TechDrawPageSetup(TechDrawPageSetupState),
     TechDrawDimensionSetup(TechDrawDimensionSetupState),
     TechDrawAnnotationSetup(TechDrawAnnotationSetupState),
@@ -544,6 +560,76 @@ pub(crate) enum ActiveDialog {
     AutosaveRecovery(Vec<cadkernel_api::cadk::AutosaveEntry>),
     /// Dirty document close confirmation for multi-document tabs.
     CloseDocumentTab(usize),
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct CheckpointSaveState {
+    pub name: String,
+}
+
+impl CheckpointSaveState {
+    pub fn new() -> Self {
+        Self {
+            name: "Checkpoint".into(),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct CheckpointListItem {
+    pub id: cadkernel_api::CheckpointId,
+    pub name: String,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct BranchListItem {
+    pub id: cadkernel_api::BranchId,
+    pub name: String,
+    pub parent_cursor: usize,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct GdtFrameDialogState {
+    pub characteristic: GdtSymbol,
+    pub tolerance: f64,
+    pub datum_a: String,
+    pub datum_b: String,
+    pub datum_c: String,
+    pub x: f64,
+    pub y: f64,
+    pub font_size: f64,
+}
+
+impl GdtFrameDialogState {
+    pub fn new(width: f64, height: f64) -> Self {
+        Self {
+            characteristic: GdtSymbol::Position,
+            tolerance: 0.05,
+            datum_a: "A".into(),
+            datum_b: String::new(),
+            datum_c: String::new(),
+            x: width * 0.18,
+            y: height * 0.18,
+            font_size: 5.0,
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct AddMateDialogState {
+    pub joint_type: AssemblyJointType,
+    pub face_a: String,
+    pub face_b: String,
+}
+
+impl AddMateDialogState {
+    pub fn new() -> Self {
+        Self {
+            joint_type: AssemblyJointType::Fixed,
+            face_a: "Select face A".into(),
+            face_b: "Select face B".into(),
+        }
+    }
 }
 
 /// User's choice from the autosave recovery modal, written by the
@@ -1224,6 +1310,21 @@ impl GuiState {
         self.active_dialog = Some(ActiveDialog::FemResultProbe(FemResultProbeState::new()));
     }
 
+    pub fn open_gdt_frame_dialog(&mut self) {
+        let (width, height) = self
+            .techdraw_sheet
+            .as_ref()
+            .map(|s| (s.width, s.height))
+            .unwrap_or((297.0, 210.0));
+        self.active_dialog = Some(ActiveDialog::GdtFrame(GdtFrameDialogState::new(
+            width, height,
+        )));
+    }
+
+    pub fn open_add_mate_dialog(&mut self) {
+        self.active_dialog = Some(ActiveDialog::AddMate(AddMateDialogState::new()));
+    }
+
     /// Open the TechDraw page setup dialog using the current sheet when present.
     pub fn open_techdraw_page_setup(&mut self) {
         let state = self
@@ -1617,6 +1718,11 @@ pub(crate) fn draw_ui(
     dialogs::draw_shortcuts_dialog(ctx, gui);
     dialogs::draw_settings(ctx, gui, nav);
     dialogs::draw_plugin_manager(ctx, gui);
+    dialogs::draw_checkpoint_save_dialog(ctx, gui);
+    dialogs::draw_checkpoint_list_dialog(ctx, gui);
+    dialogs::draw_branch_list_dialog(ctx, gui);
+    dialogs::draw_gdt_frame_dialog(ctx, gui);
+    dialogs::draw_add_mate_dialog(ctx, gui);
     dialogs::draw_bom_dialog(ctx, gui);
     dialogs::draw_joint_editor_dialog(ctx, gui);
     dialogs::draw_material_picker_dialog(ctx, gui);

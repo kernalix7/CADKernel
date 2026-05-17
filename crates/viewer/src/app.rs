@@ -1830,6 +1830,71 @@ impl CadApp {
                     self.close_document_tab(index, true);
                 }
 
+                GuiAction::OpenSaveCheckpointDialog => {
+                    self.gui.active_dialog = Some(gui::ActiveDialog::CheckpointSave(
+                        gui::CheckpointSaveState::new(),
+                    ));
+                }
+
+                GuiAction::OpenRestoreCheckpointDialog => {
+                    let checkpoints = self
+                        .session
+                        .list_checkpoints()
+                        .into_iter()
+                        .map(|(id, name, _)| gui::CheckpointListItem { id, name })
+                        .collect();
+                    self.gui.active_dialog = Some(gui::ActiveDialog::CheckpointList(checkpoints));
+                }
+
+                GuiAction::OpenBranchListDialog => {
+                    let branches = self
+                        .session
+                        .branches()
+                        .into_iter()
+                        .map(|branch| gui::BranchListItem {
+                            id: branch.id,
+                            name: branch.name,
+                            parent_cursor: branch.parent_cursor,
+                        })
+                        .collect();
+                    self.gui.active_dialog = Some(gui::ActiveDialog::BranchList(branches));
+                }
+
+                GuiAction::SaveCheckpoint(name) => {
+                    let name = name.trim().to_string();
+                    if name.is_empty() {
+                        self.log_warning("Checkpoint name is required");
+                    } else {
+                        let id = self.session.checkpoint(name.clone());
+                        self.gui.close_active_dialog();
+                        self.log_info(format!("Checkpoint saved: {name} ({id})"));
+                    }
+                }
+
+                GuiAction::RestoreCheckpoint(id) => match self.session.restore(id) {
+                    Ok(outcome) => {
+                        self.restore_scene_from_session_document();
+                        self.gui.close_active_dialog();
+                        self.mark_active_document_dirty();
+                        self.log_info(format!("Checkpoint restored: {id} ({:?})", outcome.kind()));
+                    }
+                    Err(err) => {
+                        self.log_warning(format!("Restore checkpoint failed: {err}"));
+                    }
+                },
+
+                GuiAction::PromoteBranch(id) => match self.session.promote_branch(id) {
+                    Ok(outcome) => {
+                        self.restore_scene_from_session_document();
+                        self.gui.close_active_dialog();
+                        self.mark_active_document_dirty();
+                        self.log_info(format!("Branch promoted: {id} ({:?})", outcome.kind()));
+                    }
+                    Err(err) => {
+                        self.log_warning(format!("Promote branch failed: {err}"));
+                    }
+                },
+
                 GuiAction::OpenFileInNewTab(path) => {
                     let name = Self::file_tab_name(&path);
                     self.add_document_tab(name);
@@ -3720,6 +3785,62 @@ impl CadApp {
                 GuiAction::StopMcpServer => {
                     self.gui.mcp_running = false;
                     self.log_info("MCP server stopped");
+                }
+                GuiAction::OpenGdtFrameDialog => {
+                    self.gui.open_gdt_frame_dialog();
+                }
+                GuiAction::CommitGdtFrame(state) => {
+                    let mut datums = Vec::new();
+                    let mut datum_error = None;
+                    for label in [&state.datum_a, &state.datum_b, &state.datum_c] {
+                        let label = label.trim();
+                        if label.is_empty() {
+                            continue;
+                        }
+                        match gui::DatumLabel::new(label) {
+                            Ok(datum) => datums.push(datum),
+                            Err(err) => {
+                                datum_error = Some(err.to_string());
+                                break;
+                            }
+                        }
+                    }
+                    if let Some(err) = datum_error {
+                        self.log_warning(format!("GD&T frame: {err}"));
+                    } else {
+                        match gui::GdtFrame::new(state.characteristic, state.tolerance, datums) {
+                            Ok(frame) => {
+                                if let Some(sheet) = self.gui.techdraw_sheet.as_mut() {
+                                    frame.apply_to_sheet(sheet, state.x, state.y, state.font_size);
+                                    self.gui.close_active_dialog();
+                                    self.mark_active_document_dirty();
+                                    self.log_info(format!(
+                                        "TechDraw: GD&T frame added ({})",
+                                        state.characteristic.label()
+                                    ));
+                                } else {
+                                    self.log_warning(
+                                        "TechDraw GD&T: no sheet open (use New Page first)",
+                                    );
+                                }
+                            }
+                            Err(err) => {
+                                self.log_warning(format!("GD&T frame failed: {err}"));
+                            }
+                        }
+                    }
+                }
+                GuiAction::OpenAddMateDialog => {
+                    self.gui.open_add_mate_dialog();
+                }
+                GuiAction::CommitAddMate(state) => {
+                    if self.gui.open_joint_editor(state.joint_type) {
+                        self.log_info(format!("Assembly: edit mate {}", state.joint_type.label()));
+                    } else if self.gui.assembly.is_some() {
+                        self.log_warning("Assembly: need enough components to add a mate");
+                    } else {
+                        self.log_warning("Assembly: create an assembly before adding a mate");
+                    }
                 }
             }
             if marks_dirty {
@@ -11562,6 +11683,11 @@ impl ApplicationHandler for CadApp {
                     PhysicalKey::Code(KeyCode::KeyS) if self.mouse.shift_held && !ctrl => {
                         self.gui.actions.push(GuiAction::ToggleSectionPlane);
                     }
+                    PhysicalKey::Code(KeyCode::KeyB)
+                        if self.mouse.shift_held && !ctrl && self.gui.sketch_mode.is_none() =>
+                    {
+                        self.gui.actions.push(GuiAction::ToggleSectionBox);
+                    }
                     PhysicalKey::Code(KeyCode::KeyC)
                         if !ctrl && self.gui.measurement_mode && self.gui.sketch_mode.is_none() =>
                     {
@@ -11631,7 +11757,10 @@ impl ApplicationHandler for CadApp {
                         }
                     }
 
-                    // Ctrl+N = new, Ctrl+Shift+N = new tab, Ctrl+W = close tab
+                    // Ctrl+N = new, Ctrl+T = new tab, Ctrl+W = close tab
+                    PhysicalKey::Code(KeyCode::KeyT) if ctrl => {
+                        self.gui.actions.push(GuiAction::NewTab);
+                    }
                     PhysicalKey::Code(KeyCode::KeyN) if ctrl && self.mouse.shift_held => {
                         self.gui.actions.push(GuiAction::NewTab);
                     }
@@ -12722,6 +12851,106 @@ impl CadApp {
     #[doc(hidden)]
     pub fn theme_mode_label_for_test(&self) -> &'static str {
         self.nav.theme_mode.label()
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_open_checkpoint_save_for_test(&mut self) {
+        self.dispatch(GuiAction::OpenSaveCheckpointDialog);
+    }
+
+    #[doc(hidden)]
+    pub fn checkpoint_save_dialog_is_open_for_test(&self) -> bool {
+        matches!(
+            self.gui.active_dialog,
+            Some(gui::ActiveDialog::CheckpointSave(_))
+        )
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_save_checkpoint_for_test(&mut self, name: &str) {
+        self.dispatch(GuiAction::SaveCheckpoint(name.into()));
+    }
+
+    #[doc(hidden)]
+    pub fn checkpoint_count_for_test(&self) -> usize {
+        self.session.list_checkpoints().len()
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_open_restore_checkpoint_for_test(&mut self) {
+        self.dispatch(GuiAction::OpenRestoreCheckpointDialog);
+    }
+
+    #[doc(hidden)]
+    pub fn checkpoint_restore_dialog_count_for_test(&self) -> usize {
+        match &self.gui.active_dialog {
+            Some(gui::ActiveDialog::CheckpointList(items)) => items.len(),
+            _ => 0,
+        }
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_restore_first_checkpoint_for_test(&mut self) -> bool {
+        let Some((id, _, _)) = self.session.list_checkpoints().first().cloned() else {
+            return false;
+        };
+        self.dispatch(GuiAction::RestoreCheckpoint(id));
+        true
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_open_branch_list_for_test(&mut self) {
+        self.dispatch(GuiAction::OpenBranchListDialog);
+    }
+
+    #[doc(hidden)]
+    pub fn branch_count_for_test(&self) -> usize {
+        self.session.branches().len()
+    }
+
+    #[doc(hidden)]
+    pub fn branch_list_dialog_count_for_test(&self) -> usize {
+        match &self.gui.active_dialog {
+            Some(gui::ActiveDialog::BranchList(items)) => items.len(),
+            _ => 0,
+        }
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_open_gdt_frame_dialog_for_test(&mut self) {
+        self.dispatch(GuiAction::OpenGdtFrameDialog);
+    }
+
+    #[doc(hidden)]
+    pub fn gdt_frame_dialog_is_open_for_test(&self) -> bool {
+        matches!(self.gui.active_dialog, Some(gui::ActiveDialog::GdtFrame(_)))
+    }
+
+    #[doc(hidden)]
+    pub fn set_gdt_frame_for_test(&mut self, tolerance: f64, datum_a: &str) {
+        if let Some(gui::ActiveDialog::GdtFrame(state)) = self.gui.active_dialog.as_mut() {
+            state.tolerance = tolerance;
+            state.datum_a = datum_a.into();
+        }
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_commit_gdt_frame_for_test(&mut self) -> bool {
+        let Some(gui::ActiveDialog::GdtFrame(state)) = self.gui.active_dialog.clone() else {
+            return false;
+        };
+        self.dispatch(GuiAction::CommitGdtFrame(state));
+        true
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_open_add_mate_dialog_for_test(&mut self) {
+        self.dispatch(GuiAction::OpenAddMateDialog);
+    }
+
+    #[doc(hidden)]
+    pub fn add_mate_dialog_is_open_for_test(&self) -> bool {
+        matches!(self.gui.active_dialog, Some(gui::ActiveDialog::AddMate(_)))
     }
 
     fn dispatch_instant_view_for_test(&mut self, action: GuiAction) {

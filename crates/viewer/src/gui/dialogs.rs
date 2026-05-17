@@ -1,8 +1,8 @@
 use super::theme;
 use super::{
-    AssemblyJointType, BcKind, GuiAction, GuiState, MaterialPreset, MirrorPlane, SelectedEntity,
-    TechDrawAnnotationKind, TechDrawCenterlineKind, TechDrawDimensionKind, TechDrawTemplatePreset,
-    TechDrawViewKind,
+    AssemblyJointType, BcKind, GdtSymbol, GuiAction, GuiState, MaterialPreset, MirrorPlane,
+    SelectedEntity, TechDrawAnnotationKind, TechDrawCenterlineKind, TechDrawDimensionKind,
+    TechDrawTemplatePreset, TechDrawViewKind,
 };
 use crate::nav::{BgPreset, NavConfig, NavStyle, OrbitStyle, RotationMode, UnitSystem};
 use crate::render::Projection;
@@ -2824,16 +2824,25 @@ fn draw_settings_navigation(ui: &mut egui::Ui, nav: &mut NavConfig) {
 fn draw_settings_appearance(ui: &mut egui::Ui, gui: &mut GuiState, nav: &mut NavConfig) {
     settings_heading(ui, "Theme");
     ui.indent("theme_indent", |ui| {
-        ui.horizontal(|ui| {
-            for &mode in super::theme::ThemeMode::ALL {
-                if ui
-                    .radio_value(&mut nav.theme_mode, mode, mode.label())
-                    .changed()
-                {
+        egui::Grid::new("theme_grid")
+            .num_columns(2)
+            .spacing([12.0, 6.0])
+            .show(ui, |ui| {
+                ui.label("Theme:");
+                let mut selected = nav.theme_mode;
+                egui::ComboBox::from_id_salt("theme_mode")
+                    .selected_text(selected.label())
+                    .show_ui(ui, |ui| {
+                        for &mode in super::theme::ThemeMode::ALL {
+                            ui.selectable_value(&mut selected, mode, mode.label());
+                        }
+                    });
+                if selected != nav.theme_mode {
+                    nav.theme_mode = selected;
                     gui.theme_applied = false;
                 }
-            }
-        });
+                ui.end_row();
+            });
     });
 
     settings_heading(ui, "UI Density");
@@ -3229,6 +3238,308 @@ pub(crate) fn draw_bom_dialog(ctx: &egui::Context, gui: &mut GuiState) {
         });
     if !open || close_clicked {
         gui.close_active_dialog();
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Branching undo: checkpoints and branches
+// ---------------------------------------------------------------------------
+
+pub(crate) fn draw_checkpoint_save_dialog(ctx: &egui::Context, gui: &mut GuiState) {
+    let Some(super::ActiveDialog::CheckpointSave(state)) = gui.active_dialog.as_mut() else {
+        return;
+    };
+
+    let mut open = true;
+    let mut save_name: Option<String> = None;
+    let mut cancel = false;
+    egui::Window::new("Save Checkpoint")
+        .collapsible(false)
+        .resizable(false)
+        .default_width(320.0)
+        .open(&mut open)
+        .show(ctx, |ui| {
+            dialog_section(ui, "Checkpoint");
+            ui.label("Name:");
+            let resp = ui.add(
+                egui::TextEdit::singleline(&mut state.name)
+                    .hint_text("Checkpoint name")
+                    .desired_width(260.0),
+            );
+            let enter = resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                let valid = !state.name.trim().is_empty();
+                if ui.add_enabled(valid, egui::Button::new("Save")).clicked() || (valid && enter) {
+                    save_name = Some(state.name.trim().to_string());
+                }
+                if ui.button("Cancel").clicked() {
+                    cancel = true;
+                }
+            });
+        });
+
+    if !open || cancel {
+        gui.close_active_dialog();
+    } else if let Some(name) = save_name {
+        gui.actions.push(GuiAction::SaveCheckpoint(name));
+    }
+}
+
+pub(crate) fn draw_checkpoint_list_dialog(ctx: &egui::Context, gui: &mut GuiState) {
+    let items = match gui.active_dialog.clone() {
+        Some(super::ActiveDialog::CheckpointList(items)) => items,
+        _ => return,
+    };
+
+    let mut open = true;
+    let mut restore = None;
+    egui::Window::new("Restore Checkpoint")
+        .collapsible(false)
+        .resizable(true)
+        .default_width(360.0)
+        .open(&mut open)
+        .show(ctx, |ui| {
+            dialog_section(ui, "Checkpoints");
+            if items.is_empty() {
+                ui.weak("No checkpoints saved.");
+            } else {
+                egui::Grid::new("checkpoint_restore_grid")
+                    .num_columns(3)
+                    .spacing([12.0, 4.0])
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.label(egui::RichText::new("ID").strong());
+                        ui.label(egui::RichText::new("Name").strong());
+                        ui.label("");
+                        ui.end_row();
+                        for item in &items {
+                            ui.label(item.id.to_string());
+                            ui.label(&item.name);
+                            if ui.button("Restore").clicked() {
+                                restore = Some(item.id);
+                            }
+                            ui.end_row();
+                        }
+                    });
+            }
+        });
+
+    if !open {
+        gui.close_active_dialog();
+    } else if let Some(id) = restore {
+        gui.actions.push(GuiAction::RestoreCheckpoint(id));
+    }
+}
+
+pub(crate) fn draw_branch_list_dialog(ctx: &egui::Context, gui: &mut GuiState) {
+    let items = match gui.active_dialog.clone() {
+        Some(super::ActiveDialog::BranchList(items)) => items,
+        _ => return,
+    };
+
+    let mut open = true;
+    let mut promote = None;
+    egui::Window::new("Branches")
+        .collapsible(false)
+        .resizable(true)
+        .default_width(420.0)
+        .open(&mut open)
+        .show(ctx, |ui| {
+            dialog_section(ui, "Alternate Histories");
+            if items.is_empty() {
+                ui.weak("No preserved branches.");
+            } else {
+                egui::Grid::new("branch_list_grid")
+                    .num_columns(4)
+                    .spacing([12.0, 4.0])
+                    .striped(true)
+                    .show(ui, |ui| {
+                        ui.label(egui::RichText::new("ID").strong());
+                        ui.label(egui::RichText::new("Name").strong());
+                        ui.label(egui::RichText::new("Parent").strong());
+                        ui.label("");
+                        ui.end_row();
+                        for item in &items {
+                            ui.label(item.id.to_string());
+                            ui.label(&item.name);
+                            ui.label(item.parent_cursor.to_string());
+                            if ui.button("Promote").clicked() {
+                                promote = Some(item.id);
+                            }
+                            ui.end_row();
+                        }
+                    });
+            }
+        });
+
+    if !open {
+        gui.close_active_dialog();
+    } else if let Some(id) = promote {
+        gui.actions.push(GuiAction::PromoteBranch(id));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// TechDraw: GD&T frame dialog
+// ---------------------------------------------------------------------------
+
+pub(crate) fn draw_gdt_frame_dialog(ctx: &egui::Context, gui: &mut GuiState) {
+    let Some(super::ActiveDialog::GdtFrame(state)) = gui.active_dialog.as_mut() else {
+        return;
+    };
+
+    let mut open = true;
+    let mut commit = None;
+    let mut cancel = false;
+    egui::Window::new("GD&T Frame")
+        .collapsible(false)
+        .resizable(false)
+        .default_width(360.0)
+        .open(&mut open)
+        .show(ctx, |ui| {
+            dialog_section(ui, "Feature Control Frame");
+            egui::Grid::new("gdt_frame_grid")
+                .num_columns(2)
+                .spacing([12.0, 6.0])
+                .show(ui, |ui| {
+                    ui.label("Characteristic:");
+                    egui::ComboBox::from_id_salt("gdt_characteristic")
+                        .selected_text(state.characteristic.label())
+                        .show_ui(ui, |ui| {
+                            for symbol in GdtSymbol::ALL {
+                                ui.selectable_value(
+                                    &mut state.characteristic,
+                                    symbol,
+                                    symbol.label(),
+                                );
+                            }
+                        });
+                    ui.end_row();
+
+                    ui.label("Tolerance:");
+                    ui.add(
+                        egui::DragValue::new(&mut state.tolerance)
+                            .range(0.0..=1_000_000.0)
+                            .speed(0.01),
+                    );
+                    ui.end_row();
+
+                    ui.label("Datum refs:");
+                    ui.horizontal(|ui| {
+                        ui.add(egui::TextEdit::singleline(&mut state.datum_a).desired_width(44.0));
+                        ui.add(egui::TextEdit::singleline(&mut state.datum_b).desired_width(44.0));
+                        ui.add(egui::TextEdit::singleline(&mut state.datum_c).desired_width(44.0));
+                    });
+                    ui.end_row();
+
+                    ui.label("Position:");
+                    ui.horizontal(|ui| {
+                        ui.add(egui::DragValue::new(&mut state.x).speed(1.0));
+                        ui.add(egui::DragValue::new(&mut state.y).speed(1.0));
+                    });
+                    ui.end_row();
+
+                    ui.label("Font size:");
+                    ui.add(
+                        egui::DragValue::new(&mut state.font_size)
+                            .range(2.0..=24.0)
+                            .speed(0.2),
+                    );
+                    ui.end_row();
+                });
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                if ui.button("Add Frame").clicked() {
+                    commit = Some(state.clone());
+                }
+                if ui.button("Cancel").clicked() {
+                    cancel = true;
+                }
+            });
+        });
+
+    if !open || cancel {
+        gui.close_active_dialog();
+    } else if let Some(state) = commit {
+        gui.actions.push(GuiAction::CommitGdtFrame(state));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Assembly: mate picker dialog
+// ---------------------------------------------------------------------------
+
+pub(crate) fn draw_add_mate_dialog(ctx: &egui::Context, gui: &mut GuiState) {
+    let Some(super::ActiveDialog::AddMate(state)) = gui.active_dialog.as_mut() else {
+        return;
+    };
+
+    let mut open = true;
+    let mut commit = None;
+    let mut cancel = false;
+    egui::Window::new("Add Mate")
+        .collapsible(false)
+        .resizable(false)
+        .default_width(360.0)
+        .open(&mut open)
+        .show(ctx, |ui| {
+            dialog_section(ui, "Mate");
+            egui::Grid::new("add_mate_grid")
+                .num_columns(2)
+                .spacing([12.0, 6.0])
+                .show(ui, |ui| {
+                    ui.label("Type:");
+                    egui::ComboBox::from_id_salt("mate_type")
+                        .selected_text(state.joint_type.label())
+                        .show_ui(ui, |ui| {
+                            for joint_type in [
+                                AssemblyJointType::Fixed,
+                                AssemblyJointType::Revolute,
+                                AssemblyJointType::Cylindrical,
+                                AssemblyJointType::Slider,
+                                AssemblyJointType::Ball,
+                                AssemblyJointType::Distance,
+                                AssemblyJointType::Angle,
+                                AssemblyJointType::Parallel,
+                                AssemblyJointType::Perpendicular,
+                                AssemblyJointType::Gear,
+                                AssemblyJointType::Rack,
+                                AssemblyJointType::Screw,
+                                AssemblyJointType::Belt,
+                            ] {
+                                ui.selectable_value(
+                                    &mut state.joint_type,
+                                    joint_type,
+                                    joint_type.label(),
+                                );
+                            }
+                        });
+                    ui.end_row();
+
+                    ui.label("Face A:");
+                    ui.add(egui::TextEdit::singleline(&mut state.face_a).desired_width(180.0));
+                    ui.end_row();
+
+                    ui.label("Face B:");
+                    ui.add(egui::TextEdit::singleline(&mut state.face_b).desired_width(180.0));
+                    ui.end_row();
+                });
+            ui.add_space(6.0);
+            ui.horizontal(|ui| {
+                if ui.button("Continue").clicked() {
+                    commit = Some(state.clone());
+                }
+                if ui.button("Cancel").clicked() {
+                    cancel = true;
+                }
+            });
+        });
+
+    if !open || cancel {
+        gui.close_active_dialog();
+    } else if let Some(state) = commit {
+        gui.actions.push(GuiAction::CommitAddMate(state));
     }
 }
 

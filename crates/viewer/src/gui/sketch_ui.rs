@@ -270,6 +270,14 @@ fn collect_dimension_hits(
     hits
 }
 
+fn detect_sketch_conflicts(sm: &super::SketchMode) -> Vec<cadkernel_sketch::ConstraintId> {
+    if sm.sketch.constraints.len() < 2 {
+        return Vec::new();
+    }
+    let ids: Vec<_> = (0..sm.sketch.constraints.len()).collect();
+    cadkernel_sketch::detect_conflict(&sm.sketch, &ids)
+}
+
 // ---------------------------------------------------------------------------
 // Detect auto-constraints near the cursor
 // ---------------------------------------------------------------------------
@@ -394,10 +402,16 @@ fn detect_auto_constraints(
 // ===========================================================================
 
 pub(crate) fn draw_sketch_overlay(ctx: &egui::Context, gui: &mut GuiState, camera: &Camera) {
-    // Update constraint residuals for feedback coloring
-    if let Some(sm) = &mut gui.sketch_mode {
+    let conflict_ids = if let Some(sm) = &mut gui.sketch_mode {
         sm.update_constraint_status();
-    }
+        let ids = detect_sketch_conflicts(sm);
+        if !ids.is_empty() {
+            gui.status_message = format!("Over-constrained: {} conflicts", ids.len());
+        }
+        ids
+    } else {
+        Vec::new()
+    };
     let sm = match &gui.sketch_mode {
         Some(sm) => sm,
         None => return,
@@ -1190,7 +1204,7 @@ pub(crate) fn draw_sketch_overlay(ctx: &egui::Context, gui: &mut GuiState, camer
 
     // Draw constraint indicators
     if sm.show_constraints {
-        draw_constraint_indicators(&painter, sm, &project, constraint_color);
+        draw_constraint_indicators(&painter, sm, &project, constraint_color, &conflict_ids);
     }
 
     // -- Cursor crosshair on sketch plane (FreeCAD-style) --
@@ -1394,8 +1408,11 @@ pub(crate) fn draw_sketch_overlay(ctx: &egui::Context, gui: &mut GuiState, camer
         .iter()
         .filter(|r| **r > 1e-6)
         .count();
+    let n_conflicts = conflict_ids.len();
     let dof_tag = if pt_count == 0 {
         String::new()
+    } else if n_conflicts > 0 {
+        format!(" \u{2022} Over-constrained: {n_conflicts} conflicts")
     } else if n_violated > 0 {
         format!(" \u{2022} {n_violated} conflicting")
     } else if dof == 0 {
@@ -1443,7 +1460,7 @@ pub(crate) fn draw_sketch_overlay(ctx: &egui::Context, gui: &mut GuiState, camer
             ""
         },
     );
-    let (banner_bg, banner_fg) = if n_violated > 0 {
+    let (banner_bg, banner_fg) = if n_conflicts > 0 || n_violated > 0 {
         (
             egui::Color32::from_rgba_premultiplied(180, 40, 40, 180),
             egui::Color32::from_rgb(255, 200, 200),
@@ -1528,12 +1545,16 @@ pub(crate) fn draw_sketch_overlay(ctx: &egui::Context, gui: &mut GuiState, camer
                 }
                 SketchValidationIssue::OverConstrained { .. } => {
                     let oc_pos = egui::pos2(viewport.center().x, viewport.top() + 100.0);
-                    let oc_text = "\u{26A0} Over-constrained";
+                    let oc_text = if n_conflicts > 0 {
+                        format!("\u{26A0} Over-constrained: {n_conflicts} conflicts")
+                    } else {
+                        "\u{26A0} Over-constrained".to_string()
+                    };
                     let oc_font = warn_font.clone();
                     let oc_color = egui::Color32::from_rgb(255, 100, 100);
                     let oc_bg = egui::Color32::from_rgba_premultiplied(160, 30, 30, 180);
                     let oc_galley =
-                        painter.layout_no_wrap(oc_text.to_string(), oc_font.clone(), oc_color);
+                        painter.layout_no_wrap(oc_text.clone(), oc_font.clone(), oc_color);
                     let oc_rect = egui::Rect::from_center_size(
                         oc_pos,
                         oc_galley.size() + egui::vec2(12.0, 4.0),
@@ -2603,6 +2624,7 @@ fn draw_ovp_panel(
 // Constraint visualization colors
 // ---------------------------------------------------------------------------
 const GEO_COLOR: egui::Color32 = egui::Color32::from_rgb(220, 60, 60); // FreeCAD red constraints
+const CONFLICT_COLOR: egui::Color32 = egui::Color32::from_rgb(255, 40, 40);
 const ERR_COLOR: egui::Color32 = egui::Color32::from_rgb(255, 100, 40); // orange-red violated
 const WARN_COLOR: egui::Color32 = egui::Color32::from_rgb(255, 200, 50); // yellow warning
 
@@ -2610,6 +2632,7 @@ struct ConstraintCtx<'a> {
     painter: &'a egui::Painter,
     sm: &'a super::SketchMode,
     project: &'a dyn Fn(f64, f64) -> Option<egui::Pos2>,
+    conflict_ids: &'a [cadkernel_sketch::ConstraintId],
     sym_font: egui::FontId,
     dim_font: egui::FontId,
 }
@@ -2619,11 +2642,13 @@ fn draw_constraint_indicators(
     sm: &super::SketchMode,
     project: &dyn Fn(f64, f64) -> Option<egui::Pos2>,
     _color: egui::Color32,
+    conflict_ids: &[cadkernel_sketch::ConstraintId],
 ) {
     let cx = ConstraintCtx {
         painter,
         sm,
         project,
+        conflict_ids,
         sym_font: egui::FontId::proportional(10.0),
         dim_font: egui::FontId::proportional(11.0),
     };
@@ -2769,6 +2794,9 @@ impl ConstraintCtx<'_> {
 
     /// Color for constraint index: green=satisfied, red=violated, yellow=warning.
     fn constraint_color(&self, idx: usize) -> egui::Color32 {
+        if self.conflict_ids.contains(&idx) {
+            return CONFLICT_COLOR;
+        }
         if let Some(&res) = self.sm.constraint_residuals.get(idx) {
             if res < 1e-6 {
                 GEO_COLOR
