@@ -1,0 +1,25 @@
+version: 1
+
+AppDir:
+  path: ./AppDir
+  app_info:
+    id: io.kodenet.CADKernel
+    name: CADKernel
+    icon: cadkernel
+    version: !ENV ${APP_VERSION}
+    exec: usr/bin/cadkernel
+    exec_args: $@
+  files:
+    include:
+      - usr/bin/cadkernel
+      - usr/share/applications/cadkernel.desktop
+      - usr/share/icons/hicolor/256x256/apps/cadkernel.png
+    exclude:
+      - usr/share/doc
+      - usr/share/man
+      - usr/share/lintian
+      - usr/share/locale
+
+AppImage:
+  arch: x86_64
+  update-information: None

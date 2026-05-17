@@ -112,6 +112,12 @@ struct RuntimeState {
     egui_renderer: egui_wgpu::Renderer,
 }
 
+struct OffscreenRepaintRuntime {
+    renderer: crate::render::OffscreenRepaintRenderer,
+    egui_ctx: egui::Context,
+    egui_renderer: egui_wgpu::Renderer,
+}
+
 // ---------------------------------------------------------------------------
 // Camera animation
 // ---------------------------------------------------------------------------
@@ -236,6 +242,7 @@ pub struct CadApp {
     /// True before the first frame; gates the one-shot autosave
     /// recovery modal scan (task #5).
     autosave_recovery_pending: bool,
+    offscreen_repaint: Option<OffscreenRepaintRuntime>,
 }
 
 impl CadApp {
@@ -281,6 +288,7 @@ impl CadApp {
             active_document: 0,
             autosave: crate::autosave::AutosaveState::new(),
             autosave_recovery_pending: true,
+            offscreen_repaint: None,
         }
     }
 
@@ -307,6 +315,7 @@ impl CadApp {
         self.gui.scene_overlay.clear();
         self.gui.current_file = None;
         self.sync_api_body_tree();
+        self.offscreen_repaint = None;
     }
 
     fn sync_document_tabs_to_ui(&mut self) {
@@ -572,6 +581,7 @@ impl CadApp {
         }
         self.gui.invalidate_cache();
         self.current_mesh = Some(mesh);
+        self.offscreen_repaint = None;
     }
 
     /// Rebuild the GPU vertex buffer from the entire scene (all visible objects).
@@ -624,6 +634,7 @@ impl CadApp {
             rt.gpu.rebuild_grid(&self.grid_config);
         }
         self.gui.invalidate_cache();
+        self.offscreen_repaint = None;
     }
 
     fn sync_object_ranges_metadata(&mut self) {
@@ -12489,6 +12500,105 @@ impl CadApp {
     #[doc(hidden)]
     pub fn object_ranges_for_test(&self) -> &[(crate::scene::ObjectId, u32, u32, [f32; 4], bool)] {
         &self.object_ranges
+    }
+
+    #[doc(hidden)]
+    pub fn load_session_for_test(&mut self, session: cadkernel_api::Session) {
+        self.replace_active_session(session, "Benchmark", false);
+        self.offscreen_repaint = None;
+    }
+
+    fn ensure_offscreen_repaint_for_test(&mut self, width: u32, height: u32) -> Result<(), String> {
+        let width = width.max(1);
+        let height = height.max(1);
+        let vertex_count = self.vertices.len();
+        if self
+            .offscreen_repaint
+            .as_ref()
+            .is_some_and(|rt| rt.renderer.matches(width, height, vertex_count))
+        {
+            return Ok(());
+        }
+
+        let renderer = pollster::block_on(crate::render::OffscreenRepaintRenderer::new(
+            width,
+            height,
+            &self.vertices,
+            &self.grid_config,
+        ))?;
+        let egui_ctx = egui::Context::default();
+        let egui_renderer =
+            egui_wgpu::Renderer::new(renderer.device(), renderer.color_format(), None, 1, false);
+        self.offscreen_repaint = Some(OffscreenRepaintRuntime {
+            renderer,
+            egui_ctx,
+            egui_renderer,
+        });
+        Ok(())
+    }
+
+    #[doc(hidden)]
+    pub fn repaint_one_offscreen_for_test(
+        &mut self,
+        width: u32,
+        height: u32,
+    ) -> Result<(), String> {
+        let width = width.max(1);
+        let height = height.max(1);
+        self.camera.aspect = width as f32 / height as f32;
+        self.ensure_offscreen_repaint_for_test(width, height)?;
+        let mut rt = self
+            .offscreen_repaint
+            .take()
+            .ok_or_else(|| "offscreen repaint runtime was not initialized".to_string())?;
+
+        let raw_input = egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(width as f32, height as f32),
+            )),
+            ..Default::default()
+        };
+        let full_output = rt.egui_ctx.run(raw_input, |_ctx| {});
+        let paint_jobs = rt
+            .egui_ctx
+            .tessellate(full_output.shapes, full_output.pixels_per_point);
+        rt.renderer.render_shaded_with_egui(
+            &self.camera,
+            self.show_grid,
+            &mut rt.egui_renderer,
+            &paint_jobs,
+            &full_output.textures_delta,
+            full_output.pixels_per_point,
+        );
+        self.offscreen_repaint = Some(rt);
+        Ok(())
+    }
+
+    #[doc(hidden)]
+    pub fn measure_repaint_1080p_for_test(&mut self, frames: usize) -> Result<(f64, f64), String> {
+        const WIDTH: u32 = 1920;
+        const HEIGHT: u32 = 1080;
+        if frames == 0 {
+            return Err("frame count must be greater than zero".to_string());
+        }
+        self.ensure_offscreen_repaint_for_test(WIDTH, HEIGHT)?;
+        for _ in 0..3 {
+            self.repaint_one_offscreen_for_test(WIDTH, HEIGHT)?;
+        }
+
+        let mut samples = Vec::with_capacity(frames);
+        for _ in 0..frames {
+            self.camera.yaw -= 0.002;
+            let start = std::time::Instant::now();
+            self.repaint_one_offscreen_for_test(WIDTH, HEIGHT)?;
+            samples.push(start.elapsed().as_secs_f64() * 1000.0);
+        }
+        let mean = samples.iter().sum::<f64>() / samples.len() as f64;
+        samples.sort_by(|a, b| a.total_cmp(b));
+        let p95_index = ((samples.len() as f64 * 0.95).ceil() as usize).saturating_sub(1);
+        let p95 = samples[p95_index.min(samples.len() - 1)];
+        Ok((mean, p95))
     }
 
     #[doc(hidden)]

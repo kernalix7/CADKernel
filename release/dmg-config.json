@@ -1,0 +1,14 @@
+{
+  "volume_name": "CADKernel",
+  "bundle_identifier": "io.kodenet.CADKernel",
+  "minimum_system_version": "12.0",
+  "window": {
+    "position": [200, 120],
+    "size": [640, 420]
+  },
+  "icons": {
+    "size": 128,
+    "app": [160, 190],
+    "applications": [480, 190]
+  }
+}

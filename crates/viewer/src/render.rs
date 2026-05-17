@@ -2164,6 +2164,613 @@ impl GpuState {
     }
 }
 
+pub(crate) struct OffscreenRepaintRenderer {
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    color_format: wgpu::TextureFormat,
+    solid_pipeline: wgpu::RenderPipeline,
+    wire_pipeline: wgpu::RenderPipeline,
+    gradient_pipeline: wgpu::RenderPipeline,
+    vertex_buffer: wgpu::Buffer,
+    num_vertices: u32,
+    uniform_buffer: wgpu::Buffer,
+    uniform_bind_group: wgpu::BindGroup,
+    color_view: wgpu::TextureView,
+    depth_view: wgpu::TextureView,
+    msaa_view: wgpu::TextureView,
+    grid: GridOverlay,
+    width: u32,
+    height: u32,
+}
+
+impl OffscreenRepaintRenderer {
+    pub(crate) async fn new(
+        width: u32,
+        height: u32,
+        vertices: &[Vertex],
+        grid_config: &GridConfig,
+    ) -> Result<Self, String> {
+        let width = width.max(1);
+        let height = height.max(1);
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::all(),
+            ..Default::default()
+        });
+        let adapter = pick_offscreen_adapter(&instance).await.ok_or_else(|| {
+            "no suitable offscreen GPU adapter found; install Mesa/llvmpipe or a native GPU driver"
+                .to_string()
+        })?;
+        let (device, queue) = adapter
+            .request_device(&wgpu::DeviceDescriptor::default(), None)
+            .await
+            .map_err(|err| format!("failed to create offscreen GPU device: {err}"))?;
+
+        let color_format = wgpu::TextureFormat::Bgra8UnormSrgb;
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("offscreen_shader"),
+            source: wgpu::ShaderSource::Wgsl(SHADER_SRC.into()),
+        });
+        let grad_src = gradient_shader_src(BgPreset::Dark);
+        let grad_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("offscreen_gradient_shader"),
+            source: wgpu::ShaderSource::Wgsl(grad_src.as_str().into()),
+        });
+
+        let nv = vertices.len() as u32;
+        let vertex_buffer = create_vertex_buffer(&device, vertices);
+
+        let (grid_verts, g_minor, g_major, g_ax, g_ay, g_az) = build_dynamic_grid(grid_config);
+        let grid_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("offscreen_grid_buffer"),
+            contents: bytemuck::cast_slice(&grid_verts),
+            usage: wgpu::BufferUsages::VERTEX,
+        });
+        let grid = GridOverlay {
+            buffer: grid_buffer,
+            minor_range: g_minor,
+            major_range: g_major,
+            axis_x_range: g_ax,
+            axis_y_range: g_ay,
+            axis_z_range: g_az,
+        };
+
+        let stride = uniform_stride();
+        let uniform_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("offscreen_uniform_buffer"),
+            size: stride * MAX_UNIFORM_SLOTS,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+        let uniform_size = std::mem::size_of::<Uniforms>() as u64;
+        let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("offscreen_bind_group_layout"),
+            entries: &[wgpu::BindGroupLayoutEntry {
+                binding: 0,
+                visibility: wgpu::ShaderStages::VERTEX | wgpu::ShaderStages::FRAGMENT,
+                ty: wgpu::BindingType::Buffer {
+                    ty: wgpu::BufferBindingType::Uniform,
+                    has_dynamic_offset: true,
+                    min_binding_size: wgpu::BufferSize::new(uniform_size),
+                },
+                count: None,
+            }],
+        });
+        let uniform_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("offscreen_uniform_bind_group"),
+            layout: &bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding {
+                    buffer: &uniform_buffer,
+                    offset: 0,
+                    size: wgpu::BufferSize::new(uniform_size),
+                }),
+            }],
+        });
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("offscreen_pipeline_layout"),
+            bind_group_layouts: &[&bind_group_layout],
+            push_constant_ranges: &[],
+        });
+        let grad_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+            label: Some("offscreen_gradient_pipeline_layout"),
+            bind_group_layouts: &[],
+            push_constant_ranges: &[],
+        });
+
+        let solid_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("offscreen_solid_pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_main"),
+                buffers: &[Vertex::layout()],
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: color_format,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                cull_mode: None,
+                ..Default::default()
+            },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: DEPTH_FORMAT,
+                depth_write_enabled: true,
+                depth_compare: wgpu::CompareFunction::Less,
+                stencil: Default::default(),
+                bias: Default::default(),
+            }),
+            multisample: wgpu::MultisampleState {
+                count: MSAA_SAMPLES,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            multiview: None,
+            cache: None,
+        });
+        let wire_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("offscreen_wire_pipeline"),
+            layout: Some(&pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &shader,
+                entry_point: Some("vs_main"),
+                buffers: &[Vertex::layout()],
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &shader,
+                entry_point: Some("fs_main"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: color_format,
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::LineList,
+                ..Default::default()
+            },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: DEPTH_FORMAT,
+                depth_write_enabled: false,
+                depth_compare: wgpu::CompareFunction::LessEqual,
+                stencil: Default::default(),
+                bias: wgpu::DepthBiasState {
+                    constant: -2,
+                    slope_scale: -1.0,
+                    clamp: 0.0,
+                },
+            }),
+            multisample: wgpu::MultisampleState {
+                count: MSAA_SAMPLES,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            multiview: None,
+            cache: None,
+        });
+        let gradient_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("offscreen_gradient_pipeline"),
+            layout: Some(&grad_pipeline_layout),
+            vertex: wgpu::VertexState {
+                module: &grad_shader,
+                entry_point: Some("vs_gradient"),
+                buffers: &[],
+                compilation_options: Default::default(),
+            },
+            fragment: Some(wgpu::FragmentState {
+                module: &grad_shader,
+                entry_point: Some("fs_gradient"),
+                targets: &[Some(wgpu::ColorTargetState {
+                    format: color_format,
+                    blend: Some(wgpu::BlendState::REPLACE),
+                    write_mask: wgpu::ColorWrites::ALL,
+                })],
+                compilation_options: Default::default(),
+            }),
+            primitive: wgpu::PrimitiveState {
+                topology: wgpu::PrimitiveTopology::TriangleList,
+                ..Default::default()
+            },
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: DEPTH_FORMAT,
+                depth_write_enabled: false,
+                depth_compare: wgpu::CompareFunction::Always,
+                stencil: Default::default(),
+                bias: Default::default(),
+            }),
+            multisample: wgpu::MultisampleState {
+                count: MSAA_SAMPLES,
+                mask: !0,
+                alpha_to_coverage_enabled: false,
+            },
+            multiview: None,
+            cache: None,
+        });
+
+        let color_view = create_offscreen_color_texture(&device, width, height, color_format);
+        let depth_view = create_offscreen_depth_texture(&device, width, height);
+        let msaa_view = create_offscreen_msaa_texture(&device, width, height, color_format);
+
+        Ok(Self {
+            device,
+            queue,
+            color_format,
+            solid_pipeline,
+            wire_pipeline,
+            gradient_pipeline,
+            vertex_buffer,
+            num_vertices: nv,
+            uniform_buffer,
+            uniform_bind_group,
+            color_view,
+            depth_view,
+            msaa_view,
+            grid,
+            width,
+            height,
+        })
+    }
+
+    pub(crate) fn matches(&self, width: u32, height: u32, vertex_count: usize) -> bool {
+        self.width == width.max(1)
+            && self.height == height.max(1)
+            && self.num_vertices == vertex_count as u32
+    }
+
+    pub(crate) fn device(&self) -> &wgpu::Device {
+        &self.device
+    }
+
+    pub(crate) fn color_format(&self) -> wgpu::TextureFormat {
+        self.color_format
+    }
+
+    pub(crate) fn render_shaded_with_egui(
+        &mut self,
+        camera: &Camera,
+        show_grid: bool,
+        egui_renderer: &mut egui_wgpu::Renderer,
+        paint_jobs: &[egui::ClippedPrimitive],
+        textures_delta: &egui::TexturesDelta,
+        pixels_per_point: f32,
+    ) {
+        let vp = camera.view_proj();
+        let eye = camera.eye();
+        let eye_pos = [eye[0], eye[1], eye[2], 0.0];
+        let cam_fwd = normalize3(sub3(camera.target, eye));
+        let cam_r = camera.screen_right();
+        let cam_u = camera.screen_up();
+        let ld = normalize3([
+            -cam_fwd[0] + cam_r[0] * 0.5 + cam_u[0] * 0.7,
+            -cam_fwd[1] + cam_r[1] * 0.5 + cam_u[1] * 0.7,
+            -cam_fwd[2] + cam_r[2] * 0.5 + cam_u[2] * 0.7,
+        ]);
+        let light = [ld[0], ld[1], ld[2], 0.0];
+        let no_light = [0.0f32; 4];
+        let lit_params = [1.0f32, 0.15, 128.0, 0.0];
+        let unlit_params = [0.0f32; 4];
+
+        let grid_minor_slot = 0;
+        let grid_major_slot = 1;
+        let grid_ax_slot = 2;
+        let grid_ay_slot = 3;
+        let grid_az_slot = 4;
+        let mesh_slot = 5;
+
+        if show_grid {
+            self.write_slot(
+                grid_minor_slot,
+                &Uniforms {
+                    view_proj: vp,
+                    light_dir: no_light,
+                    base_color: GRID_MINOR_COLOR,
+                    params: unlit_params,
+                    eye_pos,
+                    hover_params: [0.0; 4],
+                    clip_params: CLIP_DISABLED,
+                },
+            );
+            self.write_slot(
+                grid_major_slot,
+                &Uniforms {
+                    view_proj: vp,
+                    light_dir: no_light,
+                    base_color: GRID_MAJOR_COLOR,
+                    params: unlit_params,
+                    eye_pos,
+                    hover_params: [0.0; 4],
+                    clip_params: CLIP_DISABLED,
+                },
+            );
+            self.write_slot(
+                grid_ax_slot,
+                &Uniforms {
+                    view_proj: vp,
+                    light_dir: no_light,
+                    base_color: AXIS_X_COLOR,
+                    params: unlit_params,
+                    eye_pos,
+                    hover_params: [0.0; 4],
+                    clip_params: CLIP_DISABLED,
+                },
+            );
+            self.write_slot(
+                grid_ay_slot,
+                &Uniforms {
+                    view_proj: vp,
+                    light_dir: no_light,
+                    base_color: AXIS_Y_COLOR,
+                    params: unlit_params,
+                    eye_pos,
+                    hover_params: [0.0; 4],
+                    clip_params: CLIP_DISABLED,
+                },
+            );
+            self.write_slot(
+                grid_az_slot,
+                &Uniforms {
+                    view_proj: vp,
+                    light_dir: no_light,
+                    base_color: AXIS_Z_COLOR,
+                    params: unlit_params,
+                    eye_pos,
+                    hover_params: [0.0; 4],
+                    clip_params: CLIP_DISABLED,
+                },
+            );
+        }
+        self.write_slot(
+            mesh_slot,
+            &Uniforms {
+                view_proj: vp,
+                light_dir: light,
+                base_color: SOLID_COLOR,
+                params: lit_params,
+                eye_pos,
+                hover_params: [0.0; 4],
+                clip_params: CLIP_DISABLED,
+            },
+        );
+
+        for (id, delta) in &textures_delta.set {
+            egui_renderer.update_texture(&self.device, &self.queue, *id, delta);
+        }
+
+        let mut encoder = self
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("offscreen_repaint_encoder"),
+            });
+        {
+            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("offscreen_scene_pass"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &self.msaa_view,
+                    resolve_target: Some(&self.color_view),
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 0.12,
+                            g: 0.12,
+                            b: 0.16,
+                            a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.depth_view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
+                ..Default::default()
+            });
+
+            pass.set_pipeline(&self.gradient_pipeline);
+            pass.draw(0..3, 0..1);
+
+            if show_grid {
+                pass.set_pipeline(&self.wire_pipeline);
+                pass.set_vertex_buffer(0, self.grid.buffer.slice(..));
+                pass.set_bind_group(
+                    0,
+                    &self.uniform_bind_group,
+                    &[Self::slot_offset(grid_minor_slot)],
+                );
+                if !self.grid.minor_range.is_empty() {
+                    pass.draw(self.grid.minor_range.clone(), 0..1);
+                }
+                pass.set_bind_group(
+                    0,
+                    &self.uniform_bind_group,
+                    &[Self::slot_offset(grid_major_slot)],
+                );
+                if !self.grid.major_range.is_empty() {
+                    pass.draw(self.grid.major_range.clone(), 0..1);
+                }
+                pass.set_bind_group(
+                    0,
+                    &self.uniform_bind_group,
+                    &[Self::slot_offset(grid_ax_slot)],
+                );
+                if !self.grid.axis_x_range.is_empty() {
+                    pass.draw(self.grid.axis_x_range.clone(), 0..1);
+                }
+                pass.set_bind_group(
+                    0,
+                    &self.uniform_bind_group,
+                    &[Self::slot_offset(grid_ay_slot)],
+                );
+                if !self.grid.axis_y_range.is_empty() {
+                    pass.draw(self.grid.axis_y_range.clone(), 0..1);
+                }
+                pass.set_bind_group(
+                    0,
+                    &self.uniform_bind_group,
+                    &[Self::slot_offset(grid_az_slot)],
+                );
+                if !self.grid.axis_z_range.is_empty() {
+                    pass.draw(self.grid.axis_z_range.clone(), 0..1);
+                }
+            }
+
+            if self.num_vertices > 0 {
+                pass.set_pipeline(&self.solid_pipeline);
+                pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
+                pass.set_bind_group(0, &self.uniform_bind_group, &[Self::slot_offset(mesh_slot)]);
+                pass.draw(0..self.num_vertices, 0..1);
+            }
+        }
+
+        let screen = egui_wgpu::ScreenDescriptor {
+            size_in_pixels: [self.width, self.height],
+            pixels_per_point,
+        };
+        egui_renderer.update_buffers(&self.device, &self.queue, &mut encoder, paint_jobs, &screen);
+        {
+            let mut pass = encoder
+                .begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("offscreen_egui_pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view: &self.color_view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Load,
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    ..Default::default()
+                })
+                .forget_lifetime();
+            egui_renderer.render(&mut pass, paint_jobs, &screen);
+        }
+        for id in &textures_delta.free {
+            egui_renderer.free_texture(id);
+        }
+
+        self.queue.submit(std::iter::once(encoder.finish()));
+    }
+
+    fn write_slot(&self, slot: u32, u: &Uniforms) {
+        let offset = slot as u64 * uniform_stride();
+        self.queue
+            .write_buffer(&self.uniform_buffer, offset, bytemuck::bytes_of(u));
+    }
+
+    fn slot_offset(slot: u32) -> u32 {
+        (slot as u64 * uniform_stride()) as u32
+    }
+}
+
+async fn pick_offscreen_adapter(instance: &wgpu::Instance) -> Option<wgpu::Adapter> {
+    for power_preference in [
+        wgpu::PowerPreference::HighPerformance,
+        wgpu::PowerPreference::LowPower,
+    ] {
+        if let Some(adapter) = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference,
+                compatible_surface: None,
+                force_fallback_adapter: false,
+            })
+            .await
+        {
+            return Some(adapter);
+        }
+    }
+    instance
+        .request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::LowPower,
+            compatible_surface: None,
+            force_fallback_adapter: true,
+        })
+        .await
+}
+
+fn create_offscreen_color_texture(
+    device: &wgpu::Device,
+    width: u32,
+    height: u32,
+    format: wgpu::TextureFormat,
+) -> wgpu::TextureView {
+    device
+        .create_texture(&wgpu::TextureDescriptor {
+            label: Some("offscreen_color"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        })
+        .create_view(&wgpu::TextureViewDescriptor::default())
+}
+
+fn create_offscreen_depth_texture(
+    device: &wgpu::Device,
+    width: u32,
+    height: u32,
+) -> wgpu::TextureView {
+    device
+        .create_texture(&wgpu::TextureDescriptor {
+            label: Some("offscreen_depth"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: MSAA_SAMPLES,
+            dimension: wgpu::TextureDimension::D2,
+            format: DEPTH_FORMAT,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        })
+        .create_view(&wgpu::TextureViewDescriptor::default())
+}
+
+fn create_offscreen_msaa_texture(
+    device: &wgpu::Device,
+    width: u32,
+    height: u32,
+    format: wgpu::TextureFormat,
+) -> wgpu::TextureView {
+    device
+        .create_texture(&wgpu::TextureDescriptor {
+            label: Some("offscreen_msaa"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: MSAA_SAMPLES,
+            dimension: wgpu::TextureDimension::D2,
+            format,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        })
+        .create_view(&wgpu::TextureViewDescriptor::default())
+}
+
 // ---------------------------------------------------------------------------
 // Color constants
 // ---------------------------------------------------------------------------

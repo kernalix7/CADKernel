@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Product
+    Id="*"
+    Name="CADKernel"
+    Language="1033"
+    Version="__APP_VERSION__"
+    Manufacturer="CADKernel Contributors"
+    UpgradeCode="b43d31ef-3b93-4dd1-a9c7-9dcfcd54ef56">
+    <Package
+      InstallerVersion="500"
+      Compressed="yes"
+      InstallScope="perMachine"
+      Description="CADKernel"
+      Comments="Open-source CAD software built with Rust"
+      Manufacturer="CADKernel Contributors" />
+    <MajorUpgrade
+      DowngradeErrorMessage="A newer version of CADKernel is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+
+    <Feature Id="ProductFeature" Title="CADKernel" Level="1">
+      <ComponentGroupRef Id="ProductComponents" />
+    </Feature>
+
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFilesFolder">
+        <Directory Id="INSTALLFOLDER" Name="CADKernel" />
+      </Directory>
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="ApplicationProgramsFolder" Name="CADKernel" />
+      </Directory>
+    </Directory>
+
+    <ComponentGroup Id="ProductComponents" Directory="INSTALLFOLDER">
+      <Component Id="CadkernelExecutable" Guid="f193ff26-68c5-430a-ad2d-9c1e3614d61d">
+        <File
+          Id="CadkernelExe"
+          Source="$(var.CargoTargetBinDir)\cadkernel.exe"
+          KeyPath="yes"
+          Checksum="yes" />
+      </Component>
+      <Component Id="StartMenuShortcut" Directory="ApplicationProgramsFolder" Guid="d2c5e1be-fb3a-4f50-8f1f-6a8d25e0c685">
+        <Shortcut
+          Id="ApplicationStartMenuShortcut"
+          Name="CADKernel"
+          Description="Open CADKernel"
+          Target="[INSTALLFOLDER]cadkernel.exe"
+          WorkingDirectory="INSTALLFOLDER" />
+        <RemoveFolder Id="ApplicationProgramsFolder" On="uninstall" />
+        <RegistryValue
+          Root="HKCU"
+          Key="Software\CADKernel\CADKernel"
+          Name="installed"
+          Type="integer"
+          Value="1"
+          KeyPath="yes" />
+      </Component>
+    </ComponentGroup>
+  </Product>
+</Wix>

@@ -24,6 +24,7 @@
 
 use crate::cadk::header::{CadkFlags, CadkHeader, HEADER_SIZE, MAGIC, SCHEMA_VERSION};
 use crate::cadk::manifest::{BlobKind, BlobRecord, Manifest};
+use crate::cadk::migrate::SchemaVersion;
 use crate::command::Command;
 use crate::{ApiError, ApiResult};
 use serde::{Deserialize, Serialize};
@@ -172,10 +173,13 @@ pub struct BlobInfo {
 /// (2026-05-13).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CadkSummary {
-    /// Header schema version. Must equal [`SCHEMA_VERSION`] for this
-    /// build — [`inspect`] errors out on mismatch before returning a
-    /// summary.
+    /// Raw header schema version. Known document versions are `1..=`
+    /// [`SCHEMA_VERSION`]; future non-zero versions can still be inspected.
     pub schema_version: u32,
+    /// Typed schema marker. Future non-zero versions are reported as
+    /// [`SchemaVersion::Unknown`] by [`inspect`], allowing callers to list
+    /// blobs without decoding the document log.
+    pub schema: SchemaVersion,
     /// Raw flags word from the header. Use the
     /// [`document_compressed`](CadkSummary::document_compressed),
     /// [`has_thumbnail`](CadkSummary::has_thumbnail),
@@ -207,6 +211,10 @@ pub struct CadkSummary {
     ///
     /// Added in A3.0.6 (2026-05-13).
     pub blobs: Vec<BlobInfo>,
+    /// Raw manifest table as decoded from the container. Exposed so
+    /// forward-compatible readers can enumerate future blob records without
+    /// opening the document payload.
+    pub manifest: Manifest,
 }
 
 impl CadkSummary {
@@ -338,6 +346,39 @@ fn read_le_u64(slice: &[u8]) -> u64 {
     let n = slice.len().min(8);
     arr[..n].copy_from_slice(&slice[..n]);
     u64::from_le_bytes(arr)
+}
+
+fn checked_byte_range(
+    offset: u64,
+    length: u64,
+    container_len: usize,
+    label: &str,
+) -> ApiResult<std::ops::Range<usize>> {
+    let start = usize::try_from(offset)
+        .map_err(|_| ApiError::Codec(format!("{label} offset exceeds addressable memory")))?;
+    let len = usize::try_from(length)
+        .map_err(|_| ApiError::Codec(format!("{label} length exceeds addressable memory")))?;
+    let end = start.checked_add(len).ok_or_else(|| {
+        ApiError::Codec(format!("{label} range overflows container address space"))
+    })?;
+    if end > container_len {
+        return Err(ApiError::Codec(format!(
+            "{label} range exceeds container bounds"
+        )));
+    }
+    Ok(start..end)
+}
+
+fn validate_total_size(header: &CadkHeader, actual_len: usize) -> ApiResult<()> {
+    let declared = usize::try_from(header.total_size)
+        .map_err(|_| ApiError::Codec("container total_size exceeds addressable memory".into()))?;
+    if declared != actual_len {
+        return Err(ApiError::Codec(format!(
+            "container truncated: header.total_size={}, file_size={}",
+            header.total_size, actual_len
+        )));
+    }
+    Ok(())
 }
 
 fn handle_snapshot<T>(handle: cadkernel_topology::Handle<T>) -> CadkHandleSnapshot {
@@ -509,8 +550,10 @@ pub(crate) fn encode_document_data_with_options(
     if doc_compressed {
         flags |= CadkFlags::DOCUMENT_COMPRESSED;
     }
+    let schema_version = SchemaVersion::current().writable_u32()?;
+    debug_assert_eq!(schema_version, SCHEMA_VERSION);
     let header = CadkHeader {
-        schema_version: SCHEMA_VERSION,
+        schema_version,
         flags,
         total_size,
         manifest_offset,
@@ -561,21 +604,14 @@ pub fn decode_document_data(bytes: &[u8]) -> ApiResult<CadkDocumentData> {
             header.schema_version, header.flags
         )));
     }
-    if (header.total_size as usize) != bytes.len() {
-        return Err(ApiError::Codec(format!(
-            "container truncated: header.total_size={}, file_size={}",
-            header.total_size,
-            bytes.len()
-        )));
-    }
-    let manifest_start = header.manifest_offset as usize;
-    let manifest_end = manifest_start + header.manifest_length as usize;
-    if manifest_end > bytes.len() {
-        return Err(ApiError::Codec(
-            "manifest range exceeds container bounds".into(),
-        ));
-    }
-    let manifest_bytes = &bytes[manifest_start..manifest_end];
+    validate_total_size(&header, bytes.len())?;
+    let manifest_range = checked_byte_range(
+        header.manifest_offset,
+        header.manifest_length,
+        bytes.len(),
+        "manifest",
+    )?;
+    let manifest_bytes = &bytes[manifest_range];
     if crc32_ieee(manifest_bytes) != header.manifest_crc32 {
         return Err(ApiError::Codec("manifest crc32 mismatch".into()));
     }
@@ -583,14 +619,13 @@ pub fn decode_document_data(bytes: &[u8]) -> ApiResult<CadkDocumentData> {
     let doc_record = manifest
         .find_first(BlobKind::Document)
         .ok_or_else(|| ApiError::Codec("no Document blob in manifest".into()))?;
-    let doc_start = doc_record.offset as usize;
-    let doc_end = doc_start + doc_record.length as usize;
-    if doc_end > bytes.len() {
-        return Err(ApiError::Codec(
-            "document blob range exceeds container bounds".into(),
-        ));
-    }
-    let doc_body = &bytes[doc_start..doc_end];
+    let doc_range = checked_byte_range(
+        doc_record.offset,
+        doc_record.length,
+        bytes.len(),
+        "document blob",
+    )?;
+    let doc_body = &bytes[doc_range];
     if crc32_ieee(doc_body) != doc_record.crc32 {
         return Err(ApiError::Codec("document blob crc32 mismatch".into()));
     }
@@ -626,20 +661,17 @@ pub fn decode_thumbnail(bytes: &[u8]) -> ApiResult<Option<Vec<u8>>> {
             header.schema_version, header.flags
         )));
     }
-    if (header.total_size as usize) != bytes.len() {
-        return Err(ApiError::Codec("container truncated".into()));
-    }
+    validate_total_size(&header, bytes.len())?;
     if header.flags & CadkFlags::HAS_THUMBNAIL == 0 {
         return Ok(None);
     }
-    let manifest_start = header.manifest_offset as usize;
-    let manifest_end = manifest_start + header.manifest_length as usize;
-    if manifest_end > bytes.len() {
-        return Err(ApiError::Codec(
-            "manifest range exceeds container bounds".into(),
-        ));
-    }
-    let manifest_bytes = &bytes[manifest_start..manifest_end];
+    let manifest_range = checked_byte_range(
+        header.manifest_offset,
+        header.manifest_length,
+        bytes.len(),
+        "manifest",
+    )?;
+    let manifest_bytes = &bytes[manifest_range];
     if crc32_ieee(manifest_bytes) != header.manifest_crc32 {
         return Err(ApiError::Codec("manifest crc32 mismatch".into()));
     }
@@ -647,14 +679,9 @@ pub fn decode_thumbnail(bytes: &[u8]) -> ApiResult<Option<Vec<u8>>> {
     let Some(record) = manifest.find_first(BlobKind::Thumbnail) else {
         return Ok(None);
     };
-    let start = record.offset as usize;
-    let end = start + record.length as usize;
-    if end > bytes.len() {
-        return Err(ApiError::Codec(
-            "thumbnail blob range exceeds container bounds".into(),
-        ));
-    }
-    let body = &bytes[start..end];
+    let thumb_range =
+        checked_byte_range(record.offset, record.length, bytes.len(), "thumbnail blob")?;
+    let body = &bytes[thumb_range];
     if crc32_ieee(body) != record.crc32 {
         return Err(ApiError::Codec("thumbnail blob crc32 mismatch".into()));
     }
@@ -690,36 +717,34 @@ pub fn inspect(bytes: &[u8]) -> ApiResult<CadkSummary> {
         )));
     }
     let header = read_header(&bytes[MAGIC.len()..MAGIC.len() + HEADER_SIZE])?;
-    if !header.is_supported() {
+    if !header.has_supported_flags() {
         return Err(ApiError::Codec(format!(
             "unsupported .cadk header: schema_version={}, flags=0x{:08x}",
             header.schema_version, header.flags
         )));
     }
-    if (header.total_size as usize) != bytes.len() {
-        return Err(ApiError::Codec(format!(
-            "container truncated: header.total_size={}, file_size={}",
-            header.total_size,
-            bytes.len()
-        )));
-    }
-    let manifest_start = header.manifest_offset as usize;
-    let manifest_end = manifest_start + header.manifest_length as usize;
-    if manifest_end > bytes.len() {
-        return Err(ApiError::Codec(
-            "manifest range exceeds container bounds".into(),
-        ));
-    }
-    let manifest_bytes = &bytes[manifest_start..manifest_end];
+    let schema = SchemaVersion::from_u32(header.schema_version)
+        .ok_or_else(|| ApiError::Codec("unsupported schema version: 0".into()))?;
+    validate_total_size(&header, bytes.len())?;
+    let manifest_range = checked_byte_range(
+        header.manifest_offset,
+        header.manifest_length,
+        bytes.len(),
+        "manifest",
+    )?;
+    let manifest_bytes = &bytes[manifest_range];
     if crc32_ieee(manifest_bytes) != header.manifest_crc32 {
         return Err(ApiError::Codec("manifest crc32 mismatch".into()));
     }
     let manifest: Manifest = serde_json::from_slice(manifest_bytes)?;
 
-    let document_length = manifest
-        .find_first(BlobKind::Document)
-        .map(|r| r.length)
-        .ok_or_else(|| ApiError::Codec("no Document blob in manifest".into()))?;
+    let document_length = match manifest.find_first(BlobKind::Document).map(|r| r.length) {
+        Some(length) => length,
+        None if schema.is_known() => {
+            return Err(ApiError::Codec("no Document blob in manifest".into()));
+        }
+        None => 0,
+    };
     let thumbnail_length = manifest.find_first(BlobKind::Thumbnail).map(|r| r.length);
 
     let blobs = manifest
@@ -734,12 +759,14 @@ pub fn inspect(bytes: &[u8]) -> ApiResult<CadkSummary> {
 
     Ok(CadkSummary {
         schema_version: header.schema_version,
+        schema,
         flags: header.flags,
         total_size: header.total_size,
         blob_count: manifest.records.len(),
         document_length,
         thumbnail_length,
         blobs,
+        manifest,
     })
 }
 

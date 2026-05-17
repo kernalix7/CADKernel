@@ -2,38 +2,71 @@ name: Release
 
 on:
   push:
-    tags: ['v*']
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release tag to publish, for example v1.0.0"
+        required: true
+        type: string
 
 permissions:
   contents: write
 
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_RELEASE_DEBUG: "0"
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-C debuginfo=0"
+  RUST_TOOLCHAIN: "1.85.0"
+
 jobs:
   build:
-    name: Build (${{ matrix.target }})
+    name: Reproducible binary (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-          - os: macos-latest
+            suffix: ""
+          - os: macos-13
             target: x86_64-apple-darwin
-          - os: macos-latest
+            suffix: ""
+          - os: macos-14
             target: aarch64-apple-darwin
+            suffix: ""
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-
-    runs-on: ${{ matrix.os }}
+            suffix: ".exe"
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Install stable toolchain
-        uses: dtolnay/rust-toolchain@stable
         with:
-          toolchain: stable
+          ref: ${{ inputs.version || github.ref }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.85.0
+        with:
           targets: ${{ matrix.target }}
+
+      - name: Set release metadata
+        id: meta
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            tag="${{ inputs.version }}"
+          fi
+          version="${tag#v}"
+          epoch="$(git log -1 --format=%ct)"
+          echo "RELEASE_TAG=${tag}" >> "${GITHUB_ENV}"
+          echo "APP_VERSION=${version}" >> "${GITHUB_ENV}"
+          echo "SOURCE_DATE_EPOCH=${epoch}" >> "${GITHUB_ENV}"
+          echo "release_tag=${tag}" >> "${GITHUB_OUTPUT}"
+          echo "app_version=${version}" >> "${GITHUB_OUTPUT}"
 
       - name: Cache cargo registry and index
         uses: actions/cache@v4
@@ -55,26 +88,51 @@ jobs:
             ${{ runner.os }}-release-${{ matrix.target }}-
 
       - name: Build release binary
-        run: cargo build --release --target ${{ matrix.target }}
+        shell: bash
+        run: cargo build --locked --release --target "${{ matrix.target }}"
 
-      - name: Upload artifact
+      - name: Stage deterministic artifact
+        shell: bash
+        run: |
+          mkdir -p dist
+          binary="cadkernel${{ matrix.suffix }}"
+          asset="cadkernel-${APP_VERSION}-${{ matrix.target }}${{ matrix.suffix }}"
+          cp "target/${{ matrix.target }}/release/${binary}" "dist/${asset}"
+          sha256sum "dist/${asset}" > "dist/${asset}.sha256"
+
+      - name: Upload binary artifact
         uses: actions/upload-artifact@v4
         with:
           name: cadkernel-${{ matrix.target }}
-          path: target/${{ matrix.target }}/release/cadkernel*
+          path: dist/*
           if-no-files-found: error
 
   release:
-    name: Create GitHub Release
+    name: Publish release binaries
     needs: build
     runs-on: ubuntu-latest
 
     steps:
+      - name: Resolve release tag
+        id: meta
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            tag="${{ inputs.version }}"
+          fi
+          echo "RELEASE_TAG=${tag}" >> "${GITHUB_ENV}"
+          echo "release_tag=${tag}" >> "${GITHUB_OUTPUT}"
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
 
-      - name: Create release
+      - name: Create or update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: cadkernel-*/cadkernel*
+          tag_name: ${{ steps.meta.outputs.release_tag }}
+          files: dist/*
           generate_release_notes: true

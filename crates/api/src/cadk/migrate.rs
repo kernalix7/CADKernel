@@ -34,17 +34,21 @@ pub enum SchemaVersion {
     /// Adds Body persistence. Wave 1 sub-phase 5a only reserves the
     /// variant; Wave 3 makes it the current encoder target.
     V2,
+    /// A future schema version that this build can inspect at the
+    /// container/manifest level but must not decode as a document log.
+    Unknown(u32),
 }
 
 impl SchemaVersion {
     /// Returns the enum variant for `n`, or `None` if `n` is not
-    /// recognised by this build. Used by [`migrate_to_current`] to
-    /// dispatch to the right migrator.
+    /// a valid released schema marker. Future non-zero versions map to
+    /// [`Self::Unknown`] so callers can preserve and report the raw value.
     pub fn from_u32(n: u32) -> Option<Self> {
         match n {
+            0 => None,
             1 => Some(Self::V1),
             2 => Some(Self::V2),
-            _ => None,
+            other => Some(Self::Unknown(other)),
         }
     }
 
@@ -54,6 +58,7 @@ impl SchemaVersion {
         match self {
             Self::V1 => 1,
             Self::V2 => 2,
+            Self::Unknown(n) => n,
         }
     }
 
@@ -61,6 +66,25 @@ impl SchemaVersion {
     /// the version line that every fresh `encode` produces.
     pub fn current() -> Self {
         Self::V2
+    }
+
+    /// Returns true for versions whose document log this build can decode.
+    pub fn is_known(self) -> bool {
+        matches!(self, Self::V1 | Self::V2)
+    }
+
+    /// Convert to an on-disk value for writer paths.
+    ///
+    /// Unknown versions are read-only compatibility fences: the manifest can
+    /// be inspected, but this build must never emit a container claiming to
+    /// implement a schema it does not understand.
+    pub fn writable_u32(self) -> ApiResult<u32> {
+        match self {
+            Self::V1 | Self::V2 => Ok(self.as_u32()),
+            Self::Unknown(n) => Err(ApiError::Codec(format!(
+                "cannot encode unknown .cadk schema version: {n}"
+            ))),
+        }
     }
 }
 
@@ -99,16 +123,20 @@ pub fn migrate_to_current(bytes: &[u8]) -> ApiResult<Vec<u8>> {
         SchemaVersion::V1 if SchemaVersion::current() == SchemaVersion::V2 => v1_to_v2(bytes),
         SchemaVersion::V1 => Ok(bytes.to_vec()),
         SchemaVersion::V2 => Ok(bytes.to_vec()),
+        SchemaVersion::Unknown(n) => Err(ApiError::Codec(format!(
+            "unsupported schema version for migration: {n}"
+        ))),
     }
 }
 
 /// Migrate a V1 container to V2 by adapting the legacy command-log array
 /// into the v2 document wrapper with empty Body/Sketch sections.
 fn v1_to_v2(bytes: &[u8]) -> ApiResult<Vec<u8>> {
+    let summary = crate::cadk::inspect(bytes)?;
     let commands = crate::cadk::decode(bytes)?;
     let thumbnail = crate::cadk::decode_thumbnail(bytes)?;
     let opts = crate::cadk::SaveOptions {
-        compression_level: None,
+        compression_level: summary.document_compressed().then_some(3),
         thumbnail,
     };
     let document = crate::cadk::CadkDocumentData {
@@ -149,8 +177,19 @@ mod tests {
     #[test]
     fn from_u32_rejects_unknown_versions() {
         assert_eq!(SchemaVersion::from_u32(0), None);
-        assert_eq!(SchemaVersion::from_u32(3), None);
-        assert_eq!(SchemaVersion::from_u32(u32::MAX), None);
+        assert_eq!(SchemaVersion::from_u32(3), Some(SchemaVersion::Unknown(3)));
+        assert_eq!(
+            SchemaVersion::from_u32(u32::MAX),
+            Some(SchemaVersion::Unknown(u32::MAX))
+        );
+    }
+
+    #[test]
+    fn unknown_schema_version_is_read_only() {
+        let v = SchemaVersion::Unknown(3);
+        assert_eq!(v.as_u32(), 3);
+        assert!(!v.is_known());
+        assert!(v.writable_u32().is_err());
     }
 
     #[test]

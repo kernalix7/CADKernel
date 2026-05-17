@@ -95,6 +95,14 @@ impl CadkHeader {
         if !(1..=SCHEMA_VERSION).contains(&self.schema_version) {
             return false;
         }
+        self.has_supported_flags()
+    }
+
+    /// Returns true when the flag word does not set unknown
+    /// must-understand bits. This is weaker than [`Self::is_supported`]:
+    /// it intentionally does not reject future schema versions so cheap
+    /// manifest inspection can still report their blob table.
+    pub fn has_supported_flags(&self) -> bool {
         let unknown_must_understand =
             self.flags & CadkFlags::MUST_UNDERSTAND_MASK & !CadkFlags::KNOWN;
         unknown_must_understand == 0
@@ -159,6 +167,7 @@ mod tests {
             ..CadkHeader::default()
         };
         assert!(!h.is_supported());
+        assert!(h.has_supported_flags());
     }
 
     #[test]

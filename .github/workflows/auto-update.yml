@@ -1,0 +1,130 @@
+name: Auto Update Manifest
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release tag to publish release.json for, for example v1.0.0"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  publish-manifest:
+    name: Publish release.json
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.version || github.ref }}
+
+      - name: Resolve release metadata
+        id: meta
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            tag="${{ inputs.version }}"
+          fi
+          version="${tag#v}"
+          echo "RELEASE_TAG=${tag}" >> "${GITHUB_ENV}"
+          echo "APP_VERSION=${version}" >> "${GITHUB_ENV}"
+          echo "release_tag=${tag}" >> "${GITHUB_OUTPUT}"
+          echo "app_version=${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Wait for signed installers
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          expected=(
+            "cadkernel-${APP_VERSION}-x86_64.AppImage"
+            "cadkernel-${APP_VERSION}-macos-universal.dmg"
+            "cadkernel-${APP_VERSION}-x86_64.msi"
+          )
+          for attempt in $(seq 1 60); do
+            gh release view "${RELEASE_TAG}" --json assets > release-assets.json || true
+            missing=0
+            for asset in "${expected[@]}"; do
+              if ! jq -e --arg name "${asset}" '.assets[]? | select(.name == $name)' release-assets.json >/dev/null; then
+                missing=1
+              fi
+            done
+            if [[ "${missing}" == "0" ]]; then
+              exit 0
+            fi
+            echo "Waiting for signed installer assets (${attempt}/60)"
+            sleep 30
+          done
+          echo "::error::Timed out waiting for signed installer assets"
+          exit 1
+
+      - name: Download installers and compute checksums
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p dist
+          gh release download "${RELEASE_TAG}" \
+            --pattern "cadkernel-${APP_VERSION}-x86_64.AppImage" \
+            --pattern "cadkernel-${APP_VERSION}-macos-universal.dmg" \
+            --pattern "cadkernel-${APP_VERSION}-x86_64.msi" \
+            --dir dist
+          sha256sum dist/* > dist/SHA256SUMS
+
+      - name: Generate release.json
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import datetime
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+
+          repo = os.environ["GITHUB_REPOSITORY"]
+          tag = os.environ["RELEASE_TAG"]
+          version = os.environ["APP_VERSION"]
+          published_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
+          template = json.loads(Path("release/release.json.template").read_text())
+          artifacts = [
+              ("linux-x86_64", f"cadkernel-{version}-x86_64.AppImage", "appimage"),
+              ("macos-universal", f"cadkernel-{version}-macos-universal.dmg", "dmg"),
+              ("windows-x86_64", f"cadkernel-{version}-x86_64.msi", "msi"),
+          ]
+
+          template["version"] = version
+          template["channel"] = "stable"
+          template["published_at"] = published_at
+          template["notes_url"] = f"https://github.com/{repo}/releases/tag/{tag}"
+          template["artifacts"] = []
+          for platform, name, kind in artifacts:
+              path = Path("dist") / name
+              digest = hashlib.sha256(path.read_bytes()).hexdigest()
+              template["artifacts"].append({
+                  "platform": platform,
+                  "kind": kind,
+                  "file_name": name,
+                  "url": f"https://github.com/{repo}/releases/download/{tag}/{name}",
+                  "sha256": digest,
+              })
+
+          Path("dist/release.json").write_text(
+              json.dumps(template, indent=2, sort_keys=True) + "\n"
+          )
+          PY
+          sha256sum dist/release.json > dist/release.json.sha256
+
+      - name: Upload update manifest
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.release_tag }}
+          files: |
+            dist/release.json
+            dist/release.json.sha256

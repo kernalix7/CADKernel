@@ -1,0 +1,411 @@
+name: Sign Installers
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release tag to sign, for example v1.0.0"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_PROFILE_RELEASE_DEBUG: "0"
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-C debuginfo=0"
+  RUST_TOOLCHAIN: "1.85.0"
+
+jobs:
+  linux-appimage:
+    name: Linux AppImage
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.version || github.ref }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.85.0
+        with:
+          targets: x86_64-unknown-linux-gnu
+
+      - name: Set release metadata
+        id: meta
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            tag="${{ inputs.version }}"
+          fi
+          version="${tag#v}"
+          epoch="$(git log -1 --format=%ct)"
+          echo "RELEASE_TAG=${tag}" >> "${GITHUB_ENV}"
+          echo "APP_VERSION=${version}" >> "${GITHUB_ENV}"
+          echo "SOURCE_DATE_EPOCH=${epoch}" >> "${GITHUB_ENV}"
+          echo "release_tag=${tag}" >> "${GITHUB_OUTPUT}"
+          echo "app_version=${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Install AppImage tooling
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libfuse2 desktop-file-utils python3-pip
+          python3 -m pip install --user appimage-builder || \
+            python3 -m pip install --user --break-system-packages appimage-builder
+          curl -fsSL \
+            -o linuxdeploy-x86_64.AppImage \
+            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          chmod +x linuxdeploy-x86_64.AppImage
+
+      - name: Cache cargo registry and index
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-registry-
+
+      - name: Build release binary
+        shell: bash
+        run: cargo build --locked --release --target x86_64-unknown-linux-gnu
+
+      - name: Build AppDir with linuxdeploy
+        shell: bash
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        run: |
+          mkdir -p AppDir/usr/bin AppDir/usr/share/applications AppDir/usr/share/icons/hicolor/256x256/apps
+          cp target/x86_64-unknown-linux-gnu/release/cadkernel AppDir/usr/bin/cadkernel
+          cat > AppDir/usr/share/applications/cadkernel.desktop <<'EOF'
+          [Desktop Entry]
+          Type=Application
+          Name=CADKernel
+          Comment=Open-source CAD software built with Rust
+          Exec=cadkernel
+          Icon=cadkernel
+          Categories=Graphics;Engineering;
+          Terminal=false
+          EOF
+          base64 -d > AppDir/usr/share/icons/hicolor/256x256/apps/cadkernel.png <<'EOF'
+          iVBORw0KGgoAAAANSUhEUgAAAQAAAAEACAIAAADTED8xAAABjklEQVR4nO3UsQ3DMBADQXn/ZeehhzhxQAhqPScE7xLutfsA8J3fA4BHBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAECBAgQIECAAAGCq+7rGfBVv3EcAARAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECC4nwADuE0GEAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECC4HwDDv8AAAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAgAABAgQIECBAsB8A2BNswT4kvugAAAAASUVORK5CYII=
+          EOF
+          ./linuxdeploy-x86_64.AppImage \
+            --appdir AppDir \
+            --desktop-file AppDir/usr/share/applications/cadkernel.desktop \
+            --icon-file AppDir/usr/share/icons/hicolor/256x256/apps/cadkernel.png \
+            --executable AppDir/usr/bin/cadkernel
+
+      - name: Package AppImage with appimage-builder
+        shell: bash
+        run: |
+          export PATH="${HOME}/.local/bin:${PATH}"
+          appimage-builder --recipe release/appimage-builder.yml --skip-test
+          mkdir -p dist
+          appimage="$(find . -maxdepth 1 -name '*.AppImage' -print -quit)"
+          mv "${appimage}" "dist/cadkernel-${APP_VERSION}-x86_64.AppImage"
+
+      - name: Sign AppImage with GPG
+        shell: bash
+        env:
+          LINUX_GPG_PRIVATE_KEY: ${{ secrets.LINUX_GPG_PRIVATE_KEY }}
+          LINUX_GPG_PASSPHRASE: ${{ secrets.LINUX_GPG_PASSPHRASE }}
+          LINUX_GPG_FINGERPRINT: ${{ secrets.LINUX_GPG_FINGERPRINT }}
+        run: |
+          if [[ -z "${LINUX_GPG_PRIVATE_KEY}" || -z "${LINUX_GPG_FINGERPRINT}" ]]; then
+            echo "::error::LINUX_GPG_PRIVATE_KEY and LINUX_GPG_FINGERPRINT are required"
+            exit 1
+          fi
+          gpg --batch --import <(printf '%s' "${LINUX_GPG_PRIVATE_KEY}")
+          actual="$(gpg --batch --with-colons --fingerprint "${LINUX_GPG_FINGERPRINT}" | awk -F: '/^fpr:/ {print $10; exit}')"
+          if [[ "${actual}" != "${LINUX_GPG_FINGERPRINT}" ]]; then
+            echo "::error::Imported GPG fingerprint does not match LINUX_GPG_FINGERPRINT"
+            exit 1
+          fi
+          gpg --batch --yes --pinentry-mode loopback \
+            --passphrase "${LINUX_GPG_PASSPHRASE}" \
+            --local-user "${LINUX_GPG_FINGERPRINT}" \
+            --armor --detach-sign "dist/cadkernel-${APP_VERSION}-x86_64.AppImage"
+          sha256sum "dist/cadkernel-${APP_VERSION}-x86_64.AppImage" \
+            > "dist/cadkernel-${APP_VERSION}-x86_64.AppImage.sha256"
+
+      - name: Upload AppImage to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.release_tag }}
+          files: dist/*
+          generate_release_notes: true
+
+  macos-dmg:
+    name: macOS DMG
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.version || github.ref }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.85.0
+        with:
+          targets: x86_64-apple-darwin,aarch64-apple-darwin
+
+      - name: Set release metadata
+        id: meta
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            tag="${{ inputs.version }}"
+          fi
+          version="${tag#v}"
+          epoch="$(git log -1 --format=%ct)"
+          echo "RELEASE_TAG=${tag}" >> "${GITHUB_ENV}"
+          echo "APP_VERSION=${version}" >> "${GITHUB_ENV}"
+          echo "SOURCE_DATE_EPOCH=${epoch}" >> "${GITHUB_ENV}"
+          echo "release_tag=${tag}" >> "${GITHUB_OUTPUT}"
+          echo "app_version=${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Install DMG tooling
+        shell: bash
+        run: brew install create-dmg
+
+      - name: Build universal binary
+        shell: bash
+        run: |
+          cargo build --locked --release --target x86_64-apple-darwin
+          cargo build --locked --release --target aarch64-apple-darwin
+          mkdir -p target/universal-apple-darwin/release
+          lipo -create \
+            target/x86_64-apple-darwin/release/cadkernel \
+            target/aarch64-apple-darwin/release/cadkernel \
+            -output target/universal-apple-darwin/release/cadkernel
+
+      - name: Import Apple signing certificate
+        shell: bash
+        env:
+          APPLE_CERTIFICATE_P12: ${{ secrets.APPLE_CERTIFICATE_P12 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          if [[ -z "${APPLE_CERTIFICATE_P12}" || -z "${APPLE_CERTIFICATE_PASSWORD}" ]]; then
+            echo "::error::APPLE_CERTIFICATE_P12 and APPLE_CERTIFICATE_PASSWORD are required"
+            exit 1
+          fi
+          keychain="${RUNNER_TEMP}/cadkernel-signing.keychain-db"
+          keychain_password="$(uuidgen)"
+          echo "${APPLE_CERTIFICATE_P12}" | base64 --decode > "${RUNNER_TEMP}/certificate.p12"
+          security create-keychain -p "${keychain_password}" "${keychain}"
+          security set-keychain-settings -lut 21600 "${keychain}"
+          security unlock-keychain -p "${keychain_password}" "${keychain}"
+          security import "${RUNNER_TEMP}/certificate.p12" \
+            -k "${keychain}" \
+            -P "${APPLE_CERTIFICATE_PASSWORD}" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/productsign
+          keychains=()
+          while IFS= read -r item; do
+            keychains+=("${item}")
+          done < <(security list-keychains -d user | tr -d '"' | sed 's/^ *//')
+          security list-keychains -d user -s "${keychain}" "${keychains[@]}"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "${keychain_password}" "${keychain}"
+
+      - name: Create signed app bundle
+        shell: bash
+        env:
+          APPLE_DEVELOPER_ID_APPLICATION: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
+        run: |
+          if [[ -z "${APPLE_DEVELOPER_ID_APPLICATION}" ]]; then
+            echo "::error::APPLE_DEVELOPER_ID_APPLICATION is required"
+            exit 1
+          fi
+          mkdir -p "dist/CADKernel.app/Contents/MacOS"
+          cp target/universal-apple-darwin/release/cadkernel "dist/CADKernel.app/Contents/MacOS/CADKernel"
+          chmod +x "dist/CADKernel.app/Contents/MacOS/CADKernel"
+          cat > "dist/CADKernel.app/Contents/Info.plist" <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>CFBundleDevelopmentRegion</key>
+            <string>en</string>
+            <key>CFBundleExecutable</key>
+            <string>CADKernel</string>
+            <key>CFBundleIdentifier</key>
+            <string>io.kodenet.CADKernel</string>
+            <key>CFBundleName</key>
+            <string>CADKernel</string>
+            <key>CFBundlePackageType</key>
+            <string>APPL</string>
+            <key>CFBundleShortVersionString</key>
+            <string>0.1.0</string>
+            <key>CFBundleVersion</key>
+            <string>0.1.0</string>
+            <key>LSMinimumSystemVersion</key>
+            <string>12.0</string>
+            <key>NSHighResolutionCapable</key>
+            <true/>
+          </dict>
+          </plist>
+          EOF
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${APP_VERSION}" "dist/CADKernel.app/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${APP_VERSION}" "dist/CADKernel.app/Contents/Info.plist"
+          codesign --force --options runtime --timestamp \
+            --sign "${APPLE_DEVELOPER_ID_APPLICATION}" \
+            "dist/CADKernel.app"
+          codesign --verify --deep --strict --verbose=2 "dist/CADKernel.app"
+
+      - name: Build signed DMG
+        shell: bash
+        env:
+          APPLE_DEVELOPER_ID_APPLICATION: ${{ secrets.APPLE_DEVELOPER_ID_APPLICATION }}
+        run: |
+          volume="$(python3 -c 'import json; print(json.load(open("release/dmg-config.json"))["volume_name"])')"
+          mkdir -p dist/dmg
+          cp -R "dist/CADKernel.app" dist/dmg/
+          create-dmg \
+            --volname "${volume}" \
+            --window-pos 200 120 \
+            --window-size 640 420 \
+            --icon-size 128 \
+            --icon "CADKernel.app" 160 190 \
+            --app-drop-link 480 190 \
+            --codesign "${APPLE_DEVELOPER_ID_APPLICATION}" \
+            "dist/cadkernel-${APP_VERSION}-macos-universal.dmg" \
+            "dist/dmg"
+          codesign --force --timestamp \
+            --sign "${APPLE_DEVELOPER_ID_APPLICATION}" \
+            "dist/cadkernel-${APP_VERSION}-macos-universal.dmg"
+
+      - name: Notarize and staple DMG
+        shell: bash
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          if [[ -z "${APPLE_ID}" || -z "${APPLE_TEAM_ID}" || -z "${APPLE_APP_SPECIFIC_PASSWORD}" ]]; then
+            echo "::error::APPLE_ID, APPLE_TEAM_ID, and APPLE_APP_SPECIFIC_PASSWORD are required"
+            exit 1
+          fi
+          dmg="dist/cadkernel-${APP_VERSION}-macos-universal.dmg"
+          xcrun notarytool submit "${dmg}" \
+            --apple-id "${APPLE_ID}" \
+            --team-id "${APPLE_TEAM_ID}" \
+            --password "${APPLE_APP_SPECIFIC_PASSWORD}" \
+            --wait
+          xcrun stapler staple "${dmg}"
+          shasum -a 256 "${dmg}" > "${dmg}.sha256"
+
+      - name: Upload DMG to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.release_tag }}
+          files: dist/cadkernel-*-macos-universal.dmg*
+          generate_release_notes: true
+
+  windows-msi:
+    name: Windows MSI
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.version || github.ref }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@1.85.0
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Set release metadata
+        id: meta
+        shell: bash
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          if [[ "${GITHUB_EVENT_NAME}" == "workflow_dispatch" ]]; then
+            tag="${{ inputs.version }}"
+          fi
+          version="${tag#v}"
+          epoch="$(git log -1 --format=%ct)"
+          echo "RELEASE_TAG=${tag}" >> "${GITHUB_ENV}"
+          echo "APP_VERSION=${version}" >> "${GITHUB_ENV}"
+          echo "SOURCE_DATE_EPOCH=${epoch}" >> "${GITHUB_ENV}"
+          echo "release_tag=${tag}" >> "${GITHUB_OUTPUT}"
+          echo "app_version=${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Install WiX tooling
+        shell: powershell
+        run: |
+          choco install wixtoolset -y --no-progress
+          $wixRoot = Get-ChildItem "C:\Program Files (x86)" -Directory -Filter "WiX Toolset v*" |
+            Sort-Object Name -Descending |
+            Select-Object -First 1
+          if ($null -eq $wixRoot) {
+            throw "WiX Toolset installation not found"
+          }
+          Join-Path $wixRoot.FullName "bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+          cargo install cargo-wix --version 0.3.9 --locked
+
+      - name: Build release binary
+        shell: bash
+        run: cargo build --locked --release --target x86_64-pc-windows-msvc
+
+      - name: Sign executable
+        shell: powershell
+        env:
+          WINDOWS_CERTIFICATE_PFX: ${{ secrets.WINDOWS_CERTIFICATE_PFX }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PFX) -or [string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PASSWORD)) {
+            throw "WINDOWS_CERTIFICATE_PFX and WINDOWS_CERTIFICATE_PASSWORD are required"
+          }
+          $cert = Join-Path $env:RUNNER_TEMP "cadkernel-signing.pfx"
+          [IO.File]::WriteAllBytes($cert, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_PFX))
+          signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 `
+            /f $cert /p $env:WINDOWS_CERTIFICATE_PASSWORD `
+            target\x86_64-pc-windows-msvc\release\cadkernel.exe
+
+      - name: Build MSI with cargo-wix
+        shell: powershell
+        run: |
+          New-Item -Force -ItemType Directory wix | Out-Null
+          New-Item -Force -ItemType Directory target\wix | Out-Null
+          (Get-Content release\wix-template.wxs -Raw).Replace("__APP_VERSION__", $env:APP_VERSION) |
+            Set-Content wix\main.wxs
+          cargo wix --nocapture --no-build `
+            --target x86_64-pc-windows-msvc `
+            --output "target\wix\cadkernel-$env:APP_VERSION-x86_64.msi"
+
+      - name: Sign MSI
+        shell: powershell
+        env:
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          $cert = Join-Path $env:RUNNER_TEMP "cadkernel-signing.pfx"
+          $msi = "target\wix\cadkernel-$env:APP_VERSION-x86_64.msi"
+          signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 `
+            /f $cert /p $env:WINDOWS_CERTIFICATE_PASSWORD `
+            $msi
+          New-Item -Force -ItemType Directory dist | Out-Null
+          Copy-Item $msi "dist\cadkernel-$env:APP_VERSION-x86_64.msi"
+          Get-FileHash "dist\cadkernel-$env:APP_VERSION-x86_64.msi" -Algorithm SHA256 |
+            ForEach-Object { "$($_.Hash.ToLower())  cadkernel-$env:APP_VERSION-x86_64.msi" } |
+            Set-Content "dist\cadkernel-$env:APP_VERSION-x86_64.msi.sha256"
+
+      - name: Upload MSI to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.release_tag }}
+          files: dist/*
+          generate_release_notes: true

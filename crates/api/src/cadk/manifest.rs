@@ -1,11 +1,10 @@
 //! `.cadk` manifest — table of contents for the content blobs.
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 /// Kind tag for a content blob. The reader uses this to decide which
 /// decoder to apply.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum BlobKind {
     /// Document body (`bincode 2`-encoded `Document` after migration).
     Document,
@@ -21,9 +20,58 @@ pub enum BlobKind {
     Attachment,
     /// Ed25519 signature over the manifest hash.
     Signature,
-    /// Forward-compat fallback. Unknown blob kinds are preserved verbatim
-    /// on round-trip.
+    /// Forward-compat fallback. Unknown manifest kind strings map here so
+    /// newer blob tables can still be inspected.
     Unknown,
+}
+
+impl BlobKind {
+    /// Stable lowercase wire spelling used in manifest JSON.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Document => "document",
+            Self::Thumbnail => "thumbnail",
+            Self::History => "history",
+            Self::Bodies => "bodies",
+            Self::Sketches => "sketches",
+            Self::Attachment => "attachment",
+            Self::Signature => "signature",
+            Self::Unknown => "unknown",
+        }
+    }
+
+    fn from_wire(s: &str) -> Self {
+        match s {
+            "document" => Self::Document,
+            "thumbnail" => Self::Thumbnail,
+            "history" => Self::History,
+            "bodies" => Self::Bodies,
+            "sketches" => Self::Sketches,
+            "attachment" => Self::Attachment,
+            "signature" => Self::Signature,
+            "unknown" => Self::Unknown,
+            _ => Self::Unknown,
+        }
+    }
+}
+
+impl Serialize for BlobKind {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_str(self.as_str())
+    }
+}
+
+impl<'de> Deserialize<'de> for BlobKind {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let wire = String::deserialize(deserializer)?;
+        Ok(Self::from_wire(&wire))
+    }
 }
 
 /// One entry in the manifest table of contents.
@@ -97,5 +145,16 @@ mod tests {
         let doc = m.find_first(BlobKind::Document).unwrap();
         assert_eq!(doc.name, "document");
         assert_eq!(m.total_blob_bytes(), 4096 + 1024);
+    }
+
+    #[test]
+    fn unknown_wire_blob_kind_deserializes_to_unknown() {
+        let raw = r#"{"records":[{"kind":"mesh_preview","name":"preview","offset":68,"length":0,"crc32":0}]}"#;
+        let manifest: Manifest = serde_json::from_str(raw).unwrap();
+        assert_eq!(manifest.records[0].kind, BlobKind::Unknown);
+        assert_eq!(
+            serde_json::to_string(&BlobKind::Bodies).unwrap(),
+            r#""bodies""#
+        );
     }
 }
