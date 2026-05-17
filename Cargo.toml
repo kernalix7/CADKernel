@@ -29,6 +29,7 @@ cadkernel-viewer = { path = "crates/viewer" }
 cadkernel-python = { path = "crates/python" }
 cadkernel-api = { path = "crates/api" }
 cadkernel-mcp = { path = "crates/mcp" }
+cadkernel-assembly = { path = "crates/assembly" }
 mlua = { version = "0.10", features = ["lua54", "vendored", "send"] }
 zstd = "0.13"
 

@@ -1,0 +1,86 @@
+name: cargo-public-api
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/api/**"
+      - ".github/workflows/cargo-public-api.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "crates/api/**"
+      - ".github/workflows/cargo-public-api.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  public-api:
+    name: cadkernel-api public API
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install nightly toolchain
+        uses: dtolnay/rust-toolchain@nightly
+
+      - name: Cache cargo registry and index
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-public-api-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-public-api-registry-
+            ${{ runner.os }}-cargo-registry-
+
+      - name: Cache installed cargo tools
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/
+          key: ${{ runner.os }}-cargo-public-api-bin-v1
+
+      - name: Install cargo-public-api
+        run: |
+          if ! cargo public-api --version >/dev/null 2>&1; then
+            cargo +nightly install --locked cargo-public-api
+          fi
+
+      - name: Generate current public API snapshot
+        run: |
+          mkdir -p target/public-api
+          cargo +nightly public-api --package cadkernel-api --simplified \
+            > target/public-api/current.txt
+
+      - name: Compare against pull request base
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          git worktree add --detach /tmp/cadkernel-public-api-base "$BASE_SHA"
+          (
+            cd /tmp/cadkernel-public-api-base
+            cargo +nightly public-api --package cadkernel-api --simplified \
+              > /tmp/cadkernel-public-api-base.txt
+          )
+          diff -u /tmp/cadkernel-public-api-base.txt target/public-api/current.txt
+
+      - name: Run public API anchor test
+        run: cargo test -p cadkernel-api --test public_api_stability
+
+      - name: Upload public API snapshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cadkernel-api-public-api
+          path: target/public-api/current.txt
+          retention-days: 30

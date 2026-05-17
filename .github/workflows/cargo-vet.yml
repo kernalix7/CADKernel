@@ -1,0 +1,64 @@
+name: cargo-vet
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "**/Cargo.toml"
+      - "Cargo.lock"
+      - "supply-chain/**"
+      - ".github/workflows/cargo-vet.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "**/Cargo.toml"
+      - "Cargo.lock"
+      - "supply-chain/**"
+      - ".github/workflows/cargo-vet.yml"
+  schedule:
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cargo-vet:
+    name: cargo-vet (third-party audits)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install stable toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Cache cargo registry and index
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ runner.os }}-cargo-vet-registry-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-vet-registry-
+            ${{ runner.os }}-cargo-registry-
+
+      - name: Cache installed cargo tools
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/
+          key: ${{ runner.os }}-cargo-vet-bin-v1
+
+      - name: Install cargo-vet
+        run: |
+          if ! cargo vet --version >/dev/null 2>&1; then
+            cargo install --locked cargo-vet
+          fi
+
+      - name: Run cargo-vet
+        run: cargo vet

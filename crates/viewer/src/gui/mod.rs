@@ -6,6 +6,8 @@ mod context_menu;
 mod dialogs;
 pub(crate) mod draft;
 pub(crate) mod fem;
+#[path = "../i18n.rs"]
+pub(crate) mod i18n;
 mod menu;
 pub(crate) mod mesh;
 mod overlays;
@@ -36,6 +38,7 @@ pub(crate) use self::fem::{
     FemResultField, FemResultLegendState, FemResultProbeState, FemResultTableState,
     MaterialPickerState, MaterialPreset, material_from_preset,
 };
+pub(crate) use self::i18n::Language;
 pub(crate) use self::mesh::MeshAction;
 pub(crate) use self::part::PartAction;
 pub(crate) use self::part_design::PartDesignAction;
@@ -229,7 +232,12 @@ impl InspectorTab {
 #[allow(dead_code)]
 pub(crate) enum GuiAction {
     NewModel,
+    NewTab,
+    SwitchTab(usize),
+    CloseTab(usize),
+    ConfirmCloseTab(usize),
     OpenFile(PathBuf),
+    OpenFileInNewTab(PathBuf),
     SaveFile(PathBuf),
     ClearRecentFiles,
     ImportFile(PathBuf),
@@ -532,18 +540,25 @@ pub(crate) enum ActiveDialog {
     TechDrawViewSetup(TechDrawViewSetupState),
     FemResultProbe(FemResultProbeState),
     FemResultTable(FemResultTableState),
-    /// A3.1 — startup autosave recovery prompt. Shown once when an
-    /// autosave snapshot is found on the first frame after launch.
-    AutosaveRecovery(cadkernel_api::cadk::AutosaveEntry),
+    /// Startup autosave recovery prompt. Carries up to five newest snapshots.
+    AutosaveRecovery(Vec<cadkernel_api::cadk::AutosaveEntry>),
+    /// Dirty document close confirmation for multi-document tabs.
+    CloseDocumentTab(usize),
 }
 
 /// User's choice from the autosave recovery modal, written by the
 /// dialog renderer and consumed once by the dispatcher.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum AutosaveRecoveryChoice {
-    Recover,
+    Recover(usize),
     Discard,
-    Cancel,
+    Skip,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct DocumentTabInfo {
+    pub name: String,
+    pub dirty: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -670,6 +685,7 @@ pub(crate) struct GuiState {
     pub inspector_tab: InspectorTab,
     pub show_about: bool,
     pub show_settings: bool,
+    pub language: Language,
     pub show_create_box: bool,
     pub show_create_cylinder: bool,
     pub show_create_sphere: bool,
@@ -939,6 +955,8 @@ pub(crate) struct GuiState {
     pub tb_in_sketch: bool,
     #[allow(dead_code)]
     pub tb_object_count: usize,
+    pub document_tabs: Vec<DocumentTabInfo>,
+    pub active_document: usize,
 }
 
 /// Snap visualization hint displayed in the viewport.
@@ -959,6 +977,7 @@ impl GuiState {
             inspector_tab: InspectorTab::Properties,
             show_about: false,
             show_settings: false,
+            language: Language::En,
             show_create_box: false,
             show_create_cylinder: false,
             show_create_sphere: false,
@@ -1142,6 +1161,11 @@ impl GuiState {
             tb_has_objects: false,
             tb_in_sketch: false,
             tb_object_count: 0,
+            document_tabs: vec![DocumentTabInfo {
+                name: "Untitled 1".into(),
+                dirty: false,
+            }],
+            active_document: 0,
         }
     }
 
@@ -1363,6 +1387,50 @@ fn draw_inspector_tabs(ui: &mut egui::Ui, gui: &mut GuiState) {
     }
 }
 
+fn draw_document_tabs(ctx: &egui::Context, gui: &mut GuiState) {
+    egui::TopBottomPanel::top("document_tabs")
+        .exact_height(32.0)
+        .frame(egui::Frame {
+            fill: egui::Color32::from_rgb(0x18, 0x1C, 0x24),
+            inner_margin: egui::Margin::symmetric(6, 3),
+            stroke: egui::Stroke::new(1.0, egui::Color32::from_rgb(0x10, 0x13, 0x19)),
+            ..egui::Frame::NONE
+        })
+        .show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                ui.spacing_mut().item_spacing = egui::vec2(4.0, 0.0);
+                let tabs = gui.document_tabs.clone();
+                for (index, tab) in tabs.iter().enumerate() {
+                    let active = index == gui.active_document;
+                    let mut title = tab.name.clone();
+                    if tab.dirty {
+                        title.push_str(" *");
+                    }
+                    let button = egui::Button::new(title)
+                        .selected(active)
+                        .min_size(egui::vec2(96.0, 24.0));
+                    if ui.add(button).clicked() {
+                        gui.actions.push(GuiAction::SwitchTab(index));
+                    }
+                    if ui
+                        .add(egui::Button::new("x").min_size(egui::vec2(22.0, 22.0)))
+                        .on_hover_text(i18n::translate(gui.language, "tab.close"))
+                        .clicked()
+                    {
+                        gui.actions.push(GuiAction::CloseTab(index));
+                    }
+                }
+                if ui
+                    .add(egui::Button::new("+").min_size(egui::vec2(26.0, 24.0)))
+                    .on_hover_text(i18n::translate(gui.language, "tooltip.new_tab"))
+                    .clicked()
+                {
+                    gui.actions.push(GuiAction::NewTab);
+                }
+            });
+        });
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn draw_ui(
     ctx: &egui::Context,
@@ -1448,6 +1516,7 @@ pub(crate) fn draw_ui(
 
     gui.tb_display_mode = vp.display_mode;
     menu::draw_menu_bar(ctx, gui, vp.camera, vp.display_mode);
+    draw_document_tabs(ctx, gui);
     toolbar::draw_toolbar(ctx, gui);
     // Vertical activity rail on the far left replaces the old horizontal
     // workbench tab strip — Blender / VS Code style icon switcher.
@@ -1559,6 +1628,7 @@ pub(crate) fn draw_ui(
     dialogs::draw_techdraw_annotation_setup_dialog(ctx, gui);
     dialogs::draw_techdraw_centerline_setup_dialog(ctx, gui);
     dialogs::draw_techdraw_view_setup_dialog(ctx, gui);
+    dialogs::draw_close_document_tab_dialog(ctx, gui);
     dialogs::draw_autosave_recovery_dialog(ctx, gui);
     if nav.show_view_cube {
         view_cube::draw_view_cube(ctx, vp.camera, gui, nav);

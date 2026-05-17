@@ -20,10 +20,16 @@ pub(crate) fn draw_menu_bar(
         .show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
                 // ---- File ----
-                ui.menu_button("File", |ui| {
+                ui.menu_button(super::i18n::translate(gui.language, "menu.file"), |ui| {
                     menu_section(ui, "Project");
                     if ui
-                        .add(egui::Button::new("New").shortcut_text("Ctrl+N"))
+                        .add(
+                            egui::Button::new(super::i18n::translate(
+                                gui.language,
+                                "menu.file.new",
+                            ))
+                            .shortcut_text("Ctrl+N"),
+                        )
                         .clicked()
                     {
                         gui.actions.push(GuiAction::NewModel);
@@ -32,13 +38,51 @@ pub(crate) fn draw_menu_bar(
                     }
 
                     if ui
-                        .add(egui::Button::new("Open\u{2026}").shortcut_text("Ctrl+O"))
+                        .add(
+                            egui::Button::new(super::i18n::translate(
+                                gui.language,
+                                "menu.file.new_tab",
+                            ))
+                            .shortcut_text("Ctrl+Shift+N"),
+                        )
+                        .clicked()
+                    {
+                        gui.actions.push(GuiAction::NewTab);
+                        ui.close_menu();
+                    }
+
+                    if ui
+                        .add(
+                            egui::Button::new(super::i18n::translate(
+                                gui.language,
+                                "menu.file.close_tab",
+                            ))
+                            .shortcut_text("Ctrl+W"),
+                        )
+                        .clicked()
+                    {
+                        gui.actions.push(GuiAction::CloseTab(gui.active_document));
+                        ui.close_menu();
+                    }
+
+                    if ui
+                        .add(
+                            egui::Button::new(super::i18n::translate(
+                                gui.language,
+                                "menu.file.open",
+                            ))
+                            .shortcut_text("Ctrl+O"),
+                        )
                         .clicked()
                     {
                         if let Some(path) = rfd::FileDialog::new()
                             .add_filter("CADKernel Project", &["cadk"])
+                            .add_filter("B-Rep exchange", &["step", "stp", "iges", "igs"])
                             .add_filter("Mesh files", &["stl", "obj"])
-                            .add_filter("All supported", &["cadk", "stl", "obj"])
+                            .add_filter(
+                                "All supported",
+                                &["cadk", "step", "stp", "iges", "igs", "stl", "obj"],
+                            )
                             .pick_file()
                         {
                             gui.status_message = format!("Opening {}", path.display());
@@ -48,7 +92,13 @@ pub(crate) fn draw_menu_bar(
                     }
 
                     if ui
-                        .add(egui::Button::new("Save As\u{2026}").shortcut_text("Ctrl+S"))
+                        .add(
+                            egui::Button::new(super::i18n::translate(
+                                gui.language,
+                                "menu.file.save_as",
+                            ))
+                            .shortcut_text("Ctrl+S"),
+                        )
                         .clicked()
                     {
                         if let Some(path) = rfd::FileDialog::new()
@@ -64,18 +114,24 @@ pub(crate) fn draw_menu_bar(
 
                     // Recent files
                     if !gui.recent_files.is_empty() {
-                        ui.menu_button("Recent Files", |ui| {
-                            for path_str in gui.recent_files.clone() {
-                                let short =
-                                    path_str.rsplit('/').next().unwrap_or(&path_str).to_string();
-                                if ui.button(&short).on_hover_text(&path_str).clicked() {
-                                    gui.actions.push(GuiAction::OpenFile(
-                                        std::path::PathBuf::from(&path_str),
-                                    ));
-                                    ui.close_menu();
+                        ui.menu_button(
+                            super::i18n::translate(gui.language, "menu.file.recent"),
+                            |ui| {
+                                for path_str in gui.recent_files.clone() {
+                                    let short = path_str
+                                        .rsplit('/')
+                                        .next()
+                                        .unwrap_or(&path_str)
+                                        .to_string();
+                                    if ui.button(&short).on_hover_text(&path_str).clicked() {
+                                        gui.actions.push(GuiAction::OpenFile(
+                                            std::path::PathBuf::from(&path_str),
+                                        ));
+                                        ui.close_menu();
+                                    }
                                 }
-                            }
-                        });
+                            },
+                        );
                     }
 
                     if ui

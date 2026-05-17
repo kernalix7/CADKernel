@@ -1,0 +1,7 @@
+# Local cargo-vet audits for CADKernel.
+#
+# This starts intentionally empty. Third-party audits are imported by
+# supply-chain/config.toml; project-specific certifications should be added
+# here only after review.
+
+[audits]

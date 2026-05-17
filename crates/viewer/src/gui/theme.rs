@@ -5,11 +5,37 @@
 
 use egui::Color32;
 
-/// Theme mode: dark or light.
+/// Theme mode: dark, light, or resolved from the host environment.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, serde::Serialize, serde::Deserialize)]
 pub enum ThemeMode {
     Dark,
     Light,
+    System,
+}
+
+impl ThemeMode {
+    pub const ALL: &[ThemeMode] = &[ThemeMode::Dark, ThemeMode::Light, ThemeMode::System];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Dark => "Dark",
+            Self::Light => "Light",
+            Self::System => "System",
+        }
+    }
+
+    pub fn resolved(self) -> ThemeMode {
+        match self {
+            Self::System => {
+                if detect_system_dark() {
+                    Self::Dark
+                } else {
+                    Self::Light
+                }
+            }
+            other => other,
+        }
+    }
 }
 
 /// UI density preset controlling spacing, button sizes, and font sizes.
@@ -179,9 +205,10 @@ impl CadTheme {
     /// Create a theme from a mode selection.
     #[allow(dead_code)]
     pub fn from_mode(mode: ThemeMode) -> Self {
-        match mode {
+        match mode.resolved() {
             ThemeMode::Dark => Self::dark(),
             ThemeMode::Light => Self::light(),
+            ThemeMode::System => Self::dark(),
         }
     }
 
@@ -361,6 +388,37 @@ impl CadTheme {
 #[allow(dead_code)]
 pub fn apply_cad_theme(ctx: &egui::Context) {
     CadTheme::dark().apply_to_egui(ctx);
+}
+
+pub fn detect_system_dark_from_env(value: Option<&str>) -> bool {
+    value
+        .map(|raw| {
+            let normalized = raw.trim().to_ascii_lowercase();
+            matches!(
+                normalized.as_str(),
+                "1" | "true" | "dark" | "yes" | "y" | "on"
+            )
+        })
+        .unwrap_or(false)
+}
+
+pub fn detect_system_dark() -> bool {
+    if let Ok(value) = std::env::var("CADKERNEL_THEME") {
+        return detect_system_dark_from_env(Some(&value));
+    }
+    if let Ok(value) = std::env::var("GTK_THEME") {
+        if value.to_ascii_lowercase().contains("dark") {
+            return true;
+        }
+    }
+    if let Ok(value) = std::env::var("COLORFGBG") {
+        if let Some(bg) = value.split(';').next_back()
+            && let Ok(code) = bg.parse::<u8>()
+        {
+            return code < 8;
+        }
+    }
+    false
 }
 
 /// Object type icon for the model tree.

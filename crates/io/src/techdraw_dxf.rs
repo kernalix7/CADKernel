@@ -40,6 +40,31 @@ use cadkernel_core::{KernelError, KernelResult};
 
 use crate::techdraw::{DrawingSheet, DrawingView, ProjectedEdge};
 
+/// One row in a TechDraw BOM CSV export.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TechDrawBomCsvRow {
+    pub item_no: u32,
+    pub qty: u32,
+    pub description: String,
+    pub material: String,
+}
+
+/// Exports TechDraw BOM rows as RFC-4180-style CSV text.
+pub fn techdraw_bom_to_csv(rows: &[TechDrawBomCsvRow]) -> String {
+    let mut out = String::from("item_no,qty,description,material\n");
+    for row in rows {
+        let _ = writeln!(
+            out,
+            "{},{},{},{}",
+            row.item_no,
+            row.qty,
+            csv_escape(&row.description),
+            csv_escape(&row.material)
+        );
+    }
+    out
+}
+
 /// In-memory DXF document produced by [`drawing_to_dxf`].
 #[derive(Debug, Clone)]
 pub struct DxfDocument {
@@ -78,11 +103,12 @@ pub fn drawing_to_dxf(sheet: &DrawingSheet) -> DxfDocument {
     );
     out.push_str("0\nENDSEC\n");
 
-    // TABLES — define one layer per view + a Border layer.
+    // TABLES — define one layer per view + sheet annotation layers.
     out.push_str("0\nSECTION\n2\nTABLES\n");
     out.push_str("0\nTABLE\n2\nLAYER\n");
     write_layer(&mut out, "Border", 7);
     write_layer(&mut out, "Title", 7);
+    write_layer(&mut out, "Annotations", 7);
     for (idx, view) in sheet.views.iter().enumerate() {
         let layer = view_layer_name(idx, view);
         // ACI palette: cycle 1..=6 so each view gets a distinct colour.
@@ -123,6 +149,17 @@ pub fn drawing_to_dxf(sheet: &DrawingSheet) -> DxfDocument {
             out,
             "0\nTEXT\n8\nTitle\n10\n10.0\n20\n5.0\n40\n5.0\n1\n{}\n",
             sanitize_text(&sheet.title)
+        );
+    }
+
+    for text in &sheet.text_annotations {
+        write_text(
+            &mut out,
+            "Annotations",
+            text.position.x,
+            sheet.height - text.position.y,
+            text.font_size,
+            &text.text,
         );
     }
 
@@ -173,9 +210,29 @@ fn write_lwpolyline(out: &mut String, layer: &str, points: &[(f64, f64)], closed
     }
 }
 
+fn write_text(out: &mut String, layer: &str, x: f64, y: f64, height: f64, text: &str) {
+    let _ = write!(
+        out,
+        "0\nTEXT\n8\n{}\n10\n{}\n20\n{}\n40\n{}\n1\n{}\n",
+        layer,
+        x,
+        y,
+        height.max(0.1),
+        sanitize_text(text)
+    );
+}
+
 fn sanitize_text(s: &str) -> String {
     // DXF text fields cannot contain raw newlines; collapse any whitespace.
     s.replace(['\n', '\r'], " ")
+}
+
+fn csv_escape(s: &str) -> String {
+    if s.contains([',', '"', '\n', '\r']) {
+        format!("\"{}\"", s.replace('"', "\"\""))
+    } else {
+        s.to_string()
+    }
 }
 
 #[cfg(test)]

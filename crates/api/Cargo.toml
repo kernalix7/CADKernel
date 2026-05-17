@@ -13,6 +13,7 @@ cadkernel-core.workspace = true
 cadkernel-math.workspace = true
 cadkernel-topology.workspace = true
 cadkernel-modeling.workspace = true
+cadkernel-assembly.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 zstd.workspace = true

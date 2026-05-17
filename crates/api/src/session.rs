@@ -14,6 +14,10 @@
 //! to JSON and reloaded; this is the foundation on which Phase 3's `.cadk`
 //! native format will be built.
 
+use cadkernel_assembly::{
+    Assembly, AssemblyId, ComponentId, Mate, MateId, MotionReport, RigidTransform, SolveReport,
+    SolverOptions,
+};
 use cadkernel_math::{Point3, Quaternion, Vec3};
 use cadkernel_modeling::body::{Body, FeatureGraph, FeatureKind};
 use cadkernel_modeling::measure::solid_mass_properties;
@@ -32,7 +36,7 @@ use crate::command::{
     EntityId, ExtrudeKind, FaceRef, FeatureSpec, FilletSpec, GrooveSpec, HelixSpec, HoleKind,
     HoleSpec, InstanceOverride, LoftMode, LoftSpec, PadDirection, PadSpec, PadType, PlaneRef,
     PocketSpec, PocketType, RevolveSpec, ShellMode, ShellSpec, SketchConstraint, SketchEdit,
-    SketchEntity, SketchId, SketchRef, SweepMode, SweepSpec,
+    SketchEntity, SketchId, SketchRef, SweepMode, SweepSpec, TableRow,
 };
 use crate::document::{
     Document, FeatureId, HistoryEvent, PersistedSketch, RecomputeCache, SolidId, SolidSlot,
@@ -215,6 +219,169 @@ impl Session {
     /// Returns a reference to the underlying [`Document`].
     pub fn document(&self) -> &Document {
         &self.document
+    }
+
+    /// Creates a document-level assembly without extending the serialized
+    /// [`Command`] surface.
+    pub fn create_assembly(&mut self, name: impl Into<String>) -> ApiResult<AssemblyId> {
+        self.prepare_direct_mutation();
+        let name = name.into();
+        let id = self.document.push_assembly(Assembly::new(name.clone()));
+        self.push_direct_history("create_assembly", format!("Create assembly {id} ({name})"));
+        Ok(id)
+    }
+
+    /// Inserts an existing assembly into the document and returns its stable id.
+    pub fn push_assembly(&mut self, assembly: Assembly) -> ApiResult<AssemblyId> {
+        self.prepare_direct_mutation();
+        let name = assembly.name.clone();
+        let id = self.document.push_assembly(assembly);
+        self.push_direct_history("push_assembly", format!("Push assembly {id} ({name})"));
+        Ok(id)
+    }
+
+    /// Adds a component backed by an existing document solid to an assembly.
+    pub fn add_assembly_component(
+        &mut self,
+        assembly: AssemblyId,
+        name: impl Into<String>,
+        solid: SolidId,
+    ) -> ApiResult<ComponentId> {
+        self.add_assembly_component_with_placement(
+            assembly,
+            name,
+            solid,
+            RigidTransform::identity(),
+        )
+    }
+
+    /// Adds a component with an explicit initial placement.
+    pub fn add_assembly_component_with_placement(
+        &mut self,
+        assembly: AssemblyId,
+        name: impl Into<String>,
+        solid: SolidId,
+        placement: RigidTransform,
+    ) -> ApiResult<ComponentId> {
+        if self.document.solid_label(solid).is_none() {
+            return Err(ApiError::UnknownSolid(format!("{solid}")));
+        }
+        self.prepare_direct_mutation();
+        let name = name.into();
+        let assembly_ref = self
+            .document
+            .assembly_mut(assembly)
+            .ok_or_else(|| ApiError::InvalidArgument(format!("unknown assembly {assembly}")))?;
+        let component = assembly_ref.add_component_with_placement(
+            name.clone(),
+            Some(solid.0.into()),
+            placement,
+        )?;
+        self.push_direct_history(
+            "add_assembly_component",
+            format!("Add component {component} ({name}) to {assembly}"),
+        );
+        Ok(component)
+    }
+
+    /// Sets a component placement inside an assembly.
+    pub fn set_assembly_component_placement(
+        &mut self,
+        assembly: AssemblyId,
+        component: ComponentId,
+        placement: RigidTransform,
+    ) -> ApiResult<()> {
+        self.prepare_direct_mutation();
+        let assembly_ref = self
+            .document
+            .assembly_mut(assembly)
+            .ok_or_else(|| ApiError::InvalidArgument(format!("unknown assembly {assembly}")))?;
+        assembly_ref.set_component_placement(component, placement)?;
+        self.push_direct_history(
+            "set_assembly_component_placement",
+            format!("Set placement for {component} in {assembly}"),
+        );
+        Ok(())
+    }
+
+    /// Adds one of the v1 assembly mates to an assembly.
+    pub fn add_mate(&mut self, assembly: AssemblyId, mate: Mate) -> ApiResult<MateId> {
+        self.prepare_direct_mutation();
+        let assembly_ref = self
+            .document
+            .assembly_mut(assembly)
+            .ok_or_else(|| ApiError::InvalidArgument(format!("unknown assembly {assembly}")))?;
+        let mate_id = assembly_ref.add_mate(mate)?;
+        self.push_direct_history("add_mate", format!("Add {mate_id} to {assembly}"));
+        Ok(mate_id)
+    }
+
+    /// Removes a mate from an assembly.
+    pub fn remove_mate(&mut self, assembly: AssemblyId, mate: MateId) -> ApiResult<Mate> {
+        self.prepare_direct_mutation();
+        let assembly_ref = self
+            .document
+            .assembly_mut(assembly)
+            .ok_or_else(|| ApiError::InvalidArgument(format!("unknown assembly {assembly}")))?;
+        let removed = assembly_ref.remove_mate(mate)?;
+        self.push_direct_history("remove_mate", format!("Remove {mate} from {assembly}"));
+        Ok(removed)
+    }
+
+    /// Returns the document-level DoF count for an assembly.
+    pub fn assembly_dof_count(&self, assembly: AssemblyId) -> ApiResult<i32> {
+        let assembly_ref = self
+            .document
+            .assembly(assembly)
+            .ok_or_else(|| ApiError::InvalidArgument(format!("unknown assembly {assembly}")))?;
+        Ok(assembly_ref.dof_count())
+    }
+
+    /// Solves an assembly with default Newton line-search options.
+    pub fn solve_assembly(&mut self, assembly: AssemblyId) -> ApiResult<SolveReport> {
+        self.solve_assembly_with_options(assembly, SolverOptions::default())
+    }
+
+    /// Solves an assembly with explicit options.
+    pub fn solve_assembly_with_options(
+        &mut self,
+        assembly: AssemblyId,
+        options: SolverOptions,
+    ) -> ApiResult<SolveReport> {
+        self.prepare_direct_mutation();
+        let assembly_ref = self
+            .document
+            .assembly_mut(assembly)
+            .ok_or_else(|| ApiError::InvalidArgument(format!("unknown assembly {assembly}")))?;
+        let report = assembly_ref.solve(options)?;
+        self.push_direct_history(
+            "solve_assembly",
+            format!(
+                "Solve {assembly}: converged={} residual={:.3e}",
+                report.converged, report.residual_norm
+            ),
+        );
+        Ok(report)
+    }
+
+    /// Applies a single-DoF drag preview and re-solves the assembly.
+    pub fn drag_component(
+        &mut self,
+        assembly: AssemblyId,
+        component: ComponentId,
+        screen_delta: [f64; 2],
+    ) -> ApiResult<MotionReport> {
+        self.prepare_direct_mutation();
+        let assembly_ref = self
+            .document
+            .assembly_mut(assembly)
+            .ok_or_else(|| ApiError::InvalidArgument(format!("unknown assembly {assembly}")))?;
+        let report = assembly_ref.drag_component(component, screen_delta)?;
+        self.push_direct_history(
+            "drag_component",
+            format!("Drag {component} in {assembly} by {:?}", screen_delta),
+        );
+        Ok(report)
     }
 
     /// Convenience: returns `self.document().canonical_hash()`.
@@ -746,6 +913,26 @@ impl Session {
         }
     }
 
+    fn prepare_direct_mutation(&mut self) {
+        if self.cursor < self.log.len() {
+            let name = format!("direct-diverge-{}", self.next_branch_id);
+            let log = self.log.clone();
+            let cursor = log.len();
+            self.save_branch_from_log(self.cursor, name, log, cursor);
+            self.log.truncate(self.cursor);
+        }
+        self.last_command_at = None;
+    }
+
+    fn push_direct_history(&mut self, op: &str, description: String) {
+        self.document.push_history(HistoryEvent {
+            op: op.to_string(),
+            primary: None,
+            description,
+            feature_id: FeatureId::default(),
+        });
+    }
+
     fn save_branch_from_log(
         &mut self,
         parent_cursor: usize,
@@ -900,6 +1087,31 @@ impl Session {
                     self.linear_pattern_features(features, params)
                 }
             }
+            Command::CircularPattern {
+                features,
+                axis,
+                count,
+                angle_rad,
+                instance_overrides,
+            } => self.circular_pattern_features(
+                features,
+                axis,
+                *count,
+                *angle_rad,
+                instance_overrides,
+            ),
+            Command::SketchDrivenPattern {
+                features,
+                driver_sketch,
+            } => self.sketch_driven_pattern_features(features, *driver_sketch),
+            Command::TableDrivenPattern { features, table } => {
+                self.table_driven_pattern_features(features, table)
+            }
+            Command::FillPattern {
+                features,
+                target_face,
+                density,
+            } => self.fill_pattern_features(features, target_face, *density),
             Command::Mirror {
                 id,
                 point,
@@ -1985,6 +2197,173 @@ impl Session {
         })
     }
 
+    fn pattern_sources_for_features(
+        &self,
+        features: &[FeatureId],
+        op_name: &str,
+    ) -> ApiResult<Vec<PatternSource>> {
+        if features.is_empty() {
+            return Err(ApiError::InvalidArgument(format!(
+                "{op_name} requires at least one feature id"
+            )));
+        }
+        let mut sources = Vec::with_capacity(features.len());
+        for fid in features {
+            let event = self
+                .document
+                .feature(*fid)
+                .ok_or_else(|| ApiError::InvalidArgument(format!("unknown feature id: {fid}")))?;
+            if let Some(primary) = event.primary {
+                sources.push(self.pattern_source(primary)?);
+            }
+        }
+        if sources.is_empty() {
+            return Err(ApiError::InvalidArgument(format!(
+                "{op_name}::features resolved to no patternable solids"
+            )));
+        }
+        Ok(sources)
+    }
+
+    fn circular_pattern_features(
+        &mut self,
+        features: &[FeatureId],
+        axis: &AxisRef,
+        count: u32,
+        angle_rad: f64,
+        instance_overrides: &[InstanceOverride],
+    ) -> ApiResult<Outcome> {
+        if count < 2 {
+            return Err(ApiError::InvalidArgument(format!(
+                "circular_pattern count must be ≥ 2, got {count}"
+            )));
+        }
+        if !angle_rad.is_finite() || angle_rad.abs() < 1e-12 {
+            return Err(ApiError::InvalidArgument(format!(
+                "circular_pattern angle_rad must be finite and non-zero, got {angle_rad}"
+            )));
+        }
+        let (axis_origin, axis_dir) = self.resolve_axis(axis)?;
+        let skip = combined_pattern_skip_set(count, &[], instance_overrides);
+        if skip.len() as u32 == count {
+            return Err(ApiError::InvalidArgument(
+                "circular_pattern instance_overrides would suppress every position".into(),
+            ));
+        }
+        let sources = self.pattern_sources_for_features(features, "CircularPattern")?;
+        let pattern_id = sources[0].id;
+
+        let mut ids = Vec::with_capacity(sources.len() * count as usize);
+        if skip.contains(&0) {
+            for source in &sources {
+                self.document.remove(source.id);
+            }
+        } else {
+            ids.extend(sources.iter().map(|source| source.id));
+        }
+
+        let mut inserted = 0_u32;
+        let angle_step = angle_rad / count as f64;
+        for source in &sources {
+            for i in 1..count {
+                if skip.contains(&i) {
+                    continue;
+                }
+                let mut copy = source.model.clone();
+                rotate_model_around_axis(&mut copy, axis_origin, axis_dir, angle_step * i as f64);
+                let adjust = override_offset_for_index(i, instance_overrides);
+                translate_model(&mut copy, Vec3::new(adjust[0], adjust[1], adjust[2]));
+                let new_id = self.document.insert(
+                    copy,
+                    source.handle,
+                    format!("{} (circular {i})", source.label),
+                );
+                ids.push(new_id);
+                inserted += 1;
+            }
+        }
+
+        Ok(Outcome::PatternCreated {
+            pattern_id,
+            instance_count: ids.len() as u32,
+            total_features: inserted,
+            ids,
+        })
+    }
+
+    fn sketch_driven_pattern_features(
+        &mut self,
+        features: &[FeatureId],
+        driver_sketch: SketchId,
+    ) -> ApiResult<Outcome> {
+        let positions = {
+            let sketch = self.document.sketch(driver_sketch).ok_or_else(|| {
+                ApiError::InvalidArgument(format!(
+                    "sketch_driven_pattern driver sketch {driver_sketch:?} not found"
+                ))
+            })?;
+            sketch_point_positions(sketch)?
+        };
+        let sources = self.pattern_sources_for_features(features, "SketchDrivenPattern")?;
+        let pattern_id = sources[0].id;
+        let (ids, total_features) =
+            self.insert_position_pattern_sources(&sources, &positions, "sketch")?;
+        Ok(Outcome::PatternCreated {
+            pattern_id,
+            instance_count: ids.len() as u32,
+            total_features,
+            ids,
+        })
+    }
+
+    fn table_driven_pattern_features(
+        &mut self,
+        features: &[FeatureId],
+        table: &[TableRow],
+    ) -> ApiResult<Outcome> {
+        if table.is_empty() {
+            return Err(ApiError::InvalidArgument(
+                "table_driven_pattern table must contain at least one row".into(),
+            ));
+        }
+        for (index, row) in table.iter().enumerate() {
+            validate_table_row(index, row)?;
+        }
+        let sources = self.pattern_sources_for_features(features, "TableDrivenPattern")?;
+        let pattern_id = sources[0].id;
+        let (ids, total_features) = self.insert_table_pattern_sources(&sources, table)?;
+        Ok(Outcome::PatternCreated {
+            pattern_id,
+            instance_count: ids.len() as u32,
+            total_features,
+            ids,
+        })
+    }
+
+    fn fill_pattern_features(
+        &mut self,
+        features: &[FeatureId],
+        target_face: &FaceRef,
+        density: f64,
+    ) -> ApiResult<Outcome> {
+        if !density.is_finite() || density <= 0.0 {
+            return Err(ApiError::InvalidArgument(format!(
+                "fill_pattern density must be > 0, got {density}"
+            )));
+        }
+        let positions = self.fill_positions_for_face(target_face, density)?;
+        let sources = self.pattern_sources_for_features(features, "FillPattern")?;
+        let pattern_id = sources[0].id;
+        let (ids, total_features) =
+            self.insert_position_pattern_sources(&sources, &positions, "fill")?;
+        Ok(Outcome::PatternCreated {
+            pattern_id,
+            instance_count: ids.len() as u32,
+            total_features,
+            ids,
+        })
+    }
+
     fn insert_linear_pattern_sources(
         &mut self,
         sources: &[PatternSource],
@@ -2027,6 +2406,69 @@ impl Session {
             }
         }
         Ok((ids, inserted))
+    }
+
+    fn insert_position_pattern_sources(
+        &mut self,
+        sources: &[PatternSource],
+        positions: &[Point3],
+        label_kind: &str,
+    ) -> ApiResult<(Vec<SolidId>, u32)> {
+        if positions.is_empty() {
+            return Err(ApiError::InvalidArgument(format!(
+                "{label_kind}_pattern produced no instance positions"
+            )));
+        }
+        let mut ids = Vec::with_capacity(sources.len() * (positions.len() + 1));
+        ids.extend(sources.iter().map(|source| source.id));
+        let mut inserted = 0_u32;
+        for source in sources {
+            for (index, position) in positions.iter().enumerate() {
+                let mut copy = source.model.clone();
+                translate_model(&mut copy, Vec3::new(position.x, position.y, position.z));
+                let new_id = self.document.insert(
+                    copy,
+                    source.handle,
+                    format!("{} ({label_kind} {})", source.label, index + 1),
+                );
+                ids.push(new_id);
+                inserted += 1;
+            }
+        }
+        Ok((ids, inserted))
+    }
+
+    fn insert_table_pattern_sources(
+        &mut self,
+        sources: &[PatternSource],
+        table: &[TableRow],
+    ) -> ApiResult<(Vec<SolidId>, u32)> {
+        let mut ids = Vec::with_capacity(sources.len() * (table.len() + 1));
+        ids.extend(sources.iter().map(|source| source.id));
+        let mut inserted = 0_u32;
+        for source in sources {
+            for (index, row) in table.iter().enumerate() {
+                let mut copy = source.model.clone();
+                transform_model_by_table_row(&mut copy, row);
+                let new_id = self.document.insert(
+                    copy,
+                    source.handle,
+                    format!("{} (table {})", source.label, index + 1),
+                );
+                ids.push(new_id);
+                inserted += 1;
+            }
+        }
+        Ok((ids, inserted))
+    }
+
+    fn fill_positions_for_face(&self, face: &FaceRef, density: f64) -> ApiResult<Vec<Point3>> {
+        let face_handle = self.document.resolve_face_ref(face)?;
+        let (model, _) = self
+            .document
+            .solid_brep(face.solid)
+            .ok_or_else(|| ApiError::UnknownSolid(format!("{}", face.solid)))?;
+        face_fill_positions(model, face_handle, density)
     }
 
     fn mirror(
@@ -4289,6 +4731,202 @@ fn translate_model(model: &mut BRepModel, offset: Vec3) {
     }
 }
 
+fn rotate_model_around_axis(model: &mut BRepModel, origin: Point3, axis: Vec3, angle_rad: f64) {
+    let q = Quaternion::from_axis_angle(axis, angle_rad);
+    for (_h, vertex) in model.vertices.iter_mut() {
+        let rel = Vec3::new(
+            vertex.point.x - origin.x,
+            vertex.point.y - origin.y,
+            vertex.point.z - origin.z,
+        );
+        let rotated = q.rotate_vec(rel);
+        vertex.point = Point3::new(
+            origin.x + rotated.x,
+            origin.y + rotated.y,
+            origin.z + rotated.z,
+        );
+    }
+}
+
+fn transform_model_by_table_row(model: &mut BRepModel, row: &TableRow) {
+    let qx = Quaternion::from_axis_angle(Vec3::X, row.rotation[0]);
+    let qy = Quaternion::from_axis_angle(Vec3::Y, row.rotation[1]);
+    let qz = Quaternion::from_axis_angle(Vec3::Z, row.rotation[2]);
+    let offset = Vec3::new(row.position[0], row.position[1], row.position[2]);
+    for (_h, vertex) in model.vertices.iter_mut() {
+        let scaled = Vec3::new(
+            vertex.point.x * row.scale,
+            vertex.point.y * row.scale,
+            vertex.point.z * row.scale,
+        );
+        let rotated = qz.rotate_vec(qy.rotate_vec(qx.rotate_vec(scaled)));
+        vertex.point = Point3::new(
+            rotated.x + offset.x,
+            rotated.y + offset.y,
+            rotated.z + offset.z,
+        );
+    }
+}
+
+fn validate_table_row(index: usize, row: &TableRow) -> ApiResult<()> {
+    let finite = row
+        .position
+        .iter()
+        .chain(row.rotation.iter())
+        .all(|value| value.is_finite())
+        && row.scale.is_finite();
+    if !finite {
+        return Err(ApiError::InvalidArgument(format!(
+            "table_driven_pattern row {index} contains a non-finite value"
+        )));
+    }
+    if row.scale <= 0.0 {
+        return Err(ApiError::InvalidArgument(format!(
+            "table_driven_pattern row {index} scale must be > 0, got {}",
+            row.scale
+        )));
+    }
+    Ok(())
+}
+
+fn sketch_point_positions(sketch: &PersistedSketch) -> ApiResult<Vec<Point3>> {
+    let positions: Vec<Point3> = sketch
+        .entities
+        .iter()
+        .filter_map(|entity| match *entity {
+            SketchEntity::Point { x, y } => Some(plane_to_world(&sketch.plane, x, y)),
+            SketchEntity::Line { .. } | SketchEntity::Circle { .. } | SketchEntity::Arc { .. } => {
+                None
+            }
+        })
+        .collect();
+    if positions.is_empty() {
+        return Err(ApiError::InvalidArgument(format!(
+            "sketch_driven_pattern driver sketch {:?} has no point entities",
+            sketch.id
+        )));
+    }
+    Ok(positions)
+}
+
+fn face_fill_positions(
+    model: &BRepModel,
+    face: Handle<FaceData>,
+    density: f64,
+) -> ApiResult<Vec<Point3>> {
+    let vertex_handles = model.vertices_of_face(face)?;
+    if vertex_handles.len() < 3 {
+        return Err(ApiError::InvalidArgument(
+            "fill_pattern target face has fewer than 3 vertices".into(),
+        ));
+    }
+    let mut points = Vec::with_capacity(vertex_handles.len());
+    for vertex_handle in vertex_handles {
+        let vertex = model.vertices.get(vertex_handle).ok_or_else(|| {
+            ApiError::InvalidArgument("fill_pattern target face references a missing vertex".into())
+        })?;
+        points.push(vertex.point);
+    }
+
+    let normal = polygon_normal(&points)?;
+    let u_axis = face_u_axis(&points, normal)?;
+    let v_axis = normal.cross(u_axis).normalized().ok_or_else(|| {
+        ApiError::InvalidArgument("fill_pattern target face basis is degenerate".into())
+    })?;
+    let origin = points[0];
+    let mut min_u = f64::INFINITY;
+    let mut max_u = f64::NEG_INFINITY;
+    let mut min_v = f64::INFINITY;
+    let mut max_v = f64::NEG_INFINITY;
+    for point in &points {
+        let rel = *point - origin;
+        let u = rel.dot(u_axis);
+        let v = rel.dot(v_axis);
+        min_u = min_u.min(u);
+        max_u = max_u.max(u);
+        min_v = min_v.min(v);
+        max_v = max_v.max(v);
+    }
+
+    let area = polygon_area(&points)?;
+    let count = (area * density).ceil().max(1.0);
+    if count > 10_000.0 {
+        return Err(ApiError::InvalidArgument(format!(
+            "fill_pattern density would create {count} instances; maximum is 10000"
+        )));
+    }
+    let count = count as usize;
+    let cols = (count as f64).sqrt().ceil() as usize;
+    let rows = count.div_ceil(cols);
+    let du = if cols == 0 {
+        0.0
+    } else {
+        (max_u - min_u) / (cols as f64 + 1.0)
+    };
+    let dv = (max_v - min_v) / (rows as f64 + 1.0);
+    let mut positions = Vec::with_capacity(count);
+    for row in 0..rows {
+        for col in 0..cols {
+            if positions.len() == count {
+                return Ok(positions);
+            }
+            let u = min_u + du * (col as f64 + 1.0);
+            let v = min_v + dv * (row as f64 + 1.0);
+            let rel = u_axis * u + v_axis * v;
+            positions.push(Point3::new(
+                origin.x + rel.x,
+                origin.y + rel.y,
+                origin.z + rel.z,
+            ));
+        }
+    }
+    Ok(positions)
+}
+
+fn polygon_area(points: &[Point3]) -> ApiResult<f64> {
+    let origin = points[0];
+    let mut area = 0.0;
+    for i in 1..points.len() - 1 {
+        area += 0.5 * (points[i] - origin).cross(points[i + 1] - origin).length();
+    }
+    if area <= 1e-12 {
+        return Err(ApiError::InvalidArgument(
+            "fill_pattern target face area is degenerate".into(),
+        ));
+    }
+    Ok(area)
+}
+
+fn polygon_normal(points: &[Point3]) -> ApiResult<Vec3> {
+    let mut normal = Vec3::ZERO;
+    for i in 0..points.len() {
+        let current = points[i];
+        let next = points[(i + 1) % points.len()];
+        normal.x += (current.y - next.y) * (current.z + next.z);
+        normal.y += (current.z - next.z) * (current.x + next.x);
+        normal.z += (current.x - next.x) * (current.y + next.y);
+    }
+    if normal.length() < 1e-12 {
+        normal = fallback_face_normal(points)?;
+    }
+    normal.normalized().ok_or_else(|| {
+        ApiError::InvalidArgument("fill_pattern target face normal is degenerate".into())
+    })
+}
+
+fn face_u_axis(points: &[Point3], normal: Vec3) -> ApiResult<Vec3> {
+    for i in 1..points.len() {
+        let candidate = points[i] - points[0];
+        let in_plane = candidate - normal * candidate.dot(normal);
+        if let Some(axis) = in_plane.normalized() {
+            return Ok(axis);
+        }
+    }
+    Err(ApiError::InvalidArgument(
+        "fill_pattern target face basis is degenerate".into(),
+    ))
+}
+
 fn mirrored_pattern_model(
     source: &PatternSource,
     offset: Vec3,
@@ -4481,6 +5119,40 @@ fn history_description(cmd: &Command, outcome: &Outcome) -> String {
         (Command::LinearPattern { id, count, .. }, _) => {
             format!("LinearPattern {id} ×{count}")
         }
+        (
+            Command::CircularPattern {
+                features,
+                count,
+                angle_rad,
+                ..
+            },
+            _,
+        ) => format!(
+            "CircularPattern {} features ×{count} angle={angle_rad}",
+            features.len()
+        ),
+        (
+            Command::SketchDrivenPattern {
+                features,
+                driver_sketch,
+            },
+            _,
+        ) => format!(
+            "SketchDrivenPattern {} features from {:?}",
+            features.len(),
+            driver_sketch
+        ),
+        (Command::TableDrivenPattern { features, table }, _) => format!(
+            "TableDrivenPattern {} features ×{} rows",
+            features.len(),
+            table.len()
+        ),
+        (
+            Command::FillPattern {
+                features, density, ..
+            },
+            _,
+        ) => format!("FillPattern {} features density={density}", features.len()),
         (
             Command::Mirror {
                 normal, features, ..

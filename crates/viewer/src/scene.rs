@@ -242,6 +242,12 @@ pub struct ObjectGroup {
     pub visible: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TechDrawBomPart {
+    pub description: String,
+    pub material: String,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct SectionBox {
     pub min: [f64; 3],
@@ -432,6 +438,21 @@ impl Scene {
     /// Iterate visible objects.
     pub fn visible_objects(&self) -> impl Iterator<Item = &SceneObject> {
         self.objects.iter().filter(|o| o.visible)
+    }
+
+    pub fn techdraw_bom_parts(&self) -> Vec<TechDrawBomPart> {
+        self.objects
+            .iter()
+            .filter(|obj| obj.visible && !obj.suppressed)
+            .map(|obj| TechDrawBomPart {
+                description: if obj.name.trim().is_empty() {
+                    format!("Object {}", obj.id)
+                } else {
+                    obj.name.clone()
+                },
+                material: "Unspecified".into(),
+            })
+            .collect()
     }
 
     pub fn visible_bounds(&self) -> Option<([f64; 3], [f64; 3])> {

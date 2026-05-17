@@ -145,6 +145,38 @@ pub enum Command {
         #[serde(default, skip_serializing_if = "Vec::is_empty")]
         instance_overrides: Vec<InstanceOverride>,
     },
+    /// Circular pattern around an axis. Patterns every primary solid produced
+    /// by `features`; originals are preserved unless instance override index
+    /// 0 suppresses them. `angle_rad` is the total angular span, with
+    /// `count` distributed over that span.
+    CircularPattern {
+        features: Vec<FeatureId>,
+        axis: AxisRef,
+        count: u32,
+        angle_rad: f64,
+        /// Per-instance suppression or position adjustment.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        instance_overrides: Vec<InstanceOverride>,
+    },
+    /// Sketch-driven pattern. Every point entity in `driver_sketch` becomes
+    /// one copied instance for each source feature.
+    SketchDrivenPattern {
+        features: Vec<FeatureId>,
+        driver_sketch: SketchId,
+    },
+    /// Table-driven pattern. Each table row supplies a copied instance
+    /// transform for every source feature.
+    TableDrivenPattern {
+        features: Vec<FeatureId>,
+        table: Vec<TableRow>,
+    },
+    /// Fill pattern. Instances are distributed over `target_face` according
+    /// to `density`.
+    FillPattern {
+        features: Vec<FeatureId>,
+        target_face: FaceRef,
+        density: f64,
+    },
     /// Mirror a solid (or a list of features) across a plane. Produces new
     /// solids; the originals are preserved unless `merge` is true, in which
     /// case each original and its mirrored copy are fused via boolean union
@@ -651,6 +683,10 @@ impl Command {
             Self::DeleteSolid { .. } => "delete_solid",
             Self::Extrude { .. } => "extrude",
             Self::LinearPattern { .. } => "linear_pattern",
+            Self::CircularPattern { .. } => "circular_pattern",
+            Self::SketchDrivenPattern { .. } => "sketch_driven_pattern",
+            Self::TableDrivenPattern { .. } => "table_driven_pattern",
+            Self::FillPattern { .. } => "fill_pattern",
             Self::Mirror { .. } => "mirror",
             Self::Pad { .. } => "pad",
             Self::Pocket { .. } => "pocket",
@@ -2043,6 +2079,17 @@ pub struct InstanceOverride {
     /// Per-axis nudge added to the instance's spacing-derived position.
     #[serde(default, skip_serializing_if = "is_zero_vec3")]
     pub offset_adjust: [f64; 3],
+}
+
+/// One instance transform for [`Command::TableDrivenPattern`].
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub struct TableRow {
+    /// Translation applied after rotation and scale.
+    pub position: [f64; 3],
+    /// XYZ Euler rotation in radians.
+    pub rotation: [f64; 3],
+    /// Uniform scale factor. Must be > 0 at execution time.
+    pub scale: f64,
 }
 
 fn is_zero_vec3(v: &[f64; 3]) -> bool {

@@ -13,6 +13,7 @@
 //! that reference the deleted ID fail cleanly with `ApiError::UnknownSolid`
 //! instead of silently aliasing onto a different solid.
 
+use cadkernel_assembly::{Assembly, AssemblyId};
 use cadkernel_modeling::body::Body;
 use cadkernel_modeling::measure::solid_mass_properties;
 use cadkernel_topology::{
@@ -212,6 +213,8 @@ pub struct Document {
     sketches: Vec<Option<PersistedSketch>>,
     next_sketch_id: u64,
     active_sketch: Option<SketchId>,
+    assemblies: Vec<Option<Assembly>>,
+    next_assembly_id: u64,
     persistent_names: PersistentNameTable,
     recompute_cache: RecomputeCache,
 }
@@ -433,6 +436,47 @@ impl Document {
             return true;
         }
         false
+    }
+
+    /// Returns an assembly by stable id.
+    pub fn assembly(&self, id: AssemblyId) -> Option<&Assembly> {
+        self.assemblies
+            .get(id.0 as usize)
+            .and_then(|assembly| assembly.as_ref())
+    }
+
+    pub(crate) fn assembly_mut(&mut self, id: AssemblyId) -> Option<&mut Assembly> {
+        self.assemblies
+            .get_mut(id.0 as usize)
+            .and_then(|assembly| assembly.as_mut())
+    }
+
+    /// Returns the number of populated assemblies.
+    pub fn assembly_count(&self) -> usize {
+        self.assemblies
+            .iter()
+            .filter(|assembly| assembly.is_some())
+            .count()
+    }
+
+    /// Returns populated assembly ids in ascending id order.
+    pub fn assembly_ids(&self) -> Vec<AssemblyId> {
+        self.assemblies
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, assembly)| assembly.as_ref().map(|_| AssemblyId(idx as u64)))
+            .collect()
+    }
+
+    pub(crate) fn push_assembly(&mut self, assembly: Assembly) -> AssemblyId {
+        let id = AssemblyId(self.next_assembly_id);
+        self.next_assembly_id += 1;
+        let idx = id.0 as usize;
+        if self.assemblies.len() <= idx {
+            self.assemblies.resize_with(idx + 1, || None);
+        }
+        self.assemblies[idx] = Some(assembly);
+        id
     }
 
     pub(crate) fn find_body_for_feature(&self, feature_id: FeatureId) -> Option<BodyId> {
@@ -753,6 +797,30 @@ impl Document {
             }
             h.write_u64(sketch.entities.len() as u64);
             h.write_u64(sketch.constraints.len() as u64);
+        }
+        h.write_u64(self.assembly_count() as u64);
+        for (idx, assembly) in self.assemblies.iter().enumerate() {
+            let Some(assembly) = assembly else {
+                continue;
+            };
+            h.write_u64(idx as u64);
+            h.write_u64(assembly.name.len() as u64);
+            h.write(assembly.name.as_bytes());
+            h.write_u64(assembly.component_count() as u64);
+            h.write_u64(assembly.mate_count() as u64);
+            h.write_u64(assembly.dof_count() as u64);
+            for component in assembly.components.iter().flatten() {
+                h.write_u64(component.id.0);
+                h.write_u64(component.name.len() as u64);
+                h.write(component.name.as_bytes());
+                h.write_u64(component.source_solid.unwrap_or(u64::MAX));
+                for value in component.placement.translation {
+                    h.write_u64(quantize_f64(value) as u64);
+                }
+                for value in component.placement.rotation {
+                    h.write_u64(quantize_f64(value) as u64);
+                }
+            }
         }
         h.finish()
     }

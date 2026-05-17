@@ -20,8 +20,8 @@ use crate::scripting::ScriptEngine;
 use cadkernel_geometry::{Curve, LineSegment};
 use cadkernel_io::{
     Mesh, export_3mf, export_brep, export_dxf, export_gltf, export_iges, export_ply, export_step,
-    import_obj, import_stl, tessellate_solid, write_3mf, write_brep, write_dxf, write_obj,
-    write_ply, write_stl_ascii,
+    import_iges, import_obj, import_step, import_stl, tessellate_solid, write_3mf, write_brep,
+    write_dxf, write_obj, write_ply, write_stl_ascii,
 };
 use cadkernel_math::{Point2, Point3, Vec3};
 use cadkernel_modeling::{
@@ -83,6 +83,22 @@ struct SketchProjectionSource {
     label: String,
     points: Vec<Point3>,
     edges: Vec<(usize, usize)>,
+}
+
+struct DocumentTab {
+    session: cadkernel_api::Session,
+    name: String,
+    dirty: bool,
+}
+
+impl DocumentTab {
+    fn new(name: impl Into<String>) -> Self {
+        Self {
+            session: cadkernel_api::Session::new(),
+            name: name.into(),
+            dirty: false,
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -214,6 +230,8 @@ pub struct CadApp {
     // TODO(A3.2): route GuiAction dispatch through `session.execute(...)`
     // so `session.canonical_hash()` tracks user edits.
     session: cadkernel_api::Session,
+    documents: Vec<DocumentTab>,
+    active_document: usize,
     autosave: crate::autosave::AutosaveState,
     /// True before the first frame; gates the one-shot autosave
     /// recovery modal scan (task #5).
@@ -259,9 +277,177 @@ impl CadApp {
             script_engine: None,
             plugin_registry: cadkernel_modeling::PluginRegistry::new(),
             session: cadkernel_api::Session::new(),
+            documents: vec![DocumentTab::new("Untitled 1")],
+            active_document: 0,
             autosave: crate::autosave::AutosaveState::new(),
             autosave_recovery_pending: true,
         }
+    }
+
+    fn reset_document_workspace(&mut self) {
+        self.scene = crate::scene::Scene::new();
+        self.model = BRepModel::new();
+        self.current_mesh = None;
+        self.current_solid = None;
+        self.object_ranges.clear();
+        self.preselected_object = None;
+        self.preselected_entity = None;
+        self.gui.preselected_entity = None;
+        self.gui.preselected_object_id = None;
+        self.vertices.clear();
+        self.grid_config.set_object_extent(0.0);
+        self.grid_config.force_rebuild();
+        self.grid_config.update_for_camera(self.camera.distance);
+        if let Some(rt) = &mut self.runtime {
+            rt.gpu.update_mesh(&self.vertices);
+            rt.gpu.rebuild_grid(&self.grid_config);
+        }
+        self.gui.invalidate_cache();
+        self.gui.selected_entities.clear();
+        self.gui.scene_overlay.clear();
+        self.gui.current_file = None;
+        self.sync_api_body_tree();
+    }
+
+    fn sync_document_tabs_to_ui(&mut self) {
+        self.gui.document_tabs = self
+            .documents
+            .iter()
+            .map(|tab| gui::DocumentTabInfo {
+                name: tab.name.clone(),
+                dirty: tab.dirty,
+            })
+            .collect();
+        self.gui.active_document = self
+            .active_document
+            .min(self.gui.document_tabs.len().saturating_sub(1));
+    }
+
+    fn store_active_session(&mut self) {
+        if let Some(tab) = self.documents.get_mut(self.active_document) {
+            let current = std::mem::replace(&mut self.session, cadkernel_api::Session::new());
+            tab.session = current;
+        }
+    }
+
+    fn load_active_session(&mut self) {
+        if let Some(tab) = self.documents.get_mut(self.active_document) {
+            self.session = std::mem::replace(&mut tab.session, cadkernel_api::Session::new());
+        }
+        self.restore_scene_from_session_document();
+    }
+
+    fn active_document_mut(&mut self) -> Option<&mut DocumentTab> {
+        self.documents.get_mut(self.active_document)
+    }
+
+    fn mark_active_document_dirty(&mut self) {
+        if let Some(tab) = self.active_document_mut() {
+            tab.dirty = true;
+        }
+    }
+
+    fn mark_active_document_clean(&mut self) {
+        if let Some(tab) = self.active_document_mut() {
+            tab.dirty = false;
+        }
+    }
+
+    fn set_active_document_name(&mut self, name: impl Into<String>) {
+        if let Some(tab) = self.active_document_mut() {
+            tab.name = name.into();
+        }
+    }
+
+    fn add_document_tab(&mut self, name: impl Into<String>) {
+        self.store_active_session();
+        self.documents.push(DocumentTab::new(name));
+        self.active_document = self.documents.len() - 1;
+        self.load_active_session();
+        self.reset_document_workspace();
+        self.log_info("New tab");
+    }
+
+    fn switch_document_tab(&mut self, index: usize) {
+        if index >= self.documents.len() || index == self.active_document {
+            return;
+        }
+        self.store_active_session();
+        self.active_document = index;
+        self.load_active_session();
+        self.log_info(format!("Switched to {}", self.documents[index].name));
+    }
+
+    fn close_document_tab(&mut self, index: usize, force: bool) {
+        if self.documents.len() <= 1 || index >= self.documents.len() {
+            return;
+        }
+        if !force && self.documents[index].dirty {
+            self.gui.active_dialog = Some(gui::ActiveDialog::CloseDocumentTab(index));
+            return;
+        }
+        if index == self.active_document {
+            self.store_active_session();
+            self.documents.remove(index);
+            self.active_document = index.saturating_sub(1).min(self.documents.len() - 1);
+            self.load_active_session();
+        } else {
+            self.documents.remove(index);
+            if index < self.active_document {
+                self.active_document -= 1;
+            }
+        }
+        self.log_info("Closed tab");
+    }
+
+    fn file_tab_name(path: &Path) -> String {
+        path.file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("Untitled")
+            .to_string()
+    }
+
+    fn restore_scene_from_session_document(&mut self) {
+        self.scene = crate::scene::Scene::new();
+        self.model = BRepModel::new();
+        self.current_mesh = None;
+        self.current_solid = None;
+        let ids = self.session.document().solid_ids();
+        for id in ids {
+            let Some((model, handle)) = self.session.document().clone_solid_brep(id) else {
+                continue;
+            };
+            let name = self
+                .session
+                .document()
+                .solid_label(id)
+                .unwrap_or("Solid")
+                .to_string();
+            self.current_solid = Some(handle);
+            self.current_mesh = Some(tessellate_solid(&model, handle));
+            self.model = model.clone();
+            self.scene.add_object(&name, model, handle, None, Some(id));
+        }
+        self.rebuild_scene_gpu();
+        if !self.vertices.is_empty() {
+            let (min, max) = compute_bounds(&self.vertices);
+            self.camera.fit_to_bounds(min, max);
+        }
+        self.sync_api_body_tree();
+    }
+
+    fn replace_active_session(
+        &mut self,
+        session: cadkernel_api::Session,
+        name: impl Into<String>,
+        dirty: bool,
+    ) {
+        self.session = session;
+        if let Some(tab) = self.active_document_mut() {
+            tab.name = name.into();
+            tab.dirty = dirty;
+        }
+        self.restore_scene_from_session_document();
     }
 
     /// A3.1 — one-shot startup scan for an existing autosave snapshot.
@@ -274,11 +460,13 @@ impl CadApp {
             return;
         }
         self.autosave_recovery_pending = false;
-        match cadkernel_api::cadk::recover_latest(&self.autosave.policy.dir) {
-            Ok(Some(entry)) => {
-                self.gui.active_dialog = Some(gui::ActiveDialog::AutosaveRecovery(entry));
+        match cadkernel_api::cadk::list_snapshots(&self.autosave.policy.dir) {
+            Ok(entries) if !entries.is_empty() => {
+                self.gui.active_dialog = Some(gui::ActiveDialog::AutosaveRecovery(
+                    entries.into_iter().take(5).collect(),
+                ));
             }
-            Ok(None) => {}
+            Ok(_) => {}
             Err(e) => {
                 self.log_warning(format!("Autosave scan failed: {e}"));
             }
@@ -294,16 +482,28 @@ impl CadApp {
         let Some(choice) = self.gui.autosave_recovery_choice.take() else {
             return;
         };
-        let Some(gui::ActiveDialog::AutosaveRecovery(entry)) = self.gui.active_dialog.clone()
+        let Some(gui::ActiveDialog::AutosaveRecovery(entries)) = self.gui.active_dialog.clone()
         else {
             return;
         };
         self.gui.active_dialog = None;
         match choice {
-            gui::AutosaveRecoveryChoice::Recover => {
+            gui::AutosaveRecoveryChoice::Recover(index) => {
+                let Some(entry) = entries.get(index) else {
+                    self.log_warning("Autosave recovery selection was invalid");
+                    return;
+                };
                 match cadkernel_api::Session::load_cadk_from_path(&entry.path) {
                     Ok(session) => {
-                        self.session = session;
+                        self.replace_active_session(
+                            session,
+                            entry
+                                .path
+                                .file_name()
+                                .and_then(|n| n.to_str())
+                                .unwrap_or("Recovered Autosave"),
+                            false,
+                        );
                         // Clear the recovered snapshot so it does not
                         // haunt the next launch.
                         let _ = cadkernel_api::cadk::prune(&self.autosave.policy.dir, 0);
@@ -320,8 +520,8 @@ impl CadApp {
                     Err(e) => self.log_warning(format!("Autosave discard failed: {e}")),
                 }
             }
-            gui::AutosaveRecoveryChoice::Cancel => {
-                self.log_info("Autosave recovery cancelled");
+            gui::AutosaveRecoveryChoice::Skip => {
+                self.log_info("Autosave recovery skipped");
             }
         }
     }
@@ -1592,46 +1792,42 @@ impl CadApp {
     fn process_actions(&mut self) {
         let actions: Vec<GuiAction> = self.gui.actions.drain(..).collect();
         for action in actions {
+            let marks_dirty = action_marks_dirty(&action);
             match action {
                 GuiAction::NewModel => {
                     self.snapshot_before("New model");
-                    self.scene = crate::scene::Scene::new();
-                    self.model = BRepModel::new();
-                    self.current_mesh = None;
-                    self.current_solid = None;
-                    self.object_ranges.clear();
-                    self.preselected_object = None;
-                    self.preselected_entity = None;
-                    self.gui.preselected_entity = None;
-                    self.gui.preselected_object_id = None;
-                    self.vertices.clear();
-                    self.grid_config.set_object_extent(0.0);
-                    self.grid_config.force_rebuild();
-                    self.grid_config.update_for_camera(self.camera.distance);
-                    if let Some(rt) = &mut self.runtime {
-                        rt.gpu.update_mesh(&self.vertices);
-                        rt.gpu.rebuild_grid(&self.grid_config);
-                    }
-                    self.gui.invalidate_cache();
-                    self.gui.selected_entities.clear();
-                    self.gui.scene_overlay.clear();
-                    self.gui.current_file = None;
                     self.session = cadkernel_api::Session::new();
-                    self.sync_api_body_tree();
+                    self.reset_document_workspace();
+                    self.mark_active_document_clean();
                     self.log_info("New model created");
                 }
 
+                GuiAction::NewTab => {
+                    let name = format!("Untitled {}", self.documents.len() + 1);
+                    self.add_document_tab(name);
+                }
+
+                GuiAction::SwitchTab(index) => {
+                    self.switch_document_tab(index);
+                }
+
+                GuiAction::CloseTab(index) => {
+                    self.close_document_tab(index, false);
+                }
+
+                GuiAction::ConfirmCloseTab(index) => {
+                    self.close_document_tab(index, true);
+                }
+
+                GuiAction::OpenFileInNewTab(path) => {
+                    let name = Self::file_tab_name(&path);
+                    self.add_document_tab(name);
+                    self.open_path_into_active_document(&path);
+                    self.mark_active_document_clean();
+                }
+
                 GuiAction::OpenFile(path) | GuiAction::ImportFile(path) => {
-                    let ext = path
-                        .extension()
-                        .and_then(|e| e.to_str())
-                        .unwrap_or("")
-                        .to_lowercase();
-                    if ext == "cadk" {
-                        self.load_scene_file(&path);
-                    } else {
-                        self.load_mesh_file(&path);
-                    }
+                    self.open_path_into_active_document(&path);
                     // Add to recent files
                     let path_str = path.to_string_lossy().to_string();
                     self.gui.recent_files.retain(|p| *p != path_str);
@@ -1660,6 +1856,8 @@ impl CadApp {
                     } else {
                         self.export_mesh_to(&path);
                     }
+                    self.set_active_document_name(Self::file_tab_name(&path));
+                    self.mark_active_document_clean();
                 }
 
                 GuiAction::ExportStl(path) => {
@@ -3407,7 +3605,8 @@ impl CadApp {
                     use crate::gui::theme::ThemeMode;
                     self.nav.theme_mode = match self.nav.theme_mode {
                         ThemeMode::Dark => ThemeMode::Light,
-                        ThemeMode::Light => ThemeMode::Dark,
+                        ThemeMode::Light => ThemeMode::System,
+                        ThemeMode::System => ThemeMode::Dark,
                     };
                     self.gui.theme_applied = false;
                     self.log_info(format!("Theme: {:?}", self.nav.theme_mode));
@@ -3512,7 +3711,11 @@ impl CadApp {
                     self.log_info("MCP server stopped");
                 }
             }
+            if marks_dirty {
+                self.mark_active_document_dirty();
+            }
         }
+        self.sync_document_tabs_to_ui();
         self.autosave_recovery_consume_choice();
         self.autosave_tick();
     }
@@ -9550,6 +9753,20 @@ impl CadApp {
         Some((sx2d, sy2d))
     }
 
+    fn open_path_into_active_document(&mut self, path: &Path) {
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+        match ext.as_str() {
+            "cadk" => self.load_scene_file(path),
+            "step" | "stp" | "iges" | "igs" => self.load_brep_exchange_file(path),
+            _ => self.load_mesh_file(path),
+        }
+        self.set_active_document_name(Self::file_tab_name(path));
+    }
+
     fn save_scene_file(&mut self, path: &Path) {
         let path_str = path.to_str().unwrap_or("");
         let objects: Vec<cadkernel_io::SceneObjectData> = self
@@ -9597,6 +9814,7 @@ impl CadApp {
                 self.model = BRepModel::new();
                 self.current_mesh = None;
                 self.current_solid = None;
+                self.session = cadkernel_api::Session::new();
                 let count = objects.len();
                 for obj_data in objects {
                     let solid =
@@ -9625,10 +9843,87 @@ impl CadApp {
                     path.display()
                 ));
             }
-            Err(e) => {
-                self.log_error(format!("Failed to load: {e}"));
-            }
+            Err(e) => match cadkernel_api::Session::load_cadk_from_path(path) {
+                Ok(session) => {
+                    self.replace_active_session(session, Self::file_tab_name(path), false);
+                    self.gui.current_file = Some(path.display().to_string());
+                    self.add_recent_file(&path.display().to_string());
+                    self.log_info(format!("Loaded .cadk session from {}", path.display()));
+                }
+                Err(cadk_err) => {
+                    self.log_error(format!("Failed to load: {e}; .cadk fallback: {cadk_err}"));
+                }
+            },
         }
+    }
+
+    fn load_brep_exchange_file(&mut self, path: &Path) {
+        let ext = path
+            .extension()
+            .and_then(|e| e.to_str())
+            .unwrap_or("")
+            .to_lowercase();
+        let content = match std::fs::read_to_string(path) {
+            Ok(content) => content,
+            Err(e) => {
+                self.log_error(format!("Failed to read {}: {e}", path.display()));
+                return;
+            }
+        };
+        let imported = match ext.as_str() {
+            "step" | "stp" => import_step(&content),
+            "iges" | "igs" => import_iges(&content),
+            _ => {
+                self.log_error(format!("Unsupported B-Rep format: .{ext}"));
+                return;
+            }
+        };
+        let model = match imported {
+            Ok(model) => model,
+            Err(e) => {
+                self.log_error(format!("Failed to import {}: {e}", path.display()));
+                return;
+            }
+        };
+        let solids: Vec<_> = model.solids.iter().map(|(handle, _)| handle).collect();
+        if solids.is_empty() {
+            self.log_warning(format!("Imported {} with no solids", path.display()));
+            return;
+        }
+        self.snapshot_before("Import B-Rep");
+        self.scene = crate::scene::Scene::new();
+        self.session = cadkernel_api::Session::new();
+        self.model = model.clone();
+        self.current_mesh = None;
+        self.current_solid = solids.last().copied();
+        let params = Some(crate::scene::CreationParams::Imported {
+            path: path.display().to_string(),
+        });
+        let stem = path
+            .file_stem()
+            .and_then(|n| n.to_str())
+            .unwrap_or("Imported");
+        for (idx, solid) in solids.iter().copied().enumerate() {
+            let name = if solids.len() == 1 {
+                stem.to_string()
+            } else {
+                format!("{stem} {}", idx + 1)
+            };
+            self.scene
+                .add_object(&name, model.clone(), solid, params.clone(), None);
+        }
+        self.rebuild_scene_gpu();
+        if !self.vertices.is_empty() {
+            let (min, max) = compute_bounds(&self.vertices);
+            self.camera.fit_to_bounds(min, max);
+        }
+        self.gui.current_file = Some(path.display().to_string());
+        self.add_recent_file(&path.display().to_string());
+        self.log_info(format!(
+            "Imported {} B-Rep solid(s) from {}",
+            solids.len(),
+            path.display()
+        ));
     }
 
     fn load_mesh_file(&mut self, path: &Path) {
@@ -9752,6 +10047,7 @@ impl CadApp {
 
     fn render_frame(&mut self) {
         self.sync_api_body_tree();
+        self.sync_document_tabs_to_ui();
         // Rebuild grid when zoom level changes
         if self.grid_config.update_for_camera(self.camera.distance) {
             if let Some(rt) = &mut self.runtime {
@@ -10535,6 +10831,15 @@ impl ApplicationHandler for CadApp {
         // Camera orbit / pan / zoom only when egui did not consume the event.
         if !egui_consumed {
             match &event {
+                WindowEvent::DroppedFile(path) => {
+                    if is_drag_open_path(path) {
+                        self.gui
+                            .actions
+                            .push(GuiAction::OpenFileInNewTab(path.clone()));
+                    } else {
+                        self.gui.actions.push(GuiAction::ImportFile(path.clone()));
+                    }
+                }
                 WindowEvent::MouseInput { state, button, .. } => {
                     let pressed = *state == ElementState::Pressed;
                     match button {
@@ -11315,10 +11620,19 @@ impl ApplicationHandler for CadApp {
                         }
                     }
 
-                    // Ctrl+N = new, Ctrl+A = select all, Ctrl+O = open, Ctrl+S = save
+                    // Ctrl+N = new, Ctrl+Shift+N = new tab, Ctrl+W = close tab
+                    PhysicalKey::Code(KeyCode::KeyN) if ctrl && self.mouse.shift_held => {
+                        self.gui.actions.push(GuiAction::NewTab);
+                    }
                     PhysicalKey::Code(KeyCode::KeyN) if ctrl => {
                         self.gui.actions.push(GuiAction::NewModel);
                     }
+                    PhysicalKey::Code(KeyCode::KeyW) if ctrl => {
+                        self.gui
+                            .actions
+                            .push(GuiAction::CloseTab(self.active_document));
+                    }
+                    // Ctrl+A = select all, Ctrl+O = open, Ctrl+S = save
                     PhysicalKey::Code(KeyCode::KeyA) if ctrl => {
                         if let Some(sm) = &mut self.gui.sketch_mode {
                             sm.selected_entities.clear();
@@ -11454,6 +11768,80 @@ impl ApplicationHandler for CadApp {
 // Utility
 // ---------------------------------------------------------------------------
 
+fn action_marks_dirty(action: &GuiAction) -> bool {
+    matches!(
+        action,
+        GuiAction::ImportFile(_)
+            | GuiAction::ExecuteApiCommand(_)
+            | GuiAction::CreateBox { .. }
+            | GuiAction::CreateCylinder { .. }
+            | GuiAction::CreateSphere { .. }
+            | GuiAction::CreateCone { .. }
+            | GuiAction::CreateTorus { .. }
+            | GuiAction::CreateTube { .. }
+            | GuiAction::CreatePrism { .. }
+            | GuiAction::CreateWedge { .. }
+            | GuiAction::CreateEllipsoid { .. }
+            | GuiAction::CreateHelix { .. }
+            | GuiAction::BooleanUnionWith { .. }
+            | GuiAction::BooleanSubtractWith { .. }
+            | GuiAction::BooleanIntersectWith { .. }
+            | GuiAction::MirrorSolid(_)
+            | GuiAction::ScaleSolid { .. }
+            | GuiAction::ShellSolid { .. }
+            | GuiAction::ShellSelected { .. }
+            | GuiAction::FilletAllEdges { .. }
+            | GuiAction::FilletSelected { .. }
+            | GuiAction::ChamferAllEdges { .. }
+            | GuiAction::ChamferSelected { .. }
+            | GuiAction::DraftSelected { .. }
+            | GuiAction::LinearPattern { .. }
+            | GuiAction::Sketcher(_)
+            | GuiAction::TechDraw(_)
+            | GuiAction::Mesh(_)
+            | GuiAction::DeleteSelected
+            | GuiAction::RemoveObject(_)
+            | GuiAction::DuplicateObject(_)
+            | GuiAction::RenameObject(_, _)
+            | GuiAction::RebuildObject { .. }
+            | GuiAction::SetObjectColor { .. }
+            | GuiAction::MoveObject { .. }
+            | GuiAction::RotateObject { .. }
+            | GuiAction::ScaleObjectUniform { .. }
+            | GuiAction::BooleanSceneUnion
+            | GuiAction::BooleanSceneSubtract
+            | GuiAction::BooleanSceneIntersect
+            | GuiAction::Part(_)
+            | GuiAction::PartDesign(_)
+            | GuiAction::Assembly(_)
+            | GuiAction::Draft(_)
+            | GuiAction::Surface(_)
+            | GuiAction::Fem(_)
+            | GuiAction::ImportSvg(_)
+            | GuiAction::ImportGltf(_)
+            | GuiAction::Import3mf(_)
+            | GuiAction::ImportDae(_)
+            | GuiAction::SetSectionBoxBounds { .. }
+            | GuiAction::ResizeSectionBoxFace { .. }
+            | GuiAction::AddMeasurementPoint(_)
+            | GuiAction::ClearMeasurement
+            | GuiAction::CreateGroup(_)
+            | GuiAction::GroupSelected(_)
+            | GuiAction::UngroupObject(_)
+            | GuiAction::DeleteGroup(_)
+    )
+}
+
+fn is_drag_open_path(path: &Path) -> bool {
+    matches!(
+        path.extension()
+            .and_then(|e| e.to_str())
+            .map(|e| e.to_ascii_lowercase())
+            .as_deref(),
+        Some("cadk" | "step" | "stp" | "iges" | "igs")
+    )
+}
+
 /// Normalize an angle to the range (−π, π].
 fn wrap_angle(a: f32) -> f32 {
     let tau = std::f32::consts::TAU;
@@ -11568,6 +11956,7 @@ struct AppSettings {
     show_model_tree: bool,
     show_properties: bool,
     recent_files: Vec<String>,
+    language: gui::Language,
 }
 
 impl Default for AppSettings {
@@ -11578,6 +11967,7 @@ impl Default for AppSettings {
             show_model_tree: true,
             show_properties: true,
             recent_files: Vec::new(),
+            language: gui::Language::En,
         }
     }
 }
@@ -11831,6 +12221,7 @@ fn save_settings(app: &CadApp) {
         show_model_tree: app.gui.show_model_tree,
         show_properties: app.gui.show_properties,
         recent_files: app.gui.recent_files.clone(),
+        language: app.gui.language,
     };
     if let Ok(json) = serde_json::to_string_pretty(&settings) {
         let _ = std::fs::write(settings_path(), json);
@@ -11847,6 +12238,8 @@ pub fn run_gui() {
     app.gui.show_model_tree = settings.show_model_tree;
     app.gui.show_properties = settings.show_properties;
     app.gui.recent_files = settings.recent_files;
+    app.gui.language = settings.language;
+    app.autosave_recovery_scan();
     event_loop.run_app(&mut app).unwrap();
 }
 
@@ -12106,6 +12499,119 @@ impl CadApp {
     fn dispatch(&mut self, action: GuiAction) {
         self.gui.actions.push(action);
         self.process_actions();
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_new_tab_for_test(&mut self) {
+        self.dispatch(GuiAction::NewTab);
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_switch_tab_for_test(&mut self, index: usize) {
+        self.dispatch(GuiAction::SwitchTab(index));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_close_tab_for_test(&mut self, index: usize) {
+        self.dispatch(GuiAction::CloseTab(index));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_confirm_close_tab_for_test(&mut self, index: usize) {
+        self.dispatch(GuiAction::ConfirmCloseTab(index));
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_open_file_in_new_tab_for_test(&mut self, path: std::path::PathBuf) {
+        self.dispatch(GuiAction::OpenFileInNewTab(path));
+    }
+
+    #[doc(hidden)]
+    pub fn document_tab_count_for_test(&self) -> usize {
+        self.documents.len()
+    }
+
+    #[doc(hidden)]
+    pub fn active_document_for_test(&self) -> usize {
+        self.active_document
+    }
+
+    #[doc(hidden)]
+    pub fn document_tab_names_for_test(&self) -> Vec<String> {
+        self.documents.iter().map(|tab| tab.name.clone()).collect()
+    }
+
+    #[doc(hidden)]
+    pub fn document_tab_dirty_for_test(&self, index: usize) -> Option<bool> {
+        self.documents.get(index).map(|tab| tab.dirty)
+    }
+
+    #[doc(hidden)]
+    pub fn close_tab_confirm_is_open_for_test(&self) -> bool {
+        matches!(
+            self.gui.active_dialog,
+            Some(gui::ActiveDialog::CloseDocumentTab(_))
+        )
+    }
+
+    #[doc(hidden)]
+    pub fn set_autosave_dir_for_test(&mut self, dir: std::path::PathBuf) {
+        self.autosave.policy.dir = dir;
+        self.autosave_recovery_pending = true;
+    }
+
+    #[doc(hidden)]
+    pub fn run_autosave_recovery_scan_for_test(&mut self) {
+        self.autosave_recovery_scan();
+    }
+
+    #[doc(hidden)]
+    pub fn autosave_recovery_entry_count_for_test(&self) -> usize {
+        match &self.gui.active_dialog {
+            Some(gui::ActiveDialog::AutosaveRecovery(entries)) => entries.len(),
+            _ => 0,
+        }
+    }
+
+    #[doc(hidden)]
+    pub fn choose_autosave_recovery_for_test(&mut self, index: usize) {
+        self.gui.autosave_recovery_choice = Some(gui::AutosaveRecoveryChoice::Recover(index));
+        self.autosave_recovery_consume_choice();
+    }
+
+    #[doc(hidden)]
+    pub fn choose_autosave_discard_for_test(&mut self) {
+        self.gui.autosave_recovery_choice = Some(gui::AutosaveRecoveryChoice::Discard);
+        self.autosave_recovery_consume_choice();
+    }
+
+    #[doc(hidden)]
+    pub fn active_language_label_for_test(&self) -> &'static str {
+        self.gui.language.label()
+    }
+
+    #[doc(hidden)]
+    pub fn set_language_for_test(&mut self, code: &str) {
+        self.gui.language = if code.eq_ignore_ascii_case("ko") {
+            gui::Language::Ko
+        } else {
+            gui::Language::En
+        };
+    }
+
+    #[doc(hidden)]
+    pub fn set_theme_mode_for_test(&mut self, mode: &str) {
+        self.nav.theme_mode = match mode.to_ascii_lowercase().as_str() {
+            "light" => crate::gui::theme::ThemeMode::Light,
+            "system" => crate::gui::theme::ThemeMode::System,
+            _ => crate::gui::theme::ThemeMode::Dark,
+        };
+        self.gui.theme_applied = false;
+    }
+
+    #[doc(hidden)]
+    pub fn theme_mode_label_for_test(&self) -> &'static str {
+        self.nav.theme_mode.label()
     }
 
     fn dispatch_instant_view_for_test(&mut self, action: GuiAction) {

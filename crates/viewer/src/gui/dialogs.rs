@@ -2335,72 +2335,75 @@ pub(crate) fn draw_settings(ctx: &egui::Context, gui: &mut GuiState, nav: &mut N
 
     let tab_id = egui::Id::new("settings_active_tab");
 
-    egui::Window::new("Preferences")
-        .collapsible(false)
-        .resizable(true)
-        .default_width(560.0)
-        .default_height(480.0)
-        .open(&mut show)
-        .show(ctx, |ui| {
-            let active_tab: SettingsTab =
-                ui.data_mut(|d| *d.get_temp_mut_or(tab_id, SettingsTab::General));
+    egui::Window::new(super::i18n::translate(
+        gui.language,
+        "dialog.settings.title",
+    ))
+    .collapsible(false)
+    .resizable(true)
+    .default_width(560.0)
+    .default_height(480.0)
+    .open(&mut show)
+    .show(ctx, |ui| {
+        let active_tab: SettingsTab =
+            ui.data_mut(|d| *d.get_temp_mut_or(tab_id, SettingsTab::General));
 
-            ui.horizontal(|ui| {
-                // Sidebar tabs
-                ui.vertical(|ui| {
-                    ui.set_min_width(120.0);
-                    for &tab in SettingsTab::ALL {
-                        let selected = active_tab == tab;
-                        let label = egui::RichText::new(format!("{} {}", tab.icon(), tab.label()))
-                            .size(12.0);
-                        let label = if selected {
-                            label.strong().color(theme::COLOR_ACCENT)
-                        } else {
-                            label
-                        };
-                        let resp = ui.selectable_label(selected, label);
-                        if resp.clicked() {
-                            ui.data_mut(|d| d.insert_temp(tab_id, tab));
-                        }
+        ui.horizontal(|ui| {
+            // Sidebar tabs
+            ui.vertical(|ui| {
+                ui.set_min_width(120.0);
+                for &tab in SettingsTab::ALL {
+                    let selected = active_tab == tab;
+                    let label =
+                        egui::RichText::new(format!("{} {}", tab.icon(), tab.label())).size(12.0);
+                    let label = if selected {
+                        label.strong().color(theme::COLOR_ACCENT)
+                    } else {
+                        label
+                    };
+                    let resp = ui.selectable_label(selected, label);
+                    if resp.clicked() {
+                        ui.data_mut(|d| d.insert_temp(tab_id, tab));
                     }
-                    ui.add_space(16.0);
-                    if ui
-                        .add(
-                            egui::Button::new(
-                                egui::RichText::new("Reset All")
-                                    .size(11.0)
-                                    .color(theme::COLOR_DIM),
-                            )
-                            .frame(false),
+                }
+                ui.add_space(16.0);
+                if ui
+                    .add(
+                        egui::Button::new(
+                            egui::RichText::new("Reset All")
+                                .size(11.0)
+                                .color(theme::COLOR_DIM),
                         )
-                        .clicked()
-                    {
-                        *nav = NavConfig::new();
-                        gui.theme_applied = false;
-                        gui.status_message = "Settings reset to defaults".into();
-                    }
-                });
+                        .frame(false),
+                    )
+                    .clicked()
+                {
+                    *nav = NavConfig::new();
+                    gui.theme_applied = false;
+                    gui.status_message = "Settings reset to defaults".into();
+                }
+            });
 
-                ui.separator();
+            ui.separator();
 
-                // Content area (must be vertical for indent/heading to work)
-                ui.vertical(|ui| {
-                    egui::ScrollArea::vertical()
-                        .id_salt("settings_scroll")
-                        .show(ui, |ui| {
-                            ui.set_min_width(380.0);
-                            match active_tab {
-                                SettingsTab::General => draw_settings_general(ui, nav),
-                                SettingsTab::Display => draw_settings_display(ui, nav),
-                                SettingsTab::Navigation => draw_settings_navigation(ui, nav),
-                                SettingsTab::Appearance => draw_settings_appearance(ui, gui, nav),
-                                SettingsTab::Lighting => draw_settings_lighting(ui, nav),
-                                SettingsTab::Shortcuts => draw_settings_shortcuts(ui),
-                            }
-                        });
-                });
+            // Content area (must be vertical for indent/heading to work)
+            ui.vertical(|ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("settings_scroll")
+                    .show(ui, |ui| {
+                        ui.set_min_width(380.0);
+                        match active_tab {
+                            SettingsTab::General => draw_settings_general(ui, gui, nav),
+                            SettingsTab::Display => draw_settings_display(ui, nav),
+                            SettingsTab::Navigation => draw_settings_navigation(ui, nav),
+                            SettingsTab::Appearance => draw_settings_appearance(ui, gui, nav),
+                            SettingsTab::Lighting => draw_settings_lighting(ui, nav),
+                            SettingsTab::Shortcuts => draw_settings_shortcuts(ui),
+                        }
+                    });
             });
         });
+    });
     gui.show_settings = show;
 }
 
@@ -2421,12 +2424,22 @@ fn settings_subheading(ui: &mut egui::Ui, label: &str) {
 }
 
 // -- General tab --
-fn draw_settings_general(ui: &mut egui::Ui, nav: &mut NavConfig) {
+fn draw_settings_general(ui: &mut egui::Ui, gui: &mut GuiState, nav: &mut NavConfig) {
     settings_heading(ui, "Units");
     egui::Grid::new("units_grid")
         .num_columns(2)
         .spacing([12.0, 6.0])
         .show(ui, |ui| {
+            ui.label("Language:");
+            egui::ComboBox::from_id_salt("language")
+                .selected_text(gui.language.label())
+                .show_ui(ui, |ui| {
+                    for &language in super::i18n::Language::ALL {
+                        ui.selectable_value(&mut gui.language, language, language.label());
+                    }
+                });
+            ui.end_row();
+
             ui.label("Unit system:");
             egui::ComboBox::from_id_salt("unit_system")
                 .selected_text(nav.unit_system.long_label())
@@ -2812,14 +2825,13 @@ fn draw_settings_appearance(ui: &mut egui::Ui, gui: &mut GuiState, nav: &mut Nav
     settings_heading(ui, "Theme");
     ui.indent("theme_indent", |ui| {
         ui.horizontal(|ui| {
-            if ui
-                .radio_value(&mut nav.theme_mode, super::theme::ThemeMode::Dark, "Dark")
-                .changed()
-                || ui
-                    .radio_value(&mut nav.theme_mode, super::theme::ThemeMode::Light, "Light")
+            for &mode in super::theme::ThemeMode::ALL {
+                if ui
+                    .radio_value(&mut nav.theme_mode, mode, mode.label())
                     .changed()
-            {
-                gui.theme_applied = false;
+                {
+                    gui.theme_applied = false;
+                }
             }
         });
     });
@@ -4589,40 +4601,130 @@ fn format_modified(t: std::time::SystemTime) -> String {
     )
 }
 
-/// Render the autosave recovery prompt when
-/// `gui.active_dialog == Some(ActiveDialog::AutosaveRecovery(_))`.
-/// Buttons write their choice into `gui.autosave_recovery_choice`;
-/// the dispatcher (`CadApp::process_actions`) consumes it once and
-/// closes the dialog.
+fn thumbnail_label(path: &std::path::Path) -> String {
+    match std::fs::read(path)
+        .ok()
+        .and_then(|bytes| cadkernel_api::cadk::decode_thumbnail(&bytes).ok().flatten())
+    {
+        Some(bytes) => format!("Thumbnail: {} bytes", bytes.len()),
+        None => "No thumbnail".into(),
+    }
+}
+
 pub(crate) fn draw_autosave_recovery_dialog(ctx: &egui::Context, gui: &mut GuiState) {
-    let Some(super::ActiveDialog::AutosaveRecovery(entry)) = gui.active_dialog.clone() else {
+    let Some(super::ActiveDialog::AutosaveRecovery(entries)) = gui.active_dialog.clone() else {
         return;
     };
-    let when = format_modified(entry.modified);
-    let size_kb = (entry.size_bytes as f64) / 1024.0;
-    egui::Window::new("Recover Autosave")
-        .collapsible(false)
-        .resizable(false)
-        .default_width(420.0)
-        .show(ctx, |ui| {
-            ui.label(format!("Found autosave from {when}. Recover?"));
-            ui.add_space(4.0);
-            ui.label(
-                egui::RichText::new(format!("{} ({:.1} KiB)", entry.path.display(), size_kb))
-                    .size(11.0)
-                    .color(super::theme::COLOR_DIM),
-            );
-            ui.add_space(10.0);
-            ui.horizontal(|ui| {
-                if ui.button("Recover").clicked() {
-                    gui.autosave_recovery_choice = Some(super::AutosaveRecoveryChoice::Recover);
-                }
-                if ui.button("Discard").clicked() {
-                    gui.autosave_recovery_choice = Some(super::AutosaveRecoveryChoice::Discard);
-                }
-                if ui.button("Cancel").clicked() {
-                    gui.autosave_recovery_choice = Some(super::AutosaveRecoveryChoice::Cancel);
-                }
+    egui::Window::new(super::i18n::translate(
+        gui.language,
+        "dialog.autosave.title",
+    ))
+    .collapsible(false)
+    .resizable(true)
+    .default_width(560.0)
+    .show(ctx, |ui| {
+        ui.label(super::i18n::translate(
+            gui.language,
+            "dialog.autosave.message",
+        ));
+        ui.add_space(10.0);
+        for (index, entry) in entries.iter().enumerate() {
+            let when = format_modified(entry.modified);
+            let size_kb = (entry.size_bytes as f64) / 1024.0;
+            ui.group(|ui| {
+                ui.horizontal(|ui| {
+                    ui.vertical(|ui| {
+                        ui.strong(
+                            entry
+                                .path
+                                .file_name()
+                                .and_then(|n| n.to_str())
+                                .unwrap_or("autosave.cadk"),
+                        );
+                        ui.label(
+                            egui::RichText::new(format!("{when} · {:.1} KiB", size_kb))
+                                .size(11.0)
+                                .color(super::theme::COLOR_DIM),
+                        );
+                        ui.label(
+                            egui::RichText::new(thumbnail_label(&entry.path))
+                                .size(11.0)
+                                .color(super::theme::COLOR_DIM),
+                        );
+                    });
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        if ui
+                            .button(super::i18n::translate(
+                                gui.language,
+                                "dialog.autosave.recover",
+                            ))
+                            .clicked()
+                        {
+                            gui.autosave_recovery_choice =
+                                Some(super::AutosaveRecoveryChoice::Recover(index));
+                        }
+                    });
+                });
             });
+            ui.add_space(4.0);
+        }
+        ui.horizontal(|ui| {
+            if ui
+                .button(super::i18n::translate(
+                    gui.language,
+                    "dialog.autosave.discard",
+                ))
+                .clicked()
+            {
+                gui.autosave_recovery_choice = Some(super::AutosaveRecoveryChoice::Discard);
+            }
+            if ui
+                .button(super::i18n::translate(gui.language, "dialog.autosave.skip"))
+                .clicked()
+            {
+                gui.autosave_recovery_choice = Some(super::AutosaveRecoveryChoice::Skip);
+            }
         });
+    });
+}
+
+pub(crate) fn draw_close_document_tab_dialog(ctx: &egui::Context, gui: &mut GuiState) {
+    let Some(super::ActiveDialog::CloseDocumentTab(index)) = gui.active_dialog else {
+        return;
+    };
+    egui::Window::new(super::i18n::translate(
+        gui.language,
+        "dialog.close_tab.title",
+    ))
+    .collapsible(false)
+    .resizable(false)
+    .default_width(360.0)
+    .show(ctx, |ui| {
+        ui.label(super::i18n::translate(
+            gui.language,
+            "dialog.close_tab.message",
+        ));
+        ui.add_space(10.0);
+        ui.horizontal(|ui| {
+            if ui
+                .button(super::i18n::translate(
+                    gui.language,
+                    "dialog.close_tab.close",
+                ))
+                .clicked()
+            {
+                gui.actions.push(super::GuiAction::ConfirmCloseTab(index));
+                gui.active_dialog = None;
+            }
+            if ui
+                .button(super::i18n::translate(
+                    gui.language,
+                    "dialog.close_tab.cancel",
+                ))
+                .clicked()
+            {
+                gui.active_dialog = None;
+            }
+        });
+    });
 }

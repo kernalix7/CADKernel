@@ -9,7 +9,581 @@
 //! `ExportSvg` / `ExportDxf` / `ExportPdf` variants carry `PathBuf`, and
 //! `cadkernel_io::ProjectionDir` lacks `PartialEq` derives in some configs.
 
+use std::fmt::Write;
 use std::path::PathBuf;
+
+use cadkernel_core::{KernelError, KernelResult};
+
+#[allow(dead_code)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum GdtSymbol {
+    Straightness,
+    Flatness,
+    Circularity,
+    Cylindricity,
+    ProfileLine,
+    ProfileSurface,
+    Angularity,
+    Perpendicularity,
+    Parallelism,
+    Position,
+    Concentricity,
+    Symmetry,
+    Runout,
+    TotalRunout,
+}
+
+#[allow(dead_code)]
+impl GdtSymbol {
+    pub const ALL: [Self; 14] = [
+        Self::Straightness,
+        Self::Flatness,
+        Self::Circularity,
+        Self::Cylindricity,
+        Self::ProfileLine,
+        Self::ProfileSurface,
+        Self::Angularity,
+        Self::Perpendicularity,
+        Self::Parallelism,
+        Self::Position,
+        Self::Concentricity,
+        Self::Symmetry,
+        Self::Runout,
+        Self::TotalRunout,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Straightness => "Straightness",
+            Self::Flatness => "Flatness",
+            Self::Circularity => "Circularity",
+            Self::Cylindricity => "Cylindricity",
+            Self::ProfileLine => "Profile of a Line",
+            Self::ProfileSurface => "Profile of a Surface",
+            Self::Angularity => "Angularity",
+            Self::Perpendicularity => "Perpendicularity",
+            Self::Parallelism => "Parallelism",
+            Self::Position => "Position",
+            Self::Concentricity => "Concentricity",
+            Self::Symmetry => "Symmetry",
+            Self::Runout => "Circular Runout",
+            Self::TotalRunout => "Total Runout",
+        }
+    }
+
+    pub fn glyph(self) -> &'static str {
+        match self {
+            Self::Straightness => "⏤",
+            Self::Flatness => "▱",
+            Self::Circularity => "○",
+            Self::Cylindricity => "⌭",
+            Self::ProfileLine => "⌒",
+            Self::ProfileSurface => "⌓",
+            Self::Angularity => "∠",
+            Self::Perpendicularity => "⟂",
+            Self::Parallelism => "∥",
+            Self::Position => "⌖",
+            Self::Concentricity => "◎",
+            Self::Symmetry => "⌯",
+            Self::Runout => "↗",
+            Self::TotalRunout => "⌰",
+        }
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct DatumLabel(String);
+
+#[allow(dead_code)]
+impl DatumLabel {
+    pub fn new(label: impl Into<String>) -> KernelResult<Self> {
+        let label = label.into();
+        let valid = !label.is_empty()
+            && label.len() <= 3
+            && label.chars().all(|ch| ch.is_ascii_uppercase());
+        if !valid {
+            return Err(KernelError::InvalidArgument(format!(
+                "datum label must be 1-3 uppercase ASCII letters: {label:?}"
+            )));
+        }
+        Ok(Self(label))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    fn bracketed(&self) -> String {
+        format!("[{}]", self.0)
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct DatumFeature {
+    pub label: DatumLabel,
+    pub x: f64,
+    pub y: f64,
+}
+
+#[allow(dead_code)]
+impl DatumFeature {
+    pub fn new(label: DatumLabel, x: f64, y: f64) -> KernelResult<Self> {
+        validate_finite("datum x", x)?;
+        validate_finite("datum y", y)?;
+        Ok(Self { label, x, y })
+    }
+
+    pub fn to_svg(&self) -> String {
+        let text = escape_svg_text(self.label.as_str());
+        format!(
+            "<g class=\"techdraw-datum\"><rect x=\"{}\" y=\"{}\" width=\"8\" height=\"8\" fill=\"white\" stroke=\"black\" stroke-width=\"0.35\"/><text x=\"{}\" y=\"{}\" font-size=\"5\" text-anchor=\"middle\" dominant-baseline=\"middle\" fill=\"black\">{}</text></g>",
+            self.x - 4.0,
+            self.y - 4.0,
+            self.x,
+            self.y,
+            text
+        )
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct GdtFrame {
+    pub characteristic: GdtSymbol,
+    pub tolerance: f64,
+    pub datum_refs: Vec<DatumLabel>,
+}
+
+#[allow(dead_code)]
+impl GdtFrame {
+    pub fn new(
+        characteristic: GdtSymbol,
+        tolerance: f64,
+        datum_refs: Vec<DatumLabel>,
+    ) -> KernelResult<Self> {
+        validate_non_negative_finite("GD&T tolerance", tolerance)?;
+        if datum_refs.len() > 3 {
+            return Err(KernelError::InvalidArgument(format!(
+                "GD&T frame supports at most 3 datum references, got {}",
+                datum_refs.len()
+            )));
+        }
+        Ok(Self {
+            characteristic,
+            tolerance,
+            datum_refs,
+        })
+    }
+
+    pub fn control_text(&self) -> String {
+        let mut text = format!("{} {:.3}", self.characteristic.glyph(), self.tolerance);
+        for datum in &self.datum_refs {
+            text.push(' ');
+            text.push_str(&datum.bracketed());
+        }
+        text
+    }
+
+    pub fn to_text_annotation(
+        &self,
+        x: f64,
+        y: f64,
+        font_size: f64,
+    ) -> cadkernel_io::TextAnnotation {
+        cadkernel_io::TextAnnotation {
+            position: cadkernel_math::Point2::new(x, y),
+            text: self.control_text(),
+            font_size,
+        }
+    }
+
+    pub fn apply_to_sheet(
+        &self,
+        sheet: &mut cadkernel_io::DrawingSheet,
+        x: f64,
+        y: f64,
+        font_size: f64,
+    ) {
+        sheet
+            .text_annotations
+            .push(self.to_text_annotation(x, y, font_size));
+    }
+
+    pub fn to_svg_at(&self, x: f64, y: f64) -> String {
+        let mut out = String::new();
+        let cells = self.svg_cells();
+        let cell_height = 8.0;
+        let total_width: f64 = cells.iter().map(|(_, width)| *width).sum();
+        let _ = write!(
+            out,
+            "<g class=\"techdraw-gdt-frame\" data-characteristic=\"{}\">",
+            escape_svg_text(self.characteristic.label())
+        );
+        let _ = write!(
+            out,
+            "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"white\" stroke=\"black\" stroke-width=\"0.35\"/>",
+            x, y, total_width, cell_height
+        );
+        let mut cursor = x;
+        for (idx, (label, width)) in cells.iter().enumerate() {
+            if idx > 0 {
+                let _ = write!(
+                    out,
+                    "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"black\" stroke-width=\"0.25\"/>",
+                    cursor,
+                    y,
+                    cursor,
+                    y + cell_height
+                );
+            }
+            let _ = write!(
+                out,
+                "<text x=\"{}\" y=\"{}\" font-size=\"4.2\" text-anchor=\"middle\" dominant-baseline=\"middle\" fill=\"black\">{}</text>",
+                cursor + width * 0.5,
+                y + cell_height * 0.55,
+                escape_svg_text(label)
+            );
+            cursor += width;
+        }
+        out.push_str("</g>");
+        out
+    }
+
+    fn svg_cells(&self) -> Vec<(String, f64)> {
+        let mut cells = vec![
+            (self.characteristic.glyph().to_string(), 8.0),
+            (format!("{:.3}", self.tolerance), 16.0),
+        ];
+        for datum in &self.datum_refs {
+            cells.push((datum.as_str().to_string(), 8.0));
+        }
+        cells
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct BomEntry {
+    pub item_no: u32,
+    pub qty: u32,
+    pub description: String,
+    pub material: String,
+}
+
+#[allow(dead_code)]
+impl BomEntry {
+    pub fn new(
+        item_no: u32,
+        qty: u32,
+        description: impl Into<String>,
+        material: impl Into<String>,
+    ) -> KernelResult<Self> {
+        if item_no == 0 {
+            return Err(KernelError::InvalidArgument(
+                "BOM item number must be positive".into(),
+            ));
+        }
+        if qty == 0 {
+            return Err(KernelError::InvalidArgument(
+                "BOM quantity must be positive".into(),
+            ));
+        }
+        let description = description.into();
+        if description.trim().is_empty() {
+            return Err(KernelError::InvalidArgument(
+                "BOM description must not be empty".into(),
+            ));
+        }
+        let material = normalize_material(material.into());
+        Ok(Self {
+            item_no,
+            qty,
+            description,
+            material,
+        })
+    }
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct BomTableLayout {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+    pub row_height: f64,
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct Bom {
+    pub entries: Vec<BomEntry>,
+}
+
+#[allow(dead_code)]
+impl Bom {
+    pub fn new(entries: Vec<BomEntry>) -> KernelResult<Self> {
+        let mut bom = Self { entries };
+        bom.renumber()?;
+        Ok(bom)
+    }
+
+    pub fn from_parts<I, D, M>(parts: I) -> Self
+    where
+        I: IntoIterator<Item = (D, M)>,
+        D: Into<String>,
+        M: Into<String>,
+    {
+        let mut grouped = std::collections::BTreeMap::<(String, String), u32>::new();
+        for (description, material) in parts {
+            let description = description.into();
+            if description.trim().is_empty() {
+                continue;
+            }
+            let material = normalize_material(material.into());
+            *grouped.entry((description, material)).or_insert(0) += 1;
+        }
+
+        let entries = grouped
+            .into_iter()
+            .enumerate()
+            .map(|(index, ((description, material), qty))| BomEntry {
+                item_no: index as u32 + 1,
+                qty,
+                description,
+                material,
+            })
+            .collect();
+        Self { entries }
+    }
+
+    pub fn push_manual(
+        &mut self,
+        qty: u32,
+        description: impl Into<String>,
+        material: impl Into<String>,
+    ) -> KernelResult<()> {
+        let item_no = self.entries.len() as u32 + 1;
+        self.entries
+            .push(BomEntry::new(item_no, qty, description, material)?);
+        Ok(())
+    }
+
+    pub fn layout_bottom_right(&self, sheet_width: f64, sheet_height: f64) -> BomTableLayout {
+        let row_height = 7.0;
+        let width = 92.0;
+        let height = row_height * (self.entries.len() as f64 + 1.0);
+        let margin = 12.0;
+        BomTableLayout {
+            x: (sheet_width - width - margin).max(margin),
+            y: (sheet_height - height - margin).max(margin),
+            width,
+            height,
+            row_height,
+        }
+    }
+
+    pub fn to_text_annotations(
+        &self,
+        layout: BomTableLayout,
+        font_size: f64,
+    ) -> Vec<cadkernel_io::TextAnnotation> {
+        let mut annotations = Vec::with_capacity(self.entries.len() + 1);
+        annotations.push(cadkernel_io::TextAnnotation {
+            position: cadkernel_math::Point2::new(layout.x + 2.0, layout.y + font_size),
+            text: "ITEM QTY DESCRIPTION MATERIAL".into(),
+            font_size,
+        });
+        for (idx, entry) in self.entries.iter().enumerate() {
+            annotations.push(cadkernel_io::TextAnnotation {
+                position: cadkernel_math::Point2::new(
+                    layout.x + 2.0,
+                    layout.y + layout.row_height * (idx as f64 + 1.0) + font_size,
+                ),
+                text: format!(
+                    "{} {} {} {}",
+                    entry.item_no, entry.qty, entry.description, entry.material
+                ),
+                font_size,
+            });
+        }
+        annotations
+    }
+
+    pub fn apply_to_sheet(&self, sheet: &mut cadkernel_io::DrawingSheet, font_size: f64) {
+        let layout = self.layout_bottom_right(sheet.width, sheet.height);
+        sheet
+            .text_annotations
+            .extend(self.to_text_annotations(layout, font_size));
+    }
+
+    pub fn to_svg_bottom_right(&self, sheet_width: f64, sheet_height: f64) -> String {
+        self.to_svg_at(self.layout_bottom_right(sheet_width, sheet_height))
+    }
+
+    pub fn to_svg_at(&self, layout: BomTableLayout) -> String {
+        let mut out = String::new();
+        let _ = write!(
+            out,
+            "<g class=\"techdraw-bom\"><rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"white\" stroke=\"black\" stroke-width=\"0.35\"/>",
+            layout.x, layout.y, layout.width, layout.height
+        );
+        let cols = [10.0, 12.0, 48.0, 22.0];
+        let mut cursor = layout.x;
+        for width in cols.iter().take(cols.len() - 1) {
+            cursor += width;
+            let _ = write!(
+                out,
+                "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"black\" stroke-width=\"0.25\"/>",
+                cursor,
+                layout.y,
+                cursor,
+                layout.y + layout.height
+            );
+        }
+        for row in 1..=self.entries.len() {
+            let y = layout.y + layout.row_height * row as f64;
+            let _ = write!(
+                out,
+                "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"black\" stroke-width=\"0.25\"/>",
+                layout.x,
+                y,
+                layout.x + layout.width,
+                y
+            );
+        }
+        write_bom_row_svg(
+            &mut out,
+            layout.x,
+            layout.y,
+            layout.row_height,
+            &cols,
+            ["ITEM", "QTY", "DESCRIPTION", "MATERIAL"],
+        );
+        for (idx, entry) in self.entries.iter().enumerate() {
+            let y = layout.y + layout.row_height * (idx as f64 + 1.0);
+            let item_no = entry.item_no.to_string();
+            let qty = entry.qty.to_string();
+            write_bom_row_svg(
+                &mut out,
+                layout.x,
+                y,
+                layout.row_height,
+                &cols,
+                [
+                    item_no.as_str(),
+                    qty.as_str(),
+                    &entry.description,
+                    &entry.material,
+                ],
+            );
+        }
+        out.push_str("</g>");
+        out
+    }
+
+    pub fn to_csv(&self) -> String {
+        let rows: Vec<_> = self
+            .entries
+            .iter()
+            .map(|entry| cadkernel_io::techdraw_dxf::TechDrawBomCsvRow {
+                item_no: entry.item_no,
+                qty: entry.qty,
+                description: entry.description.clone(),
+                material: entry.material.clone(),
+            })
+            .collect();
+        cadkernel_io::techdraw_dxf::techdraw_bom_to_csv(&rows)
+    }
+
+    fn renumber(&mut self) -> KernelResult<()> {
+        for (idx, entry) in self.entries.iter_mut().enumerate() {
+            if entry.qty == 0 {
+                return Err(KernelError::InvalidArgument(
+                    "BOM quantity must be positive".into(),
+                ));
+            }
+            if entry.description.trim().is_empty() {
+                return Err(KernelError::InvalidArgument(
+                    "BOM description must not be empty".into(),
+                ));
+            }
+            entry.item_no = idx as u32 + 1;
+            entry.material = normalize_material(std::mem::take(&mut entry.material));
+        }
+        Ok(())
+    }
+}
+
+#[allow(dead_code)]
+fn validate_finite(label: &str, value: f64) -> KernelResult<()> {
+    if !value.is_finite() {
+        return Err(KernelError::InvalidArgument(format!(
+            "{label} must be finite"
+        )));
+    }
+    Ok(())
+}
+
+#[allow(dead_code)]
+fn validate_non_negative_finite(label: &str, value: f64) -> KernelResult<()> {
+    validate_finite(label, value)?;
+    if value < 0.0 {
+        return Err(KernelError::InvalidArgument(format!(
+            "{label} must be non-negative"
+        )));
+    }
+    Ok(())
+}
+
+#[allow(dead_code)]
+fn normalize_material(material: String) -> String {
+    let trimmed = material.trim();
+    if trimmed.is_empty() {
+        "Unspecified".into()
+    } else {
+        trimmed.into()
+    }
+}
+
+#[allow(dead_code)]
+fn escape_svg_text(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+#[allow(dead_code)]
+fn write_bom_row_svg(
+    out: &mut String,
+    x: f64,
+    y: f64,
+    row_height: f64,
+    cols: &[f64; 4],
+    values: [&str; 4],
+) {
+    let mut cursor = x;
+    for (idx, value) in values.iter().enumerate() {
+        let anchor = if idx < 2 { "middle" } else { "start" };
+        let tx = if idx < 2 {
+            cursor + cols[idx] * 0.5
+        } else {
+            cursor + 1.5
+        };
+        let _ = write!(
+            out,
+            "<text x=\"{}\" y=\"{}\" font-size=\"3.2\" text-anchor=\"{}\" dominant-baseline=\"middle\" fill=\"black\">{}</text>",
+            tx,
+            y + row_height * 0.55,
+            anchor,
+            escape_svg_text(value)
+        );
+        cursor += cols[idx];
+    }
+}
 
 /// Actions specific to the TechDraw workbench, dispatched through
 /// `GuiAction::TechDraw(TechDrawAction)`.

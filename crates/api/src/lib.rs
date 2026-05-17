@@ -61,9 +61,18 @@ mod document;
 mod outcome;
 mod session;
 
+pub use cadkernel_assembly as assembly;
 pub mod cadk;
 pub mod reference_parts;
 
+pub use cadkernel_assembly::{
+    Assembly, AssemblyId, Component, ComponentId, DofAnalysis, Mate, MateId, MotionReport,
+    RigidTransform, SolveReport, SolverOptions,
+};
+pub use cadkernel_assembly::{
+    AxisRef as AssemblyAxisRef, CurveRef as AssemblyCurveRef, EdgeRef as AssemblyEdgeRef,
+    FaceRef as AssemblyFaceRef,
+};
 pub use cadkernel_modeling::body::FeatureGraph;
 pub use cadkernel_topology::Tag;
 pub use command::{
@@ -71,7 +80,8 @@ pub use command::{
     EntityId, ExtrudeKind, FaceRef, FeatureSpec, FilletSpec, GrooveSpec, HelixSpec, HoleKind,
     HoleSpec, InstanceOverride, LoftMode, LoftSpec, PadDirection, PadSpec, PadType, PlaneRef,
     PocketSpec, PocketType, RevolveSpec, ShellMode, ShellSpec, SketchConstraint, SketchEdit,
-    SketchEntity, SketchId, SketchRef, SweepMode, SweepSpec, VariableRadius, command_schemas,
+    SketchEntity, SketchId, SketchRef, SweepMode, SweepSpec, TableRow, VariableRadius,
+    command_schemas,
 };
 pub use document::{
     AabbSummary, Document, DocumentIssue, FeatureId, HistoryEvent, MeasureSummary, PersistedSketch,
