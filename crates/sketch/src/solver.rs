@@ -1,3 +1,5 @@
+use std::collections::BTreeSet;
+
 use cadkernel_math::linalg::{DMatrix, DVector};
 
 use crate::Sketch;
@@ -19,8 +21,63 @@ pub struct SolverResult {
     pub residual: f64,
     /// Remaining degrees of freedom (`n_vars - rank(J)`). `None` if not computed.
     pub remaining_dof: Option<usize>,
-    /// `true` if the system has more independent equations than variables.
+    /// `true` if the system has more scalar equations than its Jacobian rank supports.
     pub over_constrained: bool,
+}
+
+/// Constraint block status after structural decomposition and rank analysis.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BlockStatus {
+    /// The block has the same number of scalar variables and equations, and
+    /// the Jacobian is full rank.
+    WellDetermined,
+    /// The block leaves one or more independent degrees of freedom.
+    UnderConstrained,
+    /// The block has more scalar equations than its Jacobian rank supports.
+    OverConstrained,
+}
+
+/// One strongly-connected constraint block in the sketch solver graph.
+#[derive(Debug, Clone)]
+pub struct SolverBlock {
+    pub index: usize,
+    pub point_ids: Vec<PointId>,
+    pub variable_columns: Vec<usize>,
+    pub constraint_indices: Vec<usize>,
+    pub equation_count: usize,
+    pub rank: usize,
+    pub status: BlockStatus,
+    pub remaining_dof: usize,
+    pub redundant_equations: usize,
+}
+
+/// One deflation step performed by [`solve_with_analysis`].
+#[derive(Debug, Clone)]
+pub struct DeflationStep {
+    pub block_index: usize,
+    pub solved_variables: usize,
+    pub solved_equations: usize,
+    pub remaining_variables: usize,
+    pub remaining_equations: usize,
+    pub residual: f64,
+    pub converged: bool,
+}
+
+/// Solver block decomposition and classification report.
+#[derive(Debug, Clone)]
+pub struct SolverAnalysis {
+    pub blocks: Vec<SolverBlock>,
+    pub deflation_steps: Vec<DeflationStep>,
+    pub total_variables: usize,
+    pub total_equations: usize,
+    pub total_rank: usize,
+}
+
+/// Solver result together with the block analysis used to produce it.
+#[derive(Debug, Clone)]
+pub struct DeflatedSolverResult {
+    pub result: SolverResult,
+    pub analysis: SolverAnalysis,
 }
 
 /// Solves the constraint system attached to `sketch` using Newton-Raphson
@@ -37,15 +94,23 @@ pub struct SolverResult {
 /// A [`SolverResult`] indicating convergence status, iteration count, and
 /// remaining degrees of freedom.
 pub fn solve(sketch: &mut Sketch, max_iter: usize, tol: f64) -> SolverResult {
+    solve_with_analysis(sketch, max_iter, tol).result
+}
+
+/// Solve a sketch by decomposing the constraint graph into blocks, solving
+/// each block, and deflating its variables and equations before continuing.
+pub fn solve_with_analysis(sketch: &mut Sketch, max_iter: usize, tol: f64) -> DeflatedSolverResult {
     let n_vars = sketch.points.len() * 2;
     if n_vars == 0 {
-        return SolverResult {
+        let result = SolverResult {
             converged: true,
             iterations: 0,
             residual: 0.0,
             remaining_dof: Some(0),
             over_constrained: false,
         };
+        let analysis = analyze_blocks(sketch);
+        return DeflatedSolverResult { result, analysis };
     }
 
     let lines: Vec<(PointId, PointId)> = sketch.lines.iter().map(|l| (l.start, l.end)).collect();
@@ -63,20 +128,132 @@ pub fn solve(sketch: &mut Sketch, max_iter: usize, tol: f64) -> SolverResult {
         .sum();
 
     if n_eqs == 0 {
-        return SolverResult {
+        let result = SolverResult {
             converged: true,
             iterations: 0,
             residual: 0.0,
             remaining_dof: Some(n_vars),
             over_constrained: false,
         };
+        let analysis = analyze_blocks(sketch);
+        return DeflatedSolverResult { result, analysis };
     }
 
     let mut vars = DVector::zeros(n_vars);
     sketch_to_vars(sketch, &mut vars);
-    let initial_vars = vars.clone();
+    let blocks = decompose_blocks(sketch, &lines);
+    let mut steps = Vec::new();
+    let mut total_iterations = 0;
+    let mut all_blocks_converged = true;
+    let mut remaining_equations = n_eqs;
+    let mut remaining_variables = n_vars;
 
-    let anchor = build_anchor_weights(sketch, n_vars);
+    for block in &blocks {
+        if block.equation_count == 0 {
+            continue;
+        }
+
+        let block_result = solve_block(sketch, &lines, block, &mut vars, max_iter, tol);
+        total_iterations += block_result.iterations;
+        all_blocks_converged &= block_result.converged;
+        remaining_equations = remaining_equations.saturating_sub(block.equation_count);
+        remaining_variables = remaining_variables.saturating_sub(block.variable_columns.len());
+        steps.push(DeflationStep {
+            block_index: block.index,
+            solved_variables: block.variable_columns.len(),
+            solved_equations: block.equation_count,
+            remaining_variables,
+            remaining_equations,
+            residual: block_result.residual,
+            converged: block_result.converged,
+        });
+    }
+
+    vars_to_sketch(&vars, sketch);
+
+    let (final_residual, final_jac) = build_system(sketch, &lines, n_eqs, n_vars, vars.as_slice());
+    let rank = jacobian_rank(&final_jac, 1e-8);
+    let residual = final_residual.norm();
+    let inf_norm = final_residual.iter().fold(0.0_f64, |a, &v| a.max(v.abs()));
+    let result = SolverResult {
+        converged: all_blocks_converged && inf_norm < tol,
+        iterations: total_iterations,
+        residual,
+        remaining_dof: Some(n_vars.saturating_sub(rank)),
+        over_constrained: n_eqs > rank,
+    };
+
+    let mut analysis = analyze_blocks(sketch);
+    analysis.deflation_steps = steps;
+    DeflatedSolverResult { result, analysis }
+}
+
+/// Analyze the current sketch into solver blocks without mutating geometry.
+pub fn analyze_blocks(sketch: &Sketch) -> SolverAnalysis {
+    let n_vars = sketch.points.len() * 2;
+    let lines: Vec<(PointId, PointId)> = sketch.lines.iter().map(|l| (l.start, l.end)).collect();
+    let n_eqs: usize = sketch
+        .constraints
+        .iter()
+        .map(|c| {
+            ConstraintWithCtx {
+                constraint: c,
+                lines: &lines,
+            }
+            .num_equations()
+        })
+        .sum();
+
+    let mut vars = DVector::zeros(n_vars);
+    sketch_to_vars(sketch, &mut vars);
+
+    let mut blocks = decompose_blocks(sketch, &lines);
+    for block in &mut blocks {
+        classify_block(sketch, &lines, block, vars.as_slice());
+    }
+
+    let total_rank = if n_eqs == 0 || n_vars == 0 {
+        0
+    } else {
+        let (_, jac) = build_system(sketch, &lines, n_eqs, n_vars, vars.as_slice());
+        jacobian_rank(&jac, 1e-8)
+    };
+
+    SolverAnalysis {
+        blocks,
+        deflation_steps: Vec::new(),
+        total_variables: n_vars,
+        total_equations: n_eqs,
+        total_rank,
+    }
+}
+
+fn solve_block(
+    sketch: &Sketch,
+    lines: &[(PointId, PointId)],
+    block: &SolverBlock,
+    vars: &mut DVector<f64>,
+    max_iter: usize,
+    tol: f64,
+) -> SolverResult {
+    let n_vars = block.variable_columns.len();
+    if n_vars == 0 {
+        let (residual_vec, _) = build_block_system(sketch, lines, block, vars.as_slice());
+        return SolverResult {
+            converged: residual_vec.iter().all(|r| r.abs() < tol),
+            iterations: 0,
+            residual: residual_vec.norm(),
+            remaining_dof: Some(0),
+            over_constrained: block.equation_count > 0,
+        };
+    }
+
+    let mut local_vars = DVector::zeros(n_vars);
+    for (local_col, &global_col) in block.variable_columns.iter().enumerate() {
+        local_vars[local_col] = vars[global_col];
+    }
+    let initial_vars = local_vars.clone();
+    let anchor = build_block_anchor_weights(sketch, block, n_vars);
 
     let mut result = SolverResult {
         converged: false,
@@ -87,9 +264,9 @@ pub fn solve(sketch: &mut Sketch, max_iter: usize, tol: f64) -> SolverResult {
     };
 
     let mut last_step_norm = f64::MAX;
-
     for iter in 0..max_iter {
-        let (residual_vec, jacobian) = build_system(sketch, &lines, n_eqs, n_vars, vars.as_slice());
+        write_local_vars(block, &local_vars, vars);
+        let (residual_vec, jacobian) = build_block_system(sketch, lines, block, vars.as_slice());
 
         let inf_norm = residual_vec.iter().fold(0.0_f64, |a, &v| a.max(v.abs()));
         let l2_norm = residual_vec.norm();
@@ -98,15 +275,21 @@ pub fn solve(sketch: &mut Sketch, max_iter: usize, tol: f64) -> SolverResult {
 
         if inf_norm < tol {
             result.converged = true;
-            vars_to_sketch(&vars, sketch);
-            return result;
+            write_local_vars(block, &local_vars, vars);
+            break;
         }
 
         if last_step_norm < tol * 1e-3 {
             break;
         }
 
-        let dx = solve_linear_system(&jacobian, &residual_vec, &anchor, &vars, &initial_vars);
+        let dx = solve_linear_system(
+            &jacobian,
+            &residual_vec,
+            &anchor,
+            &local_vars,
+            &initial_vars,
+        );
 
         let mut alpha = 1.0;
         let c = 1e-4;
@@ -116,11 +299,12 @@ pub fn solve(sketch: &mut Sketch, max_iter: usize, tol: f64) -> SolverResult {
 
         let mut accepted = false;
         for _ in 0..20 {
-            let candidate = &vars - &dx * alpha;
-            let (r_new, _) = build_system(sketch, &lines, n_eqs, n_vars, candidate.as_slice());
+            let candidate = &local_vars - &dx * alpha;
+            write_local_vars(block, &candidate, vars);
+            let (r_new, _) = build_block_system(sketch, lines, block, vars.as_slice());
             let new_cost = 0.5 * r_new.norm_squared();
             if new_cost <= base_cost - c * alpha * directional {
-                vars = candidate;
+                local_vars = candidate;
                 accepted = true;
                 break;
             }
@@ -137,14 +321,11 @@ pub fn solve(sketch: &mut Sketch, max_iter: usize, tol: f64) -> SolverResult {
         };
     }
 
-    vars_to_sketch(&vars, sketch);
-
-    // Compute DOF via Jacobian rank analysis
-    let (_, final_jac) = build_system(sketch, &lines, n_eqs, n_vars, vars.as_slice());
+    write_local_vars(block, &local_vars, vars);
+    let (_, final_jac) = build_block_system(sketch, lines, block, vars.as_slice());
     let rank = jacobian_rank(&final_jac, 1e-8);
     result.remaining_dof = Some(n_vars.saturating_sub(rank));
-    result.over_constrained = rank > n_vars;
-
+    result.over_constrained = block.equation_count > rank;
     result
 }
 
@@ -201,10 +382,452 @@ fn build_system(
     (residual, jac)
 }
 
-/// Estimate the numerical rank of a matrix via SVD singular value thresholding.
+fn write_local_vars(block: &SolverBlock, local_vars: &DVector<f64>, vars: &mut DVector<f64>) {
+    for (local_col, &global_col) in block.variable_columns.iter().enumerate() {
+        if global_col < vars.len() && local_col < local_vars.len() {
+            vars[global_col] = local_vars[local_col];
+        }
+    }
+}
+
+fn build_block_system(
+    sketch: &Sketch,
+    lines: &[(PointId, PointId)],
+    block: &SolverBlock,
+    vars: &[f64],
+) -> (DVector<f64>, DMatrix<f64>) {
+    build_constraint_subset_system(
+        sketch,
+        lines,
+        &block.constraint_indices,
+        &block.variable_columns,
+        block.equation_count,
+        vars,
+    )
+}
+
+fn build_constraint_subset_system(
+    sketch: &Sketch,
+    lines: &[(PointId, PointId)],
+    constraint_indices: &[usize],
+    variable_columns: &[usize],
+    equation_count: usize,
+    vars: &[f64],
+) -> (DVector<f64>, DMatrix<f64>) {
+    let mut residual = DVector::zeros(equation_count);
+    let mut jac = DMatrix::zeros(equation_count, variable_columns.len());
+    let mut global_to_local = vec![None; vars.len()];
+    for (local_col, &global_col) in variable_columns.iter().enumerate() {
+        if global_col < global_to_local.len() {
+            global_to_local[global_col] = Some(local_col);
+        }
+    }
+
+    let mut row = 0;
+    let mut sparse_entries = Vec::new();
+    for &constraint_index in constraint_indices {
+        let Some(constraint) = sketch.constraints.get(constraint_index) else {
+            continue;
+        };
+        let ctx = ConstraintWithCtx { constraint, lines };
+        let neq = ctx.num_equations();
+        let mut local_res = vec![0.0; neq];
+        ctx.residual(vars, &mut local_res);
+        for (i, &v) in local_res.iter().enumerate() {
+            if row + i < residual.len() {
+                residual[row + i] = v;
+            }
+        }
+
+        sparse_entries.clear();
+        ctx.jacobian(vars, row, &mut sparse_entries);
+        for &(r, global_col, val) in &sparse_entries {
+            if r < equation_count
+                && let Some(Some(local_col)) = global_to_local.get(global_col)
+            {
+                jac[(r, *local_col)] += val;
+            }
+        }
+        row += neq;
+    }
+
+    (residual, jac)
+}
+
+fn decompose_blocks(sketch: &Sketch, lines: &[(PointId, PointId)]) -> Vec<SolverBlock> {
+    let point_count = sketch.points.len();
+    let constraint_count = sketch.constraints.len();
+    let mut adjacency = vec![Vec::new(); point_count + constraint_count];
+
+    for (constraint_index, constraint) in sketch.constraints.iter().enumerate() {
+        let constraint_node = point_count + constraint_index;
+        for point in constraint_points(constraint, lines) {
+            if point.0 < point_count {
+                adjacency[constraint_node].push(point.0);
+                adjacency[point.0].push(constraint_node);
+            }
+        }
+    }
+
+    let components = tarjan_scc(&adjacency);
+    let mut blocks = Vec::new();
+    for component in components {
+        let mut point_ids = BTreeSet::new();
+        let mut constraint_indices = BTreeSet::new();
+        for node in component {
+            if node < point_count {
+                point_ids.insert(node);
+            } else {
+                constraint_indices.insert(node - point_count);
+            }
+        }
+
+        if point_ids.is_empty() && constraint_indices.is_empty() {
+            continue;
+        }
+
+        let point_ids: Vec<PointId> = point_ids.into_iter().map(PointId).collect();
+        let variable_columns = variable_columns_for_points(&point_ids);
+        let constraint_indices: Vec<usize> = constraint_indices.into_iter().collect();
+        let equation_count = constraint_indices
+            .iter()
+            .filter_map(|&i| sketch.constraints.get(i))
+            .map(|c| {
+                ConstraintWithCtx {
+                    constraint: c,
+                    lines,
+                }
+                .num_equations()
+            })
+            .sum();
+
+        blocks.push(SolverBlock {
+            index: 0,
+            point_ids,
+            variable_columns,
+            constraint_indices,
+            equation_count,
+            rank: 0,
+            status: BlockStatus::UnderConstrained,
+            remaining_dof: 0,
+            redundant_equations: 0,
+        });
+    }
+
+    blocks.sort_by_key(|block| {
+        (
+            block
+                .constraint_indices
+                .first()
+                .copied()
+                .unwrap_or(usize::MAX),
+            block.point_ids.first().map(|p| p.0).unwrap_or(usize::MAX),
+        )
+    });
+    for (index, block) in blocks.iter_mut().enumerate() {
+        block.index = index;
+    }
+    blocks
+}
+
+fn classify_block(
+    sketch: &Sketch,
+    lines: &[(PointId, PointId)],
+    block: &mut SolverBlock,
+    vars: &[f64],
+) {
+    if block.equation_count == 0 {
+        let variable_count = block.variable_columns.len();
+        block.rank = 0;
+        block.remaining_dof = variable_count;
+        block.redundant_equations = 0;
+        block.status = if variable_count == 0 {
+            BlockStatus::WellDetermined
+        } else {
+            BlockStatus::UnderConstrained
+        };
+        return;
+    }
+
+    let (_, jac) = build_block_system(sketch, lines, block, vars);
+    let variable_count = block.variable_columns.len();
+    let rank = jacobian_rank(&jac, 1e-8);
+    block.rank = rank;
+    block.remaining_dof = variable_count.saturating_sub(rank);
+    block.redundant_equations = block.equation_count.saturating_sub(rank);
+    block.status = if block.equation_count > variable_count {
+        BlockStatus::OverConstrained
+    } else if block.equation_count == variable_count && rank == variable_count {
+        BlockStatus::WellDetermined
+    } else {
+        BlockStatus::UnderConstrained
+    };
+}
+
+fn tarjan_scc(adjacency: &[Vec<usize>]) -> Vec<Vec<usize>> {
+    struct Tarjan<'a> {
+        adjacency: &'a [Vec<usize>],
+        next_index: usize,
+        indices: Vec<Option<usize>>,
+        lowlink: Vec<usize>,
+        stack: Vec<usize>,
+        on_stack: Vec<bool>,
+        components: Vec<Vec<usize>>,
+    }
+
+    impl Tarjan<'_> {
+        fn strong_connect(&mut self, node: usize) {
+            self.indices[node] = Some(self.next_index);
+            self.lowlink[node] = self.next_index;
+            self.next_index += 1;
+            self.stack.push(node);
+            self.on_stack[node] = true;
+
+            for &next in &self.adjacency[node] {
+                if self.indices[next].is_none() {
+                    self.strong_connect(next);
+                    self.lowlink[node] = self.lowlink[node].min(self.lowlink[next]);
+                } else if self.on_stack[next]
+                    && let Some(next_index) = self.indices[next]
+                {
+                    self.lowlink[node] = self.lowlink[node].min(next_index);
+                }
+            }
+
+            if self.indices[node] == Some(self.lowlink[node]) {
+                let mut component = Vec::new();
+                while let Some(member) = self.stack.pop() {
+                    self.on_stack[member] = false;
+                    component.push(member);
+                    if member == node {
+                        break;
+                    }
+                }
+                self.components.push(component);
+            }
+        }
+    }
+
+    let mut tarjan = Tarjan {
+        adjacency,
+        next_index: 0,
+        indices: vec![None; adjacency.len()],
+        lowlink: vec![0; adjacency.len()],
+        stack: Vec::new(),
+        on_stack: vec![false; adjacency.len()],
+        components: Vec::new(),
+    };
+
+    for node in 0..adjacency.len() {
+        if tarjan.indices[node].is_none() {
+            tarjan.strong_connect(node);
+        }
+    }
+    tarjan.components
+}
+
+fn variable_columns_for_points(points: &[PointId]) -> Vec<usize> {
+    let mut columns = Vec::with_capacity(points.len() * 2);
+    for point in points {
+        columns.push(point.0 * 2);
+        columns.push(point.0 * 2 + 1);
+    }
+    columns
+}
+
+pub(crate) struct ConstraintSetRank {
+    pub equation_count: usize,
+    pub rank: usize,
+}
+
+pub(crate) fn analyze_constraint_set(
+    sketch: &Sketch,
+    constraint_indices: &[usize],
+) -> ConstraintSetRank {
+    let lines: Vec<(PointId, PointId)> = sketch.lines.iter().map(|l| (l.start, l.end)).collect();
+    let n_vars = sketch.points.len() * 2;
+    let mut vars = DVector::zeros(n_vars);
+    sketch_to_vars(sketch, &mut vars);
+
+    let mut point_ids = BTreeSet::new();
+    let mut equation_count = 0;
+    for &constraint_index in constraint_indices {
+        let Some(constraint) = sketch.constraints.get(constraint_index) else {
+            continue;
+        };
+        equation_count += ConstraintWithCtx {
+            constraint,
+            lines: &lines,
+        }
+        .num_equations();
+        for point in constraint_points(constraint, &lines) {
+            if point.0 < sketch.points.len() {
+                point_ids.insert(point.0);
+            }
+        }
+    }
+
+    let points: Vec<PointId> = point_ids.into_iter().map(PointId).collect();
+    let variable_columns = variable_columns_for_points(&points);
+    let (_, jac) = build_constraint_subset_system(
+        sketch,
+        &lines,
+        constraint_indices,
+        &variable_columns,
+        equation_count,
+        vars.as_slice(),
+    );
+    ConstraintSetRank {
+        equation_count,
+        rank: jacobian_rank(&jac, 1e-8),
+    }
+}
+
+pub(crate) fn constraint_points(
+    constraint: &Constraint,
+    lines: &[(PointId, PointId)],
+) -> Vec<PointId> {
+    let mut points = BTreeSet::new();
+
+    match *constraint {
+        Constraint::Coincident(p1, p2) | Constraint::Distance(p1, p2, _) => {
+            points.insert(p1.0);
+            points.insert(p2.0);
+        }
+        Constraint::Horizontal(line)
+        | Constraint::Vertical(line)
+        | Constraint::Length(line, _)
+        | Constraint::PointOnObject(_, line) => {
+            insert_line_points(&mut points, lines, line.0);
+            if let Constraint::PointOnObject(point, _) = *constraint {
+                points.insert(point.0);
+            }
+        }
+        Constraint::Parallel(l1, l2)
+        | Constraint::Perpendicular(l1, l2)
+        | Constraint::Angle(l1, l2, _)
+        | Constraint::EqualLength(l1, l2)
+        | Constraint::Collinear(l1, l2) => {
+            insert_line_points(&mut points, lines, l1.0);
+            insert_line_points(&mut points, lines, l2.0);
+        }
+        Constraint::PointOnLine(point, line) => {
+            points.insert(point.0);
+            insert_line_points(&mut points, lines, line.0);
+        }
+        Constraint::PointOnCircle(point, center, _)
+        | Constraint::Radius(point, center, _)
+        | Constraint::Diameter(point, center, _)
+        | Constraint::HorizontalDistance(point, center, _)
+        | Constraint::VerticalDistance(point, center, _)
+        | Constraint::Concentric(point, center) => {
+            points.insert(point.0);
+            points.insert(center.0);
+        }
+        Constraint::Symmetric(p1, p2, line) => {
+            points.insert(p1.0);
+            points.insert(p2.0);
+            insert_line_points(&mut points, lines, line.0);
+        }
+        Constraint::Fixed(point, _, _) | Constraint::Block(point, _, _) => {
+            points.insert(point.0);
+        }
+        Constraint::Tangent(line, center, _) => {
+            points.insert(center.0);
+            insert_line_points(&mut points, lines, line.0);
+        }
+        Constraint::Midpoint(point, line) => {
+            points.insert(point.0);
+            insert_line_points(&mut points, lines, line.0);
+        }
+        Constraint::EqualRadius(p1, c1, p2, c2) => {
+            points.insert(p1.0);
+            points.insert(c1.0);
+            points.insert(p2.0);
+            points.insert(c2.0);
+        }
+        Constraint::Refraction {
+            line1,
+            line2,
+            ratio: _,
+        } => {
+            insert_line_points(&mut points, lines, line1.0);
+            insert_line_points(&mut points, lines, line2.0);
+        }
+    }
+
+    points.into_iter().map(PointId).collect()
+}
+
+fn insert_line_points(points: &mut BTreeSet<usize>, lines: &[(PointId, PointId)], line: usize) {
+    if let Some((start, end)) = lines.get(line) {
+        points.insert(start.0);
+        points.insert(end.0);
+    }
+}
+
+/// Estimate the numerical rank of a matrix via rank-revealing QR with column pivoting.
 fn jacobian_rank(jac: &DMatrix<f64>, tol: f64) -> usize {
-    let svd = jac.clone().svd(false, false);
-    svd.singular_values.iter().filter(|&&s| s > tol).count()
+    let rows = jac.nrows();
+    let cols = jac.ncols();
+    if rows == 0 || cols == 0 {
+        return 0;
+    }
+
+    let mut columns: Vec<Vec<f64>> = (0..cols)
+        .map(|col| (0..rows).map(|row| jac[(row, col)]).collect())
+        .collect();
+    let max_abs = columns
+        .iter()
+        .flat_map(|column| column.iter())
+        .fold(0.0_f64, |acc, &value| acc.max(value.abs()));
+    if max_abs == 0.0 {
+        return 0;
+    }
+
+    let threshold = tol * max_abs * rows.max(cols) as f64;
+    let mut rank = 0;
+    while rank < cols && rank < rows {
+        let mut pivot = rank;
+        let mut pivot_norm = column_norm_squared(&columns[rank]);
+        for (candidate, column) in columns.iter().enumerate().skip(rank + 1) {
+            let norm = column_norm_squared(column);
+            if norm > pivot_norm {
+                pivot = candidate;
+                pivot_norm = norm;
+            }
+        }
+
+        let pivot_len = pivot_norm.sqrt();
+        if pivot_len <= threshold {
+            break;
+        }
+
+        if pivot != rank {
+            columns.swap(rank, pivot);
+        }
+        for value in &mut columns[rank] {
+            *value /= pivot_len;
+        }
+
+        let pivot_column = columns[rank].clone();
+        for column in columns.iter_mut().skip(rank + 1) {
+            let projection = dot_columns(&pivot_column, column);
+            for (value, pivot_value) in column.iter_mut().zip(&pivot_column) {
+                *value -= projection * pivot_value;
+            }
+        }
+        rank += 1;
+    }
+    rank
+}
+
+fn column_norm_squared(column: &[f64]) -> f64 {
+    column.iter().map(|value| value * value).sum()
+}
+
+fn dot_columns(a: &[f64], b: &[f64]) -> f64 {
+    a.iter().zip(b).map(|(lhs, rhs)| lhs * rhs).sum()
 }
 
 /// Compute per-constraint residual norms (how "violated" each constraint is).
@@ -309,23 +932,20 @@ fn solve_linear_system(
     }
 }
 
-/// Build per-variable anchor weights that break symmetry in underdetermined
-/// sketches. When no `Fixed` constraint exists anywhere in the sketch, the
-/// lowest-indexed point is anchored to its initial position with unit weight
-/// so the solver picks a unique minimum-change solution instead of drifting
-/// to the midpoint of symmetric free variables. When any `Fixed` constraint
-/// is present the user is presumed to have anchored the sketch deliberately
-/// and no auto-anchor is applied.
-fn build_anchor_weights(sketch: &Sketch, n_vars: usize) -> DVector<f64> {
+/// Build per-variable anchor weights for one deflated block. When the block
+/// has no explicit `Fixed` or `Block` constraint, its lowest local point is
+/// weakly anchored so underdetermined independent blocks do not drift.
+fn build_block_anchor_weights(sketch: &Sketch, block: &SolverBlock, n_vars: usize) -> DVector<f64> {
     let mut weights = DVector::zeros(n_vars);
-    if sketch.points.is_empty() {
+    if block.point_ids.is_empty() || n_vars < 2 {
         return weights;
     }
 
-    let has_fixed = sketch
-        .constraints
+    let has_fixed = block
+        .constraint_indices
         .iter()
-        .any(|c| matches!(c, Constraint::Fixed(..)));
+        .filter_map(|&index| sketch.constraints.get(index))
+        .any(|c| matches!(c, Constraint::Fixed(..) | Constraint::Block(..)));
     if has_fixed {
         return weights;
     }

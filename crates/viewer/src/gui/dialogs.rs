@@ -2088,7 +2088,7 @@ pub(crate) fn draw_create_dialogs(ctx: &egui::Context, gui: &mut GuiState) {
                     .num_columns(2)
                     .spacing([10.0, 4.0])
                     .show(ui, |ui| {
-                        param_field_no_unit(ui, "Factor", &mut gui.explode_factor, 0.5..=10.0, 0.1);
+                        param_field_no_unit(ui, "Factor", &mut gui.explode_factor, 0.0..=2.0, 0.05);
                     });
                 let (ok, cancel, reset) = button_bar(ui, "Apply");
                 if ok {
@@ -2102,7 +2102,7 @@ pub(crate) fn draw_create_dialogs(ctx: &egui::Context, gui: &mut GuiState) {
                     gui.show_explode = false;
                 }
                 if reset {
-                    gui.explode_factor = 2.0;
+                    gui.explode_factor = 0.0;
                 }
             });
     }

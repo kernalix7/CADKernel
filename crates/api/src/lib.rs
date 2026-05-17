@@ -78,7 +78,7 @@ pub use document::{
     RecomputeCache, SolidId,
 };
 pub use outcome::{Outcome, OutcomeKind, Plane, SolidEntry};
-pub use session::{Session, SessionSnapshot};
+pub use session::{Branch, BranchId, CheckpointId, Session, SessionSnapshot};
 
 /// Result type returned by the API surface.
 pub type ApiResult<T> = Result<T, ApiError>;

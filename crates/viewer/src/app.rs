@@ -395,6 +395,20 @@ impl CadApp {
                 (id, start, count, color, selected)
             })
             .collect();
+        for &(id, start, count) in &ranges {
+            if let Some(obj) = self.scene.get_mut(id) {
+                if count == 0 {
+                    obj.aabb_min = [0.0; 3];
+                    obj.aabb_max = [0.0; 3];
+                } else {
+                    let begin = start as usize;
+                    let end = begin + count as usize;
+                    let (mn, mx) = crate::scene::compute_aabb(&combined[begin..end]);
+                    obj.aabb_min = mn;
+                    obj.aabb_max = mx;
+                }
+            }
+        }
         if !combined.is_empty() {
             let (min, max) = compute_bounds(&combined);
             let dx = max[0] - min[0];
@@ -744,6 +758,28 @@ impl CadApp {
             self.camera.pitch = pitch;
             self.camera.roll = roll;
         }
+    }
+
+    fn set_orthographic_projection(&mut self) {
+        self.camera.projection = crate::render::Projection::Orthographic;
+    }
+
+    fn apply_standard_view(
+        &mut self,
+        view: StandardView,
+        orthographic: bool,
+        preserve_polar_yaw: bool,
+    ) {
+        if orthographic {
+            self.set_orthographic_projection();
+        }
+        let (mut yaw, pitch) = view.yaw_pitch();
+        if preserve_polar_yaw && matches!(view, StandardView::Top | StandardView::Bottom) {
+            yaw = self.camera.yaw;
+        }
+        let roll = snap_roll_90(self.camera.roll, self.prev_roll);
+        self.animate_to(yaw, pitch, roll);
+        self.gui.status_message = format!("View: {}", view.label());
     }
 
     /// Tick the running camera animation, if any, and update FPS counter.
@@ -2098,20 +2134,23 @@ impl CadApp {
                 }
 
                 GuiAction::SetStandardView(view) => {
-                    let (mut yaw, pitch) = view.yaw_pitch();
                     // Top/Bottom: preserve current yaw (only pitch changes).
                     // At pitch ≈ ±90° the yaw determines screen orientation,
                     // so forcing a fixed yaw causes unwanted in-plane rotation.
-                    if matches!(view, StandardView::Top | StandardView::Bottom) {
-                        yaw = self.camera.yaw;
-                    }
-                    // Roll: snap to nearest 90°; at midpoint, prefer prev_roll side.
-                    let roll = snap_roll_90(self.camera.roll, self.prev_roll);
-                    self.animate_to(yaw, pitch, roll);
-                    self.gui.status_message = format!("View: {}", view.label());
+                    self.apply_standard_view(view, false, true);
+                }
+
+                GuiAction::SetStandardViewOrthographic(view) => {
+                    self.apply_standard_view(view, true, false);
                 }
 
                 GuiAction::SetCameraYawPitch(yaw, pitch) => {
+                    let roll = snap_roll_90(self.camera.roll, self.prev_roll);
+                    self.animate_to(yaw, pitch, roll);
+                }
+
+                GuiAction::SetCameraYawPitchOrthographic(yaw, pitch) => {
+                    self.set_orthographic_projection();
                     let roll = snap_roll_90(self.camera.roll, self.prev_roll);
                     self.animate_to(yaw, pitch, roll);
                 }
@@ -3204,6 +3243,42 @@ impl CadApp {
                     let state = if self.nav.clip_enabled { "ON" } else { "OFF" };
                     self.log_info(format!("Section plane: {state}"));
                 }
+                GuiAction::ToggleSectionBox => {
+                    if !self.scene.section_box.active {
+                        let _ = self.scene.reset_section_box_to_visible_bounds();
+                    }
+                    self.scene.section_box.active = !self.scene.section_box.active;
+                    self.rebuild_scene_gpu();
+                    let state = if self.scene.section_box.active {
+                        "ON"
+                    } else {
+                        "OFF"
+                    };
+                    self.log_info(format!("Section box: {state}"));
+                }
+                GuiAction::SetSectionBoxBounds { min, max } => {
+                    self.scene.set_section_box_bounds(min, max);
+                    self.rebuild_scene_gpu();
+                    self.log_info("Section box bounds updated");
+                }
+                GuiAction::ResizeSectionBoxFace {
+                    axis,
+                    positive,
+                    delta,
+                } => {
+                    if self.scene.resize_section_box_face(axis, positive, delta) {
+                        self.rebuild_scene_gpu();
+                    }
+                }
+                GuiAction::SetExplodedViewFactor(factor) => {
+                    self.scene.exploded_view.factor = factor.clamp(0.0, 2.0);
+                    self.gui.explode_factor = self.scene.exploded_view.factor;
+                    self.rebuild_scene_gpu();
+                    self.log_info(format!(
+                        "Exploded view factor={:.2}",
+                        self.scene.exploded_view.factor
+                    ));
+                }
 
                 // -- View bookmarks --
                 GuiAction::SaveBookmark(name) => {
@@ -3507,7 +3582,13 @@ impl CadApp {
                 }
             }
             AssemblyAction::Explode { factor } => {
-                self.log_info(format!("Assembly: exploded view factor={factor:.1}"));
+                self.scene.exploded_view.factor = factor.clamp(0.0, 2.0);
+                self.gui.explode_factor = self.scene.exploded_view.factor;
+                self.rebuild_scene_gpu();
+                self.log_info(format!(
+                    "Assembly: exploded view factor={:.2}",
+                    self.scene.exploded_view.factor
+                ));
             }
             AssemblyAction::BillOfMaterials => {
                 enum Msg {
@@ -12007,9 +12088,103 @@ impl CadApp {
         &self.camera
     }
 
+    #[doc(hidden)]
+    pub fn display_vertices_for_test(&self) -> &[Vertex] {
+        &self.vertices
+    }
+
+    #[doc(hidden)]
+    pub fn object_ranges_for_test(&self) -> &[(crate::scene::ObjectId, u32, u32, [f32; 4], bool)] {
+        &self.object_ranges
+    }
+
+    #[doc(hidden)]
+    pub fn set_view_animation_for_test(&mut self, enabled: bool) {
+        self.nav.enable_view_animation = enabled;
+    }
+
     fn dispatch(&mut self, action: GuiAction) {
         self.gui.actions.push(action);
         self.process_actions();
+    }
+
+    fn dispatch_instant_view_for_test(&mut self, action: GuiAction) {
+        let was_enabled = self.nav.enable_view_animation;
+        self.nav.enable_view_animation = false;
+        self.dispatch(action);
+        self.nav.enable_view_animation = was_enabled;
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_view_cube_face_for_test(&mut self, face_index: usize) -> bool {
+        let Some(view) = crate::gui::view_cube::face_view_for_index(face_index) else {
+            return false;
+        };
+        self.dispatch_instant_view_for_test(GuiAction::SetStandardViewOrthographic(view));
+        true
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_view_cube_edge_for_test(&mut self, edge_index: usize) -> bool {
+        let Some((yaw, pitch)) = crate::gui::view_cube::edge_yaw_pitch_for_index(edge_index) else {
+            return false;
+        };
+        self.dispatch_instant_view_for_test(GuiAction::SetCameraYawPitchOrthographic(yaw, pitch));
+        true
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_view_cube_corner_for_test(&mut self, corner_index: usize) -> bool {
+        let Some((yaw, pitch)) = crate::gui::view_cube::corner_yaw_pitch_for_index(corner_index)
+        else {
+            return false;
+        };
+        self.dispatch_instant_view_for_test(GuiAction::SetCameraYawPitchOrthographic(yaw, pitch));
+        true
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_view_gizmo_axis_for_test(&mut self, axis: u8, positive: bool) -> bool {
+        let view = match (axis, positive) {
+            (0, true) => StandardView::Right,
+            (0, false) => StandardView::Left,
+            (1, true) => StandardView::Front,
+            (1, false) => StandardView::Back,
+            (2, true) => StandardView::Top,
+            (2, false) => StandardView::Bottom,
+            _ => return false,
+        };
+        self.dispatch_instant_view_for_test(GuiAction::SetStandardViewOrthographic(view));
+        true
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_toggle_section_box_for_test(&mut self) {
+        self.dispatch(GuiAction::ToggleSectionBox);
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_set_section_box_for_test(&mut self, min: [f64; 3], max: [f64; 3]) {
+        self.dispatch(GuiAction::SetSectionBoxBounds { min, max });
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_resize_section_box_face_for_test(
+        &mut self,
+        axis: u8,
+        positive: bool,
+        delta: f64,
+    ) {
+        self.dispatch(GuiAction::ResizeSectionBoxFace {
+            axis,
+            positive,
+            delta,
+        });
+    }
+
+    #[doc(hidden)]
+    pub fn dispatch_exploded_view_factor_for_test(&mut self, factor: f64) {
+        self.dispatch(GuiAction::SetExplodedViewFactor(factor));
     }
 
     #[doc(hidden)]

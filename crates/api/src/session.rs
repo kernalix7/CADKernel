@@ -40,6 +40,46 @@ use crate::document::{
 use crate::outcome::{Outcome, Plane};
 use crate::{ApiError, ApiResult};
 use std::collections::{BTreeSet, HashMap};
+use std::time::Instant;
+
+/// Stable identifier for a named session checkpoint.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct CheckpointId(pub u64);
+
+impl std::fmt::Display for CheckpointId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "checkpoint#{}", self.0)
+    }
+}
+
+/// Stable identifier for a preserved history branch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct BranchId(pub u64);
+
+impl std::fmt::Display for BranchId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "branch#{}", self.0)
+    }
+}
+
+/// Metadata for an alternate command-log branch.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Branch {
+    pub id: BranchId,
+    pub parent_cursor: usize,
+    pub name: String,
+    log: Vec<Command>,
+    cursor: usize,
+}
+
+#[derive(Debug, Clone)]
+struct Checkpoint {
+    id: CheckpointId,
+    name: String,
+    created_at: Instant,
+    log: Vec<Command>,
+    cursor: usize,
+}
 
 /// The execute/replay engine.
 ///
@@ -54,6 +94,10 @@ pub struct Session {
     document: Document,
     log: Vec<Command>,
     cursor: usize,
+    checkpoints: HashMap<CheckpointId, Checkpoint>,
+    branches: Vec<Branch>,
+    next_checkpoint_id: u64,
+    next_branch_id: u64,
     /// Wall-clock instant when the most recent command was executed.
     /// Used to coalesce rapid-fire property edits (Translate / Scale /
     /// Rename) into a single log entry within `coalesce_window_ms`.
@@ -131,6 +175,13 @@ fn now_unix_seconds() -> i64 {
         .unwrap_or(0)
 }
 
+fn common_prefix_len(a: &[Command], b: &[Command]) -> usize {
+    a.iter()
+        .zip(b.iter())
+        .take_while(|(lhs, rhs)| lhs == rhs)
+        .count()
+}
+
 impl Session {
     /// Creates a fresh session with an empty document and empty log.
     /// Coalesce window defaults to 1 000 ms per A2 spec.
@@ -139,6 +190,10 @@ impl Session {
             document: Document::default(),
             log: Vec::new(),
             cursor: 0,
+            checkpoints: HashMap::new(),
+            branches: Vec::new(),
+            next_checkpoint_id: 1,
+            next_branch_id: 1,
             last_command_at: None,
             coalesce_window_ms: 1000,
         }
@@ -197,6 +252,139 @@ impl Session {
     /// Returns true if there is at least one command available to redo.
     pub fn can_redo(&self) -> bool {
         self.cursor < self.log.len()
+    }
+
+    /// Captures the current command log and cursor under a human-readable
+    /// name. The returned id can later be passed to [`Self::restore`].
+    pub fn checkpoint(&mut self, name: String) -> CheckpointId {
+        let id = CheckpointId(self.next_checkpoint_id);
+        self.next_checkpoint_id += 1;
+        let checkpoint = Checkpoint {
+            id,
+            name,
+            created_at: Instant::now(),
+            log: self.log.clone(),
+            cursor: self.cursor,
+        };
+        self.checkpoints.insert(id, checkpoint);
+        id
+    }
+
+    /// Restores a named checkpoint, rebuilding the document by replaying
+    /// that checkpoint's applied command prefix.
+    pub fn restore(&mut self, cp: CheckpointId) -> ApiResult<Outcome> {
+        let checkpoint = self
+            .checkpoints
+            .get(&cp)
+            .cloned()
+            .ok_or_else(|| ApiError::InvalidArgument(format!("unknown checkpoint {cp}")))?;
+
+        if self.log != checkpoint.log || self.cursor != checkpoint.cursor {
+            let parent_cursor = common_prefix_len(&self.log, &checkpoint.log);
+            let name = format!("restore-{}", checkpoint.id.0);
+            let log = self.log.clone();
+            let cursor = log.len();
+            self.save_branch_from_log(parent_cursor, name, log, cursor);
+        }
+
+        let rebuilt = Self::replay(&checkpoint.log[..checkpoint.cursor])?;
+        self.document = rebuilt.document;
+        self.log = checkpoint.log;
+        self.cursor = checkpoint.cursor;
+        self.last_command_at = None;
+        Ok(Outcome::DocumentReset)
+    }
+
+    /// Lists checkpoints in creation order as `(id, name, created_at)`.
+    pub fn list_checkpoints(&self) -> Vec<(CheckpointId, String, Instant)> {
+        let mut items: Vec<_> = self
+            .checkpoints
+            .values()
+            .map(|checkpoint| {
+                (
+                    checkpoint.id,
+                    checkpoint.name.clone(),
+                    checkpoint.created_at,
+                )
+            })
+            .collect();
+        items.sort_by_key(|(id, _, _)| *id);
+        items
+    }
+
+    /// Returns the first checkpoint with an exact name match.
+    pub fn find_checkpoint(&self, name: &str) -> Option<CheckpointId> {
+        self.list_checkpoints()
+            .into_iter()
+            .find(|(_, checkpoint_name, _)| checkpoint_name == name)
+            .map(|(id, _, _)| id)
+    }
+
+    /// Alias for [`Self::find_checkpoint`] using checkpoint vocabulary.
+    pub fn checkpoint_by_name(&self, name: &str) -> Option<CheckpointId> {
+        self.find_checkpoint(name)
+    }
+
+    /// Returns the preserved alternate history branches in creation order.
+    pub fn branches(&self) -> Vec<Branch> {
+        self.branches.clone()
+    }
+
+    /// Jumps to any command-log cursor by replaying the requested prefix.
+    /// If the jump would abandon commands after `target_cursor`, they are
+    /// preserved as a branch before the active log is shortened.
+    pub fn scrub(&mut self, target_cursor: usize) -> ApiResult<Outcome> {
+        if target_cursor > self.log.len() {
+            return Err(ApiError::InvalidArgument(format!(
+                "target cursor {} exceeds log length {}",
+                target_cursor,
+                self.log.len()
+            )));
+        }
+        if target_cursor == self.cursor {
+            self.last_command_at = None;
+            return Ok(Outcome::DocumentReset);
+        }
+
+        let prefix: Vec<Command> = self.log[..target_cursor].to_vec();
+        if target_cursor < self.log.len() {
+            let name = format!("scrub-{}", self.next_branch_id);
+            let log = self.log.clone();
+            let cursor = log.len();
+            self.save_branch_from_log(target_cursor, name, log, cursor);
+            self.log.truncate(target_cursor);
+        }
+
+        let rebuilt = Self::replay(&prefix)?;
+        self.document = rebuilt.document;
+        self.cursor = target_cursor;
+        self.last_command_at = None;
+        Ok(Outcome::DocumentReset)
+    }
+
+    /// Promotes a saved branch into the active command log.
+    pub fn promote_branch(&mut self, branch_id: BranchId) -> ApiResult<Outcome> {
+        let branch_index = self
+            .branches
+            .iter()
+            .position(|branch| branch.id == branch_id)
+            .ok_or_else(|| ApiError::InvalidArgument(format!("unknown branch {branch_id}")))?;
+        let branch = self.branches.remove(branch_index);
+
+        if self.log != branch.log || self.cursor != branch.cursor {
+            let parent_cursor = common_prefix_len(&self.log, &branch.log);
+            let name = format!("promote-{}", branch.id.0);
+            let log = self.log.clone();
+            let cursor = log.len();
+            self.save_branch_from_log(parent_cursor, name, log, cursor);
+        }
+
+        let rebuilt = Self::replay(&branch.log[..branch.cursor])?;
+        self.document = rebuilt.document;
+        self.log = branch.log;
+        self.cursor = branch.cursor;
+        self.last_command_at = None;
+        Ok(Outcome::DocumentReset)
     }
 
     /// Replays a slice of commands from scratch and returns the resulting
@@ -475,8 +663,13 @@ impl Session {
             return self.dispatch(&command);
         }
 
-        // Discard the redo stack — a new branch starts here.
-        self.log.truncate(self.cursor);
+        if self.cursor < self.log.len() {
+            let name = format!("diverge-{}", self.next_branch_id);
+            let log = self.log.clone();
+            let cursor = log.len();
+            self.save_branch_from_log(self.cursor, name, log, cursor);
+            self.log.truncate(self.cursor);
+        }
 
         // Try to coalesce with the previous command. If it succeeds we
         // dispatch the new (delta) command onto the live document, then
@@ -551,6 +744,34 @@ impl Session {
             }
             _ => None,
         }
+    }
+
+    fn save_branch_from_log(
+        &mut self,
+        parent_cursor: usize,
+        name: String,
+        log: Vec<Command>,
+        cursor: usize,
+    ) -> Option<BranchId> {
+        if cursor <= parent_cursor || log.len() <= parent_cursor || cursor > log.len() {
+            return None;
+        }
+        if let Some(existing) = self.branches.iter().find(|branch| {
+            branch.parent_cursor == parent_cursor && branch.cursor == cursor && branch.log == log
+        }) {
+            return Some(existing.id);
+        }
+
+        let id = BranchId(self.next_branch_id);
+        self.next_branch_id += 1;
+        self.branches.push(Branch {
+            id,
+            parent_cursor,
+            name,
+            log,
+            cursor,
+        });
+        Some(id)
     }
 
     /// Undo the most recently applied command. Returns the [`Command`] that

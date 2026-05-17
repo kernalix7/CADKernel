@@ -24,7 +24,7 @@ pub(crate) mod theme;
 mod tokens;
 mod toolbar;
 mod tree;
-mod view_cube;
+pub(crate) mod view_cube;
 
 // Re-exports so that sibling files (`dialogs.rs`, `menu.rs`, `toolbar.rs`)
 // can keep their existing `use super::{BcKind, AssemblyJointType, SketchMode, ...}`
@@ -305,7 +305,9 @@ pub(crate) enum GuiAction {
     SetGizmoMode(GizmoMode),
     SetDisplayMode(DisplayMode),
     SetStandardView(StandardView),
+    SetStandardViewOrthographic(StandardView),
     SetCameraYawPitch(f32, f32),
+    SetCameraYawPitchOrthographic(f32, f32),
     ScreenOrbit(f32, f32),
     RollDelta(f32),
     ToggleGrid,
@@ -450,6 +452,17 @@ pub(crate) enum GuiAction {
 
     // -- Section plane --
     ToggleSectionPlane,
+    ToggleSectionBox,
+    SetSectionBoxBounds {
+        min: [f64; 3],
+        max: [f64; 3],
+    },
+    ResizeSectionBoxFace {
+        axis: u8,
+        positive: bool,
+        delta: f64,
+    },
+    SetExplodedViewFactor(f64),
 
     // -- View bookmarks --
     SaveBookmark(String),
@@ -1069,7 +1082,7 @@ impl GuiState {
             export_stl_binary: true,
             export_scale: 1.0,
             show_explode: false,
-            explode_factor: 2.0,
+            explode_factor: 0.0,
             draft_active_layer: "Default".into(),
             draft_snap_modes: [true; 8],
             show_mesh_smooth: false,
@@ -1550,7 +1563,7 @@ pub(crate) fn draw_ui(
     if nav.show_view_cube {
         view_cube::draw_view_cube(ctx, vp.camera, gui, nav);
     }
-    overlays::draw_viewport_hud(ctx, gui, nav, vp.camera);
+    overlays::draw_viewport_hud(ctx, gui, nav, vp.camera, scene);
     if nav.show_axes_indicator {
         overlays::draw_axes_overlay(ctx, vp.camera, gui);
     }
@@ -1563,6 +1576,7 @@ pub(crate) fn draw_ui(
     overlays::draw_sketch_plane_preview(ctx, vp.camera, gui);
     overlays::draw_rubber_band(ctx, gui);
     overlays::draw_transform_gizmo(ctx, vp.camera, gui, scene);
+    overlays::draw_section_box_overlay(ctx, vp.camera, gui, scene);
     overlays::draw_selection_overlay(ctx, vp.camera, gui, scene, nav);
     scene_overlay::paint(ctx, vp.camera, &gui.scene_overlay);
     if vp.show_grid {

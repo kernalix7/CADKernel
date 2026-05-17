@@ -72,6 +72,10 @@ const FACE_VIEWS: [StandardView; 6] = [
     StandardView::Bottom,
 ];
 
+pub(crate) fn face_view_for_index(index: usize) -> Option<StandardView> {
+    FACE_VIEWS.get(index).copied()
+}
+
 const CORNER_TRIS: [[usize; 3]; 8] = [
     [0, 2, 1],
     [3, 4, 5],
@@ -131,6 +135,18 @@ const EDGE_YAW_PITCH: [[f32; 2]; 12] = [
     [FRAC_PI_4, 0.0],
     [FRAC_3PI_4, 0.0],
 ];
+
+pub(crate) fn edge_yaw_pitch_for_index(index: usize) -> Option<(f32, f32)> {
+    EDGE_YAW_PITCH
+        .get(index)
+        .map(|angles| (angles[0], angles[1]))
+}
+
+pub(crate) fn corner_yaw_pitch_for_index(index: usize) -> Option<(f32, f32)> {
+    CORNER_YAW_PITCH
+        .get(index)
+        .map(|angles| (angles[0], angles[1]))
+}
 const EDGE_ADJ_FACES: [[usize; 2]; 12] = [
     [5, 1],
     [5, 2],
@@ -607,15 +623,15 @@ pub(crate) fn draw_view_cube(
             if let Some(target) = hover {
                 match target {
                     HoverTarget::Face(fi) => {
-                        actions.push(GuiAction::SetStandardView(FACE_VIEWS[fi]));
+                        actions.push(GuiAction::SetStandardViewOrthographic(FACE_VIEWS[fi]));
                     }
                     HoverTarget::Edge(ei) => {
                         let [yaw, pitch] = EDGE_YAW_PITCH[ei];
-                        actions.push(GuiAction::SetCameraYawPitch(yaw, pitch));
+                        actions.push(GuiAction::SetCameraYawPitchOrthographic(yaw, pitch));
                     }
                     HoverTarget::Corner(ci) => {
                         let [yaw, pitch] = CORNER_YAW_PITCH[ci];
-                        actions.push(GuiAction::SetCameraYawPitch(yaw, pitch));
+                        actions.push(GuiAction::SetCameraYawPitchOrthographic(yaw, pitch));
                     }
                 }
             }

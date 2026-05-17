@@ -242,6 +242,53 @@ pub struct ObjectGroup {
     pub visible: bool,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SectionBox {
+    pub min: [f64; 3],
+    pub max: [f64; 3],
+    pub active: bool,
+}
+
+impl SectionBox {
+    pub fn inactive() -> Self {
+        Self {
+            min: [-1.0, -1.0, -1.0],
+            max: [1.0, 1.0, 1.0],
+            active: false,
+        }
+    }
+
+    pub fn new(min: [f64; 3], max: [f64; 3], active: bool) -> Self {
+        let (min, max) = sanitize_bounds(min, max);
+        Self { min, max, active }
+    }
+
+    pub fn contains_f32(&self, p: [f32; 3]) -> bool {
+        const EPS: f64 = 1e-5;
+        (0..3).all(|axis| {
+            let v = p[axis] as f64;
+            v >= self.min[axis] - EPS && v <= self.max[axis] + EPS
+        })
+    }
+}
+
+impl Default for SectionBox {
+    fn default() -> Self {
+        Self::inactive()
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ExplodedView {
+    pub factor: f64,
+}
+
+impl Default for ExplodedView {
+    fn default() -> Self {
+        Self { factor: 0.0 }
+    }
+}
+
 /// Multi-object scene.
 #[derive(Clone)]
 pub struct Scene {
@@ -250,6 +297,8 @@ pub struct Scene {
     pub active_body_id: Option<ObjectId>,
     pub groups: Vec<ObjectGroup>,
     next_group_id: u32,
+    pub section_box: SectionBox,
+    pub exploded_view: ExplodedView,
 }
 
 impl Scene {
@@ -260,6 +309,8 @@ impl Scene {
             active_body_id: None,
             groups: Vec::new(),
             next_group_id: 1,
+            section_box: SectionBox::default(),
+            exploded_view: ExplodedView::default(),
         }
     }
 
@@ -383,6 +434,56 @@ impl Scene {
         self.objects.iter().filter(|o| o.visible)
     }
 
+    pub fn visible_bounds(&self) -> Option<([f64; 3], [f64; 3])> {
+        let mut mn = [f64::MAX; 3];
+        let mut mx = [f64::MIN; 3];
+        let mut any = false;
+
+        for obj in self.visible_objects() {
+            if obj.vertices.is_empty() {
+                continue;
+            }
+            let (obj_min, obj_max) = compute_aabb(&obj.vertices);
+            for axis in 0..3 {
+                mn[axis] = mn[axis].min(obj_min[axis] as f64);
+                mx[axis] = mx[axis].max(obj_max[axis] as f64);
+            }
+            any = true;
+        }
+
+        any.then_some((mn, mx))
+    }
+
+    pub fn reset_section_box_to_visible_bounds(&mut self) -> bool {
+        let Some((min, max)) = self.visible_bounds() else {
+            return false;
+        };
+        self.section_box = SectionBox::new(min, max, self.section_box.active);
+        true
+    }
+
+    pub fn set_section_box_bounds(&mut self, min: [f64; 3], max: [f64; 3]) {
+        let (min, max) = sanitize_bounds(min, max);
+        self.section_box.min = min;
+        self.section_box.max = max;
+    }
+
+    pub fn resize_section_box_face(&mut self, axis: u8, positive: bool, delta: f64) -> bool {
+        let axis = axis as usize;
+        if axis >= 3 || !delta.is_finite() {
+            return false;
+        }
+        const MIN_SPAN: f64 = 1e-6;
+        if positive {
+            self.section_box.max[axis] =
+                (self.section_box.max[axis] + delta).max(self.section_box.min[axis] + MIN_SPAN);
+        } else {
+            self.section_box.min[axis] =
+                (self.section_box.min[axis] + delta).min(self.section_box.max[axis] - MIN_SPAN);
+        }
+        true
+    }
+
     /// Refresh picking data (edge_positions, vertex_positions) for all objects
     /// from their current model state. Call after transforms that modify geometry.
     pub fn refresh_picking_data(&mut self) {
@@ -402,13 +503,58 @@ impl Scene {
     pub fn build_combined_vertices(&self) -> (Vec<Vertex>, Vec<(ObjectId, u32, u32)>) {
         let mut combined = Vec::new();
         let mut ranges = Vec::new();
+        let explosion_centroid = self.explosion_centroid();
+        let explosion_factor = self.exploded_view.factor.max(0.0) as f32;
         for obj in self.visible_objects() {
             let start = combined.len() as u32;
-            combined.extend_from_slice(&obj.vertices);
-            let count = obj.vertices.len() as u32;
+            if explosion_factor <= 0.0 && !self.section_box.active {
+                combined.extend_from_slice(&obj.vertices);
+                ranges.push((obj.id, start, obj.vertices.len() as u32));
+                continue;
+            }
+            let mut display_vertices = if explosion_factor > 0.0 {
+                let offset = explosion_centroid
+                    .map(|centroid| {
+                        let center = object_center(obj);
+                        [
+                            (center[0] - centroid[0]) * explosion_factor,
+                            (center[1] - centroid[1]) * explosion_factor,
+                            (center[2] - centroid[2]) * explosion_factor,
+                        ]
+                    })
+                    .unwrap_or([0.0; 3]);
+                translate_vertices(&obj.vertices, offset)
+            } else {
+                obj.vertices.clone()
+            };
+            if self.section_box.active {
+                display_vertices =
+                    clip_vertices_to_section_box(&display_vertices, &self.section_box);
+            }
+            combined.extend_from_slice(&display_vertices);
+            let count = display_vertices.len() as u32;
             ranges.push((obj.id, start, count));
         }
         (combined, ranges)
+    }
+
+    fn explosion_centroid(&self) -> Option<[f32; 3]> {
+        if self.exploded_view.factor <= 0.0 {
+            return None;
+        }
+        let mut sum = [0.0f32; 3];
+        let mut count = 0.0f32;
+        for obj in self.visible_objects() {
+            if obj.vertices.is_empty() {
+                continue;
+            }
+            let center = object_center(obj);
+            for axis in 0..3 {
+                sum[axis] += center[axis];
+            }
+            count += 1.0;
+        }
+        (count > 0.0).then(|| [sum[0] / count, sum[1] / count, sum[2] / count])
     }
 
     /// Total number of objects.
@@ -809,6 +955,138 @@ fn collect_vertex_data(
 impl Default for Scene {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+fn sanitize_bounds(mut min: [f64; 3], mut max: [f64; 3]) -> ([f64; 3], [f64; 3]) {
+    const MIN_SPAN: f64 = 1e-6;
+    for axis in 0..3 {
+        if !min[axis].is_finite() {
+            min[axis] = 0.0;
+        }
+        if !max[axis].is_finite() {
+            max[axis] = min[axis] + 1.0;
+        }
+        if min[axis] > max[axis] {
+            std::mem::swap(&mut min[axis], &mut max[axis]);
+        }
+        if max[axis] - min[axis] < MIN_SPAN {
+            let mid = (min[axis] + max[axis]) * 0.5;
+            min[axis] = mid - MIN_SPAN * 0.5;
+            max[axis] = mid + MIN_SPAN * 0.5;
+        }
+    }
+    (min, max)
+}
+
+fn object_center(obj: &SceneObject) -> [f32; 3] {
+    if obj.vertices.is_empty() {
+        return [0.0; 3];
+    }
+    let (mn, mx) = compute_aabb(&obj.vertices);
+    [
+        (mn[0] + mx[0]) * 0.5,
+        (mn[1] + mx[1]) * 0.5,
+        (mn[2] + mx[2]) * 0.5,
+    ]
+}
+
+fn translate_vertices(vertices: &[Vertex], offset: [f32; 3]) -> Vec<Vertex> {
+    vertices
+        .iter()
+        .map(|v| Vertex {
+            position: [
+                v.position[0] + offset[0],
+                v.position[1] + offset[1],
+                v.position[2] + offset[2],
+            ],
+            normal: v.normal,
+        })
+        .collect()
+}
+
+fn clip_vertices_to_section_box(vertices: &[Vertex], section: &SectionBox) -> Vec<Vertex> {
+    let mut out = Vec::new();
+    for tri in vertices.chunks_exact(3) {
+        let mut poly = tri.to_vec();
+        for axis in 0..3 {
+            poly = clip_polygon_axis(&poly, axis, section.min[axis] as f32, true);
+            if poly.len() < 3 {
+                break;
+            }
+            poly = clip_polygon_axis(&poly, axis, section.max[axis] as f32, false);
+            if poly.len() < 3 {
+                break;
+            }
+        }
+        if poly.len() < 3 {
+            continue;
+        }
+        for i in 1..poly.len() - 1 {
+            out.push(poly[0]);
+            out.push(poly[i]);
+            out.push(poly[i + 1]);
+        }
+    }
+    out
+}
+
+fn clip_polygon_axis(poly: &[Vertex], axis: usize, plane: f32, keep_greater: bool) -> Vec<Vertex> {
+    let mut out = Vec::new();
+    let Some(mut prev) = poly.last().copied() else {
+        return out;
+    };
+    let mut prev_inside = vertex_inside_plane(prev, axis, plane, keep_greater);
+    for &curr in poly {
+        let curr_inside = vertex_inside_plane(curr, axis, plane, keep_greater);
+        match (prev_inside, curr_inside) {
+            (true, true) => out.push(curr),
+            (true, false) => out.push(intersect_vertex_plane(prev, curr, axis, plane)),
+            (false, true) => {
+                out.push(intersect_vertex_plane(prev, curr, axis, plane));
+                out.push(curr);
+            }
+            (false, false) => {}
+        }
+        prev = curr;
+        prev_inside = curr_inside;
+    }
+    out
+}
+
+fn vertex_inside_plane(v: Vertex, axis: usize, plane: f32, keep_greater: bool) -> bool {
+    if keep_greater {
+        v.position[axis] >= plane - 1e-6
+    } else {
+        v.position[axis] <= plane + 1e-6
+    }
+}
+
+fn intersect_vertex_plane(a: Vertex, b: Vertex, axis: usize, plane: f32) -> Vertex {
+    let denom = b.position[axis] - a.position[axis];
+    let t = if denom.abs() < 1e-8 {
+        0.0
+    } else {
+        ((plane - a.position[axis]) / denom).clamp(0.0, 1.0)
+    };
+    let mut position = [0.0; 3];
+    let mut normal = [0.0; 3];
+    for i in 0..3 {
+        position[i] = a.position[i] + (b.position[i] - a.position[i]) * t;
+        normal[i] = a.normal[i] + (b.normal[i] - a.normal[i]) * t;
+    }
+    Vertex {
+        position,
+        normal: normalize_normal(normal),
+    }
+}
+
+fn normalize_normal(n: [f32; 3]) -> [f32; 3] {
+    let len = (n[0] * n[0] + n[1] * n[1] + n[2] * n[2]).sqrt();
+    if len > 1e-8 {
+        [n[0] / len, n[1] / len, n[2] / len]
+    } else {
+        [0.0, 0.0, 1.0]
     }
 }
 

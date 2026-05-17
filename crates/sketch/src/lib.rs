@@ -39,6 +39,7 @@
 )]
 
 pub mod bspline_tools;
+pub mod conflict;
 pub mod constraint;
 pub mod display;
 pub mod entity;
@@ -54,6 +55,7 @@ pub use bspline_tools::{
     increase_knot_multiplicity, insert_knot, join_curves, mirror_geometry_axis, move_geometry,
     offset_geometry, rotate_geometry, scale_geometry,
 };
+pub use conflict::{ConstraintId, detect_conflict, detect_conflict_in_block, is_conflicting};
 pub use constraint::Constraint;
 pub use display::{
     SectionViewState, SketchDisplayOptions, SketchEntity, SketchGrid, SketchSnap, SnapType,
@@ -71,7 +73,10 @@ pub use persist::PersistedSketch;
 pub use profile::{
     SketchProfileAnalysis, WorkPlane, analyze_profiles, extract_profile, extract_profile_checked,
 };
-pub use solver::{SolverResult, constraint_residuals, drag_solve, solve};
+pub use solver::{
+    BlockStatus, DeflatedSolverResult, DeflationStep, SolverAnalysis, SolverBlock, SolverResult,
+    analyze_blocks, constraint_residuals, drag_solve, solve, solve_with_analysis,
+};
 pub use tools::{
     FilletResult, SketchChamferResult, SplitResult, TrimResult, chamfer_sketch_corner, extend_edge,
     external_intersection, fillet_sketch_corner, split_edge, trim_edge,

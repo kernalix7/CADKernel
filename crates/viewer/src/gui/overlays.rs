@@ -28,7 +28,8 @@ pub(crate) fn draw_axes_overlay(ctx: &egui::Context, camera: &Camera, gui: &mut 
 
     let size = 45.0f32;
     let margin = 55.0f32;
-    let center = egui::pos2(margin, ctx.screen_rect().bottom() - margin);
+    let vp = ctx.available_rect();
+    let center = egui::pos2(vp.right() - margin, vp.bottom() - margin);
 
     let screen_right = camera.screen_right();
     let screen_up = camera.screen_up();
@@ -132,7 +133,8 @@ pub(crate) fn draw_axes_overlay(ctx: &egui::Context, camera: &Camera, gui: &mut 
     if let Some((idx, positive)) = hovered_axis {
         if ctx.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary)) {
             let view = if positive { axes[idx].3 } else { axes[idx].4 };
-            gui.actions.push(GuiAction::SetStandardView(view));
+            gui.actions
+                .push(GuiAction::SetStandardViewOrthographic(view));
         }
         ctx.output_mut(|o| o.cursor_icon = egui::CursorIcon::PointingHand);
     }
@@ -228,6 +230,131 @@ pub(crate) fn draw_axes_overlay(ctx: &egui::Context, camera: &Camera, gui: &mut 
             font,
             line_color,
         );
+    }
+}
+
+pub(crate) fn draw_section_box_overlay(
+    ctx: &egui::Context,
+    camera: &Camera,
+    gui: &mut GuiState,
+    scene: &Scene,
+) {
+    let section = scene.section_box;
+    if !section.active {
+        return;
+    }
+
+    let min = [
+        section.min[0] as f32,
+        section.min[1] as f32,
+        section.min[2] as f32,
+    ];
+    let max = [
+        section.max[0] as f32,
+        section.max[1] as f32,
+        section.max[2] as f32,
+    ];
+    let corners = [
+        [min[0], min[1], min[2]],
+        [max[0], min[1], min[2]],
+        [max[0], max[1], min[2]],
+        [min[0], max[1], min[2]],
+        [min[0], min[1], max[2]],
+        [max[0], min[1], max[2]],
+        [max[0], max[1], max[2]],
+        [min[0], max[1], max[2]],
+    ];
+    let edges = [
+        (0, 1),
+        (1, 2),
+        (2, 3),
+        (3, 0),
+        (4, 5),
+        (5, 6),
+        (6, 7),
+        (7, 4),
+        (0, 4),
+        (1, 5),
+        (2, 6),
+        (3, 7),
+    ];
+    let screen = ctx.available_rect();
+    let painter = ctx.layer_painter(egui::LayerId::new(
+        egui::Order::Foreground,
+        egui::Id::new("section_box_overlay"),
+    ));
+    let stroke = egui::Stroke::new(
+        1.4,
+        egui::Color32::from_rgba_premultiplied(80, 190, 220, 210),
+    );
+    for (a, b) in edges {
+        if let (Some(pa), Some(pb)) = (
+            world_to_screen(camera, screen, corners[a]),
+            world_to_screen(camera, screen, corners[b]),
+        ) {
+            painter.line_segment([pa, pb], stroke);
+        }
+    }
+
+    let face_centers = [
+        (
+            0_u8,
+            false,
+            [min[0], (min[1] + max[1]) * 0.5, (min[2] + max[2]) * 0.5],
+        ),
+        (
+            0,
+            true,
+            [max[0], (min[1] + max[1]) * 0.5, (min[2] + max[2]) * 0.5],
+        ),
+        (
+            1,
+            false,
+            [(min[0] + max[0]) * 0.5, min[1], (min[2] + max[2]) * 0.5],
+        ),
+        (
+            1,
+            true,
+            [(min[0] + max[0]) * 0.5, max[1], (min[2] + max[2]) * 0.5],
+        ),
+        (
+            2,
+            false,
+            [(min[0] + max[0]) * 0.5, (min[1] + max[1]) * 0.5, min[2]],
+        ),
+        (
+            2,
+            true,
+            [(min[0] + max[0]) * 0.5, (min[1] + max[1]) * 0.5, max[2]],
+        ),
+    ];
+    let pointer = ctx.input(|i| i.pointer.hover_pos());
+    let drag_delta = ctx.input(|i| i.pointer.delta());
+    let primary_down = ctx.input(|i| i.pointer.button_down(egui::PointerButton::Primary));
+
+    for (axis, positive, center) in face_centers {
+        let Some(pos) = world_to_screen(camera, screen, center) else {
+            continue;
+        };
+        let hovered = pointer.is_some_and(|p| p.distance(pos) <= 8.0);
+        let fill = if hovered {
+            egui::Color32::from_rgba_premultiplied(120, 220, 245, 230)
+        } else {
+            egui::Color32::from_rgba_premultiplied(35, 120, 145, 190)
+        };
+        painter.circle_filled(pos, 5.0, fill);
+        painter.circle_stroke(pos, 5.0, stroke);
+
+        if hovered && primary_down && drag_delta.length_sq() > 0.0 {
+            let sign = if positive { 1.0 } else { -1.0 };
+            let screen_delta = (drag_delta.x - drag_delta.y) as f64;
+            let world_delta = sign * screen_delta * camera.distance as f64 * 0.002;
+            gui.actions.push(GuiAction::ResizeSectionBoxFace {
+                axis,
+                positive,
+                delta: world_delta,
+            });
+        }
     }
 }
 
@@ -2185,6 +2312,7 @@ pub(crate) fn draw_viewport_hud(
     gui: &mut GuiState,
     nav: &crate::nav::NavConfig,
     camera: &crate::render::Camera,
+    scene: &Scene,
 ) {
     use egui::{Color32, Stroke};
 
@@ -2260,6 +2388,23 @@ pub(crate) fn draw_viewport_hud(
                 hud_button(ui, btn, "\u{229E}", "Toggle Grid  (G)", false, || {
                     gui.actions.push(GuiAction::ToggleGrid);
                 });
+                hud_button(
+                    ui,
+                    btn,
+                    "\u{25A7}",
+                    "Section Box",
+                    scene.section_box.active,
+                    || {
+                        gui.actions.push(GuiAction::ToggleSectionBox);
+                    },
+                );
+                let mut factor = scene.exploded_view.factor;
+                let slider = egui::Slider::new(&mut factor, 0.0..=2.0)
+                    .vertical()
+                    .show_value(false);
+                if ui.add_sized([btn, 72.0], slider).changed() {
+                    gui.actions.push(GuiAction::SetExplodedViewFactor(factor));
+                }
             });
         });
 }
